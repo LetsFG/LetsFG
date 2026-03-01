@@ -48,6 +48,11 @@
     radial-gradient(ellipse 80% 50% at 50% 20%, rgba(45,212,168,0.03), transparent 60%);
 }
 
+/* ── Page-wide grid — remove Material's constrained max-width ── */
+.md-grid {
+  max-width: 100%;
+}
+
 /* ── Header (glass) ── */
 .md-header {
   background: rgba(5,8,15,0.88) !important;
@@ -58,13 +63,13 @@
 }
 .md-header[data-md-state="shadow"] { box-shadow: none !important; }
 
-/* More header padding */
+/* Header inner — full width, good padding */
 .md-header__inner {
-  padding-top: .35rem;
-  padding-bottom: .35rem;
+  padding: .35rem 1.2rem;
+  position: relative;
 }
 
-/* Site title — lighter weight like boostedchat.com */
+/* Site title — lighter weight, keep flex-grow for absolute-positioned children */
 .md-header__title {
   font-weight: 300;
   letter-spacing: .3px;
@@ -80,23 +85,65 @@
   width: 24px;
 }
 
-/* Center the search bar in header */
+/* Search — absolute center in header */
 .md-search {
-  margin-left: auto;
-  margin-right: auto;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26rem;
+  max-width: 40%;
+  margin: 0;
 }
 
-/* Hide repo star count, style GitHub link */
-.md-source__facts { display: none; }
-.md-source__repository { color: rgba(255,255,255,0.45); }
-
-/* Day/night toggle button */
+/* Palette toggle — reorder AFTER search, before GitHub */
+.md-header__option[data-md-component="palette"] {
+  order: 10;
+  margin-left: auto;
+}
 [data-md-component="palette"] .md-header__button {
   color: rgba(255,255,255,0.55);
   transition: color .2s ease;
 }
 [data-md-component="palette"] .md-header__button:hover {
   color: #2dd4a8;
+}
+
+/* GitHub source — reorder last, after toggle */
+.md-header__source {
+  order: 11;
+  flex-shrink: 0;
+  margin-left: .5rem;
+  max-width: none;
+  width: auto;
+}
+
+/* Make GitHub icon visible */
+.md-source {
+  color: rgba(255,255,255,0.55);
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .82rem;
+  white-space: nowrap;
+}
+.md-source__icon {
+  display: inline-block !important;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+.md-source__icon svg {
+  fill: currentColor;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+  display: block;
+}
+.md-source__facts { display: none; }
+.md-source__repository {
+  color: rgba(255,255,255,0.55);
+  font-size: .82rem;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* ── Search ── */
@@ -119,12 +166,15 @@
   border-right: 1px solid rgba(255,255,255,0.04);
   width: 11rem;
 }
-/* Tighter left padding for sidebar content */
 .md-sidebar--primary .md-sidebar__inner {
   padding-left: .4rem;
 }
 .md-sidebar--primary .md-nav {
   padding-left: 0;
+}
+/* Position sidebar flush to left edge */
+.md-sidebar--primary[data-md-state="lock"] {
+  left: 0;
 }
 
 /* Section headers in sidebar (Getting started, Integrations, Reference) */
@@ -154,11 +204,17 @@
   color: rgba(255,255,255,0.85) !important;
   background: rgba(255,255,255,0.03);
 }
-.md-nav__link--active,
-.md-nav__item--active > .md-nav__link {
+/* Active leaf link only — not section parents */
+.md-nav__link--active {
   color: #2dd4a8 !important;
   font-weight: 500;
   background: rgba(45,212,168,0.06);
+}
+/* Section parent that contains active child — NO highlight */
+.md-nav__item--section.md-nav__item--active > .md-nav__link {
+  background: transparent !important;
+  color: rgba(255,255,255,0.35) !important;
+  font-weight: 600;
 }
 
 /* ── Right TOC sidebar ── */
@@ -469,16 +525,26 @@
 }
 
 [data-md-color-scheme="default"] .md-header {
-  background: rgba(255,255,255,0.92) !important;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.95) !important;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 [data-md-color-scheme="default"] .md-header__title,
 [data-md-color-scheme="default"] .md-header__topic {
   color: #1a1e2a;
 }
+/* Light: GitHub icon + text */
+[data-md-color-scheme="default"] .md-source {
+  color: rgba(0,0,0,0.55);
+}
 [data-md-color-scheme="default"] .md-source__repository {
   color: rgba(0,0,0,0.55);
 }
+[data-md-color-scheme="default"] .md-source__icon svg {
+  fill: rgba(0,0,0,0.55);
+}
+/* Light: palette toggle */
 [data-md-color-scheme="default"] [data-md-component="palette"] .md-header__button {
   color: rgba(0,0,0,0.5);
 }
@@ -506,10 +572,14 @@
 [data-md-color-scheme="default"] .md-nav__link:hover {
   color: rgba(0,0,0,0.85) !important;
 }
-[data-md-color-scheme="default"] .md-nav__link--active,
-[data-md-color-scheme="default"] .md-nav__item--active > .md-nav__link {
+[data-md-color-scheme="default"] .md-nav__link--active {
   color: #0d9373 !important;
   background: rgba(13,147,115,0.06);
+}
+[data-md-color-scheme="default"] .md-nav__item--section.md-nav__item--active > .md-nav__link {
+  background: transparent !important;
+  color: rgba(0,0,0,0.4) !important;
+  font-weight: 600;
 }
 [data-md-color-scheme="default"] .card {
   background: #fff;
@@ -556,22 +626,17 @@
 [data-md-color-scheme="default"] .flow-arrow {
   color: rgba(0,0,0,0.15);
 }
-[data-md-color-scheme="default"] .md-search__input {
-  background: rgba(0,0,0,0.04) !important;
-  border-color: rgba(0,0,0,0.08);
-  color: #1a1e2a;
-}
 [data-md-color-scheme="default"] .md-typeset hr {
   border-top-color: rgba(0,0,0,0.06);
 }
 
-/* Light mode: header glass effect */
-[data-md-color-scheme="default"] .md-header {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+/* Light mode: search fully styled */
+[data-md-color-scheme="default"] .md-search__input {
+  background: rgba(0,0,0,0.04) !important;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 8px;
+  color: #1a1e2a;
 }
-
-/* Light mode: search */
 [data-md-color-scheme="default"] .md-search__input::placeholder {
   color: rgba(0,0,0,0.35);
 }
@@ -579,6 +644,12 @@
 [data-md-color-scheme="default"] .md-search__input:hover {
   border-color: rgba(13,147,115,0.3);
   background: rgba(0,0,0,0.06) !important;
+}
+[data-md-color-scheme="default"] .md-search__icon svg {
+  fill: rgba(0,0,0,0.4);
+}
+[data-md-color-scheme="default"] .md-search__overlay {
+  background: rgba(0,0,0,0.05);
 }
 
 /* Light mode: sidebar secondary */
