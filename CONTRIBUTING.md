@@ -18,7 +18,7 @@ Thanks for your interest in contributing! 🚀
 
 ## Before You PR
 
-- Test locally with your own API key
+- Test locally with your own API key (run `boostedtravel register` — see the [README](README.md#cli) or [API docs](https://api.boostedchat.com/docs))
 - Run the relevant SDK tests (see below)
 - Keep PRs focused — one thing per PR
 - Describe **what** you changed and **why**
@@ -87,7 +87,7 @@ docs: update MCP server README with new tool descriptions
 
 ## AI-Assisted PRs Welcome! 🤖
 
-Built with Copilot, Claude, Cursor, or other AI tools? Great — just note it in your PR description so reviewers know what to look for.
+Built with Copilot, Claude, Cursor, or other AI tools? Great — just note it in your PR description so I know what to look for when reviewing.
 
 ## Important: Keep Messaging Consistent
 

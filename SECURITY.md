@@ -4,7 +4,7 @@ If you believe you've found a security vulnerability in BoostedTravel, please re
 
 ## Reporting a Vulnerability
 
-**Email:** security@boostedchat.com
+**Email:** contact@boostedchat.com
 
 Please include:
 
