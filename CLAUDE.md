@@ -38,7 +38,8 @@ BoostedTravel/
 ├── CONTRIBUTING.md      # Contribution guidelines
 ├── LICENSE              # MIT
 ├── README.md            # Public README
-└── SECURITY.md          # Security policy
+├── SECURITY.md          # Security policy
+└── SKILL.md             # Machine-readable skill manifest (Context7)
 ```
 
 ## Key Concepts
