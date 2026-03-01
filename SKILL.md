@@ -1,6 +1,6 @@
 ---
-title: BoostedTravel Skills & Capabilities
-description: Agent-native flight search, hotel search, and booking API — 400+ airlines, zero markup, $20-50 cheaper than OTAs
+title: "BoostedTravel Skills and Capabilities"
+description: "Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs."
 ---
 
 # SKILL.md — BoostedTravel Capabilities
