@@ -1,12 +1,13 @@
-# @boostedtravel/mcp-server
+# boostedtravel-mcp
 
-MCP (Model Context Protocol) server for BoostedTravel — flight search & booking tools for Claude Desktop, Cursor, and any MCP-compatible AI agent.
+MCP (Model Context Protocol) server for BoostedTravel — flight search & booking tools for Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI agent.
 
 ## Install
 
 ```bash
-npm install -g @boostedtravel/mcp-server
+npm install -g boostedtravel-mcp
 # or use npx (no install needed)
+npx boostedtravel-mcp
 ```
 
 ## Configure
@@ -20,10 +21,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "boostedtravel": {
       "command": "npx",
-      "args": ["@boostedtravel/mcp-server"],
+      "args": ["-y", "boostedtravel-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key",
-        "BOOSTEDTRAVEL_BASE_URL": "https://api.boostedchat.com"
+        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -39,7 +39,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "boostedtravel": {
       "command": "npx",
-      "args": ["@boostedtravel/mcp-server"],
+      "args": ["-y", "boostedtravel-mcp"],
       "env": {
         "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
       }
@@ -72,7 +72,7 @@ The agent has native tools — no API documentation needed, no URL building, jus
 ## Get an API Key
 
 ```bash
-npx @boostedtravel/mcp-server  # Doesn't work without a key
+npx boostedtravel-mcp  # Requires API key
 ```
 
 Register via the API:
