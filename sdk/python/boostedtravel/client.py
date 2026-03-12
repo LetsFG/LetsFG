@@ -96,13 +96,69 @@ class BoostedTravel:
         self.base_url = (base_url or os.environ.get("BOOSTEDTRAVEL_BASE_URL", DEFAULT_BASE_URL)).rstrip("/")
         self.timeout = timeout
 
+    def _require_api_key(self) -> None:
         if not self.api_key:
             raise AuthenticationError(
-                "API key required. Set api_key parameter or BOOSTEDTRAVEL_API_KEY env var. "
-                "Get one: POST /api/v1/agents/register"
+                "API key required for this operation. Set api_key parameter or "
+                "BOOSTEDTRAVEL_API_KEY env var. Get one: POST /api/v1/agents/register\n"
+                "Note: search_local() works without an API key."
             )
 
-    # ── Core API methods ──────────────────────────────────────────────────
+    # ── Local search (48 LCC scrapers, no API key needed) ────────────────
+
+    def search_local(
+        self,
+        origin: str,
+        destination: str,
+        date_from: str,
+        *,
+        return_date: str | None = None,
+        adults: int = 1,
+        children: int = 0,
+        infants: int = 0,
+        cabin_class: str | None = None,
+        currency: str = "EUR",
+        limit: int = 50,
+    ) -> FlightSearchResult:
+        """
+        Search flights using 48 local LCC scrapers — FREE, no API key needed.
+
+        Runs Ryanair, EasyJet, Spring Airlines, Lucky Air, and 44 more
+        airline scrapers directly on your machine. No backend call.
+
+        Requires: playwright install chromium  (one-time setup)
+
+        Args:
+            origin: IATA code (e.g., "SHA", "GDN", "JFK")
+            destination: IATA code (e.g., "CTU", "BER", "LAX")
+            date_from: Departure date "YYYY-MM-DD"
+            return_date: Return date for round-trip (omit for one-way)
+            adults / children / infants: Passenger counts
+            cabin_class: "M" (economy), "W" (premium), "C" (business), "F" (first)
+            currency: 3-letter currency code
+            limit: Max results (1-200)
+
+        Returns:
+            FlightSearchResult with offers from local scrapers.
+        """
+        import asyncio
+        from boostedtravel.local import search_local as _search
+
+        result_dict = asyncio.run(_search(
+            origin=origin,
+            destination=destination,
+            date_from=date_from,
+            return_date=return_date,
+            adults=adults,
+            children=children,
+            infants=infants,
+            cabin_class=cabin_class,
+            currency=currency,
+            limit=limit,
+        ))
+        return FlightSearchResult.from_dict(result_dict)
+
+    # ── Core API methods (requires API key) ───────────────────────────────
 
     def search(
         self,
@@ -140,6 +196,7 @@ class BoostedTravel:
         Returns:
             FlightSearchResult with offers, passenger_ids, and metadata.
         """
+        self._require_api_key()
         body: dict[str, Any] = {
             "origin": origin.upper(),
             "destination": destination.upper(),
@@ -170,6 +227,7 @@ class BoostedTravel:
         Returns:
             List of matching locations with IATA codes.
         """
+        self._require_api_key()
         data = self._get(f"/api/v1/flights/locations/{query}")
         if isinstance(data, dict) and "locations" in data:
             return data["locations"]
@@ -190,6 +248,7 @@ class BoostedTravel:
         Returns:
             UnlockResult with confirmed price and status.
         """
+        self._require_api_key()
         data = self._post("/api/v1/bookings/unlock", {"offer_id": offer_id})
         return UnlockResult.from_dict(data)
 
@@ -214,6 +273,7 @@ class BoostedTravel:
         Returns:
             BookingResult with PNR, fees, and confirmation.
         """
+        self._require_api_key()
         pax_list = []
         for p in passengers:
             if isinstance(p, Passenger):
@@ -241,10 +301,12 @@ class BoostedTravel:
         Returns:
             Dict with status and payment_method_id.
         """
+        self._require_api_key()
         return self._post("/api/v1/agents/setup-payment", {"token": token})
 
     def me(self) -> AgentProfile:
         """Get the current agent's profile, usage, and payment status."""
+        self._require_api_key()
         data = self._get("/api/v1/agents/me")
         return AgentProfile.from_dict(data)
 

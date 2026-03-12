@@ -1,11 +1,14 @@
 """
 BoostedTravel — Agent-native flight search & booking SDK.
 
-Cheaper than booking.com. Built for autonomous agents.
+48 LCC scrapers run locally + paid GDS/NDC APIs via backend.
 
-Usage:
+Local search (FREE, no API key):
+    from boostedtravel.local import search_local
+    result = await search_local("SHA", "CTU", "2026-03-20")
+
+Full API (search + unlock + book):
     from boostedtravel import BoostedTravel
-
     bt = BoostedTravel(api_key="trav_...")
     flights = bt.search("GDN", "BER", "2026-03-03")
     bt.unlock(flights.offers[0].id)
@@ -24,7 +27,7 @@ from boostedtravel.models import (
     AgentProfile,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "BoostedTravel",
     "FlightOffer",
