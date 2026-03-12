@@ -396,12 +396,55 @@ class EasyjetConnectorClient:
             logger.info("easyJet: typed '%s' in %s field", iata, label)
             await asyncio.sleep(2.0)
 
-            option = page.get_by_role("radio", name=re.compile(
-                rf"{re.escape(iata)}", re.IGNORECASE
-            )).first
-            await option.click(timeout=5000)
-            logger.info("easyJet: selected %s airport for %s", iata, label)
-            return True
+            # Try multiple selector strategies for the autocomplete dropdown
+            # Strategy 1: option role (listbox pattern)
+            for role in ("option", "radio", "listitem"):
+                try:
+                    option = page.get_by_role(role, name=re.compile(
+                        rf"{re.escape(iata)}", re.IGNORECASE
+                    )).first
+                    if await option.count() > 0:
+                        await option.click(timeout=3000)
+                        logger.info("easyJet: selected %s airport via %s role", iata, role)
+                        return True
+                except Exception:
+                    continue
+
+            # Strategy 2: data-testid or aria selectors
+            for sel in (
+                f'[data-testid*="airport"] >> text=/{re.escape(iata)}/i',
+                f'li:has-text("{iata}")',
+                f'[role="listbox"] >> text=/{re.escape(iata)}/i',
+                f'ul li >> text=/{re.escape(iata)}/i',
+            ):
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0:
+                        await el.click(timeout=3000)
+                        logger.info("easyJet: selected %s airport via locator", iata)
+                        return True
+                except Exception:
+                    continue
+
+            # Strategy 3: click first visible dropdown item
+            for sel in (
+                '[role="listbox"] [role="option"]',
+                '[class*="airport"] li',
+                '[class*="dropdown"] li',
+                '[class*="suggestion"] li',
+                '[class*="result"] li',
+            ):
+                try:
+                    item = page.locator(sel).first
+                    if await item.count() > 0:
+                        await item.click(timeout=3000)
+                        logger.info("easyJet: selected first dropdown item for %s", iata)
+                        return True
+                except Exception:
+                    continue
+
+            logger.warning("easyJet: %s field — no matching suggestion found for %s", label, iata)
+            return False
         except Exception as e:
             logger.warning("easyJet: %s field error: %s", label, e)
             return False

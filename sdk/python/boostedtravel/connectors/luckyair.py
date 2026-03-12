@@ -152,11 +152,17 @@ class LuckyAirConnectorClient:
         async def on_response(response):
             try:
                 url = response.url
-                if response.status == 200 and "price/calendar/fix" in url:
-                    data = await response.json()
-                    if data and isinstance(data, dict) and data.get("status") == "success":
-                        captured_data["calendar"] = data
-                        api_event.set()
+                if response.status == 200 and any(k in url for k in (
+                    "price/calendar", "calendar/fix", "flight/query",
+                    "searchflight", "availability",
+                )):
+                    ct = response.headers.get("content-type", "")
+                    if "json" in ct:
+                        data = await response.json()
+                        if data and isinstance(data, dict):
+                            if data.get("status") == "success" or "data" in data:
+                                captured_data["calendar"] = data
+                                api_event.set()
             except Exception:
                 pass
 
@@ -204,22 +210,70 @@ class LuckyAirConnectorClient:
 
     async def _fill_city(self, page, placeholder: str, code: str) -> bool:
         """Fill a city input field using the Ant Design Select dropdown."""
+
+        # Strategy 1: exact placeholder match
+        matched_input = None
+        for sel in (
+            f"input[placeholder='{placeholder}']",
+            f"input[placeholder*='{placeholder[:2]}']",  # partial match (first 2 chars)
+        ):
+            try:
+                inp = page.locator(sel).first
+                if await inp.count() > 0:
+                    matched_input = inp
+                    break
+            except Exception:
+                continue
+
+        # Strategy 2: positional — departure inputs are typically first, arrival second
+        if not matched_input:
+            try:
+                is_departure = "出发" in placeholder or "departure" in placeholder.lower()
+                idx = 0 if is_departure else 1
+                inputs = page.locator(".ant-select input, [class*=city] input, [class*=search] input")
+                if await inputs.count() > idx:
+                    matched_input = inputs.nth(idx)
+            except Exception:
+                pass
+
+        # Strategy 3: any visible text input
+        if not matched_input:
+            try:
+                inputs = page.locator("input[type='text'], input:not([type])")
+                is_departure = "出发" in placeholder or "departure" in placeholder.lower()
+                idx = 0 if is_departure else 1
+                if await inputs.count() > idx:
+                    matched_input = inputs.nth(idx)
+            except Exception:
+                pass
+
+        if not matched_input:
+            logger.warning("Lucky Air: no input found for '%s'", placeholder)
+            return False
+
         try:
-            inp = page.locator(f"input[placeholder='{placeholder}']")
-            await inp.click(timeout=5000)
+            await matched_input.click(timeout=5000)
             await asyncio.sleep(0.5)
-            # Clear existing text
-            await inp.fill("")
+            await matched_input.fill("")
             await asyncio.sleep(0.3)
-            await inp.type(code, delay=80)
+            await matched_input.type(code, delay=80)
             await asyncio.sleep(2.0)
 
             # Click the first suggestion in the dropdown
-            items = page.locator(".ant-select-dropdown-menu-item")
-            if await items.count() > 0:
-                await items.first.click()
-                await asyncio.sleep(1.0)
-                return True
+            for sel in (
+                ".ant-select-dropdown-menu-item",
+                "[class*=dropdown] li", "[class*=option]",
+                "[role=option]", "[role=listbox] li",
+                "[class*=city-item]", "[class*=suggest] li",
+            ):
+                try:
+                    items = page.locator(sel)
+                    if await items.count() > 0 and await items.first.is_visible():
+                        await items.first.click()
+                        await asyncio.sleep(1.0)
+                        return True
+                except Exception:
+                    continue
 
             # Fallback: press Enter
             await page.keyboard.press("Enter")

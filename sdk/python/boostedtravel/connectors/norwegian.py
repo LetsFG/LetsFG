@@ -223,6 +223,9 @@ class NorwegianConnectorClient:
             await asyncio.sleep(2)
             await self._dismiss_cookies(page)
 
+            # Extract cookies from page load (Incapsula sets them on first visit)
+            page_cookies = await context.cookies()
+
             await self._fill_search_form(page, req)
             await self._dismiss_cookies(page)
             await self._click_search(page)
@@ -231,13 +234,16 @@ class NorwegianConnectorClient:
             try:
                 await asyncio.wait_for(search_done.wait(), timeout=remaining)
             except asyncio.TimeoutError:
-                logger.warning("Norwegian: cookie farm search timed out")
-                return []
+                logger.warning("Norwegian: cookie farm search timed out, using page-load cookies")
 
+            # Get final cookies (may have more after search)
             cookies = await context.cookies()
-            _farmed_cookies = cookies
-            _farm_timestamp = time.monotonic()
-            logger.info("Norwegian: farmed %d cookies", len(cookies))
+            if not cookies:
+                cookies = page_cookies
+            if cookies:
+                _farmed_cookies = cookies
+                _farm_timestamp = time.monotonic()
+                logger.info("Norwegian: farmed %d cookies", len(cookies))
             return cookies
 
         except Exception as e:

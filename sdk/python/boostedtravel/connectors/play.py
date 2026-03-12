@@ -139,7 +139,9 @@ class PlayConnectorClient:
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
-        t0 = time.monotonic()
+        # flyplay.com domain no longer resolves (airline shut down website ~2025)
+        logger.info("PLAY: domain flyplay.com is offline — skipping")
+        return self._empty(req)
         browser = await _get_browser()
         context = await browser.new_context(
             viewport=random.choice(_VIEWPORTS),

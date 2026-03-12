@@ -100,6 +100,7 @@ def stealth_args() -> list[str]:
         return []
     return [
         "--headless=new",
+        "--disable-http2",
         "--window-position=-2400,-2400",
         "--window-size=800,600",
     ]
@@ -109,7 +110,7 @@ def stealth_position_arg() -> list[str]:
     """Headless + off-screen position (for connectors that set their own --window-size)."""
     if _is_visible():
         return []
-    return ["--headless=new", "--window-position=-2400,-2400"]
+    return ["--headless=new", "--disable-http2", "--window-position=-2400,-2400"]
 
 
 def stealth_popen_kwargs() -> dict:
