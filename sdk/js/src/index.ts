@@ -1,15 +1,19 @@
 /**
  * BoostedTravel — Agent-native flight search & booking SDK for Node.js/TypeScript.
  *
- * Zero external dependencies. Uses native fetch (Node 18+).
+ * 48 LCC scrapers run locally via Python + backend API for premium sources.
+ * Zero external JS dependencies. Uses native fetch (Node 18+).
  *
  * @example
  * ```ts
- * import { BoostedTravel } from 'boostedtravel';
+ * import { BoostedTravel, searchLocal } from 'boostedtravel';
  *
+ * // Local search — FREE, no API key
+ * const local = await searchLocal('SHA', 'CTU', '2026-03-20');
+ *
+ * // Full API — search + unlock + book
  * const bt = new BoostedTravel({ apiKey: 'trav_...' });
  * const flights = await bt.search('GDN', 'BER', '2026-03-03');
- * console.log(flights.offers[0]);
  * ```
  */
 
@@ -182,6 +186,75 @@ export function cheapestOffer(result: FlightSearchResult): FlightOffer | null {
   return result.offers.reduce((min, o) => (o.price < min.price ? o : min), result.offers[0]);
 }
 
+// ── Local Search (Python subprocess) ──────────────────────────────────────
+
+/**
+ * Search flights using 48 local LCC scrapers — FREE, no API key needed.
+ *
+ * Requires: pip install boostedtravel && playwright install chromium
+ *
+ * @param origin - IATA code (e.g., "SHA")
+ * @param destination - IATA code (e.g., "CTU")
+ * @param dateFrom - Departure date "YYYY-MM-DD"
+ * @param options - Optional: currency, adults, limit, etc.
+ */
+export async function searchLocal(
+  origin: string,
+  destination: string,
+  dateFrom: string,
+  options: Partial<SearchOptions> = {},
+): Promise<FlightSearchResult> {
+  const { spawn } = await import('child_process');
+
+  const params = JSON.stringify({
+    origin: origin.toUpperCase(),
+    destination: destination.toUpperCase(),
+    date_from: dateFrom,
+    adults: options.adults ?? 1,
+    children: options.children ?? 0,
+    currency: options.currency ?? 'EUR',
+    limit: options.limit ?? 50,
+    return_date: options.returnDate,
+    cabin_class: options.cabinClass,
+  });
+
+  return new Promise((resolve, reject) => {
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const child = spawn(pythonCmd, ['-m', 'boostedtravel.local'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    child.on('close', (code) => {
+      try {
+        const data = JSON.parse(stdout);
+        if (data.error) reject(new BoostedTravelError(data.error));
+        else resolve(data as FlightSearchResult);
+      } catch {
+        reject(new BoostedTravelError(
+          `Python search failed (code ${code}): ${stdout || stderr}\n` +
+          'Make sure boostedtravel is installed: pip install boostedtravel && playwright install chromium'
+        ));
+      }
+    });
+
+    child.on('error', (err) => {
+      reject(new BoostedTravelError(
+        `Cannot start Python: ${err.message}\n` +
+        'Install: pip install boostedtravel && playwright install chromium'
+      ));
+    });
+
+    child.stdin.write(params);
+    child.stdin.end();
+  });
+}
+
 // ── Client ────────────────────────────────────────────────────────────────
 
 const DEFAULT_BASE_URL = 'https://api.boostedchat.com';
@@ -195,11 +268,13 @@ export class BoostedTravel {
     this.apiKey = config.apiKey || process.env.BOOSTEDTRAVEL_API_KEY || '';
     this.baseUrl = (config.baseUrl || process.env.BOOSTEDTRAVEL_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
     this.timeout = config.timeout || 30000;
+  }
 
+  private requireApiKey(): void {
     if (!this.apiKey) {
       throw new AuthenticationError(
-        'API key required. Set apiKey in config or BOOSTEDTRAVEL_API_KEY env var. ' +
-        'Get one: POST /api/v1/agents/register'
+        'API key required for this operation. Set apiKey in config or BOOSTEDTRAVEL_API_KEY env var.\n' +
+        'Note: searchLocal() works without an API key.'
       );
     }
   }
@@ -220,6 +295,7 @@ export class BoostedTravel {
     dateFrom: string,
     options: SearchOptions = {},
   ): Promise<FlightSearchResult> {
+    this.requireApiKey();
     const body: Record<string, unknown> = {
       origin: origin.toUpperCase(),
       destination: destination.toUpperCase(),
@@ -242,6 +318,7 @@ export class BoostedTravel {
    * Resolve a city/airport name to IATA codes.
    */
   async resolveLocation(query: string): Promise<Array<Record<string, unknown>>> {
+    this.requireApiKey();
     const data = await this.get<Record<string, unknown>>(`/api/v1/flights/locations/${encodeURIComponent(query)}`);
     if (Array.isArray(data)) return data;
     if (data && Array.isArray((data as Record<string, unknown>).locations)) return (data as Record<string, unknown>).locations as Array<Record<string, unknown>>;
@@ -253,6 +330,7 @@ export class BoostedTravel {
    * Confirms price, reserves for 30 minutes.
    */
   async unlock(offerId: string): Promise<UnlockResult> {
+    this.requireApiKey();
     return this.post<UnlockResult>('/api/v1/bookings/unlock', { offer_id: offerId });
   }
 
@@ -266,6 +344,7 @@ export class BoostedTravel {
     contactEmail: string,
     contactPhone = '',
   ): Promise<BookingResult> {
+    this.requireApiKey();
     return this.post<BookingResult>('/api/v1/bookings/book', {
       offer_id: offerId,
       booking_type: 'flight',
@@ -279,6 +358,7 @@ export class BoostedTravel {
    * Set up payment method (payment token).
    */
   async setupPayment(token = 'tok_visa'): Promise<Record<string, unknown>> {
+    this.requireApiKey();
     return this.post<Record<string, unknown>>('/api/v1/agents/setup-payment', { token });
   }
 
@@ -286,6 +366,7 @@ export class BoostedTravel {
    * Get current agent profile and usage stats.
    */
   async me(): Promise<Record<string, unknown>> {
+    this.requireApiKey();
     return this.get<Record<string, unknown>>('/api/v1/agents/me');
   }
 
@@ -370,3 +451,4 @@ export class BoostedTravel {
 }
 
 export default BoostedTravel;
+export { searchLocal as localSearch };

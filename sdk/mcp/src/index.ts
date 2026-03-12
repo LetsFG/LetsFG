@@ -2,18 +2,19 @@
 /**
  * BoostedTravel MCP Server — Model Context Protocol integration.
  *
- * Makes BoostedTravel available as native tools in Claude Desktop, Cursor,
- * and any MCP-compatible AI agent.
+ * Runs 48 LCC scrapers LOCALLY via Python subprocess (no API key needed for search).
+ * Uses backend API only for unlock/book/payment operations.
+ *
+ * Requires: pip install boostedtravel && playwright install chromium
  *
  * Usage in Claude Desktop / Cursor config:
  * {
  *   "mcpServers": {
  *     "boostedtravel": {
  *       "command": "npx",
- *       "args": ["@boostedtravel/mcp-server"],
+ *       "args": ["boostedtravel-mcp"],
  *       "env": {
- *         "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key",
- *         "BOOSTEDTRAVEL_BASE_URL": "https://api.boostedchat.com"
+ *         "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
  *       }
  *     }
  *   }
@@ -21,11 +22,54 @@
  */
 
 import * as readline from 'readline';
+import { spawn } from 'child_process';
 
 // ── Config ──────────────────────────────────────────────────────────────
 
 const BASE_URL = (process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.boostedchat.com').replace(/\/$/, '');
 const API_KEY = process.env.BOOSTEDTRAVEL_API_KEY || '';
+const PYTHON = process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
+const VERSION = '0.2.0';
+
+// ── Local Python Search ─────────────────────────────────────────────────
+
+function searchLocal(params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    const input = JSON.stringify(params);
+    // Try python3 first, fall back to python (Windows)
+    const pythonCmd = process.platform === 'win32' ? 'python' : PYTHON;
+    const child = spawn(pythonCmd, ['-m', 'boostedtravel.local'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 120_000,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    child.on('close', (code) => {
+      if (stderr) process.stderr.write(`[boostedtravel] ${stderr}\n`);
+      try {
+        resolve(JSON.parse(stdout));
+      } catch {
+        resolve({ error: `Python search failed (code ${code}): ${stdout || stderr}` });
+      }
+    });
+
+    child.on('error', (err) => {
+      resolve({
+        error: `Cannot start Python. Install the boostedtravel package:\n` +
+          `  pip install boostedtravel && playwright install chromium\n` +
+          `Detail: ${err.message}`,
+      });
+    });
+
+    child.stdin.write(input);
+    child.stdin.end();
+  });
+}
 
 // ── Tool Definitions ────────────────────────────────────────────────────
 
@@ -34,11 +78,10 @@ const TOOLS = [
     name: 'search_flights',
     description:
       'Search for flights between any two cities/airports worldwide. ' +
-      'Connects to 400+ airlines via NDC and GDS with prices $20-50 cheaper than ' +
-      'booking.com, Kayak, and other OTAs. Searching is completely FREE.\n\n' +
-      'Returns flight offers with prices, airlines, times, and conditions. ' +
-      'All offers are locked until you call `unlock_flight_offer` ($1 fee).\n\n' +
-      'IMPORTANT: The response includes `passenger_ids` — save these for booking.',
+      'Runs 48 LCC scrapers LOCALLY (Ryanair, EasyJet, Spring Airlines, Lucky Air, etc.) ' +
+      'plus aggregators. No API key needed for search — completely FREE.\n\n' +
+      'Returns flight offers with prices, airlines, times, and booking URLs.\n\n' +
+      'If BOOSTEDTRAVEL_API_KEY is set, also queries premium GDS/NDC sources (Amadeus, Duffel).',
     inputSchema: {
       type: 'object',
       required: ['origin', 'destination', 'date_from'],
@@ -157,7 +200,7 @@ async function apiRequest(method: string, path: string, body?: Record<string, un
 async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
   switch (name) {
     case 'search_flights': {
-      const body: Record<string, unknown> = {
+      const params: Record<string, unknown> = {
         origin: args.origin,
         destination: args.destination,
         date_from: args.date_from,
@@ -166,21 +209,23 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         currency: args.currency ?? 'EUR',
         limit: args.max_results ?? 10,
       };
-      if (args.return_from) body.return_from = args.return_from;
-      if (args.cabin_class) body.cabin_class = args.cabin_class;
+      if (args.return_from) params.return_from = args.return_from;
+      if (args.cabin_class) params.cabin_class = args.cabin_class;
 
-      const result = await apiRequest('POST', '/api/v1/flights/search', body) as Record<string, unknown>;
-      if ((result as Record<string, unknown>).error) return JSON.stringify(result, null, 2);
+      // Run local Python scrapers
+      const result = await searchLocal(params) as Record<string, unknown>;
+      if (result.error) return JSON.stringify(result, null, 2);
 
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
       const summary = {
         total_offers: offers.length,
-        passenger_ids: result.passenger_ids,
-        passenger_ids_note: 'SAVE THESE — required for booking',
+        source: 'local_scrapers (48 LCC connectors)',
         offers: offers.map(o => ({
           offer_id: o.id,
-          price: o.price_formatted,
+          price: `${o.price} ${o.currency}`,
           airlines: o.airlines,
+          source: o.source,
+          booking_url: o.booking_url,
           outbound: (() => {
             const ob = o.outbound as Record<string, unknown> | undefined;
             const segs = (ob?.segments || []) as Array<Record<string, string>>;
@@ -188,13 +233,12 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
               from: segs[0].origin,
               to: segs[segs.length - 1].destination,
               departure: segs[0].departure,
+              flight: segs[0].flight_no,
+              airline: segs[0].airline_name || segs[0].airline,
               stops: ob?.stopovers,
             } : null;
           })(),
-          conditions: o.conditions,
-          is_locked: o.is_locked,
         })),
-        next_step: 'Call unlock_flight_offer, then book_flight',
       };
       return JSON.stringify(summary, null, 2);
     }
@@ -264,7 +308,7 @@ rl.on('line', async (line) => {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'boostedtravel', version: '0.1.0' },
+          serverInfo: { name: 'boostedtravel', version: VERSION },
         },
       });
       break;
@@ -301,4 +345,4 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`BoostedTravel MCP server started | ${BASE_URL} | key: ${API_KEY ? 'set' : 'not set'}\n`);
+process.stderr.write(`BoostedTravel MCP v${VERSION} | local scrapers: 48 connectors | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "boostedtravel"
-version = "0.1.2"
-description = "Agent-native flight search & booking. 400+ airlines, cheaper than OTAs. Built for autonomous AI agents."
+version = "0.2.0"
+description = "Agent-native flight search & booking. 400+ airlines, 48 direct LCC scrapers run locally. Built for autonomous AI agents."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -15,6 +15,7 @@ authors = [
 keywords = [
     "flights", "travel", "booking", "agent", "ai", "cli",
     "autonomous", "mcp", "openai", "airline", "ndc",
+    "scraper", "low-cost", "ryanair", "wizzair", "easyjet",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -29,8 +30,13 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
 ]
 
-# ZERO mandatory dependencies — the SDK uses only stdlib (urllib)
-dependencies = []
+dependencies = [
+    "pydantic>=2.0",
+    "httpx>=0.25.0",
+    "playwright>=1.40.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+]
 
 [project.optional-dependencies]
 cli = [
