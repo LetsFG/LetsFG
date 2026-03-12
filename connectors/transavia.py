@@ -362,6 +362,31 @@ class TransaviaConnectorClient:
             except ImportError:
                 page = await context.new_page()
 
+            # Set up response interception for flight-availability API
+            captured_data: dict = {}
+
+            async def on_response(response):
+                try:
+                    url = response.url.lower()
+                    if response.status == 200 and any(k in url for k in (
+                        "flight-availability", "flightavailability",
+                        "api/search", "api/flights", "availability",
+                    )):
+                        ct = response.headers.get("content-type", "")
+                        if "json" in ct:
+                            data = await response.json()
+                            if data and isinstance(data, dict):
+                                ob = data.get("outboundFlight")
+                                if (ob and ob.get("timeSlots")) or any(
+                                    data.get(k) for k in ("outboundFlights", "outbound", "flights")
+                                ):
+                                    captured_data["json"] = data
+                                    logger.info("Transavia: intercepted flight data from %s", response.url[:120])
+                except Exception:
+                    pass
+
+            page.on("response", on_response)
+
             # Step 1: Homepage to get cf_clearance cookie
             logger.info("Transavia: Playwright fallback for %s→%s", req.origin, req.destination)
             await page.goto(
@@ -403,12 +428,19 @@ class TransaviaConnectorClient:
 
             # Step 4: Click search
             await self._click_search(page)
-            await asyncio.sleep(3.0)
 
-            # Step 5: Fetch flight data via in-page API call
-            data = await self._fetch_flight_availability(page)
+            # Wait for intercepted response or timeout
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if captured_data.get("json"):
+                    break
+                await asyncio.sleep(0.5)
+
+            # Step 5: Use intercepted data first, then in-page fetch, then DOM
+            data = captured_data.get("json")
             if not data:
-                # Fallback: try DOM extraction
+                data = await self._fetch_flight_availability(page)
+            if not data:
                 offers = await self._extract_from_dom(page, req)
                 if offers:
                     return self._build_response(offers, req, time.monotonic() - t0)

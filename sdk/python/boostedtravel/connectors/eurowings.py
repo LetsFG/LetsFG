@@ -156,14 +156,18 @@ class EurowingsConnectorClient:
 
         async def on_response(response):
             url = response.url
-            if "QUERY_FLIGHT_DATA" in url or "flight-data" in url.lower():
+            if any(kw in url for kw in (
+                "QUERY_FLIGHT_DATA", "flight-data", "flightdata",
+                "search-results", "availability", "offers",
+                "api/flights", "api/search", "graphql",
+            )):
                 try:
                     ct = response.headers.get("content-type", "")
                     if "json" in ct:
                         body = await response.json()
                         captured["data"] = body
                         captured["url"] = response.url
-                        logger.info("Eurowings: captured flight-data API %s", response.url[:120])
+                        logger.info("Eurowings: captured API response from %s", response.url[:120])
                 except Exception:
                     pass
 
@@ -180,11 +184,20 @@ class EurowingsConnectorClient:
             await asyncio.sleep(0.5)
 
             await self._fill_search_form(page, req)
+            start_url = page.url
             await self._click_search(page)
 
+            # Wait for SPA navigation or API capture (whichever first)
             deadline = time.monotonic() + 25
             while time.monotonic() < deadline:
                 if captured.get("data"):
+                    break
+                if page.url != start_url:
+                    logger.info("Eurowings: SPA navigated to %s", page.url[:120])
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=10_000)
+                    except Exception:
+                        pass
                     break
                 await asyncio.sleep(0.5)
 
