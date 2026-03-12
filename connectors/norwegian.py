@@ -1,17 +1,18 @@
 """
-Norwegian Air Playwright connector — navigates to Norwegian's booking site and
-intercepts the Amadeus DES air-bounds API response.
+Norwegian Air hybrid connector — Amadeus DES direct API first, Playwright fallback.
 
 Norwegian's booking engine (booking.norwegian.com) is an Angular 18 SPA that
-calls api-des.norwegian.com (Amadeus Digital Experience Suite). The API
-requires a browser session — direct HTTP gets 403 ("Are you human?").
+calls api-des.norwegian.com (Amadeus Digital Experience Suite).
 
-Strategy:
-1. Navigate to norwegian.com/en/ homepage (loads search form)
-2. Set up Playwright response interception for the air-bounds API
-3. Fill the search form and submit
-4. Capture the intercepted JSON response
-5. Parse airBoundGroups → FlightOffers
+Hybrid strategy (Mar 2026):
+1. Try direct HTTP via curl_cffi (Chrome TLS fingerprint):
+   a. Token: POST api-des.norwegian.com/v1/security/oauth2/token/initialization
+      → Returns channelSessionKey (JWT, ~3600s TTL), cached and reused.
+   b. Search: POST api-des.norwegian.com/airlines/DY/v2/search/air-bounds
+      → Returns airBoundGroups with fares for the requested date.
+   ~1-2s total, no browser needed.
+2. If direct API fails (WAF 403, token error, etc.) → fall back to full
+   Playwright browser flow (navigate norwegian.com, fill form, intercept).
 
 API details (discovered Mar 2026):
   Token: POST api-des.norwegian.com/v1/security/oauth2/token/initialization
@@ -42,6 +43,23 @@ from models.flights import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Direct API constants ─────────────────────────────────────────────────
+_DES_TOKEN_URL = "https://api-des.norwegian.com/v1/security/oauth2/token/initialization"
+_DES_SEARCH_URL = "https://api-des.norwegian.com/airlines/DY/v2/search/air-bounds"
+_TOKEN_MARGIN = 120  # refresh token 120s before expiry
+
+# Cached token state (module-level, shared across searches)
+_token: str | None = None
+_token_expiry: float = 0.0  # monotonic timestamp
+_token_lock: asyncio.Lock | None = None
+
+
+def _get_token_lock() -> asyncio.Lock:
+    global _token_lock
+    if _token_lock is None:
+        _token_lock = asyncio.Lock()
+    return _token_lock
 
 _VIEWPORTS = [
     {"width": 1366, "height": 768},
@@ -88,8 +106,65 @@ async def _get_browser():
         return _browser
 
 
+async def _ensure_token() -> str | None:
+    """Obtain a valid Amadeus DES channel session token, refreshing if needed.
+
+    Uses a module-level lock to prevent concurrent token refresh races.
+    """
+    global _token, _token_expiry
+    # Fast path: existing valid token
+    if _token and time.monotonic() < _token_expiry:
+        return _token
+
+    async with _get_token_lock():
+        # Re-check inside lock (another coroutine may have refreshed it)
+        if _token and time.monotonic() < _token_expiry:
+            return _token
+        try:
+            from curl_cffi.requests import Session as CffiSession
+
+            with CffiSession(impersonate="chrome131") as ses:
+                r = ses.post(
+                    _DES_TOKEN_URL,
+                    json={},
+                    headers={
+                        "Accept": "application/json, text/plain, */*",
+                        "Content-Type": "application/json",
+                        "Origin": "https://www.norwegian.com",
+                        "Referer": "https://www.norwegian.com/",
+                    },
+                    timeout=10,
+                )
+
+            if r.status_code != 200:
+                logger.debug("Norwegian DES token: HTTP %d", r.status_code)
+                return None
+
+            data = r.json()
+            tok = (
+                data.get("channelSessionKey")
+                or data.get("token")
+                or data.get("accessToken")
+            )
+            if not tok:
+                logger.debug(
+                    "Norwegian DES token: no token in response: %s", list(data.keys())
+                )
+                return None
+
+            ttl = data.get("validity") or data.get("expiresIn") or 3600
+            _token = tok
+            _token_expiry = time.monotonic() + int(ttl) - _TOKEN_MARGIN
+            logger.info("Norwegian: Amadeus DES token acquired (TTL=%ss)", ttl)
+            return _token
+
+        except Exception as e:
+            logger.debug("Norwegian DES token error: %s", e)
+            return None
+
+
 class NorwegianConnectorClient:
-    """Norwegian Playwright connector — intercepts Amadeus DES air-bounds API."""
+    """Norwegian hybrid connector — Amadeus DES direct API first, Playwright fallback."""
 
     def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
@@ -98,13 +173,112 @@ class NorwegianConnectorClient:
         pass  # Browser is shared singleton
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
-        """
-        Search Norwegian flights via Playwright.
+        """Search Norwegian flights — direct Amadeus DES API first, Playwright fallback."""
+        # ── Hybrid: try direct API first (no browser) ──
+        try:
+            result = await self._try_direct_api(req)
+            if result and result.total_results > 0:
+                return result
+            logger.info(
+                "Norwegian: direct API returned no results, falling back to Playwright"
+            )
+        except Exception as e:
+            logger.info("Norwegian: direct API failed (%s), falling back to Playwright", e)
 
-        Strategy: Navigate to norwegian.com/en/ homepage, fill the search form,
-        submit, and intercept the Amadeus DES air-bounds API response from the
-        booking.norwegian.com Angular SPA.
-        """
+        # ── Fallback: full Playwright browser flow ──
+        return await self._search_via_playwright(req)
+
+    # ── Direct API path (curl_cffi) ──────────────────────────────────────
+
+    async def _try_direct_api(self, req: FlightSearchRequest) -> FlightSearchResponse | None:
+        """Try Amadeus DES direct HTTP: token init → air-bounds search."""
+        token = await _ensure_token()
+        if not token:
+            return None
+
+        t0 = time.monotonic()
+        try:
+            from curl_cffi.requests import Session as CffiSession
+
+            travelers: list[dict] = []
+            for i in range(req.adults):
+                travelers.append({"id": str(i + 1), "infantOnLap": False, "type": "ADT"})
+            offset = req.adults
+            for i in range(req.children or 0):
+                travelers.append({"id": str(offset + i + 1), "infantOnLap": False, "type": "CHD"})
+            offset += req.children or 0
+            for i in range(req.infants or 0):
+                travelers.append({"id": str(offset + i + 1), "infantOnLap": True, "type": "INF"})
+
+            payload = {
+                "commercialFareFamilies": ["LOWFARE", "LOWPLUS", "FLEX"],
+                "itineraries": [
+                    {
+                        "dateInterval": "DAY",
+                        "departureDateTime": req.date_from.strftime("%Y-%m-%d"),
+                        "destinationCode": req.destination,
+                        "originCode": req.origin,
+                        "sellKey": None,
+                        "type": "OUTBOUND",
+                    }
+                ],
+                "travelers": travelers,
+                "searchPreferences": {
+                    "cabinClass": "M",
+                    "currency": req.currency or "EUR",
+                    "culture": "en-GB",
+                },
+            }
+
+            with CffiSession(impersonate="chrome131") as ses:
+                r = ses.post(
+                    _DES_SEARCH_URL,
+                    json=payload,
+                    headers={
+                        "Accept": "application/json, text/plain, */*",
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {token}",
+                        "Origin": "https://booking.norwegian.com",
+                        "Referer": "https://booking.norwegian.com/",
+                    },
+                    timeout=20,
+                )
+
+            if r.status_code == 401:
+                # Token rejected — invalidate cache so next call re-fetches
+                async with _get_token_lock():
+                    global _token, _token_expiry
+                    _token = None
+                    _token_expiry = 0.0
+                logger.debug("Norwegian DES search: token rejected (401), will retry via Playwright")
+                return None
+
+            if r.status_code != 200:
+                logger.debug("Norwegian DES search: HTTP %d", r.status_code)
+                return None
+
+            data = r.json()
+            elapsed = time.monotonic() - t0
+            offers = self._parse_air_bounds(data, req)
+            offers.sort(key=lambda o: o.price)
+
+            for o in offers:
+                o.source = "norwegian_api"
+
+            logger.info(
+                "Norwegian %s→%s: %d offers in %.1fs (direct API)",
+                req.origin, req.destination, len(offers), elapsed,
+            )
+            return self._build_response(offers, req, elapsed)
+
+        except Exception as e:
+            logger.debug("Norwegian direct API error: %s", e)
+            return None
+
+    # ── Playwright browser fallback ───────────────────────────────────────
+
+    async def _search_via_playwright(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """Full Playwright browser flow — navigate Norwegian homepage and intercept API."""
         t0 = time.monotonic()
 
         browser = await _get_browser()
@@ -181,18 +355,7 @@ class NorwegianConnectorClient:
                 req.origin, req.destination, len(offers), elapsed,
             )
 
-            search_hash = hashlib.md5(
-                f"norwegian{req.origin}{req.destination}{req.date_from}".encode()
-            ).hexdigest()[:12]
-
-            return FlightSearchResponse(
-                search_id=f"fs_{search_hash}",
-                origin=req.origin,
-                destination=req.destination,
-                currency=offers[0].currency if offers else req.currency,
-                offers=offers,
-                total_results=len(offers),
-            )
+            return self._build_response(offers, req, elapsed)
 
         except Exception as e:
             logger.error("Norwegian Playwright error: %s", e)
@@ -472,6 +635,24 @@ class NorwegianConnectorClient:
             f"&AdultCount={req.adults}"
             f"&ChildCount={req.children or 0}"
             f"&InfantCount={req.infants or 0}"
+        )
+
+    def _build_response(
+        self,
+        offers: list[FlightOffer],
+        req: FlightSearchRequest,
+        elapsed: float,
+    ) -> FlightSearchResponse:
+        search_hash = hashlib.md5(
+            f"norwegian{req.origin}{req.destination}{req.date_from}".encode()
+        ).hexdigest()[:12]
+        return FlightSearchResponse(
+            search_id=f"fs_{search_hash}",
+            origin=req.origin,
+            destination=req.destination,
+            currency=offers[0].currency if offers else req.currency,
+            offers=offers,
+            total_results=len(offers),
         )
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:

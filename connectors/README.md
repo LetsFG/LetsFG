@@ -13,8 +13,8 @@ Each connector implements `search_flights(request)` and returns standardized `Fl
 | Approach | Speed | Example |
 |----------|-------|---------|
 | Direct API | ~0.5-1s | Ryanair, FlyDubai, Air Arabia |
-| Hybrid (API + browser fallback) | ~1-3s | Vueling, Frontier, Flybondi |
-| Browser automation | ~5-15s | Most LCCs (EasyJet, Spirit, etc.) |
+| Hybrid (API + browser fallback) | ~1-3s | Vueling, Frontier, Norwegian, SpiceJet, Akasa |
+| Browser automation | ~5-15s | EasyJet, Spirit, Southwest, Wizzair |
 
 ## Supported Airlines
 

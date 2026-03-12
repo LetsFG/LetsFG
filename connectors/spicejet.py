@@ -1,24 +1,24 @@
 """
-SpiceJet direct connector — homepage session + URL navigation + API response capture.
+SpiceJet hybrid connector — direct API first, Playwright fallback.
 
 SpiceJet (IATA: SG) is an Indian low-cost carrier (Navitaire/dotREZ platform).
 Website: www.spicejet.com — React Native Web SPA with REST API backend.
 
-Strategy (URL Navigation + API Interception):
-1. Navigate to spicejet.com homepage (headed Chrome + stealth) to establish WAF session
-2. Navigate to /search?from=...&to=...&departure=YYYY-MM-DD&tripType=1&...
-3. The SPA reads URL params and calls /api/v3/search/availability automatically
-4. Capture the API response via page.on("response") → parse into FlightOffer objects
+Hybrid strategy (Mar 2026):
+1. PRIMARY: curl_cffi GET spicejet.com (Chrome TLS fingerprint) → establishes WAF
+   session cookies → POST /api/v1/token → JWT → POST /api/v3/search/availability.
+   ~3-5s total, no browser needed.
+2. FALLBACK: Playwright headed Chrome — load homepage to get WAF session, then
+   navigate to search URL and intercept the availability API response.
 
 Key API details (discovered March 2026):
-- Token: POST /api/v1/token — auto-fired by SPA, JWT with 10-15min idle timeout
+- Token: POST /api/v1/token — returns JWT (10-15min idle timeout)
 - Availability: POST /api/v3/search/availability
   Body: {"originStationCode":"DEL","destinationStationCode":"BOM",
          "onWardDate":"2026-03-20","currency":"INR",
          "pax":{"journeyClass":"ff","adult":1,"child":0,"infant":0,"srCitizen":0}}
   Response: {"data":{"trips":[{"journeysAvailable":[...segments, fares...]}]}}
 - Fare pricing encoded in base64url fareAvailabilityKey: first number / 10 = INR base fare
-- IMPORTANT: Homepage must be loaded first to establish WAF cookies; direct URL alone fails
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def _decode_fare_price(fare_key: str) -> Optional[float]:
 
 
 class SpiceJetConnectorClient:
-    """SpiceJet connector — token capture + API replay (no form filling needed)."""
+    """SpiceJet hybrid connector — curl_cffi direct API first, Playwright fallback."""
 
     def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
@@ -122,17 +122,131 @@ class SpiceJetConnectorClient:
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
-        # Retry up to 2 times (WAF may block the first attempt)
+        # ── Hybrid: try direct API first (no browser) ──
+        try:
+            result = await self._try_direct_api(req)
+            if result and result.total_results > 0:
+                return result
+            logger.info(
+                "SpiceJet: direct API returned no results, falling back to Playwright"
+            )
+        except Exception as e:
+            logger.info("SpiceJet: direct API failed (%s), falling back to Playwright", e)
+
+        # ── Fallback: Playwright browser flow (retry up to 2×) ──
         for attempt in range(2):
             result = await self._try_search(req)
             if result.total_results > 0:
                 return result
             if attempt == 0:
-                logger.info("SpiceJet: retrying search (attempt %d yielded 0 results)", attempt + 1)
+                logger.info(
+                    "SpiceJet: Playwright attempt %d yielded 0 results, retrying",
+                    attempt + 1,
+                )
                 await asyncio.sleep(2.0)
         return result
 
+    # ── Direct API path (curl_cffi) ──────────────────────────────────────
+
+    async def _try_direct_api(self, req: FlightSearchRequest) -> FlightSearchResponse | None:
+        """Fetch WAF session via curl_cffi, get JWT, call availability API."""
+        t0 = time.monotonic()
+        try:
+            from curl_cffi.requests import Session as CffiSession
+
+            currency = req.currency if req.currency != "EUR" else "INR"
+            headers_common = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://www.spicejet.com",
+                "Referer": "https://www.spicejet.com/",
+            }
+
+            with CffiSession(impersonate="chrome131") as ses:
+                # Step 1: GET homepage to establish WAF session cookies
+                hw = ses.get("https://www.spicejet.com/", timeout=15)
+                if hw.status_code not in (200, 301, 302):
+                    logger.debug("SpiceJet: homepage GET %d", hw.status_code)
+                    return None
+
+                # Step 2: POST to get JWT token
+                tok_r = ses.post(
+                    "https://www.spicejet.com/api/v1/token",
+                    json={},
+                    headers={**headers_common, "Content-Type": "application/json"},
+                    timeout=10,
+                )
+                if tok_r.status_code != 200:
+                    logger.debug("SpiceJet: token HTTP %d", tok_r.status_code)
+                    return None
+
+                token_data = tok_r.json()
+                token = (
+                    token_data.get("token")
+                    or token_data.get("accessToken")
+                    or token_data.get("jwt")
+                )
+                if not token:
+                    logger.debug(
+                        "SpiceJet: no token in response: %s", list(token_data.keys())
+                    )
+                    return None
+
+                # Step 3: POST availability search
+                dep_date = req.date_from.strftime("%Y-%m-%d")
+                payload = {
+                    "originStationCode": req.origin,
+                    "destinationStationCode": req.destination,
+                    "onWardDate": dep_date,
+                    "currency": currency,
+                    "pax": {
+                        "journeyClass": "ff",
+                        "adult": req.adults,
+                        "child": req.children or 0,
+                        "infant": req.infants or 0,
+                        "srCitizen": 0,
+                    },
+                }
+
+                avail_r = ses.post(
+                    "https://www.spicejet.com/api/v3/search/availability",
+                    json=payload,
+                    headers={
+                        **headers_common,
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {token}",
+                    },
+                    timeout=20,
+                )
+
+            if avail_r.status_code != 200:
+                logger.debug("SpiceJet: availability HTTP %d", avail_r.status_code)
+                return None
+
+            data = avail_r.json()
+            elapsed = time.monotonic() - t0
+            offers = self._parse_availability(data, req)
+
+            for o in offers:
+                o.source = "spicejet_api"
+
+            logger.info(
+                "SpiceJet %s→%s: %d offers in %.1fs (direct API)",
+                req.origin, req.destination, len(offers), elapsed,
+            )
+            return self._build_response(offers, req, elapsed)
+
+        except Exception as e:
+            logger.debug("SpiceJet direct API error: %s", e)
+            return None
+
     async def _try_search(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """Playwright browser fallback — homepage session + search URL navigation."""
         t0 = time.monotonic()
         browser = await _get_browser()
         context = await browser.new_context(
