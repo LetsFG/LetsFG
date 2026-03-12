@@ -592,7 +592,7 @@ class TwayAirConnectorClient:
         if is_domestic:
             return "KRW"
         try:
-            from api.services.airline_routes import AIRPORT_COUNTRY
+            from connectors.airline_routes import AIRPORT_COUNTRY
             dest_country = AIRPORT_COUNTRY.get(req.destination, "")
             origin_country = AIRPORT_COUNTRY.get(req.origin, "")
             if origin_country == "KR":
