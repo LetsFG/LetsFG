@@ -24,7 +24,7 @@ import random
 import re
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from boostedtravel.models.flights import (
@@ -622,7 +622,6 @@ class SunExpressConnectorClient:
         dep_dt = self._parse_dt(f"{date_str}T{dep_time}" if dep_time and "T" not in dep_time else dep_time or f"{date_str}T00:00")
         arr_dt = self._parse_dt(f"{date_str}T{arr_time}" if arr_time and "T" not in arr_time else arr_time or f"{date_str}T00:00")
         if arr_dt <= dep_dt:
-            from datetime import timedelta
             arr_dt = arr_dt + timedelta(days=1)
         if duration_sec == 0 and dep_dt and arr_dt:
             duration_sec = max(int((arr_dt - dep_dt).total_seconds()), 0)
@@ -817,7 +816,6 @@ class SunExpressConnectorClient:
             arr_dt = self._parse_dt(f"{date_str}T{arr_time}")
             # Handle overnight flights
             if arr_dt <= dep_dt:
-                from datetime import timedelta
                 arr_dt = arr_dt + timedelta(days=1)
 
             if duration_sec == 0 and dep_dt and arr_dt:
