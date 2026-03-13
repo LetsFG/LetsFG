@@ -1,16 +1,20 @@
 """
 easyJet CDP Chrome hybrid scraper — persistent browser + form navigation
-+ window.appData extraction.
++ API response interception.
 
-easyJet's API (/funnel/api/query) is behind Akamai WAF — requires browser-level
-session. Direct deep-link URLs redirect to homepage without a BFF session.
+easyJet's API is behind Akamai WAF — requires browser-level session.
+Direct deep-link URLs redirect to homepage without a BFF session.
 The search must be initiated via the homepage form to trigger the BFF.
 
-Strategy (CDP Chrome + persistent browser):
+Strategy (CDP Chrome + persistent browser + response interception):
 1. Launch REAL system Chrome (--remote-debugging-port, --user-data-dir).
 2. Connect via Playwright CDP. Browser context persists across searches.
-3. Each search: new page → homepage → fill form → click search → extract appData.
-4. Parse window.appData.searchResult.journeyPairs → FlightOffers.
+3. Each search: new page → register response listener → homepage → fill form
+   → click search → intercept API JSON response.
+4. Parse flight data → FlightOffers.
+   Primary: intercept /api/ JSON responses containing flight/journey data.
+   Fallback 1: extract from window.__NEXT_DATA__ (Next.js SSR).
+   Fallback 2: extract from window.appData.searchResult (legacy path).
 
 Real Chrome bypasses Akamai fingerprinting where bundled Chromium fails.
 Persistent browser context means cookies/sessions carry over between searches,
@@ -218,7 +222,7 @@ async def _dismiss_cookies(page) -> None:
 
 
 class EasyjetConnectorClient:
-    """easyJet CDP Chrome scraper — persistent browser + form + window.appData extraction."""
+    """easyJet CDP Chrome scraper — persistent browser + API response interception."""
 
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
@@ -231,11 +235,12 @@ class EasyjetConnectorClient:
         Search easyJet using CDP Chrome persistent browser + homepage form.
 
         1. Get persistent browser context (cookies carry over)
-        2. Open new page → navigate to homepage
-        3. Fill search form (origin, destination, date)
-        4. Click "Show flights" → wait for window.appData.searchResult
-        5. Parse journeyPairs → FlightOffers
-        6. Close page (context stays alive for next search)
+        2. Open new page → register API response listener
+        3. Navigate to homepage → fill search form
+        4. Click "Show flights" → wait for intercepted API response
+        5. Fallback: extract from window globals (__NEXT_DATA__, appData)
+        6. Parse flight data → FlightOffers
+        7. Close page (context stays alive for next search)
         """
         t0 = time.monotonic()
 
@@ -243,6 +248,44 @@ class EasyjetConnectorClient:
         page = await context.new_page()
 
         try:
+            # ── Set up API response interception BEFORE navigation ────
+            captured_data: dict = {}
+            api_event = asyncio.Event()
+
+            async def _on_response(response):
+                try:
+                    url = response.url.lower()
+                    ct = response.headers.get("content-type", "")
+                    if response.status != 200 or "json" not in ct:
+                        return
+                    if not any(k in url for k in (
+                        "/api/query", "/api/search", "/funnel/api/",
+                        "availability", "flights/search",
+                        "easyjet" if "flight" in url else "",
+                    )):
+                        return
+                    data = await response.json()
+                    if not data or not isinstance(data, dict):
+                        return
+                    # Check for known flight data structures
+                    if any(k in data for k in (
+                        "journeyPairs", "searchResult", "outbound",
+                        "journeys", "flights", "results", "itineraries",
+                    )):
+                        captured_data["json"] = data
+                        captured_data["url"] = response.url
+                        api_event.set()
+                        logger.info(
+                            "easyJet: intercepted flight data from %s (keys: %s)",
+                            response.url[:120],
+                            list(data.keys())[:8],
+                        )
+                except Exception:
+                    pass
+
+            page.on("response", _on_response)
+
+            # ── Navigate + fill form ──────────────────────────────────
             logger.info("easyJet: loading homepage for %s→%s", req.origin, req.destination)
             await page.goto(
                 "https://www.easyjet.com/en/",
@@ -280,27 +323,27 @@ class EasyjetConnectorClient:
             # Dismiss any overlays on the results page
             await _dismiss_cookies(page)
 
-            # Wait for appData (new page — no stale data to clear)
+            # ── Wait for intercepted API response ─────────────────────
             remaining = max(self.timeout - (time.monotonic() - t0), 10)
             try:
-                await page.wait_for_function(
-                    "() => window.appData && window.appData.searchResult "
-                    "&& window.appData.searchResult.journeyPairs",
-                    timeout=int(remaining * 1000),
+                await asyncio.wait_for(api_event.wait(), timeout=remaining)
+            except asyncio.TimeoutError:
+                logger.debug(
+                    "easyJet: API interception timed out after %.1fs, trying page extraction",
+                    time.monotonic() - t0,
                 )
-            except Exception:
-                logger.warning("easyJet: timed out waiting for searchResult after %.1fs (URL: %s)",
-                              time.monotonic() - t0, page.url)
-                return self._empty(req)
 
-            data = await page.evaluate("""() => {
-                const sr = window.appData.searchResult;
-                if (!sr || !sr.journeyPairs) return null;
-                return { journeyPairs: sr.journeyPairs, metaData: sr.metaData };
-            }""")
+            # ── Extract flight data (multi-strategy) ─────────────────
+            data = self._normalize_captured(captured_data.get("json"))
+
+            if not data:
+                data = await self._extract_from_page(page)
 
             if not data or not data.get("journeyPairs"):
-                logger.warning("easyJet: no journeyPairs in response")
+                logger.warning(
+                    "easyJet: no flight data found after %.1fs (URL: %s)",
+                    time.monotonic() - t0, page.url,
+                )
                 return self._empty(req)
 
             # Debug: log structure of journeyPairs
@@ -352,6 +395,129 @@ class EasyjetConnectorClient:
                 await page.close()
             except Exception:
                 pass
+
+    # ------------------------------------------------------------------
+    # Data extraction helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_captured(raw: Optional[dict]) -> Optional[dict]:
+        """Normalize an intercepted API response into {journeyPairs, metaData}."""
+        if not raw or not isinstance(raw, dict):
+            return None
+
+        # Direct match — API returned journeyPairs at top level
+        if "journeyPairs" in raw:
+            return {"journeyPairs": raw["journeyPairs"], "metaData": raw.get("metaData", {})}
+
+        # Nested under searchResult (legacy and some current responses)
+        sr = raw.get("searchResult") or raw.get("SearchResult")
+        if sr and isinstance(sr, dict):
+            jp = sr.get("journeyPairs") or sr.get("JourneyPairs")
+            if jp:
+                return {"journeyPairs": jp, "metaData": sr.get("metaData", sr.get("MetaData", {}))}
+
+        # Nested under data.searchResult
+        data_field = raw.get("data")
+        if isinstance(data_field, dict):
+            result = EasyjetConnectorClient._normalize_captured(data_field)
+            if result:
+                return result
+
+        return None
+
+    async def _extract_from_page(self, page) -> Optional[dict]:
+        """Fallback: extract flight data from window globals or __NEXT_DATA__."""
+        raw = await page.evaluate(r"""() => {
+            // Strategy 1: window.appData (legacy path — may still work)
+            if (window.appData) {
+                const sr = window.appData.searchResult || window.appData.SearchResult;
+                if (sr && (sr.journeyPairs || sr.JourneyPairs)) {
+                    return {
+                        journeyPairs: sr.journeyPairs || sr.JourneyPairs,
+                        metaData: sr.metaData || sr.MetaData || {},
+                    };
+                }
+                // appData exists but searchResult path changed — return whole thing
+                if (window.appData.journeyPairs) {
+                    return {
+                        journeyPairs: window.appData.journeyPairs,
+                        metaData: window.appData.metaData || {},
+                    };
+                }
+            }
+
+            // Strategy 2: __NEXT_DATA__ (Next.js SSR)
+            if (window.__NEXT_DATA__) {
+                const pp = window.__NEXT_DATA__?.props?.pageProps;
+                if (pp) {
+                    const sr = pp.searchResult || pp.SearchResult || pp.flightData;
+                    if (sr && (sr.journeyPairs || sr.JourneyPairs)) {
+                        return {
+                            journeyPairs: sr.journeyPairs || sr.JourneyPairs,
+                            metaData: sr.metaData || sr.MetaData || {},
+                        };
+                    }
+                    if (pp.journeyPairs) {
+                        return { journeyPairs: pp.journeyPairs, metaData: pp.metaData || {} };
+                    }
+                    // Return full pageProps for downstream normalization
+                    return pp;
+                }
+            }
+
+            // Strategy 3: __NEXT_DATA__ from <script> tag
+            const ndScript = document.querySelector('script#__NEXT_DATA__');
+            if (ndScript) {
+                try {
+                    const nd = JSON.parse(ndScript.textContent);
+                    const pp = nd?.props?.pageProps;
+                    if (pp) return pp;
+                } catch {}
+            }
+
+            // Strategy 4: scan <script type="application/json"> tags
+            for (const s of document.querySelectorAll('script[type="application/json"]')) {
+                try {
+                    const d = JSON.parse(s.textContent);
+                    if (d && (d.journeyPairs || d.searchResult || d.SearchResult)) return d;
+                } catch {}
+            }
+
+            // Strategy 5: window.__EJ_DATA__ or similar easyJet-specific globals
+            for (const key of Object.keys(window)) {
+                if (key.startsWith('__') && key !== '__NEXT_DATA__') {
+                    try {
+                        const val = window[key];
+                        if (val && typeof val === 'object' && !Array.isArray(val)) {
+                            if (val.journeyPairs || val.searchResult || val.SearchResult) {
+                                return val;
+                            }
+                        }
+                    } catch {}
+                }
+            }
+
+            return null;
+        }""")
+
+        if not raw or not isinstance(raw, dict):
+            return None
+
+        # Try to normalize whatever we got from the page
+        normalized = self._normalize_captured(raw)
+        if normalized:
+            logger.info("easyJet: extracted flight data from page globals")
+            return normalized
+
+        # If we got journeyPairs directly (from pageProps or similar)
+        if "journeyPairs" in raw:
+            logger.info("easyJet: extracted journeyPairs from page globals")
+            return {"journeyPairs": raw["journeyPairs"], "metaData": raw.get("metaData", {})}
+
+        logger.debug("easyJet: page extraction returned data but no journeyPairs (keys: %s)",
+                     list(raw.keys())[:10])
+        return None
 
     # ------------------------------------------------------------------
     # Form interaction
