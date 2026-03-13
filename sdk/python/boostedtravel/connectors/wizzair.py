@@ -37,7 +37,7 @@ from boostedtravel.models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from boostedtravel.connectors.browser import stealth_args, stealth_position_arg, stealth_popen_kwargs
+from boostedtravel.connectors.browser import stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def _get_lock() -> asyncio.Lock:
 
 
 async def _get_browser():
-    """Launch real Chrome via subprocess + connect via CDP."""
+    "Launch real Chrome via CDP (headed — KPSDK detects --headless=new)."""
     global _pw_instance, _browser, _chrome_proc
     lock = _get_lock()
     async with lock:
@@ -139,7 +139,7 @@ async def _get_browser():
                     "--no-first-run",
                     "--no-default-browser-check",
                     "--disable-background-networking",
-                    *stealth_position_arg(),
+                    "--window-position=-2400,-2400",
                     "about:blank",
                 ],
                 **stealth_popen_kwargs(),
@@ -157,20 +157,21 @@ async def _get_browser():
                     _chrome_proc.terminate()
                     _chrome_proc = None
 
-        # Fallback: regular Playwright headed
+        # Fallback: Playwright headed (no headless — KPSDK needs it)
         try:
             _browser = await _pw_instance.chromium.launch(
-                headless=True,
+                headless=False,
                 channel="chrome",
-                args=["--disable-blink-features=AutomationControlled", *stealth_args()],
+                args=["--disable-blink-features=AutomationControlled",
+                      "--window-position=-2400,-2400"],
             )
         except Exception:
             _browser = await _pw_instance.chromium.launch(
-                headless=True,
+                headless=False,
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
-                    *stealth_args(),
+                    "--window-position=-2400,-2400",
                 ],
             )
         logger.info("Wizzair: Playwright browser launched (headed fallback)")
