@@ -33,7 +33,6 @@ import hashlib
 import json
 import logging
 import os
-import random
 import re
 import subprocess
 import time
@@ -47,31 +46,20 @@ from boostedtravel.models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from boostedtravel.connectors.browser import stealth_args, stealth_position_arg, stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
-_VIEWPORTS = [
-    {"width": 1366, "height": 768},
-    {"width": 1440, "height": 900},
-    {"width": 1536, "height": 864},
-    {"width": 1920, "height": 1080},
-    {"width": 1280, "height": 720},
-]
-_LOCALES = ["en-AU", "en-NZ", "en-GB", "en-US", "en-SG"]
-_TIMEZONES = [
-    "Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane",
-    "Pacific/Auckland", "Asia/Singapore",
-]
-
-_MAX_ATTEMPTS = 3
-_DEBUG_PORT = 9444
-_USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".jetstar_chrome_data")
+_MAX_ATTEMPTS = 4
+_CDP_PORT = 9444
+_USER_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".jetstar_chrome_data"
+)
 
 _pw_instance = None
 _browser = None
 _chrome_proc = None
 _browser_lock: Optional[asyncio.Lock] = None
+_warmup_done = False
 
 
 def _find_chrome() -> Optional[str]:
@@ -99,9 +87,9 @@ def _get_lock() -> asyncio.Lock:
 
 
 async def _get_browser():
-    """Launch real Chrome via subprocess + connect via CDP.
+    """Launch real Chrome subprocess + connect via CDP.
 
-    Uses a persistent user-data-dir so Kasada clearance persists across runs.
+    Uses persistent user-data-dir so Kasada clearance cookies persist.
     Falls back to regular Playwright launch if Chrome is not found.
     """
     global _pw_instance, _browser, _chrome_proc
@@ -129,34 +117,39 @@ async def _get_browser():
             # Try connecting to existing Chrome first
             try:
                 _browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://localhost:{_DEBUG_PORT}"
+                    f"http://127.0.0.1:{_CDP_PORT}"
                 )
                 logger.info("Jetstar: connected to existing Chrome via CDP")
                 return _browser
             except Exception:
                 pass
 
-            vp = random.choice(_VIEWPORTS)
+            popen_kw: dict[str, Any] = {}
+            if hasattr(subprocess, "CREATE_NO_WINDOW"):
+                popen_kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+            popen_kw["stdout"] = subprocess.DEVNULL
+            popen_kw["stderr"] = subprocess.DEVNULL
+
             _chrome_proc = subprocess.Popen(
                 [
                     chrome_path,
-                    f"--remote-debugging-port={_DEBUG_PORT}",
+                    f"--remote-debugging-port={_CDP_PORT}",
                     f"--user-data-dir={_USER_DATA_DIR}",
-                    f"--window-size={vp['width']},{vp['height']}",
+                    "--window-size=1366,768",
                     "--no-first-run",
                     "--no-default-browser-check",
-                    "--disable-background-networking",
-                    *stealth_position_arg(),
+                    "--disable-blink-features=AutomationControlled",
+                    "--window-position=-2400,-2400",
                     "about:blank",
                 ],
-                **stealth_popen_kwargs(),
+                **popen_kw,
             )
             await asyncio.sleep(2.5)
             try:
                 _browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://localhost:{_DEBUG_PORT}"
+                    f"http://127.0.0.1:{_CDP_PORT}"
                 )
-                logger.info("Jetstar: connected to real Chrome via CDP (port %d)", _DEBUG_PORT)
+                logger.info("Jetstar: connected to real Chrome via CDP (port %d)", _CDP_PORT)
                 return _browser
             except Exception as e:
                 logger.warning("Jetstar: CDP connect failed: %s, falling back", e)
@@ -164,19 +157,50 @@ async def _get_browser():
                     _chrome_proc.terminate()
                     _chrome_proc = None
 
-        # Fallback: regular Playwright
+        # Fallback: regular Playwright headed Chrome
         try:
             _browser = await _pw_instance.chromium.launch(
-                headless=True, channel="chrome",
-                args=["--disable-blink-features=AutomationControlled", *stealth_args()],
+                headless=False, channel="chrome",
+                args=["--disable-blink-features=AutomationControlled",
+                      "--window-position=-2400,-2400", "--window-size=1366,768"],
             )
         except Exception:
             _browser = await _pw_instance.chromium.launch(
                 headless=True,
-                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", *stealth_args()],
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
             )
-        logger.info("Jetstar: Playwright browser launched (headed Chrome, fallback)")
+        logger.info("Jetstar: Playwright browser launched (fallback)")
         return _browser
+
+
+async def _reset_browser():
+    """Reset browser connection and Chrome process."""
+    global _pw_instance, _browser, _chrome_proc, _warmup_done
+    lock = _get_lock()
+    async with lock:
+        _warmup_done = False
+        if _browser:
+            try:
+                await _browser.close()
+            except Exception:
+                pass
+            _browser = None
+        if _pw_instance:
+            try:
+                await _pw_instance.stop()
+            except Exception:
+                pass
+            _pw_instance = None
+        if _chrome_proc:
+            try:
+                _chrome_proc.terminate()
+                _chrome_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    _chrome_proc.kill()
+                except Exception:
+                    pass
+            _chrome_proc = None
 
 
 class JetstarConnectorClient:
@@ -210,34 +234,48 @@ class JetstarConnectorClient:
                 )
             except Exception as e:
                 logger.warning("Jetstar: attempt %d/%d error: %s", attempt, _MAX_ATTEMPTS, e)
+                if "ERR_CONNECTION" in str(e) or "ERR_HTTP2" in str(e) or "Target closed" in str(e):
+                    await _reset_browser()
+                    await asyncio.sleep(2.0)
 
         return self._empty(req)
 
     async def _attempt_search(
         self, url: str, req: FlightSearchRequest
     ) -> Optional[list[FlightOffer]]:
+        global _warmup_done
         browser = await _get_browser()
 
-        # CDP browsers use default context — don't call new_context()
-        is_cdp = hasattr(browser, 'contexts') and browser.contexts
+        # CDP browsers use default context
+        is_cdp = hasattr(browser, "contexts") and browser.contexts
         if is_cdp:
             context = browser.contexts[0]
-            page = await context.new_page()
         else:
             context = await browser.new_context(
-                viewport=random.choice(_VIEWPORTS),
-                locale=random.choice(_LOCALES),
-                timezone_id=random.choice(_TIMEZONES),
+                viewport={"width": 1366, "height": 768},
+                locale="en-AU",
+                timezone_id="Australia/Sydney",
                 service_workers="block",
             )
-            page = await context.new_page()
+        page = await context.new_page()
 
         try:
-            try:
-                from playwright_stealth import stealth_async
-                await stealth_async(page)
-            except ImportError:
-                pass
+            # Kasada warm-up: visit base booking page first to acquire
+            # challenge tokens/cookies before loading the search URL.
+            if not _warmup_done:
+                logger.info("Jetstar: Kasada warm-up on booking base page")
+                try:
+                    await page.goto(
+                        "https://booking.jetstar.com/au/en/booking",
+                        wait_until="domcontentloaded",
+                        timeout=20000,
+                    )
+                    await asyncio.sleep(5)
+                    warmup_title = await page.title()
+                    logger.info("Jetstar: warm-up page title: %s", warmup_title)
+                    _warmup_done = True
+                except Exception as e:
+                    logger.debug("Jetstar: warm-up navigation error (non-fatal): %s", e)
 
             logger.info("Jetstar: loading %s", url[:120])
             await page.goto(
@@ -251,6 +289,10 @@ class JetstarConnectorClient:
             await self._handle_deeplink_redirect(page)
 
             title = await page.title()
+            if "challenge" in title.lower():
+                logger.warning("Jetstar: Kasada challenge on search page, will retry")
+                _warmup_done = False
+                return None
             if "not found" in title.lower() or "error" in title.lower():
                 logger.warning("Jetstar: got error page: %s", title)
                 return None
@@ -291,9 +333,16 @@ class JetstarConnectorClient:
 
             return None
         finally:
-            await page.close()
-            if not is_cdp:
-                await context.close()
+            if page:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            if not is_cdp and context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
 
     async def _handle_deeplink_redirect(self, page) -> None:
         """Handle the deeplinksv2 interim page that shows 'Continue to booking'."""
