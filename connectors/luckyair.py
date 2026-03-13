@@ -182,7 +182,15 @@ class LuckyAirConnectorClient:
             logger.warning("Lucky Air: failed to load search page: %s", exc)
             return []
 
-        await asyncio.sleep(3.0)
+        # Wait for the Vue SPA to mount and render the search form
+        try:
+            await page.wait_for_selector(
+                "input[placeholder='出发城市'], input[placeholder='到达城市']",
+                timeout=10000,
+            )
+        except Exception:
+            logger.debug("Lucky Air: form inputs not found within 10s")
+        await asyncio.sleep(1.0)
 
         # Step 2: Change departure city if not KMG (default)
         if req.origin != "KMG":
