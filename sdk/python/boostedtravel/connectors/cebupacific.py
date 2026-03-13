@@ -246,11 +246,20 @@ class CebuPacificConnectorClient:
             pass
 
     async def _set_one_way(self, page) -> None:
+        # Radio / tab / toggle button for one-way selection
         for label in ["One-way", "One Way", "One way", "ONE WAY"]:
             try:
                 radio = page.get_by_role("radio", name=re.compile(rf"{re.escape(label)}", re.IGNORECASE))
                 if await radio.count() > 0:
                     await radio.first.click(timeout=2000)
+                    return
+            except Exception:
+                continue
+        for role in ["tab", "button"]:
+            try:
+                el = page.get_by_role(role, name=re.compile(r"one.?way", re.IGNORECASE))
+                if await el.count() > 0:
+                    await el.first.click(timeout=2000)
                     return
             except Exception:
                 continue
@@ -262,44 +271,128 @@ class CebuPacificConnectorClient:
                     return
             except Exception:
                 continue
+        # JS fallback: click one-way elements by data attributes or class
         try:
-            toggle = page.locator("[data-testid*='one-way'], [class*='one-way'], [class*='oneway']").first
-            if await toggle.count() > 0:
-                await toggle.click(timeout=2000)
+            await page.evaluate("""() => {
+                const sels = [
+                    '[data-testid*="one-way"]', '[class*="one-way"]', '[class*="oneway"]',
+                    'label[for*="oneway"]', 'label[for*="one-way"]',
+                    'input[value="OW"]', 'input[value="oneway"]',
+                ];
+                for (const sel of sels) {
+                    const el = document.querySelector(sel);
+                    if (el && el.offsetHeight > 0) { el.click(); return; }
+                }
+            }""")
         except Exception:
             pass
 
     async def _fill_airport_field(self, page, label: str, iata: str, index: int) -> bool:
-        try:
-            for role in ["combobox", "textbox"]:
-                field = page.get_by_role(role, name=re.compile(rf"{label}", re.IGNORECASE))
-                if await field.count() > 0:
-                    await field.first.click(timeout=3000)
-                    await asyncio.sleep(0.3)
-                    await field.first.fill("")
+        """Fill origin/destination on CebuPacific's Navitaire booking form.
+
+        Uses multiple strategies to locate the station input and select the
+        autocomplete suggestion, modelled after the Scoot connector's approach
+        for Navitaire Angular SPAs.
+        """
+        is_origin = index == 0
+
+        # ── Strategy 1: Navitaire-standard element IDs via JS ────────────
+        # Navitaire Angular SPAs often duplicate IDs across hidden tabs; use
+        # JS to target the *visible* instance (offsetHeight > 0).
+        navitaire_ids = (
+            ["originStation", "origin", "flight-OriginStationCode", "fromCity", "departureStation"]
+            if is_origin
+            else ["destinationStation", "destination", "flight-DestinationStationCode", "toCity", "arrivalStation"]
+        )
+        for field_id in navitaire_ids:
+            try:
+                clicked = await page.evaluate("""(fieldId) => {
+                    const els = document.querySelectorAll('input#' + fieldId +
+                        ', input[name="' + fieldId + '"]' +
+                        ', input[data-testid="' + fieldId + '"]');
+                    for (const el of els) {
+                        if (el.offsetHeight > 0 || el.offsetParent !== null) {
+                            el.scrollIntoView({block: 'center'});
+                            el.click();
+                            el.focus();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""", field_id)
+                if clicked:
+                    await asyncio.sleep(0.4)
+                    await page.evaluate("""(fieldId) => {
+                        const els = document.querySelectorAll('input#' + fieldId +
+                            ', input[name="' + fieldId + '"]' +
+                            ', input[data-testid="' + fieldId + '"]');
+                        for (const el of els) {
+                            if (el.offsetHeight > 0 || el.offsetParent !== null) {
+                                el.value = '';
+                                el.dispatchEvent(new Event('input', {bubbles: true}));
+                                el.dispatchEvent(new Event('change', {bubbles: true}));
+                                return;
+                            }
+                        }
+                    }""", field_id)
                     await asyncio.sleep(0.2)
-                    await field.first.fill(iata)
+                    await page.keyboard.type(iata, delay=80)
                     await asyncio.sleep(2.5)
-                    for role2 in ["option", "button", "listitem", "link"]:
-                        try:
-                            option = page.get_by_role(role2, name=re.compile(rf"{re.escape(iata)}", re.IGNORECASE)).first
-                            if await option.count() > 0:
-                                await option.click(timeout=3000)
-                                return True
-                        except Exception:
-                            continue
-                    item = page.locator(
-                        "[class*='suggestion'], [class*='option'], [class*='result'], "
-                        "[class*='autocomplete'] li, [class*='dropdown'] li, "
-                        "[class*='airport'] li, [class*='station'] li"
-                    ).filter(has_text=re.compile(rf"{re.escape(iata)}", re.IGNORECASE)).first
-                    if await item.count() > 0:
-                        await item.click(timeout=3000)
+                    if await self._click_station_suggestion(page, iata):
+                        logger.info("CebuPacific: selected %s via Navitaire ID #%s", iata, field_id)
+                        return True
+            except Exception:
+                continue
+
+        # ── Strategy 2: Playwright role-based selectors ──────────────────
+        labels = ["From", "Origin", "Departure", "Flying from", "Where from"] if is_origin else ["To", "Destination", "Arrival", "Flying to", "Where to"]
+        try:
+            for lbl in labels:
+                for role in ["combobox", "textbox", "searchbox"]:
+                    field = page.get_by_role(role, name=re.compile(rf"{lbl}", re.IGNORECASE))
+                    if await field.count() > 0:
+                        await field.first.click(timeout=3000)
+                        await asyncio.sleep(0.3)
+                        await field.first.fill("")
+                        await asyncio.sleep(0.2)
+                        await field.first.fill(iata)
+                        await asyncio.sleep(2.5)
+                        if await self._click_station_suggestion(page, iata):
+                            logger.info("CebuPacific: selected %s via role=%s name=%s", iata, role, lbl)
+                            return True
+                        await page.keyboard.press("Enter")
+                        return True
+        except Exception as e:
+            logger.debug("CebuPacific: role-based %s field error: %s", label, e)
+
+        # ── Strategy 3: placeholder / aria-label attribute selectors ─────
+        placeholders = (
+            ["From", "Origin", "Departure City", "Flying from", "Where from"]
+            if is_origin
+            else ["To", "Destination", "Arrival City", "Flying to", "Where to"]
+        )
+        for ph in placeholders:
+            try:
+                field = page.locator(
+                    f"input[placeholder*='{ph}' i], "
+                    f"input[aria-label*='{ph}' i]"
+                ).first
+                if await field.count() > 0:
+                    await field.click(timeout=3000)
+                    await asyncio.sleep(0.3)
+                    await field.fill("")
+                    await asyncio.sleep(0.2)
+                    await field.fill(iata)
+                    await asyncio.sleep(2.5)
+                    if await self._click_station_suggestion(page, iata):
+                        logger.info("CebuPacific: selected %s via placeholder/aria '%s'", iata, ph)
                         return True
                     await page.keyboard.press("Enter")
                     return True
-        except Exception as e:
-            logger.debug("CebuPacific: %s field error: %s", label, e)
+            except Exception:
+                continue
+
+        # ── Strategy 4: index-based fallback (last resort) ───────────────
         try:
             inputs = page.locator("input[type='text'], input[type='search'], input[placeholder]")
             if await inputs.count() > index:
@@ -309,7 +402,86 @@ class CebuPacificConnectorClient:
                 await asyncio.sleep(0.2)
                 await field.fill(iata)
                 await asyncio.sleep(2.5)
+                if await self._click_station_suggestion(page, iata):
+                    return True
                 await page.keyboard.press("Enter")
+                return True
+        except Exception:
+            pass
+        return False
+
+    async def _click_station_suggestion(self, page, iata: str) -> bool:
+        """Click the autocomplete suggestion matching *iata* in the station overlay.
+
+        Tries multiple Navitaire-specific selector patterns used across
+        CebuPacific, Scoot, Spirit, and other Navitaire Angular SPAs.
+        """
+        # JS-based: search overlay containers for a matching station
+        try:
+            clicked = await page.evaluate("""(iata) => {
+                const overlays = document.querySelectorAll(
+                    '.stations-overlay, .station-list, .airport-list, ' +
+                    '[class*="suggestion"], [class*="autocomplete"], [class*="dropdown"], ' +
+                    '[class*="search-result"], [class*="station-picker"], [class*="airport-picker"], ' +
+                    'ul[role="listbox"], div[role="listbox"]'
+                );
+                for (const ov of overlays) {
+                    if (ov.offsetHeight === 0) continue;
+                    const byAria = ov.querySelector('div[aria-label="' + iata + '"], li[aria-label="' + iata + '"]');
+                    if (byAria && byAria.offsetHeight > 0) { byAria.click(); return 'aria-label'; }
+                    const codes = ov.querySelectorAll('.code, .iata, .station-code, .airport-code, [class*="iata"], [class*="code"]');
+                    for (const c of codes) {
+                        if (c.textContent.trim() === iata && c.offsetHeight > 0) {
+                            (c.closest('[role="option"], [role="button"], li, .station-item, .airport-item') || c.parentElement).click();
+                            return 'code-class';
+                        }
+                    }
+                    const items = ov.querySelectorAll(
+                        'div.station-item, div.airport-item, li, ' +
+                        '[role="option"], [role="button"], [role="listitem"]'
+                    );
+                    for (const item of items) {
+                        if (item.textContent.includes(iata) && item.offsetHeight > 0) {
+                            item.click();
+                            return 'text-match';
+                        }
+                    }
+                }
+                // Global fallback: any visible element with role="option" containing IATA
+                const opts = document.querySelectorAll('[role="option"], [role="listitem"]');
+                for (const o of opts) {
+                    if (o.textContent.includes(iata) && o.offsetHeight > 0) {
+                        o.click();
+                        return 'role-option';
+                    }
+                }
+                return null;
+            }""", iata)
+            if clicked:
+                await asyncio.sleep(0.5)
+                return True
+        except Exception:
+            pass
+
+        # Playwright fallback: role-based option/listitem selectors
+        for role in ["option", "button", "listitem", "link"]:
+            try:
+                option = page.get_by_role(role, name=re.compile(rf"{re.escape(iata)}", re.IGNORECASE)).first
+                if await option.count() > 0:
+                    await option.click(timeout=3000)
+                    return True
+            except Exception:
+                continue
+
+        # CSS class-based fallback
+        try:
+            item = page.locator(
+                "[class*='suggestion'], [class*='option'], [class*='result'], "
+                "[class*='autocomplete'] li, [class*='dropdown'] li, "
+                "[class*='airport'] li, [class*='station'] li"
+            ).filter(has_text=re.compile(rf"{re.escape(iata)}", re.IGNORECASE)).first
+            if await item.count() > 0:
+                await item.click(timeout=3000)
                 return True
         except Exception:
             pass
@@ -318,17 +490,35 @@ class CebuPacificConnectorClient:
     async def _fill_date(self, page, req: FlightSearchRequest) -> bool:
         target = req.date_from
         try:
-            for name in ["Depart", "Departure", "Depart Date", "Date", "When", "Travel date"]:
-                field = page.get_by_role("textbox", name=re.compile(rf"{name}", re.IGNORECASE))
-                if await field.count() > 0:
-                    await field.first.click(timeout=3000)
-                    break
-            else:
+            # ── Open the date picker ─────────────────────────────────
+            # Try Navitaire-specific IDs first (e.g. #departureDate)
+            opened = False
+            for sel in [
+                "#departureDate", "#depart-date", "#date-picker-origin",
+                "input[name='departureDate']", "input[data-testid*='date']",
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0:
+                        await el.click(timeout=3000)
+                        opened = True
+                        break
+                except Exception:
+                    continue
+            if not opened:
+                for name in ["Depart", "Departure", "Depart Date", "Date", "When", "Travel date"]:
+                    field = page.get_by_role("textbox", name=re.compile(rf"{name}", re.IGNORECASE))
+                    if await field.count() > 0:
+                        await field.first.click(timeout=3000)
+                        opened = True
+                        break
+            if not opened:
                 date_el = page.locator("[class*='date'], [data-testid*='date'], [id*='date']").first
                 if await date_el.count() > 0:
                     await date_el.click(timeout=3000)
             await asyncio.sleep(0.8)
 
+            # ── Navigate calendar to target month ────────────────────
             target_my = target.strftime("%B %Y")
             for _ in range(12):
                 for variant in [target_my, target_my.upper()]:
@@ -336,7 +526,7 @@ class CebuPacificConnectorClient:
                         break
                 else:
                     try:
-                        fwd = page.get_by_role("button", name=re.compile(r"(next|forward|>|>>)", re.IGNORECASE))
+                        fwd = page.get_by_role("button", name=re.compile(r"(next|forward|>|>>|›|»)", re.IGNORECASE))
                         if await fwd.count() > 0:
                             await fwd.first.click(timeout=2000)
                             await asyncio.sleep(0.4)
@@ -344,7 +534,11 @@ class CebuPacificConnectorClient:
                     except Exception:
                         pass
                     try:
-                        fwd = page.locator("[class*='next'], [aria-label*='next'], [aria-label*='Next']").first
+                        fwd = page.locator(
+                            "[class*='next'], [class*='right'], "
+                            "[aria-label*='next'], [aria-label*='Next'], "
+                            "[aria-label*='forward'], button:has-text('>')"
+                        ).first
                         await fwd.click(timeout=2000)
                         await asyncio.sleep(0.4)
                         continue
@@ -352,12 +546,27 @@ class CebuPacificConnectorClient:
                         break
                 break
 
+            # ── Select the target day ────────────────────────────────
             day = target.day
+            # Navitaire gridcell pattern (like Condor): button[role='gridcell']
+            target_label_mmddyyyy = target.strftime("%m/%d/%Y")
+            try:
+                gridcell = page.locator(
+                    f"button[role='gridcell'][aria-label*='{target_label_mmddyyyy}']"
+                ).first
+                if await gridcell.count() > 0:
+                    await gridcell.click(timeout=3000)
+                    await asyncio.sleep(0.5)
+                    return True
+            except Exception:
+                pass
+
             for fmt in [
                 f"{day} {target.strftime('%B')} {target.year}",
                 f"{target.strftime('%B')} {day}, {target.year}",
                 f"{target.strftime('%B')} {day}",
                 target.strftime("%Y-%m-%d"),
+                target_label_mmddyyyy,
             ]:
                 try:
                     day_btn = page.locator(f"[aria-label*='{fmt}']").first
@@ -383,7 +592,11 @@ class CebuPacificConnectorClient:
             return False
 
     async def _click_search(self, page) -> None:
-        for label in ["Search flights", "Search Flights", "Search", "SEARCH", "Find flights", "Book Now"]:
+        for label in [
+            "Search flights", "Search Flights", "Search", "SEARCH",
+            "Find flights", "Find Flights", "Book Now", "Let's Go",
+            "Search Now", "Show flights", "Show Flights",
+        ]:
             try:
                 btn = page.get_by_role("button", name=re.compile(rf"^{re.escape(label)}$", re.IGNORECASE))
                 if await btn.count() > 0:
@@ -392,10 +605,23 @@ class CebuPacificConnectorClient:
                     return
             except Exception:
                 continue
+        # Submit-type button or search icon
         try:
-            await page.locator("button[type='submit']").first.click(timeout=3000)
+            submit = page.locator(
+                "button[type='submit'], "
+                "button[class*='search'], button[class*='submit'], "
+                "button[data-testid*='search'], button[id*='search']"
+            ).first
+            if await submit.count() > 0:
+                await submit.click(timeout=5000)
+                logger.info("CebuPacific: clicked submit-type search")
+                return
         except Exception:
+            pass
+        try:
             await page.keyboard.press("Enter")
+        except Exception:
+            pass
 
     async def _extract_from_dom(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
         try:
