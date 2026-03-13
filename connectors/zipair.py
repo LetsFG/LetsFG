@@ -44,7 +44,6 @@ from models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from connectors.browser import stealth_args
 
 logger = logging.getLogger(__name__)
 
@@ -334,10 +333,14 @@ class ZipairConnectorClient:
         dep_str = times.get("departureDate", "")
         arr_str = times.get("arrivalDate", "")
 
+        carrier = seg.get("carrierCode", "ZG")
+        flight_no_raw = str(seg.get("flightNumber", ""))
+        flight_no = f"{carrier}{flight_no_raw}" if flight_no_raw and not flight_no_raw.startswith(carrier) else flight_no_raw
+
         return FlightSegment(
-            airline=seg.get("carrierCode", "ZG"),
+            airline=carrier,
             airline_name="ZIPAIR",
-            flight_no=str(seg.get("flightNumber", "")),
+            flight_no=flight_no,
             origin=seg.get("origin", ""),
             destination=seg.get("destination", ""),
             departure=self._parse_dt(dep_str),

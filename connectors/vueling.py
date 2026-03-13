@@ -40,7 +40,6 @@ from models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from connectors.browser import stealth_args
 
 logger = logging.getLogger(__name__)
 

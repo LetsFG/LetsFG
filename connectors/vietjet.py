@@ -773,10 +773,13 @@ class VietJetConnectorClient:
         else:
             airline = str(airline_raw) if airline_raw else "VJ"
 
+        flight_no_raw = str(flt.get("flightNumber", ""))
+        flight_no = f"{airline}{flight_no_raw}" if flight_no_raw and not flight_no_raw.startswith(airline) else flight_no_raw
+
         return FlightSegment(
             airline=airline,
             airline_name="VietJet Air",
-            flight_no=str(flt.get("flightNumber", "")),
+            flight_no=flight_no,
             origin=dep_airport.get("code", req.origin) if isinstance(dep_airport, dict) else req.origin,
             destination=arr_airport.get("code", req.destination) if isinstance(arr_airport, dict) else req.destination,
             departure=self._parse_dt(dep_time),
