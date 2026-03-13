@@ -62,6 +62,23 @@ _VIEWPORTS = [
     {"width": 1440, "height": 900},
 ]
 
+# IATA code → Chinese city name (for 9 Air's city grid picker)
+_IATA_CN: dict[str, str] = {
+    "PEK": "北京", "PKX": "北京", "NAY": "北京",
+    "SHA": "上海", "PVG": "上海",
+    "CAN": "广州", "SZX": "深圳", "CTU": "成都", "TFU": "成都",
+    "CKG": "重庆", "WUH": "武汉", "HGH": "杭州", "NKG": "南京",
+    "KMG": "昆明", "XIY": "西安", "DLC": "大连", "HAK": "海口",
+    "CGO": "郑州", "URC": "乌鲁木齐", "HET": "呼和浩特",
+    "LHW": "兰州", "CGQ": "长春", "WUX": "无锡", "WNZ": "温州",
+    "TNA": "济南", "SYX": "三亚", "TAO": "青岛", "CSX": "长沙",
+    "HRB": "哈尔滨", "KWE": "贵阳", "FOC": "福州", "XMN": "厦门",
+    "NNG": "南宁", "HFE": "合肥", "TSN": "天津", "SHE": "沈阳",
+    "SJW": "石家庄", "TYN": "太原", "LPF": "六盘水", "HSN": "舟山",
+    "BKK": "曼谷", "HAN": "河内", "KUL": "吉隆坡", "KIX": "大阪",
+    "VTE": "万象",
+}
+
 
 async def _get_browser():
     """Get or create the shared Playwright browser."""
@@ -227,63 +244,36 @@ class NineAirConnectorClient:
         return self._parse_response(data, req)
 
     async def _fill_city(self, page, field_type: str, code: str) -> bool:
-        """Fill a departure or arrival city field."""
+        """Fill a departure or arrival city field.
 
-        # Strategy 1: .cityInput:visible (9air-specific class, no placeholders)
+        Departure: type IATA in .cityInput → click .panel-search-body suggestion.
+        Arrival:   Escape city grid → type Chinese name → click suggestion.
+        """
+        idx = 0 if field_type == "departure" else 1
+        cn_name = _IATA_CN.get(code)
+
+        # Strategy 1: type in .cityInput → use search suggestions
         try:
-            idx = 0 if field_type == "departure" else 1
             city_inputs = page.locator(".cityInput:visible")
             if await city_inputs.count() > idx:
                 inp = city_inputs.nth(idx)
-                await inp.click(timeout=3000)
+                await inp.click(timeout=5000)
                 await asyncio.sleep(0.5)
-                await inp.fill(code)
-                await asyncio.sleep(2.0)
-                if await self._click_city_suggestion(page):
-                    return True
-                await page.keyboard.press("Enter")
-                await asyncio.sleep(0.5)
-                return True
-        except Exception:
-            pass
-
-        # Strategy 2: match by placeholder text
-        placeholders = {
-            "departure": ["出发城市", "出发地", "出发", "departure", "from"],
-            "arrival": ["到达城市", "目的地", "到达", "arrival", "to"],
-        }
-        for ph in placeholders.get(field_type, []):
-            try:
-                inp = page.locator(f"input[placeholder*='{ph}']").first
-                if await inp.count() > 0:
+                # Close popup if arrival grid is covering things
+                if field_type == "arrival":
+                    await page.keyboard.press("Escape")
+                    await asyncio.sleep(0.3)
                     await inp.click(timeout=3000)
-                    await asyncio.sleep(0.5)
-                    await inp.fill(code)
+                    await asyncio.sleep(0.3)
+                # Try Chinese name first for arrival (IATA doesn't show suggestions)
+                terms = [cn_name, code] if (field_type == "arrival" and cn_name) else [code, cn_name] if cn_name else [code]
+                for term in terms:
+                    if not term:
+                        continue
+                    await inp.fill(term)
                     await asyncio.sleep(2.0)
                     if await self._click_city_suggestion(page):
                         return True
-                    await page.keyboard.press("Enter")
-                    await asyncio.sleep(0.5)
-                    return True
-            except Exception:
-                continue
-
-        # Strategy 3: positional — departure=first text input, arrival=second
-        try:
-            idx = 0 if field_type == "departure" else 1
-            search_section = page.locator(".flight-searchbar:visible, .plane-search:visible, form.flight-way:visible").first
-            if await search_section.count() > 0:
-                inputs = search_section.locator("input[type='text'], input:not([type])")
-            else:
-                inputs = page.locator("input[type='text'], input:not([type])")
-            if await inputs.count() > idx:
-                inp = inputs.nth(idx)
-                await inp.click(timeout=3000)
-                await asyncio.sleep(0.5)
-                await inp.fill(code)
-                await asyncio.sleep(2.0)
-                if await self._click_city_suggestion(page):
-                    return True
                 await page.keyboard.press("Enter")
                 await asyncio.sleep(0.5)
                 return True
@@ -312,56 +302,79 @@ class NineAirConnectorClient:
         return False
 
     async def _select_date(self, page, target_date) -> None:
-        """Try to select the departure date."""
+        """Select the departure date using 9 Air's custom calendar.
+
+        The calendar uses input.dateInput and a .date-panel with two months.
+        Clicking the date input opens the panel. Day cells are clickable divs.
+        """
         try:
-            # Click date input
-            for sel in ("input[placeholder*='日期']", "input[placeholder*='date']",
-                        "[class*=date] input", "[class*=calendar] input"):
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=3000)
-                        await asyncio.sleep(1.0)
-                        break
-                except Exception:
-                    continue
+            # Click the date input to open the calendar panel
+            date_inp = page.locator("input.dateInput, .cell.deptdate, .fly-date-date").first
+            if await date_inp.count() > 0:
+                await date_inp.click(timeout=3000)
+                await asyncio.sleep(0.8)
 
-            # Navigate calendar to target month
-            target_str = target_date.strftime("%Y-%m-%d")
             day = target_date.day
+            target_month_label = f"{target_date.year}年{target_date.month}月"
 
-            # Try clicking "next month" buttons to get to the right month
-            for _ in range(6):
-                try:
-                    next_btn = page.locator("[class*=next-month], [class*=arrow-right], button:has-text('>')").first
-                    if await next_btn.count() > 0:
-                        # Check if we're past the target month
-                        calendar_text = await page.locator("[class*=calendar]").first.text_content()
-                        if calendar_text and str(target_date.year) in calendar_text:
-                            month_names = ["一月","二月","三月","四月","五月","六月",
-                                          "七月","八月","九月","十月","十一月","十二月"]
-                            target_month_zh = month_names[target_date.month - 1]
-                            if target_month_zh in calendar_text or f"{target_date.month}月" in calendar_text:
-                                break
-                        await next_btn.click(timeout=2000)
-                        await asyncio.sleep(0.3)
-                except Exception:
-                    break
+            # The calendar shows two months in .date-main panels with .date-head headers.
+            # Find the panel whose header matches our target month.
+            clicked = await page.evaluate("""(args) => {
+                const [day, monthLabel] = args;
+                const panels = document.querySelectorAll('.date-main');
+                for (const panel of panels) {
+                    const head = panel.querySelector('.date-head');
+                    if (head && head.textContent.trim().includes(monthLabel)) {
+                        // Find the day cell that matches (not disabled, not from other month)
+                        const cells = panel.querySelectorAll('.date-cell:not(.disabled):not(.other-month)');
+                        for (const cell of cells) {
+                            const txt = cell.textContent.trim().split('\\n')[0].trim();
+                            if (txt === String(day)) {
+                                cell.click();
+                                return true;
+                            }
+                        }
+                        // Fallback: try all child elements with the day number
+                        const all = panel.querySelectorAll('div, td, span');
+                        for (const el of all) {
+                            if (el.children.length === 0 && el.textContent.trim() === String(day)) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }""", [day, target_month_label])
 
-            # Click the target day
-            await page.click(
-                f"td:not(.disabled):not([class*=disabled]) >> text=/^{day}$/",
-                timeout=3000,
-            )
-            await asyncio.sleep(0.5)
+            if clicked:
+                await asyncio.sleep(0.5)
+                logger.debug("9 Air: selected date %s", target_date)
+            else:
+                # Fallback: just set the date value directly
+                await page.evaluate(
+                    """(dateStr) => {
+                        const inp = document.querySelector('input.dateInput');
+                        if (inp) {
+                            const nativeSet = Object.getOwnPropertyDescriptor(
+                                HTMLInputElement.prototype, 'value').set;
+                            nativeSet.call(inp, dateStr);
+                            inp.dispatchEvent(new Event('input', {bubbles: true}));
+                            inp.dispatchEvent(new Event('change', {bubbles: true}));
+                        }
+                    }""",
+                    target_date.strftime("%Y-%m-%d"),
+                )
+                await asyncio.sleep(0.3)
+                logger.debug("9 Air: set date via JS fallback %s", target_date)
         except Exception as exc:
             logger.debug("9 Air: date selection failed: %s", exc)
 
     async def _click_search(self, page) -> None:
         """Click the search button."""
-        for sel in ("button:has-text('搜索')", "button:has-text('查询')",
-                    "button:has-text('Search')", "button[type='submit']",
-                    "[class*=search-btn]", "[class*=search] button"):
+        for sel in ("button:has-text('查询')", "button.flyway-btn",
+                    "button:has-text('搜索')", "button:has-text('Search')",
+                    "button[type='submit']", "[class*=search-btn]"):
             try:
                 btn = page.locator(sel).first
                 if await btn.count() > 0:
