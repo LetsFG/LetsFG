@@ -1,26 +1,25 @@
 """
-T'way Air scraper — 3-tier hybrid: curl_cffi + nodriver + CDP Chrome.
+T'way Air scraper — 2-tier hybrid: curl_cffi + CDP headed Chrome.
 
 T'way Air (IATA: TW) is a South Korean LCC operating domestic (GMP/ICN↔CJU/PUS)
 and international flights to Japan, Taiwan, Vietnam, Thailand, Philippines, Guam.
 
 Website: www.twayair.com — Java/Spring MVC + jQuery, protected by Akamai Bot Manager.
 
-Strategy (3-tier hybrid, discovered & verified Mar 2026):
+Strategy (2-tier hybrid, discovered Mar 2026, fixed Mar 2026):
   Tier 1 — curl_cffi fast path (~0.5-1s):
     Reuses Akamai cookies + CSRF token cached from a prior browser session.
     POST /ajax/booking/getLowestFare with impersonate="chrome131".
     Skipped on first call (no cookies yet) or when cookies are stale (>5 min).
-  Tier 2 — nodriver primary (~3-8s):
-    Launch nodriver (undetected-chromedriver) → navigate to www.twayair.com/app/main
-    → Akamai challenge resolves → extract CSRF token → XHR to getLowestFare.
-    After success, cookies + CSRF are cached for Tier 1 reuse.
-  Tier 3 — CDP Chrome fallback (~5-15s):
-    Persistent Chrome profile on debug port 9451 with warm Akamai cookies.
-    Same AJAX flow as Tier 2. Cookies cached on success.
+  Tier 2 — CDP headed Chrome (~5-15s):
+    Persistent Chrome profile on debug port 9451.  Launched HEADED (no --headless)
+    because Akamai Bot Manager detects headless Chrome.  Off-screen via
+    --window-position=-2400,-2400, minimised via stealth_popen_kwargs().
+    Navigates to homepage → Akamai challenge resolves → extract CSRF token
+    → XHR to getLowestFare.  Cookies cached on success for Tier 1 reuse.
 
-Cookie refresh: On first call nodriver generates cookies; subsequent calls
-reuse them via curl_cffi. If curl_cffi gets 403, falls through to nodriver
+Cookie refresh: On first call CDP Chrome generates cookies; subsequent calls
+reuse them via curl_cffi. If curl_cffi gets 403, falls through to CDP Chrome
 which naturally refreshes the cache.
 
 Fare data format (pipe-delimited string per date key in OW dict):
@@ -63,7 +62,7 @@ from boostedtravel.models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from boostedtravel.connectors.browser import stealth_args, stealth_popen_kwargs
+from boostedtravel.connectors.browser import stealth_popen_kwargs, find_chrome, _launched_procs
 
 logger = logging.getLogger(__name__)
 
@@ -81,30 +80,19 @@ _COUNTRY_CURRENCY = {
     "HK": "HKD", "MO": "MOP", "CN": "CNY",
 }
 
-# ── curl_cffi cookie cache (populated by nodriver / CDP sessions) ─────────
+# ── curl_cffi cookie cache (populated by CDP Chrome sessions) ─────────
 _tw_cookies: dict | None = None
 _tw_cookies_ts: float = 0
 _tw_csrf_token: str = ""
 _tw_csrf_header: str = "X-CSRF-TOKEN"
 
-# nodriver browser singleton
-_nd_browser = None
-_nd_lock: Optional[asyncio.Lock] = None
-
-# CDP Chrome fallback
+# CDP Chrome (primary browser tier — headed, no headless)
 _DEBUG_PORT = 9451
 _USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".twayair_chrome_data")
 _pw_instance = None
 _cdp_browser = None
 _chrome_proc = None
 _cdp_lock: Optional[asyncio.Lock] = None
-
-
-def _get_nd_lock() -> asyncio.Lock:
-    global _nd_lock
-    if _nd_lock is None:
-        _nd_lock = asyncio.Lock()
-    return _nd_lock
 
 
 def _get_cdp_lock() -> asyncio.Lock:
@@ -114,167 +102,75 @@ def _get_cdp_lock() -> asyncio.Lock:
     return _cdp_lock
 
 
-async def _get_nodriver_page():
-    """Launch nodriver, navigate to T'way homepage, retry on Akamai block.
+async def _get_browser():
+    """Launch or connect to CDP Chrome.  Returns a Browser instance.
 
-    Returns a nodriver page with valid Akamai session, or None if blocked.
-    """
-    global _nd_browser
-    lock = _get_nd_lock()
-    async with lock:
-        try:
-            import nodriver as uc
-        except ImportError:
-            logger.warning("TwayAir: nodriver not installed, skipping")
-            return None
-
-        try:
-            from boostedtravel.connectors.browser import stealth_position_arg
-            _nd_browser = await uc.start(
-                headless=True,
-                browser_args=["--window-size=1440,900", *stealth_position_arg()],
-            )
-        except Exception as e:
-            logger.warning("TwayAir: nodriver start failed: %s", e)
-            return None
-
-        page = await _nd_browser.get("https://www.twayair.com/app/main")
-        await asyncio.sleep(5)
-
-        title = await page.evaluate("document.title")
-        if "denied" in str(title).lower():
-            logger.info("TwayAir: Akamai blocked first load, retrying...")
-            await asyncio.sleep(5)
-            page = await _nd_browser.get("https://www.twayair.com/app/main")
-            await asyncio.sleep(8)
-            title = await page.evaluate("document.title")
-            if "denied" in str(title).lower():
-                logger.warning("TwayAir: Akamai blocked after retry")
-                return None
-
-        # Dismiss popups
-        try:
-            await page.evaluate("""
-                document.querySelectorAll('[class*="popup"], [class*="modal"], [class*="layer_popup"], [class*="dim"]')
-                    .forEach(el => { if (el.offsetHeight > 0) el.remove(); });
-                document.body.style.overflow = 'auto';
-            """)
-        except Exception:
-            pass
-        # Wait for Akamai sensor script to finish — too short causes 403 on AJAX
-        await asyncio.sleep(3)
-
-        return page
-
-
-def _find_chrome() -> Optional[str]:
-    candidates = [
-        os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
-        os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
-        os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium-browser",
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    ]
-    for c in candidates:
-        if os.path.isfile(c):
-            return c
-    return None
-
-
-async def _get_cdp_page(timeout_ms: int):
-    """CDP Chrome fallback — persistent profile with warm Akamai cookies.
-
-    Returns (page, context) or (None, None) on failure.
+    Uses the default context (contexts[0]) so Akamai clearance cookies persist
+    across calls. Same approach as the Scoot connector.
     """
     global _pw_instance, _cdp_browser, _chrome_proc
     lock = _get_cdp_lock()
     async with lock:
         if _cdp_browser:
             try:
-                if not _cdp_browser.is_connected():
-                    _cdp_browser = None
+                if _cdp_browser.is_connected():
+                    return _cdp_browser
             except Exception:
-                _cdp_browser = None
+                pass
+            _cdp_browser = None
 
-        if not _cdp_browser:
-            from playwright.async_api import async_playwright
+        from playwright.async_api import async_playwright
 
-            if _pw_instance:
+        # Try connecting to existing Chrome first
+        pw = None
+        try:
+            pw = await async_playwright().start()
+            _cdp_browser = await pw.chromium.connect_over_cdp(
+                f"http://127.0.0.1:{_DEBUG_PORT}"
+            )
+            _pw_instance = pw
+            logger.info("TwayAir: connected to existing Chrome on port %d", _DEBUG_PORT)
+            return _cdp_browser
+        except Exception:
+            if pw:
                 try:
-                    await _pw_instance.stop()
+                    await pw.stop()
                 except Exception:
                     pass
-            _pw_instance = await async_playwright().start()
 
-            chrome_path = _find_chrome()
-            if not chrome_path:
-                return None, None
-
-            os.makedirs(_USER_DATA_DIR, exist_ok=True)
-            try:
-                _cdp_browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://localhost:{_DEBUG_PORT}"
-                )
-            except Exception:
-                _chrome_proc = subprocess.Popen(
-                    [
-                        chrome_path,
-                        f"--remote-debugging-port={_DEBUG_PORT}",
-                        f"--user-data-dir={_USER_DATA_DIR}",
-                        "--window-size=1440,900",
-                        "--no-first-run",
-                        "--no-default-browser-check",
-                        "--disable-background-networking",
-                        *stealth_args(),
-                        "about:blank",
-                    ],
-                    **stealth_popen_kwargs(),
-                )
-                await asyncio.sleep(2.5)
-                try:
-                    _cdp_browser = await _pw_instance.chromium.connect_over_cdp(
-                        f"http://localhost:{_DEBUG_PORT}"
-                    )
-                except Exception as e:
-                    logger.warning("TwayAir: CDP connect failed: %s", e)
-                    if _chrome_proc:
-                        _chrome_proc.terminate()
-                        _chrome_proc = None
-                    return None, None
-
-        context = await _cdp_browser.new_context(
-            viewport={"width": 1440, "height": 900},
-            locale="ko-KR",
-            timezone_id="Asia/Seoul",
-            service_workers="block",
+        # Launch Chrome HEADED (no --headless) — Akamai blocks headless Chrome.
+        chrome_path = find_chrome()
+        os.makedirs(_USER_DATA_DIR, exist_ok=True)
+        _chrome_proc = subprocess.Popen(
+            [
+                chrome_path,
+                f"--remote-debugging-port={_DEBUG_PORT}",
+                f"--user-data-dir={_USER_DATA_DIR}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-http2",
+                "--window-position=-2400,-2400",
+                "--window-size=1440,900",
+                "about:blank",
+            ],
+            **stealth_popen_kwargs(),
         )
-        try:
-            from playwright_stealth import stealth_async
-            page = await context.new_page()
-            await stealth_async(page)
-        except ImportError:
-            page = await context.new_page()
+        _launched_procs.append(_chrome_proc)
+        await asyncio.sleep(2.5)
 
-        await page.goto(
-            "https://www.twayair.com/app/main",
-            wait_until="domcontentloaded",
-            timeout=timeout_ms,
+        pw = await async_playwright().start()
+        _pw_instance = pw
+        _cdp_browser = await pw.chromium.connect_over_cdp(
+            f"http://127.0.0.1:{_DEBUG_PORT}"
         )
-        await asyncio.sleep(3.0)
-
-        title = await page.title()
-        if "denied" in title.lower():
-            logger.warning("TwayAir: Akamai blocked CDP Chrome")
-            await context.close()
-            return None, None
-
-        return page, context
+        logger.info("TwayAir: Chrome launched headed on CDP port %d (pid %d)",
+                     _DEBUG_PORT, _chrome_proc.pid)
+        return _cdp_browser
 
 
 class TwayAirConnectorClient:
-    """T'way Air 3-tier hybrid: curl_cffi fast path → nodriver → CDP Chrome."""
+    """T'way Air 2-tier hybrid: curl_cffi fast path → CDP headed Chrome."""
 
     def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
@@ -304,14 +200,8 @@ class TwayAirConnectorClient:
             logger.info("TwayAir: curl_cffi fast path succeeded")
             return result
 
-        # Strategy 2: nodriver (best Akamai bypass)
-        logger.info("TwayAir: trying nodriver (tier 2)")
-        result = await self._attempt_nodriver(req)
-        if result is not None:
-            return result
-
-        # Strategy 3: CDP Chrome with persistent profile (may have warm Akamai cookies)
-        logger.info("TwayAir: nodriver failed, trying CDP Chrome fallback (tier 3)")
+        # Strategy 2: CDP headed Chrome (Akamai blocks headless — must be headed)
+        logger.info("TwayAir: trying CDP headed Chrome (tier 2)")
         return await self._attempt_cdp(req)
 
     # ------------------------------------------------------------------
@@ -401,28 +291,6 @@ class TwayAirConnectorClient:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _cache_cookies_from_nodriver_async(page) -> None:
-        """Extract cookies from a nodriver page and cache them for curl_cffi."""
-        global _tw_cookies, _tw_cookies_ts, _tw_csrf_token, _tw_csrf_header
-        try:
-            raw = await page.evaluate("""
-                (() => {
-                    const pairs = {};
-                    document.cookie.split('; ').forEach(c => {
-                        const [k, ...v] = c.split('=');
-                        if (k) pairs[k] = v.join('=');
-                    });
-                    return pairs;
-                })()
-            """)
-            if raw and isinstance(raw, dict):
-                _tw_cookies = raw
-                _tw_cookies_ts = time.monotonic()
-                logger.info("TwayAir: cached %d cookies from nodriver", len(raw))
-        except Exception as e:
-            logger.debug("TwayAir: cookie caching from nodriver failed: %s", e)
-
-    @staticmethod
     async def _cache_cookies_from_cdp(context) -> None:
         """Extract cookies from a Playwright CDP context and cache them."""
         global _tw_cookies, _tw_cookies_ts
@@ -437,87 +305,65 @@ class TwayAirConnectorClient:
             logger.debug("TwayAir: cookie caching from CDP failed: %s", e)
 
     # ------------------------------------------------------------------
-    # Tier 2: nodriver (undetected-chromedriver)
+    # Tier 2: CDP headed Chrome (Akamai bypass)
     # ------------------------------------------------------------------
 
-    async def _attempt_nodriver(self, req: FlightSearchRequest) -> Optional[list[FlightOffer]]:
-        page = await _get_nodriver_page()
-        if not page:
-            return None
-
-        try:
-            csrf_info = await page.evaluate("""
-                (() => {
-                    const csrfMeta = document.querySelector('meta[name="_csrf"]');
-                    const headerMeta = document.querySelector('meta[name="_csrf_header"]');
-                    const csrfInput = document.querySelector('input[name="_csrf"]');
-                    return {
-                        token: csrfMeta ? csrfMeta.getAttribute('content') : (csrfInput ? csrfInput.value : ''),
-                        header: headerMeta ? headerMeta.getAttribute('content') : 'X-CSRF-TOKEN'
-                    };
-                })()
-            """)
-
-            csrf_token = csrf_info.get("token", "") if isinstance(csrf_info, dict) else ""
-            csrf_header = csrf_info.get("header", "X-CSRF-TOKEN") if isinstance(csrf_info, dict) else "X-CSRF-TOKEN"
-
-            # Cache CSRF for curl_cffi reuse
-            if csrf_token:
-                global _tw_csrf_token, _tw_csrf_header
-                _tw_csrf_token = csrf_token
-                _tw_csrf_header = csrf_header
-
-            # Cache cookies for curl_cffi reuse
-            await self._cache_cookies_from_nodriver_async(page)
-
-            is_domestic = req.origin in _DOMESTIC_AIRPORTS and req.destination in _DOMESTIC_AIRPORTS
-            booking_type = "DOM" if is_domestic else "INT"
-            currency = self._determine_currency(req, is_domestic)
-
-            body = f"tripType=OW&bookingType={booking_type}&currency={currency}&depAirport={req.origin}&arrAirport={req.destination}&baseDeptAirportCode={req.origin}&_csrf={csrf_token}"
-
-            logger.info("TwayAir [nodriver]: calling getLowestFare (%s→%s, %s, %s)",
-                        req.origin, req.destination, booking_type, currency)
-
-            # Use synchronous XHR — nodriver page.evaluate returns None for async fetch
-            js = """
-                (() => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', '/ajax/booking/getLowestFare', false);
-                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-                    xhr.setRequestHeader('""" + csrf_header + """', '""" + csrf_token + """');
-                    xhr.send('""" + body + """');
-                    return JSON.stringify({status: xhr.status, text: xhr.responseText});
-                })()
-            """
-            raw = await page.evaluate(js)
-
-            if not raw:
-                logger.warning("TwayAir [nodriver]: XHR returned null")
-                return None
-
-            result = json.loads(raw) if isinstance(raw, str) else raw
-            status = result.get("status", 0)
-            text = result.get("text", "")
-
-            if status != 200 or not text:
-                logger.warning("TwayAir [nodriver]: HTTP %d, body=%d bytes", status, len(text))
-                return None
-
-            return self._parse_fare_response(text, req, currency)
-
-        except Exception as e:
-            logger.warning("TwayAir [nodriver]: error: %s", e)
-            return None
-
     async def _attempt_cdp(self, req: FlightSearchRequest) -> Optional[list[FlightOffer]]:
-        page_ctx = await _get_cdp_page(int(self.timeout * 1000))
-        page, context = page_ctx if page_ctx else (None, None)
-        if not page:
-            return None
+        browser = await _get_browser()
+
+        # CDP browsers use default context — reuse to keep Akamai cookies warm
+        is_cdp = hasattr(browser, 'contexts') and browser.contexts
+        if is_cdp:
+            context = browser.contexts[0]
+            # Close extra tabs, reuse first page (avoids Akamai issues with new tabs)
+            for p in context.pages[1:]:
+                try:
+                    await p.close()
+                except Exception:
+                    pass
+            if context.pages:
+                page = context.pages[0]
+            else:
+                page = await context.new_page()
+        else:
+            context = await browser.new_context(
+                viewport={"width": 1440, "height": 900},
+                locale="ko-KR",
+                timezone_id="Asia/Seoul",
+                service_workers="block",
+            )
+            page = await context.new_page()
 
         try:
+            try:
+                from playwright_stealth import stealth_async
+                await stealth_async(page)
+            except ImportError:
+                pass
+
+            await page.goto(
+                "https://www.twayair.com/app/main",
+                wait_until="domcontentloaded",
+                timeout=int(self.timeout * 1000),
+            )
+            # Akamai sensor needs time to run — too short causes 403 on AJAX
+            await asyncio.sleep(5.0)
+
+            title = await page.title()
+            if "denied" in title.lower():
+                # Akamai interstitial — retry after waiting
+                logger.info("TwayAir: Akamai challenge on first load, retrying...")
+                await asyncio.sleep(5)
+                await page.goto(
+                    "https://www.twayair.com/app/main",
+                    wait_until="domcontentloaded",
+                    timeout=int(self.timeout * 1000),
+                )
+                await asyncio.sleep(8)
+                title = await page.title()
+                if "denied" in title.lower():
+                    logger.warning("TwayAir [CDP]: Akamai blocked after retry (title=%r)", title)
+                    return None
             # Dismiss popups
             await self._dismiss_popups_pw(page)
             await asyncio.sleep(0.5)
@@ -584,9 +430,6 @@ class TwayAirConnectorClient:
         except Exception as e:
             logger.warning("TwayAir [CDP]: error: %s", e)
             return None
-        finally:
-            if context:
-                await context.close()
 
     def _determine_currency(self, req: FlightSearchRequest, is_domestic: bool) -> str:
         if is_domestic:
