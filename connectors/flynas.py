@@ -1,21 +1,21 @@
 """
-Flynas hybrid scraper — CDP Chrome + persistent page + curl_cffi fast path.
+Flynas hybrid scraper — persistent headed Chrome + curl_cffi fast path.
 
 Flynas (IATA: XY) is a Saudi low-cost carrier.
 Website: booking.flynas.com — custom booking engine protected by Akamai WAF.
 
-Strategy (Enhanced Hybrid — curl_cffi fast path + CDP Chrome fallback):
-1. Launch REAL system Chrome (--remote-debugging-port, --user-data-dir).
-2. Connect via Playwright CDP. Keep ONE persistent page on booking.flynas.com.
-3. page.evaluate(fetch('/api/SessionCreate')) → establishes API session
-4. Extract Akamai cookies (_abck, bm_sz, ak_bmsc, session cookies) from warm page.
+Strategy (Headed Chrome + curl_cffi hybrid):
+1. Launch persistent HEADED Chrome (off-screen) — Akamai blocks headless.
+2. Keep ONE warm page on booking.flynas.com with valid Akamai session.
+3. page.evaluate(fetch('/api/SessionCreate')) → establishes API session.
+4. Extract Akamai cookies (_abck, bm_sz, ak_bmsc) from the warm page.
 5. FAST PATH: curl_cffi (impersonate="chrome131") POSTs to /api/FlightSearch
    with extracted cookies. ~0.5-1s when cookies are fresh (<5 min).
 6. FALLBACK: page.evaluate(fetch('/api/FlightSearch', body)) if curl_cffi
    fails (403 = Akamai blocked). ~2-4s warm.
-7. After successful in-browser search, refresh cookie cache from warm page.
+7. After successful in-browser search, refresh cookie cache.
 
-Real Chrome bypasses Akamai fingerprinting where bundled Chromium fails.
+Headed Chrome bypasses Akamai fingerprinting where headless/bundled Chromium fails.
 curl_cffi fast path works ~50% of the time but is 5-10x faster when it does.
 The page is kept warm with periodic pings (every 2 min) to keep Akamai fresh.
 """
@@ -27,8 +27,6 @@ import hashlib
 import json
 import logging
 import os
-import random
-import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
@@ -46,21 +44,10 @@ from models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from connectors.browser import stealth_args, stealth_position_arg, stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
-_VIEWPORTS = [
-    {"width": 1366, "height": 768},
-    {"width": 1440, "height": 900},
-    {"width": 1536, "height": 864},
-    {"width": 1920, "height": 1080},
-    {"width": 1280, "height": 720},
-]
-_DEBUG_PORT = 9449
-_USER_DATA_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".flynas_chrome_data"
-)
+_USER_DATA_DIR = os.path.join(os.environ.get("TEMP", "/tmp"), "flynas_pw_data")
 
 _IMPERSONATE = "chrome131"
 _COOKIE_MAX_AGE = 5 * 60  # Akamai _abck validity ~5-10 min; use 5 min as safe threshold
@@ -68,9 +55,8 @@ _KEEPALIVE_INTERVAL = 2 * 60  # Ping warm page every 2 min to keep Akamai cookie
 _SEARCH_URL = "https://booking.flynas.com/api/FlightSearch"
 
 _pw_instance = None
-_browser = None
-_chrome_proc = None
-_browser_lock: Optional[asyncio.Lock] = None
+_pw_context = None
+_context_lock: Optional[asyncio.Lock] = None
 # Warm page: keeps one page with Akamai cookies alive for fast reuse
 _warm_page = None
 _warm_page_lock: Optional[asyncio.Lock] = None
@@ -86,10 +72,10 @@ _keepalive_shutdown = False
 
 
 def _get_lock() -> asyncio.Lock:
-    global _browser_lock
-    if _browser_lock is None:
-        _browser_lock = asyncio.Lock()
-    return _browser_lock
+    global _context_lock
+    if _context_lock is None:
+        _context_lock = asyncio.Lock()
+    return _context_lock
 
 
 def _get_page_lock() -> asyncio.Lock:
@@ -99,30 +85,39 @@ def _get_page_lock() -> asyncio.Lock:
     return _warm_page_lock
 
 
-async def _get_browser():
-    """Launch real Chrome via CDP, or fall back to Playwright headed."""
-    global _pw_instance, _browser, _chrome_proc
+async def _get_context():
+    """Persistent headed Chrome context — off-screen to bypass Akamai headless detection."""
+    global _pw_instance, _pw_context
     lock = _get_lock()
     async with lock:
-        if _browser:
+        if _pw_context:
             try:
-                if _browser.is_connected():
-                    return _browser
+                _pw_context.pages
+                return _pw_context
             except Exception:
-                pass
+                _pw_context = None
 
-        try:
-            from connectors.browser import get_or_launch_cdp
-            _browser, _chrome_proc = await get_or_launch_cdp(_DEBUG_PORT, _USER_DATA_DIR)
-            logger.info("Flynas: Chrome ready via CDP (port %d)", _DEBUG_PORT)
-            return _browser
-        except Exception as e:
-            logger.warning("Flynas: CDP failed: %s, falling back to Playwright", e)
+        from playwright.async_api import async_playwright
 
-        from connectors.browser import launch_headed_browser
-        _browser = await launch_headed_browser()
-        logger.info("Flynas: Playwright browser launched (fallback)")
-        return _browser
+        os.makedirs(_USER_DATA_DIR, exist_ok=True)
+        _pw_instance = await async_playwright().start()
+
+        _pw_context = await _pw_instance.chromium.launch_persistent_context(
+            _USER_DATA_DIR,
+            channel="chrome",
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--window-position=-2400,-2400",
+                "--window-size=1366,768",
+            ],
+            viewport={"width": 1366, "height": 768},
+            locale="en-US",
+            timezone_id="Asia/Riyadh",
+            service_workers="block",
+        )
+        logger.info("Flynas: persistent headed Chrome context ready")
+        return _pw_context
 
 
 async def _extract_cookies_from_page(page) -> None:
@@ -196,13 +191,11 @@ async def _ensure_warm_page():
             except Exception:
                 _warm_ready = False
 
-        # Get browser and use first context's first page, or create one
-        browser = await _get_browser()
-        contexts = browser.contexts
-        if contexts and contexts[0].pages:
-            _warm_page = contexts[0].pages[0]
+        # Get persistent context and reuse/create a page
+        ctx = await _get_context()
+        if ctx.pages:
+            _warm_page = ctx.pages[0]
         else:
-            ctx = contexts[0] if contexts else await browser.new_context()
             _warm_page = await ctx.new_page()
 
         logger.info("Flynas: loading booking page (Akamai warm-up)...")
