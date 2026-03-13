@@ -57,6 +57,7 @@ _VIEWPORTS = [
     {"width": 1536, "height": 864},
     {"width": 1920, "height": 1080},
     {"width": 1280, "height": 720},
+    {"width": 1600, "height": 900},
 ]
 _LOCALES = ["en-US", "en-CA", "en-GB"]
 _TIMEZONES = [
@@ -286,7 +287,7 @@ class PorterConnectorClient:
         sess = curl_requests.Session(impersonate=_IMPERSONATE)
 
         for c in cookies:
-            domain = c.get("domain", "")
+            domain = c.get("domain") or ".flyporter.com"
             sess.cookies.set(c["name"], c["value"], domain=domain)
 
         results_url = _RESULTS_URL_TPL.format(
@@ -322,8 +323,8 @@ class PorterConnectorClient:
             logger.info("Porter: curl_cffi got Cloudflare challenge page")
             return None
 
-        # Check for meaningful content (flight results should have these markers)
-        if "Departs" not in html and "Select_BAF" not in html and "flyporter" not in html:
+        # Check for meaningful content — require a flight-specific marker
+        if "Departs" not in html and "Select_BAF" not in html:
             logger.info("Porter: curl_cffi response has no flight markers")
             return None
 
