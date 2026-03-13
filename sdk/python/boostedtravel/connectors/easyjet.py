@@ -1,30 +1,33 @@
 """
 easyJet CDP Chrome hybrid scraper — persistent browser + form navigation
-+ window.appData extraction.
++ API response interception.
 
 easyJet's API (/funnel/api/query) is behind Akamai WAF — requires browser-level
 session. Direct deep-link URLs redirect to homepage without a BFF session.
 The search must be initiated via the homepage form to trigger the BFF.
 
-Strategy (CDP Chrome + persistent browser):
+Strategy (CDP Chrome + response interception):
 1. Launch REAL system Chrome (--remote-debugging-port, --user-data-dir).
 2. Connect via Playwright CDP. Browser context persists across searches.
-3. Each search: new page → homepage → fill form → click search → extract appData.
-4. Parse window.appData.searchResult.journeyPairs → FlightOffers.
+3. Each search: new page → intercept → homepage → fill form → click search.
+4. Capture POST /funnel/api/query response via page.on("response").
+5. Parse journeyPairs → FlightOffers.
 
-Real Chrome bypasses Akamai fingerprinting where bundled Chromium fails.
-Persistent browser context means cookies/sessions carry over between searches,
-avoiding cold-start Akamai challenges after the first search.
+If Akamai flags the session (403), delete user-data-dir and restart Chrome
+with a clean profile. Real Chrome bypasses fingerprinting where bundled
+Chromium fails.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import random
 import re
+import shutil
 import subprocess
 import time
 from datetime import datetime
@@ -37,7 +40,7 @@ from boostedtravel.models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from boostedtravel.connectors.browser import stealth_args, stealth_position_arg, stealth_popen_kwargs
+from boostedtravel.connectors.browser import stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -139,18 +142,19 @@ async def _get_browser():
             except Exception:
                 pass
 
-            # Launch new Chrome
-            vp = random.choice(_VIEWPORTS)
+            # Launch new Chrome — HEADED (no --headless), Akamai blocks headless.
+            # Off-screen + minimised so it doesn't disturb the user.
             _chrome_proc = subprocess.Popen(
                 [
                     chrome_path,
                     f"--remote-debugging-port={_DEBUG_PORT}",
                     f"--user-data-dir={_USER_DATA_DIR}",
-                    f"--window-size={vp['width']},{vp['height']}",
+                    "--window-size=1366,768",
                     "--no-first-run",
                     "--no-default-browser-check",
-                    "--disable-background-networking",
-                    *stealth_position_arg(),
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-http2",
+                    "--window-position=-2400,-2400",
                     "about:blank",
                 ],
                 **stealth_popen_kwargs(),
@@ -171,14 +175,14 @@ async def _get_browser():
         # Fallback: regular Playwright headed
         try:
             _browser = await _pw_instance.chromium.launch(
-                headless=True,
+                headless=False,
                 channel="chrome",
-                args=["--disable-blink-features=AutomationControlled", *stealth_args()],
+                args=["--disable-blink-features=AutomationControlled", "--window-position=-2400,-2400"],
             )
         except Exception:
             _browser = await _pw_instance.chromium.launch(
-                headless=True,
-                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", *stealth_args()],
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--window-position=-2400,-2400"],
             )
         logger.info("easyJet: Playwright browser launched (headed fallback)")
         return _browser
@@ -217,8 +221,32 @@ async def _dismiss_cookies(page) -> None:
         pass
 
 
+async def _reset_chrome_profile():
+    """Kill Chrome and wipe user-data-dir to clear Akamai-flagged sessions."""
+    global _browser, _chrome_proc, _context
+    try:
+        if _browser:
+            await _browser.close()
+    except Exception:
+        pass
+    _browser = None
+    _context = None
+    if _chrome_proc:
+        try:
+            _chrome_proc.terminate()
+        except Exception:
+            pass
+        _chrome_proc = None
+    if os.path.isdir(_USER_DATA_DIR):
+        try:
+            shutil.rmtree(_USER_DATA_DIR)
+            logger.info("easyJet: deleted stale Chrome profile %s", _USER_DATA_DIR)
+        except Exception as e:
+            logger.warning("easyJet: failed to delete Chrome profile: %s", e)
+
+
 class EasyjetConnectorClient:
-    """easyJet CDP Chrome scraper — persistent browser + form + window.appData extraction."""
+    """easyJet CDP Chrome scraper — persistent browser + form + API response interception."""
 
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
@@ -228,12 +256,12 @@ class EasyjetConnectorClient:
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         """
-        Search easyJet using CDP Chrome persistent browser + homepage form.
+        Search easyJet using CDP Chrome + homepage form + API response interception.
 
         1. Get persistent browser context (cookies carry over)
-        2. Open new page → navigate to homepage
-        3. Fill search form (origin, destination, date)
-        4. Click "Show flights" → wait for window.appData.searchResult
+        2. Open new page, set up response interception for POST /funnel/api/query
+        3. Navigate to homepage, fill search form
+        4. Click "Show flights" → capture intercepted API response
         5. Parse journeyPairs → FlightOffers
         6. Close page (context stays alive for next search)
         """
@@ -241,6 +269,35 @@ class EasyjetConnectorClient:
 
         context = await _get_context()
         page = await context.new_page()
+
+        # Set up response interception BEFORE navigating
+        search_data: dict = {}
+        akamai_blocked = False
+
+        async def _on_response(response):
+            nonlocal akamai_blocked
+            url = response.url
+            if (
+                "/funnel/api/query" in url
+                and "auth-status" not in url
+                and "search/airports" not in url
+                and "/stats" not in url
+            ):
+                status = response.status
+                if status == 403:
+                    akamai_blocked = True
+                    logger.warning("easyJet: Akamai 403 on /funnel/api/query")
+                    return
+                if status == 200:
+                    try:
+                        data = await response.json()
+                        if isinstance(data, dict) and "journeyPairs" in data:
+                            search_data.update(data)
+                            logger.info("easyJet: captured search response (%d bytes)", len(await response.text()))
+                    except Exception as e:
+                        logger.warning("easyJet: failed to parse API response: %s", e)
+
+        page.on("response", _on_response)
 
         try:
             logger.info("easyJet: loading homepage for %s→%s", req.origin, req.destination)
@@ -277,52 +334,24 @@ class EasyjetConnectorClient:
             except Exception:
                 logger.warning("easyJet: didn't navigate to /buy/flights, URL: %s", page.url)
 
-            # Dismiss any overlays on the results page
-            await _dismiss_cookies(page)
-
-            # Wait for appData (new page — no stale data to clear)
+            # Wait for the intercepted API response (up to remaining timeout)
             remaining = max(self.timeout - (time.monotonic() - t0), 10)
-            try:
-                await page.wait_for_function(
-                    "() => window.appData && window.appData.searchResult "
-                    "&& window.appData.searchResult.journeyPairs",
-                    timeout=int(remaining * 1000),
-                )
-            except Exception:
-                logger.warning("easyJet: timed out waiting for searchResult after %.1fs (URL: %s)",
-                              time.monotonic() - t0, page.url)
+            deadline = time.monotonic() + remaining
+            while not search_data and not akamai_blocked and time.monotonic() < deadline:
+                await asyncio.sleep(0.5)
+
+            # If Akamai blocked us, nuke the profile and bail
+            if akamai_blocked:
+                logger.warning("easyJet: Akamai flagged session, clearing Chrome profile for next run")
+                await _reset_chrome_profile()
                 return self._empty(req)
 
-            data = await page.evaluate("""() => {
-                const sr = window.appData.searchResult;
-                if (!sr || !sr.journeyPairs) return null;
-                return { journeyPairs: sr.journeyPairs, metaData: sr.metaData };
-            }""")
-
-            if not data or not data.get("journeyPairs"):
-                logger.warning("easyJet: no journeyPairs in response")
+            if not search_data or not search_data.get("journeyPairs"):
+                logger.warning("easyJet: no journeyPairs in intercepted response")
                 return self._empty(req)
 
-            # Debug: log structure of journeyPairs
-            for i, pair in enumerate(data["journeyPairs"]):
-                ob = pair.get("outbound", {})
-                flights = ob.get("flights", {})
-                logger.debug(
-                    "easyJet: pair[%d] flight date keys: %s",
-                    i, list(flights.keys()),
-                )
-                for dk, fl in flights.items():
-                    avail_count = sum(
-                        1 for f in fl
-                        if not f.get("soldOut") and f.get("saleableStatus") == "AVAILABLE"
-                    )
-                    logger.debug(
-                        "easyJet: pair[%d] date=%s total=%d available=%d",
-                        i, dk, len(fl), avail_count,
-                    )
-
-            currency = data.get("metaData", {}).get("currencyCode", "GBP")
-            offers = self._parse_journey_pairs(data["journeyPairs"], req, currency)
+            currency = search_data.get("metaData", {}).get("currencyCode", "GBP")
+            offers = self._parse_journey_pairs(search_data["journeyPairs"], req, currency)
 
             elapsed = time.monotonic() - t0
             offers.sort(key=lambda o: o.price)
@@ -518,6 +547,9 @@ class EasyjetConnectorClient:
                     return False
 
             await asyncio.sleep(0.5)
+            # Dismiss date picker dropdown so it doesn't block "Show flights"
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.3)
             return True
         except Exception as e:
             logger.warning("easyJet: date error: %s", e)
