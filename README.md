@@ -1,6 +1,6 @@
 # BoostedTravel
 
-Agent-native flight search & booking. 400+ airlines, 53 direct LCC connectors, virtual interlining — straight from the terminal. Built for AI agents and developers.
+Agent-native flight search & booking. 400+ airlines, 53 ready-to-run airline connectors, virtual interlining — straight from the terminal. Built for AI agents and developers.
 
 **API Base URL:** `https://api.boostedchat.com`
 
@@ -143,18 +143,19 @@ The combo engine builds cross-airline round-trips by combining one-way fares fro
 ┌─────────────────────────────────────────────────────┐
 │  AI Agents / CLI / SDK / MCP Server                 │
 ├──────────────────┬──────────────────────────────────┤
-│  Local connectors │  Cloud API                      │
-│  (53 LCC scrapers │  (Duffel, Amadeus, Sabre,       │
-│   via Playwright) │   Travelport, Kiwi, etc.)       │
+│  Local connectors │  Enterprise Cloud API            │
+│  (53 airlines via │  (Amadeus, Duffel, Sabre,        │
+│   Playwright)     │   Travelport, Kiwi — contract-   │
+│                   │   only GDS/NDC providers)        │
 ├──────────────────┴──────────────────────────────────┤
 │            Merge + Dedup + Combo Engine              │
 │            (virtual interlining, currency norm)      │
 └─────────────────────────────────────────────────────┘
 ```
 
-## Local LCC Connectors (53 Airlines)
+## Local Airline Connectors (53 Airlines)
 
-The Python SDK includes 53 built-in connectors that scrape low-cost carriers directly — no API key needed for local search. Each connector uses one of three proven strategies:
+The Python SDK includes 53 production-grade airline connectors — not fragile scrapers, but maintained integrations that handle each airline's specific API pattern. No API key needed for local search. Each connector uses one of three proven strategies:
 
 | Strategy | How it works | Example airlines |
 |----------|-------------|-----------------|

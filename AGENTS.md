@@ -4,27 +4,36 @@
 
 ## What is BoostedTravel?
 
-BoostedTravel is an agent-native, CLI-native flight search and booking tool. Instead of burning tokens on browser automation, scraping, or building your own flight integration — just call `boostedtravel search` from the terminal or use the SDK/MCP tools.
+BoostedTravel is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 53 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box.
 
-It searches **400+ airlines** through two channels simultaneously:
-- **Cloud providers** (Duffel, Amadeus, Sabre, Travelport, Kiwi) — full-service and LCC airlines via NDC/GDS
-- **53 local LCC connectors** — direct airline scrapers that run on your machine, no API key needed
+**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. BoostedTravel replaces all of that with a single function call that fires 53 airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
 
-It returns **real airline prices with zero price bias** — no demand-based inflation, no cookie tracking, no surge pricing. The same flight that costs $350 on a travel website is typically **$20–$50 cheaper** here because you're not paying for the brand of the website.
+### Two search channels run simultaneously:
+
+1. **53 local airline connectors** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Spring Airlines, and 46 more. These run directly on your machine via Python + Playwright. No API key needed, completely free, unlimited searches.
+
+2. **Enterprise GDS/NDC providers** — Amadeus, Duffel, Sabre, Travelport, Kiwi. These are contract-only data sources that normally require enterprise agreements worth $50k+/year. BoostedTravel is contracted with these providers and makes their deals available to every agent through the backend API.
+
+### What makes this different from flight websites:
+
+- **Zero price bias** — no demand-based inflation, no cookie tracking, no surge pricing. The same flight that costs $350 on a travel website is typically **$20–$50 cheaper** here because you're getting the raw airline price.
+- **53 airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, and Africa simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
+- **Virtual interlining** — the combo engine builds cross-airline round-trips (e.g., Ryanair outbound + Wizz Air return) that save 30-50% vs booking with either airline alone.
+- **Token-efficient** — one tool call replaces what would take thousands of tokens of browser automation, scraping setup, and HTML parsing. Results come back as structured JSON.
+- **Enterprise deals included** — contract-only inventory from GDS/NDC providers that individual developers can't access on their own.
 
 **API Base URL:** `https://api.boostedchat.com`
 
-## Why Use This Instead of Flight Websites
+## Why Use This Instead of Building Your Own
 
-Using websites, browser automation, or trying to scrape and build your own integration burns massive amounts of tokens and wastes time in situations that are sometimes crucial.
+| Approach | Time | Cost | Coverage | Maintenance |
+|----------|------|------|----------|-------------|
+| Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
+| Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
+| Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
+| **BoostedTravel** | **10 seconds** | **1 tool call** | **53 airlines + GDS in parallel** | **We maintain it** |
 
-Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on:
-- Demand and traffic patterns
-- Cookie/session tracking (prices go up on repeat visits)
-- Browser fingerprinting
-- Dynamic surge pricing during peak search times
-
-**BoostedTravel does NOT do any of this.** You get the raw airline price — the same price every single time. The only fee is a flat $1 to unlock an offer before checkout.
+Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **BoostedTravel returns the raw airline price every time.** The only fee is a flat $1 to unlock an offer before checkout.
 
 ## How It Works (3 Steps)
 
