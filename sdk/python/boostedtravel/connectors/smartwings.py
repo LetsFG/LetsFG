@@ -33,14 +33,14 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
-from boostedtravel.models.flights import (
+from models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
-from boostedtravel.connectors.browser import stealth_args, stealth_popen_kwargs
+from connectors.browser import find_chrome, stealth_popen_kwargs, _launched_procs
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +59,11 @@ _TIMEZONES = [
 
 _MAX_ATTEMPTS = 2
 
-# ── CDP Chrome singleton ──────────────────────────────────────────────
+# ── CDP Chrome singleton (headed, no --headless) ──────────────────────
 _CDP_PORT = 9452
-_USER_DATA_DIR = os.path.join(os.environ.get("TEMP", "/tmp"), "smartwings_cdp_data")
-_CHROME_PATHS = [
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-]
+_USER_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", ".smartwings_chrome_profile"
+)
 
 _chrome_proc: subprocess.Popen | None = None
 _pw_instance = None
@@ -83,59 +78,74 @@ def _get_lock() -> asyncio.Lock:
     return _browser_lock
 
 
-def _find_chrome() -> str:
-    for p in _CHROME_PATHS:
-        if os.path.isfile(p):
-            return p
-    raise FileNotFoundError("Chrome not found")
-
-
-def _launch_chrome():
-    global _chrome_proc
-    if _chrome_proc and _chrome_proc.poll() is None:
-        return
-    os.makedirs(_USER_DATA_DIR, exist_ok=True)
-    chrome = _find_chrome()
-    _chrome_proc = subprocess.Popen(
-        [
-            chrome,
-            f"--remote-debugging-port={_CDP_PORT}",
-            f"--user-data-dir={_USER_DATA_DIR}",
-            "--disable-blink-features=AutomationControlled",
-            "--no-first-run", "--no-default-browser-check",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            *stealth_args(),
-        ],
-        **stealth_popen_kwargs(),
-    )
-    logger.info("Smartwings: Chrome launched on CDP port %d (pid=%d)", _CDP_PORT, _chrome_proc.pid)
-
-
 async def _get_browser():
-    """Shared real Chrome via CDP (launched once, reused across searches)."""
-    global _pw_instance, _cdp_browser
+    """Launch or reuse headed Chrome via CDP.
+
+    Cloudflare on smartwings.com blocks headless Chrome and pages in
+    Playwright-created contexts.  We launch Chrome HEADED (no --headless)
+    off-screen and use browser.contexts[0] (the default context).
+    """
+    global _pw_instance, _cdp_browser, _chrome_proc
     lock = _get_lock()
     async with lock:
-        if _cdp_browser and _cdp_browser.is_connected():
-            return _cdp_browser
-        _launch_chrome()
-        await asyncio.sleep(2)
-        from playwright.async_api import async_playwright
-        if not _pw_instance:
-            _pw_instance = await async_playwright().start()
-        for attempt in range(5):
+        if _cdp_browser:
             try:
-                _cdp_browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{_CDP_PORT}"
-                )
-                logger.info("Smartwings: connected to Chrome via CDP")
-                return _cdp_browser
+                if _cdp_browser.is_connected():
+                    return _cdp_browser
             except Exception:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-        raise RuntimeError(f"Smartwings: cannot connect to Chrome CDP on port {_CDP_PORT}")
+                pass
+            _cdp_browser = None
+
+        from playwright.async_api import async_playwright
+
+        # Try connecting to existing Chrome on the port
+        pw = None
+        try:
+            pw = await async_playwright().start()
+            _cdp_browser = await pw.chromium.connect_over_cdp(
+                f"http://127.0.0.1:{_CDP_PORT}"
+            )
+            _pw_instance = pw
+            logger.info("Smartwings: connected to existing Chrome on port %d", _CDP_PORT)
+            return _cdp_browser
+        except Exception:
+            if pw:
+                try:
+                    await pw.stop()
+                except Exception:
+                    pass
+
+        # Launch Chrome HEADED — no --headless (Cloudflare blocks headless)
+        chrome = find_chrome()
+        os.makedirs(_USER_DATA_DIR, exist_ok=True)
+        _chrome_proc = subprocess.Popen(
+            [
+                chrome,
+                f"--remote-debugging-port={_CDP_PORT}",
+                f"--user-data-dir={_USER_DATA_DIR}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-http2",
+                "--window-position=-2400,-2400",
+                "--window-size=1440,900",
+                "https://www.smartwings.com/en",
+            ],
+            **stealth_popen_kwargs(),
+        )
+        _launched_procs.append(_chrome_proc)
+        # Cloudflare Turnstile resolves when Chrome loads the page natively
+        # BEFORE CDP/Playwright attaches — give it time.
+        await asyncio.sleep(12.0)
+
+        pw = await async_playwright().start()
+        _pw_instance = pw
+        _cdp_browser = await pw.chromium.connect_over_cdp(
+            f"http://127.0.0.1:{_CDP_PORT}"
+        )
+        logger.info("Smartwings: Chrome launched headed on CDP port %d (pid %d)",
+                    _CDP_PORT, _chrome_proc.pid)
+        return _cdp_browser
 
 
 class SmartwingsConnectorClient:
@@ -163,15 +173,18 @@ class SmartwingsConnectorClient:
 
     async def _attempt_search(self, req: FlightSearchRequest, t0: float) -> FlightSearchResponse:
         browser = await _get_browser()
-        context = await browser.new_context(
-            viewport=random.choice(_VIEWPORTS),
-            locale=random.choice(_LOCALES),
-            timezone_id=random.choice(_TIMEZONES),
-            service_workers="block",
-        )
+
+        # Use default context to keep Cloudflare clearance cookies warm
+        context = browser.contexts[0] if browser.contexts else await browser.new_context()
+        # Clean up extra pages from previous searches
+        for p in context.pages[1:]:
+            try:
+                await p.close()
+            except Exception:
+                pass
         page = None
         try:
-            page = await context.new_page()
+            page = context.pages[0] if context.pages else await context.new_page()
 
             # ── Step 1: Load homepage & pass Cloudflare ──
             logger.info("Smartwings: loading homepage for %s->%s on %s",
@@ -181,17 +194,32 @@ class SmartwingsConnectorClient:
                 wait_until="domcontentloaded",
                 timeout=30000,
             )
-            # Wait for Cloudflare challenge to resolve
+            # Wait for Cloudflare challenge to resolve (cookies from first
+            # launch should make subsequent passes very fast)
+            cf_passed = False
+            for _ in range(15):  # up to ~30 s
+                title = await page.title()
+                if "just a moment" not in title.lower():
+                    cf_passed = True
+                    break
+                await asyncio.sleep(2)
+            if not cf_passed:
+                logger.warning("Smartwings: stuck on Cloudflare challenge")
+                return self._empty(req)
+            # Ensure form controls are present
             try:
                 await page.wait_for_selector(
-                    "input.route-from-text", timeout=15000,
+                    "input.route-from-text", timeout=10000,
                 )
             except Exception:
-                await asyncio.sleep(5)
-                # Check if still on Cloudflare
-                if "just a moment" in (await page.title()).lower():
-                    logger.warning("Smartwings: stuck on Cloudflare challenge")
-                    return self._empty(req)
+                pass
+            # Wait for dropdown airports to be populated by page JS
+            try:
+                await page.wait_for_selector(
+                    ".route-from-select [data-iata]", timeout=8000,
+                )
+            except Exception:
+                pass
 
             # ── Step 2: Cookie consent ──
             await self._dismiss_cookies(page)
@@ -287,15 +315,7 @@ class SmartwingsConnectorClient:
             return self._empty(req)
 
         finally:
-            if page:
-                try:
-                    await page.close()
-                except Exception:
-                    pass
-            try:
-                await context.close()
-            except Exception:
-                pass
+            pass  # Keep default context alive for cookie persistence
 
     # ── Airport selection via data-iata click ──────────────────────────
 
@@ -359,18 +379,23 @@ class SmartwingsConnectorClient:
 
     async def _dismiss_cookies(self, page) -> None:
         try:
+            # Smartwings uses CookieConsent lib with <a> tags, not <button>
             await page.evaluate("""() => {
-                const btns = document.querySelectorAll(
-                    '[class*="cookie"] button, [id*="cookie"] button, ' +
-                    '[class*="consent"] button, [class*="cc-"] button'
+                const accept = document.querySelector('.cc-allowall, .cc-btn.cc-allowall');
+                if (accept) { accept.click(); return; }
+                // Broader fallback: any element with agree/accept text
+                const els = document.querySelectorAll(
+                    '[class*="cc-"] a, [class*="cc-"] button, ' +
+                    '[class*="cookie"] a, [class*="cookie"] button, ' +
+                    '[class*="consent"] a, [class*="consent"] button'
                 );
-                for (const b of btns) {
-                    const t = b.textContent.toLowerCase();
+                for (const b of els) {
+                    const t = (b.textContent || '').toLowerCase();
                     if (t.includes('accept') || t.includes('agree') || t.includes('souhlas')) {
                         b.click(); return;
                     }
                 }
-                // Fallback: remove cookie overlays
+                // Last resort: remove consent overlays
                 document.querySelectorAll(
                     '[class*="cookie"], [id*="cookie"], [class*="consent"], [id*="consent"]'
                 ).forEach(el => { if (el.offsetHeight > 0) el.remove(); });
