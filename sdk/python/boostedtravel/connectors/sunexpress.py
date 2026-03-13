@@ -24,19 +24,17 @@ import logging
 import os
 import random
 import re
-import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
 
-from boostedtravel.models.flights import (
+from models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
-from boostedtravel.connectors.browser import stealth_args, stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -62,26 +60,10 @@ _TURKEY_AIRPORTS = {
     "TEQ", "OGU", "BZI", "SFQ",
 }
 
-# Month abbreviations used by the SunExpress calendar cells
-_MONTH_ABBRS = {
-    1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-    7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
-}
-
-# ── CDP Chrome singleton ──────────────────────────────────────────────
-_CDP_PORT = 9453
-_USER_DATA_DIR = os.path.join(os.environ.get("TEMP", "/tmp"), "sunexpress_cdp_data")
-_CHROME_PATHS = [
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-]
-
-_chrome_proc: subprocess.Popen | None = None
+# ── Persistent browser context (headed to bypass Radware) ─────────────
+_USER_DATA_DIR = os.path.join(os.environ.get("TEMP", "/tmp"), "sunexpress_pw_data")
 _pw_instance = None
-_cdp_browser = None
+_pw_context = None
 _browser_lock: Optional[asyncio.Lock] = None
 
 
@@ -92,59 +74,43 @@ def _get_lock() -> asyncio.Lock:
     return _browser_lock
 
 
-def _find_chrome() -> str:
-    for p in _CHROME_PATHS:
-        if os.path.isfile(p):
-            return p
-    raise FileNotFoundError("Chrome not found")
-
-
-def _launch_chrome():
-    global _chrome_proc
-    if _chrome_proc and _chrome_proc.poll() is None:
-        return
-    os.makedirs(_USER_DATA_DIR, exist_ok=True)
-    chrome = _find_chrome()
-    _chrome_proc = subprocess.Popen(
-        [
-            chrome,
-            f"--remote-debugging-port={_CDP_PORT}",
-            f"--user-data-dir={_USER_DATA_DIR}",
-            "--disable-blink-features=AutomationControlled",
-            "--no-first-run", "--no-default-browser-check",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            *stealth_args(),
-        ],
-        **stealth_popen_kwargs(),
-    )
-    logger.info("SunExpress: Chrome launched on CDP port %d (pid=%d)", _CDP_PORT, _chrome_proc.pid)
-
-
-async def _get_browser():
-    """Shared real Chrome via CDP (launched once, reused across searches)."""
-    global _pw_instance, _cdp_browser
+async def _get_context():
+    """
+    Persistent headed Chrome context — cookies survive across searches
+    so the Radware challenge only needs to pass once.
+    """
+    global _pw_instance, _pw_context
     lock = _get_lock()
     async with lock:
-        if _cdp_browser and _cdp_browser.is_connected():
-            return _cdp_browser
-        _launch_chrome()
-        await asyncio.sleep(2)
-        from playwright.async_api import async_playwright
-        if not _pw_instance:
-            _pw_instance = await async_playwright().start()
-        for attempt in range(5):
+        if _pw_context:
             try:
-                _cdp_browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{_CDP_PORT}"
-                )
-                logger.info("SunExpress: connected to Chrome via CDP")
-                return _cdp_browser
+                # Check if still alive
+                _pw_context.pages
+                return _pw_context
             except Exception:
-                if attempt < 4:
-                    await asyncio.sleep(1)
-        raise RuntimeError(f"SunExpress: cannot connect to Chrome CDP on port {_CDP_PORT}")
+                _pw_context = None
+
+        from playwright.async_api import async_playwright
+
+        os.makedirs(_USER_DATA_DIR, exist_ok=True)
+        _pw_instance = await async_playwright().start()
+
+        _pw_context = await _pw_instance.chromium.launch_persistent_context(
+            _USER_DATA_DIR,
+            channel="chrome",
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--window-position=-2400,-2400",
+                "--window-size=1366,768",
+            ],
+            viewport={"width": 1366, "height": 768},
+            locale="en-GB",
+            timezone_id="Europe/Berlin",
+            service_workers="block",
+        )
+        logger.info("SunExpress: persistent Chrome context ready")
+        return _pw_context
 
 
 class SunExpressConnectorClient:
@@ -158,13 +124,7 @@ class SunExpressConnectorClient:
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
-        browser = await _get_browser()
-        context = await browser.new_context(
-            viewport=random.choice(_VIEWPORTS),
-            locale=random.choice(_LOCALES),
-            timezone_id=random.choice(_TIMEZONES),
-            service_workers="block",
-        )
+        context = await _get_context()
 
         try:
             page = await context.new_page()
@@ -176,7 +136,20 @@ class SunExpressConnectorClient:
                 wait_until="domcontentloaded",
                 timeout=int(self.timeout * 1000),
             )
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(3.0)
+
+            # Handle Radware Bot Manager challenge (redirects to validate.perfdrive.com)
+            if "perfdrive" in page.url or "validate" in page.url:
+                logger.info("SunExpress: Radware challenge detected, waiting for auto-solve...")
+                try:
+                    await page.wait_for_url("**/sunexpress.com/**", timeout=20000)
+                    await asyncio.sleep(2.0)
+                    logger.info("SunExpress: Radware challenge passed, URL = %s", page.url)
+                except Exception:
+                    logger.warning("SunExpress: Radware challenge timeout (URL: %s)", page.url)
+                    return self._empty(req)
+
+            logger.info("SunExpress: page URL = %s", page.url)
 
             # ── Step 2: Dismiss cookie banner ──────────────────────────
             await self._dismiss_cookies(page)
@@ -188,18 +161,40 @@ class SunExpressConnectorClient:
                 logger.warning("SunExpress: form fill failed")
                 return self._empty(req)
 
-            # ── Step 4: Click search → navigate to results ─────────────
-            await self._click_search(page)
+            # ── Step 4: Navigate to results ─────────────────────────
+            # Form may auto-submit after date + Escape; try waiting first
             try:
-                await page.wait_for_url("**/booking/select/**", timeout=30000)
-                logger.info("SunExpress: navigated to results page")
+                await page.wait_for_url("**/booking/select/**", timeout=10000)
+                logger.info("SunExpress: auto-navigated to results page")
             except Exception:
-                # Check current URL — might already be on results
-                cur = page.url
-                logger.info("SunExpress: current URL after search: %s", cur)
-                if "/booking/select" not in cur:
-                    logger.warning("SunExpress: no navigation to results page")
-                    return self._empty(req)
+                # Handle Radware challenge if triggered by form submission
+                if "perfdrive" in page.url or "validate" in page.url:
+                    logger.info("SunExpress: Radware challenge on form submit, waiting...")
+                    try:
+                        await page.wait_for_url("**/sunexpress.com/**", timeout=20000)
+                        await asyncio.sleep(2.0)
+                        logger.info("SunExpress: Radware passed, URL = %s", page.url)
+                    except Exception:
+                        logger.warning("SunExpress: Radware challenge timeout on submit")
+                        return self._empty(req)
+                # If still not on results, try clicking search manually
+                if "/booking/select" not in page.url:
+                    logger.info("SunExpress: URL after form = %s", page.url)
+                    try:
+                        await self._click_search(page)
+                        await page.wait_for_url("**/booking/select/**", timeout=30000)
+                        logger.info("SunExpress: navigated to results page")
+                    except Exception:
+                        # Handle Radware again
+                        if "perfdrive" in page.url or "validate" in page.url:
+                            logger.info("SunExpress: Radware on search click, waiting...")
+                            try:
+                                await page.wait_for_url("**/booking/select/**", timeout=20000)
+                            except Exception:
+                                pass
+                        if "/booking/select" not in page.url:
+                            logger.warning("SunExpress: failed to reach results (URL: %s)", page.url)
+                            return self._empty(req)
 
             # ── Step 5: Wait for DOM prices to load ────────────────────
             remaining = max(self.timeout - (time.monotonic() - t0), 8)
@@ -223,6 +218,7 @@ class SunExpressConnectorClient:
             # ── Step 6: Extract flights from DOM ───────────────────────
             offers = await self._extract_from_dom(page, req)
             elapsed = time.monotonic() - t0
+            logger.info("SunExpress: extracted %d offers in %.1fs", len(offers), elapsed)
             if offers:
                 return self._build_response(offers, req, elapsed)
             return self._empty(req)
@@ -231,7 +227,10 @@ class SunExpressConnectorClient:
             logger.error("SunExpress Playwright error: %s", e)
             return self._empty(req)
         finally:
-            await context.close()
+            try:
+                await page.close()
+            except Exception:
+                pass
 
     # ── Cookie dismissal ───────────────────────────────────────────────
 
@@ -265,91 +264,88 @@ class SunExpressConnectorClient:
         await self._set_one_way(page)
         await asyncio.sleep(0.3)
 
-        # 2. Fill origin — click "From" button → combobox → option
+        # 2. Fill origin — the destination picker opens automatically after selection
         ok = await self._fill_airport(page, "From", req.origin)
         if not ok:
             logger.warning("SunExpress: origin fill failed for %s", req.origin)
             return False
-
-        # Close any overlay (origin picker may stay open, blocking To button)
-        await page.keyboard.press("Escape")
         await asyncio.sleep(1)
 
-        # 3. Fill destination
+        # 3. Fill destination — picker should already be open from origin selection
         ok = await self._fill_airport(page, "To", req.destination)
         if not ok:
             logger.warning("SunExpress: destination fill failed for %s", req.destination)
             return False
         await asyncio.sleep(0.8)
 
-        # 4. Fill date
+        # 4. Fill date — calendar opens automatically after destination
         ok = await self._fill_date(page, req)
         if not ok:
             logger.warning("SunExpress: date fill failed")
             return False
+
+        # 5. Dismiss passengers dialog if open (opens after date selection)
+        await page.keyboard.press("Escape")
+        await asyncio.sleep(1.0)
+
         return True
 
     async def _fill_airport(self, page, label: str, iata: str) -> bool:
         """Click the airport button, type IATA in the combobox, click the option.
 
-        SunExpress has two picker styles:
-          - Origin: single-panel, airports shown directly as role="option"
-          - Destination: dual-panel, countries on left (role="option") +
-            airport buttons on right (button.station-control-list_item_link)
+        SunExpress uses a two-panel picker:
+          - Left: country listbox (filters when typing)
+          - Right: airport listbox with options like "Antalya ( Türkiye ) AYT"
+        Key: must use press_sequentially (not fill) to keep the dropdown open.
+        After selecting origin, the destination picker opens automatically.
         """
         try:
-            # Always click the specific button to ensure the right picker is open
-            btn = page.locator(f'button.control_field_button:has-text("{label}")')
-            if await btn.count() > 0:
-                await btn.first.click(timeout=5000)
-                logger.info("SunExpress: clicked %s button", label)
-            else:
-                btn2 = page.locator(f'button:has-text("{label}")').first
-                if await btn2.count() > 0:
-                    await btn2.click(timeout=5000)
-                    logger.info("SunExpress: clicked %s button (fallback)", label)
-                else:
-                    logger.warning("SunExpress: no %s button found", label)
-                    return False
-            await asyncio.sleep(1)
-
-            # Fill the combobox with the IATA code
+            # Check if the combobox is already visible (destination auto-opens after origin)
             cb = page.get_by_role("combobox").first
+            cb_visible = False
             try:
-                await cb.wait_for(state="visible", timeout=3000)
+                await cb.wait_for(state="visible", timeout=1500)
+                cb_visible = True
             except Exception:
-                logger.warning("SunExpress: combobox not visible for %s/%s", label, iata)
-                return False
+                pass
 
-            await cb.fill(iata)
-            await asyncio.sleep(2)
+            if not cb_visible:
+                # Click the From/To button to open the picker
+                btn = page.get_by_role("button", name=re.compile(
+                    rf"^{re.escape(label)}\b", re.IGNORECASE
+                )).first
+                if await btn.count() > 0:
+                    await btn.click(timeout=5000)
+                    logger.info("SunExpress: clicked %s button", label)
+                else:
+                    btn2 = page.locator(f'button:has-text("{label}")').first
+                    if await btn2.count() > 0:
+                        await btn2.click(timeout=5000)
+                        logger.info("SunExpress: clicked %s button (fallback)", label)
+                    else:
+                        logger.warning("SunExpress: no %s button found", label)
+                        return False
+                await asyncio.sleep(1)
 
-            # Strategy 1: Airport button in the station-control-list (destination style)
-            # These are <button class="station-control-list_item_link"> with IATA text
-            airport_btn = page.locator(
-                'button.station-control-list_item_link'
-            ).filter(has_text=re.compile(rf"\b{re.escape(iata)}\b", re.IGNORECASE)).first
-            if await airport_btn.count() > 0:
-                await airport_btn.click(timeout=3000)
-                logger.info("SunExpress: selected %s for %s (airport button)", iata, label)
-                return True
+                # Re-acquire combobox after opening
+                cb = page.get_by_role("combobox").first
+                try:
+                    await cb.wait_for(state="visible", timeout=3000)
+                except Exception:
+                    logger.warning("SunExpress: combobox not visible for %s/%s", label, iata)
+                    return False
 
-            # Strategy 2: role="option" with exact IATA match (origin style)
+            # Type IATA code character-by-character in the combobox
+            await cb.press_sequentially(iata, delay=80)
+            await asyncio.sleep(1.5)
+
+            # Click the matching airport option (format: "CityName ( Country ) IATA")
             opt = page.get_by_role("option", name=re.compile(
                 rf"\b{re.escape(iata)}\b", re.IGNORECASE
             )).first
             if await opt.count() > 0:
                 await opt.click(timeout=3000)
-                logger.info("SunExpress: selected %s for %s (option)", iata, label)
-                return True
-
-            # Strategy 3: any listitem with IATA text
-            li = page.locator('li.station-control-list_item').filter(
-                has_text=re.compile(rf"\b{re.escape(iata)}\b", re.IGNORECASE)
-            ).first
-            if await li.count() > 0:
-                await li.click(timeout=3000)
-                logger.info("SunExpress: selected %s for %s (listitem)", iata, label)
+                logger.info("SunExpress: selected %s for %s", iata, label)
                 return True
 
             logger.warning("SunExpress: no option found for %s/%s", label, iata)
@@ -368,183 +364,132 @@ class SunExpressConnectorClient:
 
     async def _fill_date(self, page, req: FlightSearchRequest) -> bool:
         target = req.date_from
-        target_month_abbr = _MONTH_ABBRS[target.month]
-        target_month_full = target.strftime("%b %Y")  # "Apr 2026"
-        target_day = target.day
+        # Gridcell aria-labels use "D-M-YYYY" format (e.g. "15-4-2026")
+        gridcell_label = f"{target.day}-{target.month}-{target.year}"
+        # CSS attribute selector — avoids Playwright visibility checks on
+        # gridcells that use visibility:hidden with visible children.
+        selector = f'[role="gridcell"][aria-label="{gridcell_label}"]'
 
         try:
-            # Open the date picker
-            date_field = page.locator(
-                '.ibe-search_date-control, .date-control, input-date-picker-custom'
-            ).first
-            if await date_field.count() > 0:
-                await date_field.click(timeout=3000)
-                await asyncio.sleep(0.8)
+            await asyncio.sleep(1)
 
-            # Navigate calendar until target month is visible (max 12 clicks)
+            # If calendar not open yet, try clicking the departure date field
+            if await page.locator(selector).count() == 0:
+                for fallback in [
+                    page.get_by_role("textbox", name=re.compile(r"departure date", re.IGNORECASE)).first,
+                    page.locator('[class*="date-control"], [class*="departure"]').first,
+                ]:
+                    if await fallback.count() > 0:
+                        await fallback.click(timeout=3000)
+                        logger.info("SunExpress: clicked departure date field")
+                        await asyncio.sleep(1)
+                        break
+
+            # Navigate months until the target cell appears (max 12 clicks)
             for _ in range(12):
-                visible = await page.evaluate("""(targetMonth) => {
-                    const headings = document.querySelectorAll(
-                        '[class*="cal"] [class*="heading"], [class*="cal"] [class*="title"], ' +
-                        '[class*="month-name"], [class*="cal"] h3, [class*="cal"] h4'
-                    );
-                    for (const h of headings) {
-                        if (h.offsetHeight > 0 && h.textContent.includes(targetMonth)) return true;
-                    }
-                    // Also check the full calendar text for "Apr 2026" style headings
-                    const calText = document.querySelector('[class*="calendar"]')?.textContent || '';
-                    return calText.includes(targetMonth);
-                }""", target_month_full)
-
-                if visible:
+                if await page.locator(selector).count() > 0:
                     break
-
-                # Click next arrow
-                next_btn = page.locator(
-                    '[class*="next"]:visible, [aria-label*="next" i]:visible'
-                ).first
+                next_btn = page.get_by_role("button", name="Next month")
                 if await next_btn.count() > 0:
                     await next_btn.click(timeout=2000)
                     await asyncio.sleep(0.4)
                 else:
                     break
 
-            # Click the exact day cell in the correct month via JS
-            clicked = await page.evaluate("""(args) => {
-                const [monthAbbr, day] = args;
-                // SunExpress calendar cells have text like "Apr  15" with month prefix
-                const cells = document.querySelectorAll(
-                    '[role="gridcell"], [class*="cal__day"], td[class*="day"]'
-                );
-                // First pass: find cells whose text content matches "MonthAbbr <space> day"
-                for (const cell of cells) {
-                    if (cell.offsetHeight === 0) continue;
-                    const text = cell.textContent.trim();
-                    // Match patterns like "Apr  15", "Apr 15", or just checking
-                    // if the cell belongs to the right month section
-                    if (text.includes(monthAbbr) && text.includes(String(day))) {
-                        // Verify it's exactly our day (not day 15 in "Apr 1  5")
-                        const nums = text.match(/\\d+/g);
-                        if (nums && nums.includes(String(day))) {
-                            cell.click();
-                            return true;
-                        }
-                    }
-                }
-                // Second pass: find by navigating month sections in the calendar
-                const calMonths = document.querySelectorAll('[class*="v7-cal__month"], [class*="month"]');
-                for (const monthEl of calMonths) {
-                    const heading = monthEl.querySelector('[class*="heading"], [class*="title"], h3, h4');
-                    if (!heading || !heading.textContent.includes(monthAbbr)) continue;
-                    const dayCells = monthEl.querySelectorAll('[role="gridcell"], td[class*="day"], [class*="cal__day"]');
-                    for (const dc of dayCells) {
-                        if (dc.offsetHeight === 0) continue;
-                        const nums = dc.textContent.trim().match(/\\d+/g);
-                        if (nums && nums.includes(String(day))) {
-                            dc.click();
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }""", [target_month_abbr, target_day])
-
-            if clicked:
+            # Click the target day cell — force=True bypasses visibility:hidden
+            cell = page.locator(selector)
+            if await cell.count() > 0:
+                await cell.first.click(force=True, timeout=3000)
                 logger.info("SunExpress: selected date %s", target.strftime("%Y-%m-%d"))
                 await asyncio.sleep(0.5)
                 return True
 
-            # Last resort: gridcell with exact name
-            gc = page.get_by_role("gridcell", name=str(target_day)).first
-            if await gc.count() > 0:
-                await gc.click(timeout=3000)
-                await asyncio.sleep(0.5)
-                return True
-
+            logger.warning("SunExpress: gridcell %s not found in calendar", gridcell_label)
             return False
         except Exception as e:
             logger.warning("SunExpress: date error: %s", e)
             return False
 
     async def _click_search(self, page) -> None:
-        btn = page.get_by_role(
-            "button", name=re.compile(r"^Search flights$", re.IGNORECASE)
-        )
+        btn = page.get_by_role("button", name="Search flights")
         if await btn.count() > 0:
             await btn.first.click(timeout=5000)
             logger.info("SunExpress: clicked Search flights")
-            return
-        btn2 = page.get_by_role(
-            "button", name=re.compile(r"Search", re.IGNORECASE)
-        )
-        if await btn2.count() > 0:
-            await btn2.first.click(timeout=5000)
             return
         await page.locator("button[type='submit']").first.click(timeout=3000)
 
     # ── DOM extraction (results page) ──────────────────────────────────
 
     async def _extract_from_dom(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
-        """Parse flight cards from the SunExpress booking/select results page."""
+        """Parse flight cards from the SunExpress booking/select results page.
+
+        Each flight is an <article> with a button whose accessible name contains:
+        "Select flight ... Departure: HH:MM CityName IATA to Return: HH:MM CityName IATA
+         Duration: Xh Ym Nonstop|N stop ..."
+        Price is in a sibling element with "£ XX .YY" or "€ XX .YY" format.
+        """
         raw = await page.evaluate(r"""() => {
             const results = [];
-            const body = document.body.innerText;
+            const articles = document.querySelectorAll('article');
+            for (const art of articles) {
+                // Use the full article text — the button aria-label only has
+                // departure info; arrival, duration, price are in sibling elements.
+                const text = art.textContent || '';
+                if (!text.includes('Departure:')) continue;
 
-            // Extract currency from the page (£, €, TRY, etc.)
-            const currMatch = body.match(/(?:GBP|EUR|USD|TRY|PLN|CHF|SEK|NOK|DKK)/);
-            const currency = currMatch ? currMatch[0] : 'EUR';
+                // Normalize non-breaking spaces (\xa0) to regular spaces
+                const t = text.replace(/\u00a0/g, ' ');
 
-            // Split body text into flight card sections
-            // Each flight starts with "Select flight" or "Best price"
-            // Pattern: "Departure: HH:MM ... Return: HH:MM ... Duration: Xh Ym ... From PRICE"
-            const flightPattern = /Departure:\s*(\d{1,2}:\d{2})\s*.*?(\w{3})\s+(\w{3})\s*.*?(?:Return|Arrival):\s*(\d{1,2}:\d{2})\s*.*?(\w{3})\s+(\w{3})\s*.*?Duration:\s*([\dhm\s]+?)(?:Nonstop|(\d+)\s*stop).*?(?:From\s*)?(?:[£€$]|GBP|EUR|USD|TRY)?\s*([\d,.]+)/gs;
+                // Extract departure/arrival times
+                const depMatch = t.match(/Departure:\s*(\d{1,2}:\d{2})/);
+                const arrMatch = t.match(/(?:Return|Arrival):\s*(\d{1,2}:\d{2})/);
+                if (!depMatch || !arrMatch) continue;
 
-            let m;
-            while ((m = flightPattern.exec(body)) !== null) {
-                const depTime = m[1];
-                const depIata = m[3];   // 3-letter code after city name
-                const arrTime = m[4];
-                const arrIata = m[6];
-                const durText = m[7].trim();
-                const stops = m[8] ? parseInt(m[8]) : 0;
-                const priceStr = m[9].replace(/,/g, '');
-                const price = parseFloat(priceStr);
+                // Extract duration
+                const durMatch = t.match(/Duration:\s*([\dhm\s]+)/);
+                let durationSec = 0;
+                if (durMatch) {
+                    const h = durMatch[1].match(/(\d+)\s*h/);
+                    const m = durMatch[1].match(/(\d+)\s*m/);
+                    durationSec = (h ? parseInt(h[1]) * 3600 : 0) + (m ? parseInt(m[1]) * 60 : 0);
+                }
+
+                // Extract stops from button aria-label (more reliable)
+                const btn = art.querySelector('button[class*="trigger"]') || art.querySelector('button');
+                const label = btn ? (btn.getAttribute('aria-label') || '') : '';
+                const stopMatch = label.match(/(\d+)\s*stop/);
+                const nonstop = label.toLowerCase().includes('nonstop') || t.toLowerCase().includes('nonstop');
+                const stops = stopMatch ? parseInt(stopMatch[1]) : (nonstop ? 0 : -1);
+
+                // Extract IATA codes from text (3-letter uppercase near airport names)
+                const iataMatches = t.match(/\b([A-Z]{3})\b/g) || [];
+                // Filter to likely IATA codes (appear after city names)
+                const depIata = iataMatches[0] || '';
+                const arrIata = iataMatches.length > 1 ? iataMatches[1] : '';
+
+                // Extract flight number (XQ followed by digits)
+                const flightNo = (t.match(/\b(XQ\s*\d{3,4})\b/) || ['', ''])[1].replace(/\s/g, '');
+
+                // Extract price — look for currency symbol/code followed by amount
+                const priceText = art.textContent || '';
+                const currSymbol = priceText.match(/[£€$]/);
+                const currCode = priceText.match(/(?:GBP|EUR|USD|TRY)/);
+                let currency = currCode ? currCode[0]
+                    : currSymbol ? (currSymbol[0] === '£' ? 'GBP' : currSymbol[0] === '€' ? 'EUR' : 'USD')
+                    : 'EUR';
+
+                // Price with possible space before decimal: "96 .00", "82.69", "82 .69"
+                const pMatch = priceText.match(/(?:[£€$]|GBP|EUR|USD|TRY)\s*([\d,]+)\s*\.?\s*(\d{2})/);
+                if (!pMatch) continue;
+                const price = parseFloat(pMatch[1].replace(/,/g, '') + '.' + pMatch[2]);
                 if (isNaN(price) || price <= 0) continue;
 
-                // Parse duration to seconds
-                const hMatch = durText.match(/(\d+)\s*h/);
-                const mMatch = durText.match(/(\d+)\s*m/);
-                const hours = hMatch ? parseInt(hMatch[1]) : 0;
-                const mins = mMatch ? parseInt(mMatch[1]) : 0;
-                const durationSec = hours * 3600 + mins * 60;
-
                 results.push({
-                    depTime, arrTime,
-                    depIata, arrIata,
-                    duration: durationSec,
-                    stops, price, currency
+                    depTime: depMatch[1], arrTime: arrMatch[1],
+                    depIata, arrIata, flightNo,
+                    duration: durationSec, stops, price, currency
                 });
             }
-
-            // Fallback: simpler extraction if regex didn't match
-            if (results.length === 0) {
-                const times = (body.match(/\b([01]\d|2[0-3]):[0-5]\d\b/g) || []);
-                const prices = (body.match(/(?:[£€$]\s*)([\d,.]+)/g) || [])
-                    .map(p => parseFloat(p.replace(/[£€$\s,]/g, '')))
-                    .filter(p => p > 5 && p < 50000);
-                // Pair times and prices
-                for (let i = 0; i < Math.min(Math.floor(times.length / 2), prices.length); i++) {
-                    results.push({
-                        depTime: times[i * 2],
-                        arrTime: times[i * 2 + 1],
-                        depIata: '', arrIata: '',
-                        duration: 0, stops: 0,
-                        price: prices[i],
-                        currency: currency
-                    });
-                }
-            }
-
             return results;
         }""")
 
@@ -565,12 +510,12 @@ class SunExpressConnectorClient:
             dep_iata = flight.get("depIata") or req.origin
             arr_iata = flight.get("arrIata") or req.destination
             duration_sec = flight.get("duration", 0)
-            stops = flight.get("stops", 0)
+            stops = max(flight.get("stops", 0), 0)
             currency = flight.get("currency", req.currency or "EUR")
+            flight_no = flight.get("flightNo", "")
 
             dep_dt = self._parse_dt(f"{date_str}T{dep_time}")
             arr_dt = self._parse_dt(f"{date_str}T{arr_time}")
-            # Handle overnight flights
             if arr_dt <= dep_dt:
                 from datetime import timedelta
                 arr_dt = arr_dt + timedelta(days=1)
@@ -580,7 +525,7 @@ class SunExpressConnectorClient:
 
             segment = FlightSegment(
                 airline="XQ", airline_name="SunExpress",
-                flight_no="",
+                flight_no=flight_no,
                 origin=dep_iata, destination=arr_iata,
                 departure=dep_dt, arrival=arr_dt,
                 cabin_class="M",
