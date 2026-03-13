@@ -133,7 +133,7 @@ class BatikAirConnectorClient:
             # Wait for Cloudflare challenge + page load
             try:
                 await page.wait_for_selector(
-                    "input[role='combobox']",
+                    "input.ant-select-selection-search-input, input[role='combobox']",
                     timeout=25000,
                 )
             except Exception:
@@ -148,10 +148,12 @@ class BatikAirConnectorClient:
             await asyncio.sleep(0.3)
             await self._remove_overlays(page)
 
-            # Wait for the full form to render (need 3+ comboboxes: misc + origin + destination)
+            # Wait for the full form to render (need 2+ Ant Design select inputs)
             for _ in range(15):
-                count = await page.locator("input[role='combobox']").count()
-                if count >= 3:
+                count = await page.locator(
+                    "input.ant-select-selection-search-input, .ant-select"
+                ).count()
+                if count >= 2:
                     break
                 await asyncio.sleep(0.5)
             # Origin
@@ -249,25 +251,20 @@ class BatikAirConnectorClient:
     # ── Airport fill (Ant Design Select combobox) ──
 
     async def _fill_airport(self, page, iata: str, is_origin: bool) -> bool:
-        """Fill Ant Design Select combobox — force-click, keyboard type, JS-click option."""
+        """Fill Ant Design Select combobox — force-click, keyboard type, JS-click option.
+
+        Uses context-aware identification (aria-labels, placeholder, parent containers)
+        to locate the correct origin/destination Ant Design Select, then types the IATA
+        code and picks the matching dropdown option via ``.ant-select-item-option[title]``.
+        """
         try:
-            # The form has 3+ comboboxes: index 0 is a non-airport control,
-            # index 1 = origin, index 2 = destination (discovered empirically)
-            all_combos = page.locator("input[role='combobox']")
-            count = await all_combos.count()
+            # Strategy 1: Find Ant Design select inputs via class selector
+            cb_input = await self._find_ant_select_input(page, is_origin)
 
-            # Find the right combobox by checking parent context
-            target_idx = None
-            if count >= 3:
-                # index 1 = origin, index 2 = destination
-                target_idx = 1 if is_origin else 2
-            elif count >= 2:
-                target_idx = 0 if is_origin else 1
-            else:
-                logger.debug("BatikAir: only %d comboboxes found", count)
+            if not cb_input:
+                logger.debug("BatikAir: no Ant Design select found for %s",
+                             "origin" if is_origin else "destination")
                 return False
-
-            cb_input = all_combos.nth(target_idx)
 
             # Force-click to open dropdown (bypasses Ant Design overlay interception)
             await cb_input.click(force=True, timeout=5000)
@@ -282,17 +279,29 @@ class BatikAirConnectorClient:
             await cb_input.type(iata, delay=100)
             await asyncio.sleep(1.5)
 
-            # JS-click the dropdown option by title attribute
+            # JS-click the dropdown option using Ant Design v4/v5 selectors
             clicked = await page.evaluate("""(iata) => {
-                const opts = document.querySelectorAll('[title]');
-                for (const opt of opts) {
+                // Ant Design v4/v5: .ant-select-item-option with title attribute
+                const antOpts = document.querySelectorAll(
+                    '.ant-select-item-option[title], .ant-select-item[title]'
+                );
+                for (const opt of antOpts) {
+                    const t = opt.getAttribute('title') || '';
+                    if (t.includes('(' + iata + ')') || t.includes(iata)) {
+                        opt.click();
+                        return t;
+                    }
+                }
+                // Broader title-based fallback
+                const titled = document.querySelectorAll('[title]');
+                for (const opt of titled) {
                     const t = opt.title || '';
                     if (t.includes('(' + iata + ')')) {
                         opt.click();
                         return t;
                     }
                 }
-                // Try option role elements
+                // Try role="option" elements (Ant Design accessible markup)
                 const options = document.querySelectorAll('[role="option"]');
                 for (const opt of options) {
                     if (opt.textContent.includes(iata)) {
@@ -316,6 +325,91 @@ class BatikAirConnectorClient:
         except Exception as e:
             logger.debug("BatikAir: airport fill error for %s: %s", iata, e)
             return False
+
+    async def _find_ant_select_input(self, page, is_origin: bool):
+        """Locate the correct Ant Design Select input for origin or destination.
+
+        Uses multiple strategies: aria-labels/placeholder text for context-aware
+        matching, then falls back to positional indexing of ``.ant-select``
+        containers or generic ``input[role='combobox']`` elements.
+        """
+        label = "origin" if is_origin else "destination"
+
+        # Strategy 1: Ant Design search inputs with contextual identification via JS
+        idx = await page.evaluate("""(isOrigin) => {
+            const inputs = document.querySelectorAll('input.ant-select-selection-search-input');
+            if (inputs.length === 0) return -1;
+
+            // Try identifying by aria-label, placeholder, or ancestor text
+            const keywords = isOrigin
+                ? ['from', 'origin', 'depart', 'leaving']
+                : ['to', 'destination', 'arriv', 'going'];
+
+            for (let i = 0; i < inputs.length; i++) {
+                const inp = inputs[i];
+                const aria = (inp.getAttribute('aria-label') || '').toLowerCase();
+                const ph = (inp.getAttribute('placeholder') || '').toLowerCase();
+                // Check ancestor labels up to 4 levels
+                let ancestor = inp.parentElement;
+                let ancestorText = '';
+                for (let d = 0; d < 4 && ancestor; d++) {
+                    ancestorText += ' ' + (ancestor.getAttribute('aria-label') || '')
+                        + ' ' + (ancestor.getAttribute('data-testid') || '')
+                        + ' ' + (ancestor.className || '');
+                    ancestor = ancestor.parentElement;
+                }
+                ancestorText = ancestorText.toLowerCase();
+                const combined = aria + ' ' + ph + ' ' + ancestorText;
+
+                for (const kw of keywords) {
+                    if (combined.includes(kw)) return i;
+                }
+            }
+
+            // Fallback: positional — first Ant Design select = origin, second = destination
+            if (inputs.length >= 2) return isOrigin ? 0 : 1;
+            if (inputs.length === 1 && isOrigin) return 0;
+            return -1;
+        }""", is_origin)
+
+        if idx >= 0:
+            loc = page.locator("input.ant-select-selection-search-input").nth(idx)
+            if await loc.count() > 0:
+                logger.debug("BatikAir: found ant-select-search-input[%d] for %s", idx, label)
+                return loc
+
+        # Strategy 2: Click the .ant-select-selector container to activate
+        # the hidden search input, then target the now-visible input
+        selectors = page.locator(".ant-select-selector")
+        sel_count = await selectors.count()
+        if sel_count >= 2:
+            target = 0 if is_origin else 1
+            try:
+                await selectors.nth(target).click(force=True, timeout=3000)
+                await asyncio.sleep(0.3)
+                active = page.locator("input.ant-select-selection-search-input:focus")
+                if await active.count() > 0:
+                    logger.debug("BatikAir: activated ant-select-selector[%d] for %s",
+                                 target, label)
+                    return active.first
+            except Exception:
+                pass
+
+        # Strategy 3: Generic input[role='combobox'] with positional indexing (legacy)
+        all_combos = page.locator("input[role='combobox']")
+        count = await all_combos.count()
+        if count >= 3:
+            target_idx = 1 if is_origin else 2
+        elif count >= 2:
+            target_idx = 0 if is_origin else 1
+        elif count == 1 and is_origin:
+            target_idx = 0
+        else:
+            return None
+
+        logger.debug("BatikAir: falling back to combobox index %d/%d for %s",
+                      target_idx, count, label)
+        return all_combos.nth(target_idx)
 
     # ── Date picker (Ant Design Calendar) ──
 
