@@ -1,23 +1,25 @@
 """
-Lion Air hybrid scraper — GoQuo direct API (primary) + Playwright CDP fallback.
+Lion Air hybrid scraper — direct API (primary) + Playwright CDP fallback.
 
 Lion Air (IATA: JT) is Indonesia's largest private airline group,
-operating domestic and regional flights across SE Asia. Uses GoQuo
-booking platform at booking.lionair.co.id.
+operating domestic and regional flights across SE Asia. Uses an IBE2
+booking platform at secure2.lionair.co.id (previously booking.lionair.co.id
+which is now defunct — ERR_CONNECTION_REFUSED).
 
 Strategy (hybrid — direct API first, browser fallback):
-1. (Primary) curl_cffi POST to GoQuo search/availability endpoint (~1-3s).
+1. (Primary) curl_cffi POST to search/availability endpoints (~1-3s).
+   Try multiple base URLs (secure2.lionair.co.id, www.lionair.co.id).
    If direct API returns 403/challenge, use cookie-farm: Playwright generates
-   Cloudflare cookies, curl_cffi reuses them for subsequent API calls.
+   cookies, curl_cffi reuses them for subsequent API calls.
    Cookies refreshed every ~20 minutes.
-2. (Fallback) Playwright CDP Chrome — navigate to lionair.co.id/en homepage,
-   fill search form, intercept GoQuo API responses, parse JSON.
+2. (Fallback) Playwright — navigate to secure2.lionair.co.id/lionairibe2/
+   OnlineBooking.aspx with pre-filled search params, intercept API responses
+   or scrape DOM for flight results.
 
-GoQuo API details (discovered Mar 2026):
-  POST https://booking.lionair.co.id/api/search (or /availability)
-  Body: {origin, destination, departureDate, adults, children, infants, ...}
-  Response: JSON with outboundFlights/journeys/flights array
-  Cloudflare protection: basic (not Akamai/Kasada)
+Booking URL deep-link (discovered Mar 2026):
+  https://secure2.lionair.co.id/lionairibe2/OnlineBooking.aspx
+    ?depart=CGK&dest.1=DPS&trip_type=one+way
+    &date.0=15Jun&date.1=&persons.0=1&persons.1=0&persons.2=0
 
 Result: ~1-3s per search (API) instead of ~5-15s with full Playwright.
 """
@@ -62,9 +64,18 @@ _TIMEZONES = [
     "Asia/Singapore", "Asia/Kuala_Lumpur",
 ]
 
-_GOQUO_SEARCH_URLS = [
-    "https://booking.lionair.co.id/api/search",
-    "https://booking.lionair.co.id/api/availability",
+_BOOKING_BASE = "https://secure2.lionair.co.id"
+_MAIN_BASE = "https://www.lionair.co.id"
+
+_SEARCH_URLS = [
+    # New IBE2 booking platform (replaced defunct booking.lionair.co.id)
+    f"{_BOOKING_BASE}/lionairibe2/api/search",
+    f"{_BOOKING_BASE}/lionairibe2/api/availability",
+    f"{_BOOKING_BASE}/api/search",
+    f"{_BOOKING_BASE}/api/availability",
+    # Main site may expose API endpoints
+    f"{_MAIN_BASE}/api/search",
+    f"{_MAIN_BASE}/api/availability",
 ]
 _IMPERSONATE = "chrome131"
 _UA = (
@@ -112,7 +123,7 @@ async def _get_browser():
 
 
 class LionAirConnectorClient:
-    """LionAir hybrid scraper — GoQuo direct API + Playwright CDP fallback."""
+    """LionAir hybrid scraper — direct API + Playwright CDP fallback."""
 
     def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
@@ -122,16 +133,16 @@ class LionAirConnectorClient:
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         """
-        Search Lion Air flights via hybrid GoQuo API + Playwright fallback.
+        Search Lion Air flights via hybrid direct API + Playwright fallback.
 
-        Fast path (~1-3s): curl_cffi direct POST to GoQuo search endpoint.
-        Cookie-farm path (~5s first time): Playwright farms Cloudflare cookies,
+        Fast path (~1-3s): curl_cffi direct POST to search endpoint.
+        Cookie-farm path (~5s first time): Playwright farms cookies,
             then curl_cffi reuses them for API calls.
         Fallback (~5-15s): Full Playwright interception if API is unreachable.
         """
         t0 = time.monotonic()
 
-        # ── Primary: direct GoQuo API via curl_cffi ──
+        # ── Primary: direct API via curl_cffi ──
         if HAS_CURL:
             try:
                 offers = await self._search_via_api(req)
@@ -183,13 +194,13 @@ class LionAirConnectorClient:
             return self._empty(req)
 
     # ------------------------------------------------------------------
-    # Direct GoQuo API via curl_cffi
+    # Direct API via curl_cffi
     # ------------------------------------------------------------------
 
     async def _search_via_api(
         self, req: FlightSearchRequest, cookies: list[dict] | None = None,
     ) -> list[FlightOffer] | None:
-        """POST to GoQuo search endpoint via curl_cffi. Returns offers or None."""
+        """POST to search endpoint via curl_cffi. Returns offers or None."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None, self._api_search_sync, req, cookies,
@@ -198,7 +209,7 @@ class LionAirConnectorClient:
     def _api_search_sync(
         self, req: FlightSearchRequest, cookies: list[dict] | None = None,
     ) -> list[FlightOffer] | None:
-        """Synchronous curl_cffi POST to GoQuo search endpoint."""
+        """Synchronous curl_cffi POST to search endpoint."""
         sess = curl_requests.Session(impersonate=_IMPERSONATE)
 
         if cookies:
@@ -223,11 +234,11 @@ class LionAirConnectorClient:
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
             "Content-Type": "application/json",
-            "Origin": "https://booking.lionair.co.id",
-            "Referer": "https://booking.lionair.co.id/",
+            "Origin": _BOOKING_BASE,
+            "Referer": f"{_BOOKING_BASE}/",
         }
 
-        for url in _GOQUO_SEARCH_URLS:
+        for url in _SEARCH_URLS:
             try:
                 r = sess.post(
                     url,
@@ -274,7 +285,7 @@ class LionAirConnectorClient:
             return await self._farm_cookies(req)
 
     async def _farm_cookies(self, req: FlightSearchRequest) -> list[dict]:
-        """Open Playwright, visit booking site, extract Cloudflare cookies."""
+        """Open Playwright, visit booking site, extract cookies."""
         global _farmed_cookies, _farm_timestamp
 
         browser = await _get_browser()
@@ -293,9 +304,9 @@ class LionAirConnectorClient:
             except ImportError:
                 page = await context.new_page()
 
-            logger.info("LionAir: farming cookies via booking.lionair.co.id")
+            logger.info("LionAir: farming cookies via %s", _BOOKING_BASE)
             await page.goto(
-                "https://booking.lionair.co.id",
+                _BOOKING_BASE,
                 wait_until="domcontentloaded",
                 timeout=30000,
             )
@@ -357,6 +368,11 @@ class LionAirConnectorClient:
                         or "booking/search" in url
                         or "goquo" in url
                         or "flight-search" in url
+                        or "lionairibe" in url
+                        or "onlinebooking" in url
+                        or "getflights" in url
+                        or "flightresult" in url
+                        or "searchresult" in url
                     ):
                         ct = response.headers.get("content-type", "")
                         if "json" in ct:
@@ -369,9 +385,10 @@ class LionAirConnectorClient:
 
             page.on("response", on_response)
 
+            booking_url = self._build_deep_link(req)
             logger.info("LionAir: Playwright fallback for %s->%s", req.origin, req.destination)
             await page.goto(
-                "https://www.lionair.co.id/en",
+                booking_url,
                 wait_until="domcontentloaded",
                 timeout=int(self.timeout * 1000),
             )
@@ -801,11 +818,28 @@ class LionAirConnectorClient:
         return datetime(2000, 1, 1)
 
     @staticmethod
-    def _build_booking_url(req: FlightSearchRequest) -> str:
-        dep = req.date_from.strftime("%d-%m-%Y")
+    def _build_deep_link(req: FlightSearchRequest) -> str:
+        """Build a deep-link URL to the IBE2 booking page with pre-filled search params."""
+        dep = req.date_from.strftime("%d%b")  # e.g. "15Jun"
+        adults = getattr(req, "adults", 1) or 1
+        children = getattr(req, "children", 0) or 0
+        infants = getattr(req, "infants", 0) or 0
         return (
-            f"https://www.lionair.co.id/en/booking?origin={req.origin}"
-            f"&destination={req.destination}&departDate={dep}&adults={req.adults}&tripType=OW"
+            f"{_BOOKING_BASE}/lionairibe2/OnlineBooking.aspx"
+            f"?depart={req.origin}&dest.1={req.destination}"
+            f"&trip_type=one+way&date.0={dep}&date.1="
+            f"&persons.0={adults}&persons.1={children}&persons.2={infants}"
+            f"&date_flexibility=undefined"
+        )
+
+    @staticmethod
+    def _build_booking_url(req: FlightSearchRequest) -> str:
+        dep = req.date_from.strftime("%d%b")
+        return (
+            f"{_BOOKING_BASE}/lionairibe2/OnlineBooking.aspx"
+            f"?depart={req.origin}&dest.1={req.destination}"
+            f"&trip_type=one+way&date.0={dep}"
+            f"&persons.0={getattr(req, 'adults', 1) or 1}"
         )
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
