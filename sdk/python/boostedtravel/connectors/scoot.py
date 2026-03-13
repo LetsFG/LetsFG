@@ -1,27 +1,25 @@
 """
-Scoot Playwright scraper — CDP Chrome + API interception via Navitaire Angular SPA.
+Scoot hybrid scraper — curl_cffi direct API + CDP Chrome fallback.
 
 Scoot (IATA: TR) is Singapore Airlines' low-cost subsidiary operating from SIN.
-Uses a modern Navitaire Angular 20 booking engine at booking.flyscoot.com.
-Protected by Akamai Bot Manager — requires real Chrome via CDP bypass.
+Uses a Navitaire booking engine at booking.flyscoot.com.
+Protected by Akamai Bot Manager on the web frontend.
 
-Strategy:
-1. Launch real Chrome via subprocess + connect via CDP (port 9448) to bypass
-   Akamai bot challenge that blocks Playwright's bundled Chromium
-2. Visit www.flyscoot.com/en first — Akamai warmup grants clearance cookies
-3. Navigate to booking.flyscoot.com — Angular SPA loads with search form
-4. Accept cookie consent banner
-5. Fill search form via #originStation, #destinationStation, #departureDate
-6. Set one-way mode, click "Let's Go!" submit button
-7. Intercept the flight availability API response
-8. Parse Navitaire Trips[].Flights[] structure with fare bundles for prices
-9. Fallback: DOM extraction from flight result cards
+Hybrid strategy (Mar 2026):
+1. Try direct HTTP via curl_cffi (Chrome TLS fingerprint):
+   a. Session: GET booking.flyscoot.com/api/v1/account/anonymous → JWT
+   b. Search:  POST booking.flyscoot.com/api/nsk/v4/availability/search
+   - Token is cached and reused (anonymous sessions last ~30 min)
+   - ~1-3s total, no browser needed
+2. If direct API fails → fall back to CDP Chrome + Navitaire API interception
+   - Launch real Chrome via CDP (port 9448) to bypass Akamai
+   - Fill search form, intercept availability API response
 
 Key API structure (Mar 2026):
   Session: GET /api/v1/account/anonymous  → JWT token
   Auth headers: Authorization: <JWT>, x-scoot-appsource: IBE-WEB
+  Search:  POST /api/nsk/v4/availability/search (Navitaire New Skies)
   Stations: GET /api/flights/resource/stations?cultureCode=en-sg
-  Search: intercepted after form submit (POST availability endpoint)
 """
 
 from __future__ import annotations
@@ -38,6 +36,8 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from curl_cffi import requests as cffi_requests
+
 from boostedtravel.models.flights import (
     FlightOffer,
     FlightRoute,
@@ -48,6 +48,21 @@ from boostedtravel.models.flights import (
 from boostedtravel.connectors.browser import stealth_args, stealth_position_arg, stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
+
+# ── Direct API constants ──────────────────────────────────────────────────
+_BASE_URL = "https://booking.flyscoot.com"
+_ANON_URL = f"{_BASE_URL}/api/v1/account/anonymous"
+_SEARCH_URLS = [
+    f"{_BASE_URL}/api/nsk/v4/availability/search",
+    f"{_BASE_URL}/api/nsk/v2/availability/search",
+    f"{_BASE_URL}/api/v1/availability",
+]
+_IMPERSONATE = "chrome124"
+_TOKEN_MAX_AGE = 25 * 60  # refresh token after 25 min
+
+# Cached anonymous token state
+_api_token: str | None = None
+_api_token_expiry: float = 0.0
 
 _VIEWPORTS = [
     {"width": 1366, "height": 768},
@@ -94,6 +109,48 @@ def _get_lock() -> asyncio.Lock:
     if _browser_lock is None:
         _browser_lock = asyncio.Lock()
     return _browser_lock
+
+
+async def _ensure_token() -> str | None:
+    """Get a valid anonymous JWT from Scoot, refreshing if needed."""
+    global _api_token, _api_token_expiry
+    if _api_token and time.monotonic() < _api_token_expiry:
+        return _api_token
+    try:
+        ses = cffi_requests.Session(impersonate=_IMPERSONATE)
+        r = ses.get(
+            _ANON_URL,
+            headers={
+                "Accept": "application/json",
+                "x-scoot-appsource": "IBE-WEB",
+            },
+            timeout=10,
+        )
+        if r.status_code != 200:
+            logger.warning("Scoot anon-auth HTTP %s: %s", r.status_code, r.text[:200])
+            return None
+        data = r.json()
+        tok = (
+            data.get("token")
+            or data.get("accessToken")
+            or data.get("idToken")
+        )
+        if not tok:
+            # Some Navitaire systems return the token nested
+            for v in data.values():
+                if isinstance(v, str) and len(v) > 40:
+                    tok = v
+                    break
+        if tok:
+            _api_token = tok
+            _api_token_expiry = time.monotonic() + _TOKEN_MAX_AGE
+            logger.info("Scoot: anonymous token acquired")
+            return tok
+        logger.warning("Scoot: no token in anon-auth response: %s", list(data.keys()))
+        return None
+    except Exception as e:
+        logger.warning("Scoot: anon-auth error: %s", e)
+        return None
 
 
 async def _get_browser():
@@ -178,7 +235,7 @@ async def _get_browser():
 
 
 class ScootConnectorClient:
-    """Scoot Playwright scraper — CDP Chrome + Navitaire API interception."""
+    """Scoot hybrid scraper — curl_cffi direct API + CDP Chrome fallback."""
 
     def __init__(self, timeout: float = 50.0):
         self.timeout = timeout
@@ -187,6 +244,86 @@ class ScootConnectorClient:
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        # Try direct API first (no browser needed)
+        result = await self._search_via_api(req)
+        if result and result.total_results > 0:
+            return result
+        logger.info("Scoot: API path returned 0 results, trying CDP Chrome fallback")
+        return await self._search_via_browser(req)
+
+    # ── Direct API path (curl_cffi) ─────────────────────────────────────────
+
+    async def _search_via_api(self, req: FlightSearchRequest) -> FlightSearchResponse | None:
+        """Search Scoot flights via direct Navitaire API (no browser)."""
+        t0 = time.monotonic()
+        token = await _ensure_token()
+        if not token:
+            return None
+        try:
+            headers = {
+                "Authorization": token,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "x-scoot-appsource": "IBE-WEB",
+            }
+            passengers = [{"type": "ADT", "count": req.adults or 1}]
+            if req.children:
+                passengers.append({"type": "CHD", "count": req.children})
+            if req.infants:
+                passengers.append({"type": "INF", "count": req.infants})
+
+            payload = json.dumps({
+                "criteria": [{
+                    "origin": req.origin,
+                    "destination": req.destination,
+                    "date": req.date_from.strftime("%Y-%m-%d"),
+                }],
+                "passengers": {"types": passengers},
+                "codes": {
+                    "currency": req.currency or "SGD",
+                    "promotion": "",
+                },
+            })
+
+            ses = cffi_requests.Session(impersonate=_IMPERSONATE)
+            data = None
+            for search_url in _SEARCH_URLS:
+                try:
+                    r = ses.post(
+                        search_url,
+                        data=payload,
+                        headers=headers,
+                        timeout=15,
+                    )
+                    if r.status_code == 200:
+                        candidate = r.json()
+                        if candidate and isinstance(candidate, dict):
+                            data = candidate
+                            logger.info("Scoot API: got response from %s", search_url)
+                            break
+                    else:
+                        logger.debug("Scoot API %s HTTP %s", search_url, r.status_code)
+                except Exception as e:
+                    logger.debug("Scoot API %s error: %s", search_url, e)
+
+            if not data:
+                logger.warning("Scoot: all API search endpoints failed")
+                return None
+
+            elapsed = time.monotonic() - t0
+            offers = self._parse_navitaire_response(data, req)
+            logger.info(
+                "Scoot API: %d offers %s->%s in %.2fs",
+                len(offers), req.origin, req.destination, elapsed,
+            )
+            return self._build_response(offers, req, elapsed)
+        except Exception as e:
+            logger.warning("Scoot API error: %s", e)
+            return None
+
+    # ── CDP Chrome browser fallback ─────────────────────────────────────────
+
+    async def _search_via_browser(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
 
         for attempt in range(1, _MAX_ATTEMPTS + 1):
