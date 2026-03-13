@@ -159,9 +159,22 @@ class VoloteaConnectorClient:
         if isinstance(data, dict):
             flights = data.get(route_key)
             if not flights:
-                # Try case variations
+                # Try case variations of route_key
                 for key in data:
                     if key.upper() == route_key.upper():
+                        flights = data[key]
+                        break
+            if not flights:
+                # Try reverse key — file fetched via DEST-ORIGIN may store
+                # our direction under the ORIGIN-DEST key with different casing
+                flights = data.get(reverse_key)
+            if not flights:
+                # Last resort: pick the first key that contains both IATA codes
+                origin_up = req.origin.upper()
+                dest_up = req.destination.upper()
+                for key in data:
+                    k = key.upper()
+                    if origin_up in k and dest_up in k:
                         flights = data[key]
                         break
         elif isinstance(data, list):
@@ -202,10 +215,8 @@ class VoloteaConnectorClient:
         if r.status_code != 200:
             return None
 
-        ct = r.headers.get("content-type", "")
-        if "json" not in ct:
-            return None
-
+        # Parse JSON regardless of content-type — CDN may return
+        # application/octet-stream or text/plain instead of application/json.
         try:
             return r.json()
         except Exception:
@@ -342,7 +353,11 @@ class VoloteaConnectorClient:
                 url = response.url
                 ct = response.headers.get("content-type", "")
                 if response.status == 200 and "json" in ct:
-                    if "SearchFlights" in url or "searchflights" in url.lower():
+                    url_lower = url.lower()
+                    if ("searchflights" in url_lower
+                            or "search-flights" in url_lower
+                            or "flight/search" in url_lower
+                            or "_schedule.json" in url_lower):
                         try:
                             data = await response.json()
                             if data and isinstance(data, dict):
@@ -433,26 +448,93 @@ class VoloteaConnectorClient:
         """Fill the origin airport field via the full-page city overlay.
 
         Volotea has TWO sets of inputs:
-        - #input-text_sf-origin (readonly, in the form bar) — click to open overlay
-        - #origin (editable, in the overlay) — type the IATA code here
+        - A readonly input in the search bar — click to open the overlay
+        - An editable input inside the overlay — type the IATA code here
+
+        Selectors are tried broadest-first so the connector survives
+        site redesigns that change element IDs or class names.
         """
         try:
-            # Click the form-bar input to open the overlay
-            form_input = page.locator('#input-text_sf-origin')
-            if await form_input.count() == 0:
-                form_input = page.locator('input[placeholder="You are travelling from:"]').first
+            # --- Step 1: Click the form-bar trigger to open the overlay ---
+            form_input = None
+            for sel in [
+                '#input-text_sf-origin',
+                '[data-testid="origin-input"]',
+                '[data-ref="origin"]',
+                'input[placeholder="You are travelling from:"]',
+                'input[placeholder*="travelling"]',
+                'input[placeholder*="Origin"]',
+                'input[placeholder*="origin"]',
+                'input[placeholder*="From"]',
+                'input[aria-label*="rigin"]',
+                'input[aria-label*="from"]',
+                'input[name="origin"]',
+            ]:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    form_input = loc
+                    break
+
+            if form_input is None:
+                # Role-based fallback: first visible textbox/combobox
+                for role in ["combobox", "textbox"]:
+                    inputs = page.get_by_role(role)
+                    cnt = await inputs.count()
+                    for idx in range(min(cnt, 5)):
+                        inp = inputs.nth(idx)
+                        if await inp.is_visible():
+                            form_input = inp
+                            break
+                    if form_input:
+                        break
+
+            if form_input is None:
+                logger.debug("Volotea: no origin trigger found")
+                return False
+
             await form_input.click(timeout=8000)
             await asyncio.sleep(2)
 
-            # Fill IATA into the overlay input
-            overlay_input = page.locator('#origin')
-            if await overlay_input.count() == 0:
-                logger.debug("Volotea: #origin overlay input not found")
+            # --- Step 2: Fill IATA into the overlay input ---
+            overlay_input = None
+            for sel in [
+                '#origin',
+                '[data-testid="origin-overlay-input"]',
+                '[data-ref="originSearch"]',
+                'input[placeholder*="airport"]',
+                'input[placeholder*="city"]',
+                'input[placeholder*="search"]',
+                'input[aria-label*="search"]',
+                'input[type="search"]',
+            ]:
+                loc = page.locator(sel).first
+                if await loc.count() > 0:
+                    try:
+                        if await loc.is_visible():
+                            overlay_input = loc
+                            break
+                    except Exception:
+                        continue
+
+            # Fallback: the focused element may already be the overlay input
+            if overlay_input is None:
+                try:
+                    focused = page.locator(':focus').first
+                    if await focused.count() > 0:
+                        tag = await focused.evaluate("el => el.tagName")
+                        if tag and tag.upper() == "INPUT":
+                            overlay_input = focused
+                except Exception:
+                    pass
+
+            if overlay_input is None:
+                logger.debug("Volotea: overlay origin input not found")
                 return False
+
             await overlay_input.fill(iata)
             await asyncio.sleep(2.5)
 
-            # Click the city heading in the overlay
+            # --- Step 3: Pick the city from the suggestion list ---
             return await self._pick_city_option(page, iata)
         except Exception as e:
             logger.debug("Volotea: origin fill error: %s", e)
@@ -462,22 +544,102 @@ class VoloteaConnectorClient:
         """Fill the destination airport field via the city overlay.
 
         After origin selection, the destination overlay usually opens automatically.
+        If it doesn't, we click the destination trigger in the search bar.
         """
         try:
             await asyncio.sleep(1)
-            # Check if overlay destination input is already available
-            overlay_input = page.locator('#destination')
-            available = await overlay_input.count() > 0
-            disabled = await overlay_input.is_disabled() if available else True
 
-            if not available or disabled:
+            # Check if overlay destination input is already available
+            overlay_input = None
+            for sel in [
+                '#destination',
+                '[data-testid="destination-overlay-input"]',
+                '[data-ref="destinationSearch"]',
+            ]:
+                loc = page.locator(sel).first
+                if await loc.count() > 0:
+                    try:
+                        if await loc.is_visible() and not await loc.is_disabled():
+                            overlay_input = loc
+                            break
+                    except Exception:
+                        continue
+
+            if overlay_input is None:
                 # Click the form-bar destination to open overlay
-                form_input = page.locator('#input-text_sf-destination')
-                if await form_input.count() == 0:
-                    form_input = page.locator('input[placeholder="Where do you want to go?"]').first
-                if await form_input.count() > 0:
+                form_input = None
+                for sel in [
+                    '#input-text_sf-destination',
+                    '[data-testid="destination-input"]',
+                    '[data-ref="destination"]',
+                    'input[placeholder="Where do you want to go?"]',
+                    'input[placeholder*="want to go"]',
+                    'input[placeholder*="Destination"]',
+                    'input[placeholder*="destination"]',
+                    'input[placeholder*="To"]',
+                    'input[aria-label*="estination"]',
+                    'input[aria-label*="to"]',
+                    'input[name="destination"]',
+                ]:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
+                        form_input = loc
+                        break
+
+                if form_input is None:
+                    # Role-based fallback: second visible textbox/combobox
+                    for role in ["combobox", "textbox"]:
+                        inputs = page.get_by_role(role)
+                        cnt = await inputs.count()
+                        found_count = 0
+                        for idx in range(min(cnt, 10)):
+                            inp = inputs.nth(idx)
+                            if await inp.is_visible():
+                                found_count += 1
+                                if found_count == 2:
+                                    form_input = inp
+                                    break
+                        if form_input:
+                            break
+
+                if form_input:
                     await form_input.click(timeout=5000)
                     await asyncio.sleep(1)
+
+                # Re-locate the overlay input after clicking trigger
+                for sel in [
+                    '#destination',
+                    '[data-testid="destination-overlay-input"]',
+                    '[data-ref="destinationSearch"]',
+                    'input[placeholder*="airport"]',
+                    'input[placeholder*="city"]',
+                    'input[placeholder*="search"]',
+                    'input[aria-label*="search"]',
+                    'input[type="search"]',
+                ]:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0:
+                        try:
+                            if await loc.is_visible():
+                                overlay_input = loc
+                                break
+                        except Exception:
+                            continue
+
+                # Fallback: focused element
+                if overlay_input is None:
+                    try:
+                        focused = page.locator(':focus').first
+                        if await focused.count() > 0:
+                            tag = await focused.evaluate("el => el.tagName")
+                            if tag and tag.upper() == "INPUT":
+                                overlay_input = focused
+                    except Exception:
+                        pass
+
+            if overlay_input is None:
+                logger.debug("Volotea: overlay destination input not found")
+                return False
 
             await overlay_input.fill(iata)
             await asyncio.sleep(2.5)
@@ -491,36 +653,86 @@ class VoloteaConnectorClient:
         """Pick a city from the Volotea city-selection overlay.
 
         The overlay shows cities grouped by country, each as a li element
-        containing an h3 heading with the city name. Clicking the li
-        selects the city and advances the form.
+        containing an h3 heading with the city name and the IATA code.
+        Multiple selector strategies are tried to survive redesigns.
         """
         try:
-            # Find city headings in the overlay — the IATA code appears in
-            # a nested <li> and the city name in an <h3>
-            # First try clicking the parent li of any h3 matching a city
-            # that corresponds to this IATA code
+            # Strategy 1: role="option" elements (ARIA listbox pattern)
+            options = page.locator('[role="option"]')
+            cnt = await options.count()
+            for i in range(cnt):
+                opt = options.nth(i)
+                if not await opt.is_visible():
+                    continue
+                text = await opt.text_content()
+                if text and iata.upper() in text.upper():
+                    await opt.click(timeout=5000)
+                    await asyncio.sleep(1.5)
+                    return True
+
+            # Strategy 2: li elements inside a listbox or dropdown
+            for container_sel in [
+                '[role="listbox"] li',
+                '.autocomplete li',
+                '.dropdown li',
+                '.overlay li',
+                '.search-results li',
+                'ul li',
+            ]:
+                items = page.locator(container_sel)
+                cnt = await items.count()
+                for i in range(cnt):
+                    item = items.nth(i)
+                    if not await item.is_visible():
+                        continue
+                    text = await item.text_content()
+                    if text and iata.upper() in text.upper():
+                        await item.click(timeout=5000)
+                        await asyncio.sleep(1.5)
+                        return True
+
+            # Strategy 3: h3 headings with parent li (original Volotea pattern)
             headings = page.locator('h3')
             count = await headings.count()
             for i in range(count):
                 h3 = headings.nth(i)
                 if not await h3.is_visible():
                     continue
-                # Check if the sibling list contains the IATA code
                 parent_li = h3.locator("xpath=ancestor::li[1]")
                 if await parent_li.count() == 0:
                     continue
                 text = await parent_li.text_content()
-                if text and iata in text:
+                if text and iata.upper() in text.upper():
                     await parent_li.click(timeout=5000)
                     await asyncio.sleep(1.5)
                     return True
 
-            # Fallback: click any visible text matching IATA
+            # Strategy 4: any visible element whose text contains the IATA code
             option = page.locator(f'text="{iata}"').first
             if await option.count() > 0 and await option.is_visible():
                 await option.click(timeout=3000)
                 await asyncio.sleep(1.5)
                 return True
+
+            # Strategy 5: case-insensitive text match
+            option = page.get_by_text(re.compile(rf"\b{re.escape(iata)}\b", re.IGNORECASE)).first
+            if await option.count() > 0 and await option.is_visible():
+                await option.click(timeout=3000)
+                await asyncio.sleep(1.5)
+                return True
+
+            # Strategy 6: button containing the IATA code
+            btns = page.locator("button")
+            cnt = await btns.count()
+            for i in range(cnt):
+                btn = btns.nth(i)
+                if not await btn.is_visible():
+                    continue
+                text = await btn.text_content()
+                if text and iata.upper() in text.upper():
+                    await btn.click(timeout=5000)
+                    await asyncio.sleep(1.5)
+                    return True
 
             return False
         except Exception as e:
@@ -530,43 +742,85 @@ class VoloteaConnectorClient:
     async def _select_one_way(self, page) -> None:
         """Select one-way trip in the calendar popup."""
         try:
-            one_way = page.locator('text="One way"').first
-            if await one_way.count() > 0:
-                await one_way.click(timeout=3000)
-                await asyncio.sleep(0.5)
-                cont = page.locator('text="continue"').first
-                if await cont.count() > 0:
+            for label in ["One way", "One-way", "one way", "Sólo ida", "Solo andata", "Aller simple"]:
+                loc = page.get_by_text(re.compile(rf"^{re.escape(label)}$", re.IGNORECASE)).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    await loc.click(timeout=3000)
+                    await asyncio.sleep(0.5)
+                    break
+            # Some redesigns use a radio / tab for trip-type
+            for sel in [
+                '[data-testid="one-way"]',
+                '[data-triptype="oneway"]',
+                'input[value="oneway"]',
+                'label:has-text("One way")',
+            ]:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    await loc.click(timeout=3000)
+                    await asyncio.sleep(0.5)
+                    break
+            # Click "continue" if it appears
+            for label in ["continue", "Continue", "Continuar", "Continua", "Continuer"]:
+                cont = page.get_by_text(re.compile(rf"^{re.escape(label)}$", re.IGNORECASE)).first
+                if await cont.count() > 0 and await cont.is_visible():
                     await cont.click(timeout=2000)
                     await asyncio.sleep(0.5)
+                    break
         except Exception:
             pass
 
     async def _select_date(self, page, req: FlightSearchRequest) -> bool:
         """Select the departure date from the calendar.
 
-        After city selection, the calendar overlay shows 8 months of .v7-cal
-        grids. Each day is a .v7-cal__day child element whose text starts
-        with the day number (e.g. "28 €206"). We need to click the correct
-        day in the correct month's grid.
+        After city selection, the calendar overlay shows month grids.
+        Each day is a child element whose text starts with the day number
+        (e.g. "28 €206"). We click the correct day in the correct month grid.
+        Multiple selector patterns are tried to survive redesigns.
         """
         try:
             target_day = req.date_from.day
 
             # Click the outbound field to ensure calendar is visible
-            outbound = page.locator('input[placeholder="Select day"]').first
-            if await outbound.count() > 0:
-                await outbound.click(timeout=5000)
-                await asyncio.sleep(2)
+            for sel in [
+                'input[placeholder="Select day"]',
+                'input[placeholder*="Select"]',
+                'input[placeholder*="Date"]',
+                'input[placeholder*="date"]',
+                '[data-testid="departure-date"]',
+                '[data-ref="departureDate"]',
+                'input[aria-label*="date"]',
+                'input[aria-label*="Departure"]',
+            ]:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    await loc.click(timeout=5000)
+                    await asyncio.sleep(2)
+                    break
 
-            # Find all .v7-cal__day elements across all calendar grids
-            day_cells = page.locator('.v7-cal > *')
+            # Find day cells via multiple selector patterns
+            day_cells = None
+            for sel in [
+                '.v7-cal > *',
+                '.v7-cal__day',
+                '[data-testid="calendar-day"]',
+                '.calendar-day',
+                '.day-cell',
+                'td[role="gridcell"]',
+                '[role="gridcell"]',
+                '.CalendarDay',
+            ]:
+                loc = page.locator(sel)
+                cnt = await loc.count()
+                if cnt > 0:
+                    day_cells = loc
+                    break
+
+            if day_cells is None:
+                return False
             count = await day_cells.count()
-            if count == 0:
-                # Fallback: broader selector
-                day_cells = page.locator('.v7-cal__day')
-                count = await day_cells.count()
 
-            # Click the target day using Playwright click (triggers Angular events)
+            # First pass: prefer cells with a price tag (flights available)
             for i in range(count):
                 cell = day_cells.nth(i)
                 if not await cell.is_visible():
@@ -575,16 +829,14 @@ class VoloteaConnectorClient:
                 if not text:
                     continue
                 text = text.strip()
-                # Match day number at start of text (e.g. "28", "28 €206")
                 match = re.match(r'^(\d+)', text)
                 if match and int(match.group(1)) == target_day:
-                    # Prefer cells with a price (€) — means flights are available
-                    if '€' in text or len(text) > 2:
+                    if '€' in text or '$' in text or len(text) > 2:
                         await cell.click(timeout=3000)
                         await asyncio.sleep(1)
                         return True
 
-            # Second pass: click any cell with the target day number
+            # Second pass: any cell with the target day number
             for i in range(count):
                 cell = day_cells.nth(i)
                 if not await cell.is_visible():
@@ -596,13 +848,13 @@ class VoloteaConnectorClient:
                     await asyncio.sleep(1)
                     return True
 
-            # Fallback: click first cell with a price
+            # Third pass: click first cell with a price (any day with flights)
             for i in range(count):
                 cell = day_cells.nth(i)
                 if not await cell.is_visible():
                     continue
                 text = (await cell.text_content() or "").strip()
-                if '€' in text:
+                if '€' in text or '$' in text:
                     await cell.click(timeout=3000)
                     await asyncio.sleep(1)
                     return True
@@ -614,21 +866,41 @@ class VoloteaConnectorClient:
 
     async def _click_search(self, page) -> None:
         """Click the 'Search flights' button."""
-        try:
-            btn = page.locator('text="Search flights"').first
-            if await btn.count() > 0:
-                await btn.click(timeout=5000)
-                return
-        except Exception:
-            pass
-        for label in ["Search", "SEARCH", "Buscar vuelos"]:
+        # Try explicit text matches first
+        for label in [
+            "Search flights", "Search Flights", "SEARCH FLIGHTS",
+            "Search", "SEARCH",
+            "Buscar vuelos", "Cerca voli", "Rechercher",
+        ]:
             try:
-                btn = page.get_by_role("button", name=re.compile(label, re.IGNORECASE))
+                btn = page.get_by_role("button", name=re.compile(rf"^{re.escape(label)}$", re.IGNORECASE))
                 if await btn.count() > 0:
                     await btn.first.click(timeout=5000)
                     return
             except Exception:
                 continue
+        # Data-attribute / CSS fallbacks
+        for sel in [
+            '[data-testid="search-button"]',
+            '[data-ref="searchButton"]',
+            'button[type="submit"]',
+            'button.search-btn',
+            'button.v7-search-btn',
+        ]:
+            try:
+                btn = page.locator(sel).first
+                if await btn.count() > 0 and await btn.is_visible():
+                    await btn.click(timeout=5000)
+                    return
+            except Exception:
+                continue
+        # Last resort: visible text match
+        try:
+            btn = page.locator('text="Search flights"').first
+            if await btn.count() > 0:
+                await btn.click(timeout=5000)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Cookie dismissal
@@ -639,6 +911,8 @@ class VoloteaConnectorClient:
         for label in [
             "Accept cookies", "Aceptar cookies", "Accept all",
             "Aceptar todas", "Accetta tutto", "Tout accepter",
+            "Accept All Cookies", "Accept All", "Allow all",
+            "Agree", "OK",
         ]:
             try:
                 btn = page.get_by_role(
@@ -651,11 +925,29 @@ class VoloteaConnectorClient:
             except Exception:
                 continue
 
+        # Try common cookie-consent button selectors
+        for sel in [
+            '#onetrust-accept-btn-handler',
+            '[data-testid="cookie-accept"]',
+            '.cookie-accept',
+            'button.accept-cookies',
+        ]:
+            try:
+                btn = page.locator(sel).first
+                if await btn.count() > 0 and await btn.is_visible():
+                    await btn.click(timeout=3000)
+                    await asyncio.sleep(0.3)
+                    return
+            except Exception:
+                continue
+
         # JS fallback: remove OneTrust overlay entirely
         try:
             await page.evaluate("""() => {
                 const sdk = document.getElementById('onetrust-consent-sdk');
                 if (sdk) sdk.remove();
+                const banner = document.getElementById('onetrust-banner-sdk');
+                if (banner) banner.remove();
                 document.body.style.overflow = 'auto';
             }""")
         except Exception:
