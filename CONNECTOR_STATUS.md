@@ -92,7 +92,7 @@
 | 28 | spirit | NK | [#28](https://github.com/Boosted-Chat/BoostedTravel/issues/28) | `blocked` | PerimeterX blocks all automated access |
 | 29 | smartwings | QS | [#23](https://github.com/Boosted-Chat/BoostedTravel/issues/23) | `done` | Headed CDP Chrome + CF Turnstile bypass (launch with URL before CDP attaches) |
 | 30 | transavia | HV | [#25](https://github.com/Boosted-Chat/BoostedTravel/issues/25) | `blocked` | 403 on booking page |
-| 31 | wizzair | W6 | [#27](https://github.com/Boosted-Chat/BoostedTravel/issues/27) | `blocked` | KPSDK challenge + 429 rate limit |
+| 31 | wizzair | W6 | [#27](https://github.com/Boosted-Chat/BoostedTravel/issues/27) | `done` | Fixed: launch Chrome headed (Kasada detects --headless=new) — `copilot-eurowings-fix` |
 
 ### Not Audited / Missing from Audit (7)
 
