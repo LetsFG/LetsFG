@@ -1,15 +1,24 @@
 """
-Spirit Airlines Playwright scraper -- navigates to spirit.com and searches flights.
+Spirit Airlines hybrid scraper — cookie-farm + curl_cffi direct API.
 
 Spirit (IATA: NK) is a US ultra-low-cost carrier operating domestic and
-Caribbean/Latin America routes. Heavy Akamai/PerimeterX bot protection.
+Caribbean/Latin America routes.  Heavy PerimeterX bot protection.
 
-Strategy:
-1. Navigate to spirit.com homepage
-2. Dismiss cookie/overlay banners
-3. Fill search form (origin, destination, date, one-way)
-4. Intercept API responses (availability/shopping endpoints)
-5. Parse results -> FlightOffers
+Strategy (hybrid cookie-farm):
+1. ONCE per ~15 min: Playwright opens homepage, lets PerimeterX complete its
+   JS challenge, then extracts all cookies (_px*, session, etc.).
+2. For each search curl_cffi (impersonate="chrome131") uses farmed cookies to:
+   a. GET  /api/prod-token/api/v1/token           → bearer token
+   b. POST /api/prod-availability/api/availability/v3/search → flight data
+3. If API fails, falls back to full Playwright interception flow.
+
+Result: ~2-5 s per search instead of ~30 s with full Playwright.
+
+API details (Navitaire New Skies, discovered Mar 2026):
+  Token : GET  https://www.spirit.com/api/prod-token/api/v1/token
+  Search: POST https://www.spirit.com/api/prod-availability/api/availability/v3/search
+  Body  : {criteria:[{stations:{…},dates:{…}}], passengers:{types:[…]}, codes:{currencyCode}}
+  Response: {data:{trips:[{journeysAvailable:[…]}]}}
 """
 
 from __future__ import annotations
@@ -25,6 +34,12 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+try:
+    from curl_cffi import requests as cffi_requests
+    HAS_CURL = True
+except ImportError:
+    HAS_CURL = False
+
 from boostedtravel.models.flights import (
     FlightOffer,
     FlightRoute,
@@ -35,6 +50,7 @@ from boostedtravel.models.flights import (
 
 logger = logging.getLogger(__name__)
 
+# ── Anti-fingerprint pools ──────────────────────────────────────────────
 _VIEWPORTS = [
     {"width": 1366, "height": 768},
     {"width": 1440, "height": 900},
@@ -48,6 +64,22 @@ _TIMEZONES = [
     "America/Los_Angeles", "America/Phoenix",
 ]
 
+# ── API endpoints & curl_cffi settings ──────────────────────────────────
+_TOKEN_URL = "https://www.spirit.com/api/prod-token/api/v1/token"
+_SEARCH_URL = "https://www.spirit.com/api/prod-availability/api/availability/v3/search"
+_HOMEPAGE_URL = "https://www.spirit.com/"
+_IMPERSONATE = "chrome131"
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+_COOKIE_MAX_AGE = 15 * 60  # Re-farm cookies after 15 minutes
+
+# ── Shared cookie-farm state ────────────────────────────────────────────
+_farm_lock: Optional[asyncio.Lock] = None
+_farmed_cookies: list[dict] = []
+_farm_timestamp: float = 0.0
+
 # ── Shared browser singleton via CDP ────────────────────────────────────
 _CDP_PORT = 9463
 _chrome_proc = None
@@ -60,6 +92,13 @@ def _get_lock() -> asyncio.Lock:
     if _browser_lock is None:
         _browser_lock = asyncio.Lock()
     return _browser_lock
+
+
+def _get_farm_lock() -> asyncio.Lock:
+    global _farm_lock
+    if _farm_lock is None:
+        _farm_lock = asyncio.Lock()
+    return _farm_lock
 
 
 async def _get_browser():
@@ -92,42 +131,366 @@ async def _get_browser():
 
 
 class SpiritConnectorClient:
-    """Spirit Playwright scraper -- homepage form search + API interception."""
+    """Spirit hybrid scraper — cookie-farm + curl_cffi direct API."""
 
     def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
 
     async def close(self):
-        pass
+        pass  # Browser and cookie-farm state are shared singletons
+
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """
+        Search Spirit flights via hybrid approach.
+
+        Fast path  (~2-5 s): curl_cffi with farmed PX cookies → token → search.
+        Slow path (~20-30 s): Playwright farms cookies first, then curl_cffi.
+        Fallback  (~30-45 s): Full Playwright interception flow.
+        """
         t0 = time.monotonic()
 
-        for attempt in range(3):
-            # Fresh context per attempt (real Chrome via CDP defeats PX better)
+        try:
+            # -- Fast path: direct API via curl_cffi --
+            api_result = await self._search_via_api(req)
+            if api_result is not None:
+                elapsed = time.monotonic() - t0
+                offers = self._parse_response(api_result, req)
+                if offers:
+                    return self._build_response(offers, req, elapsed, method="hybrid API")
+
+            # -- API returned no usable data — fall back to Playwright --
+            logger.info("Spirit: API path did not return offers, falling back to Playwright")
+            return await self._playwright_fallback(req, t0)
+
+        except Exception as e:
+            logger.error("Spirit hybrid error: %s", e)
+            return self._empty(req)
+
+    # ------------------------------------------------------------------
+    # Cookie management  (PX cookie-farm)
+    # ------------------------------------------------------------------
+
+    async def _ensure_cookies(self) -> list[dict]:
+        """Return valid session cookies, bootstrapping or farming as needed."""
+        global _farmed_cookies, _farm_timestamp
+        age = time.monotonic() - _farm_timestamp
+        if _farmed_cookies and age < _COOKIE_MAX_AGE:
+            return _farmed_cookies
+        # Try lightweight bootstrap first (curl_cffi homepage visit)
+        cookies = await self._bootstrap_session()
+        if cookies:
+            return cookies
+        # Fall back to Playwright cookie farm
+        return await self._farm_cookies()
+
+    async def _bootstrap_session(self) -> list[dict]:
+        """Try to get PX/session cookies by visiting the homepage with curl_cffi."""
+        global _farmed_cookies, _farm_timestamp
+        if not HAS_CURL:
+            return []
+        loop = asyncio.get_event_loop()
+        try:
+            cookies = await loop.run_in_executor(None, self._bootstrap_session_sync)
+            if cookies:
+                _farmed_cookies = cookies
+                _farm_timestamp = time.monotonic()
+                logger.info("Spirit: bootstrapped %d cookies via curl_cffi", len(cookies))
+                return cookies
+        except Exception as e:
+            logger.debug("Spirit: curl_cffi bootstrap failed: %s", e)
+        return []
+
+    @staticmethod
+    def _bootstrap_session_sync() -> list[dict]:
+        """Synchronous: visit spirit.com homepage to capture PX cookies."""
+        sess = cffi_requests.Session(impersonate=_IMPERSONATE)
+        try:
+            r = sess.get(
+                _HOMEPAGE_URL,
+                headers={
+                    "User-Agent": _UA,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+                timeout=15,
+                allow_redirects=True,
+            )
+            if r.status_code == 200:
+                cookies = []
+                for name, value in sess.cookies.items():
+                    cookies.append({"name": name, "value": value, "domain": ".spirit.com"})
+                if cookies:
+                    return cookies
+        except Exception as e:
+            logger.debug("Spirit: homepage fetch failed: %s", e)
+        return []
+
+    async def _farm_cookies(self) -> list[dict]:
+        """Open Playwright, load Spirit page, let PX solve, extract cookies."""
+        global _farmed_cookies, _farm_timestamp
+        lock = _get_farm_lock()
+        async with lock:
+            # Double-check after acquiring lock
+            age = time.monotonic() - _farm_timestamp
+            if _farmed_cookies and age < _COOKIE_MAX_AGE:
+                return _farmed_cookies
+
             browser = await _get_browser()
             context = await browser.new_context(
                 viewport=random.choice(_VIEWPORTS),
                 locale=random.choice(_LOCALES),
                 timezone_id=random.choice(_TIMEZONES),
+                service_workers="block",
+            )
+
+            try:
+                try:
+                    from playwright_stealth import stealth_async
+                    page = await context.new_page()
+                    await stealth_async(page)
+                except ImportError:
+                    page = await context.new_page()
+
+                logger.info("Spirit: farming cookies via Playwright homepage visit")
+                await page.goto(
+                    _HOMEPAGE_URL,
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
+                await asyncio.sleep(12.0)  # Let PerimeterX fully initialize
+                await self._dismiss_cookies(page)
+                await asyncio.sleep(1.0)
+
+                cookies = await context.cookies()
+                if cookies:
+                    _farmed_cookies = cookies
+                    _farm_timestamp = time.monotonic()
+                    logger.info("Spirit: farmed %d cookies via Playwright", len(cookies))
+                    return cookies
+                return []
+
+            except Exception as e:
+                logger.error("Spirit: cookie farm error: %s", e)
+                return []
+            finally:
+                await context.close()
+
+    # ------------------------------------------------------------------
+    # Direct API via curl_cffi
+    # ------------------------------------------------------------------
+
+    async def _search_via_api(self, req: FlightSearchRequest) -> Optional[dict]:
+        """Try direct API search via curl_cffi with PX cookies.
+
+        Acquires token, POSTs availability search.  Re-farms cookies once if needed.
+        Returns parsed JSON on success, None on failure.
+        """
+        if not HAS_CURL:
+            return None
+        cookies = await self._ensure_cookies()
+        if not cookies:
+            logger.info("Spirit: no cookies available for API search")
+            return None
+
+        data = await self._api_search(req, cookies)
+
+        # If first attempt fails, re-farm cookies and retry once
+        if data is None:
+            logger.info("Spirit: API search failed, re-farming cookies")
+            cookies = await self._farm_cookies()
+            if cookies:
+                data = await self._api_search(req, cookies)
+
+        return data
+
+    async def _api_search(
+        self, req: FlightSearchRequest, cookies: list[dict],
+    ) -> Optional[dict]:
+        """GET token + POST search via curl_cffi with given cookies."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._api_search_sync, req, cookies)
+
+    def _api_search_sync(
+        self, req: FlightSearchRequest, cookies: list[dict],
+    ) -> Optional[dict]:
+        """Synchronous curl_cffi: acquire token then POST availability search."""
+        sess = cffi_requests.Session(impersonate=_IMPERSONATE)
+
+        # Load farmed cookies into session
+        for c in cookies:
+            domain = c.get("domain", ".spirit.com")
+            sess.cookies.set(c["name"], c["value"], domain=domain)
+
+        # -- Step 1: acquire bearer token --
+        token = self._get_token_sync(sess)
+        if not token:
+            return None
+
+        # -- Step 2: POST availability search --
+        dep = req.date_from.strftime("%Y-%m-%d")
+        body = {
+            "criteria": [{
+                "stations": {
+                    "originStationCodes": [req.origin],
+                    "destinationStationCodes": [req.destination],
+                    "searchOriginMacs": True,
+                    "searchDestinationMacs": True,
+                },
+                "dates": {
+                    "beginDate": dep,
+                    "endDate": dep,
+                },
+            }],
+            "passengers": {
+                "types": [{"count": req.adults, "type": "ADT"}],
+            },
+            "codes": {
+                "currencyCode": "USD",
+            },
+            "numberOfFaresPerJourney": 10,
+            "taxesAndFees": "TaxesAndFees",
+        }
+
+        if req.children:
+            body["passengers"]["types"].append({"count": req.children, "type": "CHD"})
+        if req.infants:
+            body["passengers"]["types"].append({"count": req.infants, "type": "INF"})
+
+        try:
+            r = sess.post(
+                _SEARCH_URL,
+                json=body,
+                headers={
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                    "Referer": "https://www.spirit.com/",
+                    "Origin": "https://www.spirit.com",
+                },
+                timeout=20,
+            )
+        except Exception as e:
+            logger.error("Spirit: API search request failed: %s", e)
+            return None
+
+        if r.status_code == 403:
+            logger.warning("Spirit: API search blocked (403) — PX cookies likely stale")
+            return None
+        if r.status_code != 200:
+            logger.warning("Spirit: API search returned %d", r.status_code)
+            return None
+
+        try:
+            data = r.json()
+        except Exception:
+            logger.warning("Spirit: API search returned non-JSON body")
+            return None
+
+        # Validate we have flight data
+        inner = data.get("data", data) if isinstance(data, dict) else None
+        if not inner:
+            return None
+        trips = inner.get("trips", []) if isinstance(inner, dict) else []
+        if not trips:
+            logger.debug("Spirit: API search returned no trips")
+            return None
+
+        return data
+
+    @staticmethod
+    def _get_token_sync(sess) -> Optional[str]:
+        """GET /api/prod-token/api/v1/token → bearer token string."""
+        try:
+            r = sess.get(
+                _TOKEN_URL,
+                headers={
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://www.spirit.com/",
+                },
+                timeout=10,
+            )
+        except Exception as e:
+            logger.error("Spirit: token request failed: %s", e)
+            return None
+
+        if r.status_code == 403:
+            logger.warning("Spirit: token endpoint blocked (403) — PerimeterX active")
+            return None
+        if r.status_code != 200:
+            logger.warning("Spirit: token endpoint returned %d", r.status_code)
+            return None
+
+        try:
+            body = r.json()
+        except Exception:
+            logger.warning("Spirit: token endpoint returned non-JSON")
+            return None
+
+        # Token may be at body.data.token, body.token, or body itself
+        if isinstance(body, dict):
+            d = body.get("data", body)
+            if isinstance(d, dict):
+                tok = d.get("token") or d.get("access_token")
+                if tok:
+                    logger.info("Spirit: acquired bearer token (len=%d)", len(str(tok)))
+                    return str(tok)
+            # Fallback: top-level
+            tok = body.get("token") or body.get("access_token")
+            if tok:
+                return str(tok)
+
+        logger.warning("Spirit: could not extract token from response")
+        return None
+
+    # ------------------------------------------------------------------
+    # Playwright fallback (full browser flow)
+    # ------------------------------------------------------------------
+
+    async def _playwright_fallback(
+        self, req: FlightSearchRequest, t0: float,
+    ) -> FlightSearchResponse:
+        """Full Playwright interception flow as fallback when API path fails."""
+        for attempt in range(3):
+            browser = await _get_browser()
+            context = await browser.new_context(
+                viewport=random.choice(_VIEWPORTS),
+                locale=random.choice(_LOCALES),
+                timezone_id=random.choice(_TIMEZONES),
+                service_workers="block",
             )
             try:
                 result = await self._attempt_search(context, req, t0)
                 if result and result.total_results > 0:
+                    # Also update cookie farm from this successful session
+                    global _farmed_cookies, _farm_timestamp
+                    try:
+                        _farmed_cookies = await context.cookies()
+                        _farm_timestamp = time.monotonic()
+                    except Exception:
+                        pass
                     return result
                 if attempt < 2:
-                    logger.info("Spirit: attempt %d returned no results, retrying with fresh context", attempt + 1)
+                    logger.info(
+                        "Spirit: Playwright attempt %d returned no results, retrying",
+                        attempt + 1,
+                    )
             except Exception as e:
-                logger.warning("Spirit: attempt %d error: %s", attempt + 1, e)
+                logger.warning("Spirit: Playwright attempt %d error: %s", attempt + 1, e)
             finally:
                 await context.close()
             await asyncio.sleep(2.0)
 
-        logger.warning("Spirit: all attempts exhausted for %s->%s", req.origin, req.destination)
+        logger.warning("Spirit: all Playwright attempts exhausted for %s->%s", req.origin, req.destination)
         return self._empty(req)
 
     async def _attempt_search(self, context, req: FlightSearchRequest, t0: float) -> FlightSearchResponse:
-        """Single search attempt within a fresh browser context."""
+        """Single Playwright search attempt within a fresh browser context."""
         try:
             from playwright_stealth import stealth_async
             page = await context.new_page()
@@ -161,9 +524,9 @@ class SpiritConnectorClient:
 
         page.on("response", on_response)
 
-        logger.info("Spirit: loading homepage for %s->%s", req.origin, req.destination)
+        logger.info("Spirit: loading homepage for %s->%s (Playwright)", req.origin, req.destination)
         await page.goto(
-            "https://www.spirit.com/",
+            _HOMEPAGE_URL,
             wait_until="domcontentloaded",
             timeout=int(self.timeout * 1000),
         )
@@ -222,7 +585,11 @@ class SpiritConnectorClient:
 
         elapsed = time.monotonic() - t0
         offers = self._parse_response(data, req)
-        return self._build_response(offers, req, elapsed)
+        return self._build_response(offers, req, elapsed, method="Playwright")
+
+    # ------------------------------------------------------------------
+    # UI helpers (Playwright form interaction)
+    # ------------------------------------------------------------------
 
     async def _dismiss_cookies(self, page) -> None:
         for label in [
@@ -441,6 +808,10 @@ class SpiritConnectorClient:
         except Exception:
             await page.keyboard.press("Enter")
 
+    # ------------------------------------------------------------------
+    # Response parsing  (shared by API and Playwright paths)
+    # ------------------------------------------------------------------
+
     def _parse_response(self, data: Any, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse Spirit availability/v3/search response.
 
@@ -543,9 +914,19 @@ class SpiritConnectorClient:
             source_tier="free",
         )
 
-    def _build_response(self, offers: list[FlightOffer], req: FlightSearchRequest, elapsed: float) -> FlightSearchResponse:
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
+
+    def _build_response(
+        self, offers: list[FlightOffer], req: FlightSearchRequest,
+        elapsed: float, *, method: str = "hybrid",
+    ) -> FlightSearchResponse:
         offers.sort(key=lambda o: o.price)
-        logger.info("Spirit %s->%s returned %d offers in %.1fs (Playwright)", req.origin, req.destination, len(offers), elapsed)
+        logger.info(
+            "Spirit %s->%s returned %d offers in %.1fs (%s)",
+            req.origin, req.destination, len(offers), elapsed, method,
+        )
         h = hashlib.md5(f"spirit{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}", origin=req.origin, destination=req.destination,
