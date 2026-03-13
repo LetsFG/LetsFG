@@ -284,7 +284,7 @@ class SpiceJetConnectorClient:
             carrier_str = journey.get("carrierString", "SG ???")
             parts = carrier_str.split()
             carrier = parts[0] if parts else "SG"
-            flight_no = parts[1] if len(parts) > 1 else ""
+            flight_no = f"{carrier}{parts[1]}" if len(parts) > 1 else carrier
 
             segments.append(
                 FlightSegment(
@@ -332,7 +332,8 @@ class SpiceJetConnectorClient:
         designator = seg.get("designator", {})
         identifier = seg.get("identifier", {})
         carrier = identifier.get("carrierCode", "SG")
-        flight_no = str(identifier.get("identifier", ""))
+        flight_no_raw = str(identifier.get("identifier", ""))
+        flight_no = f"{carrier}{flight_no_raw}" if flight_no_raw and not flight_no_raw.startswith(carrier) else flight_no_raw
 
         dep_str = designator.get("departure", "")
         arr_str = designator.get("arrival", "")
