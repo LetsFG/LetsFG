@@ -311,7 +311,8 @@ class Jet2ConnectorClient:
 
                 # Check for PX block
                 content = await page.content()
-                if "Access Denied" in content or "px-captcha" in content.lower():
+                content_lower = content.lower()
+                if "access denied" in content_lower or "px-captcha" in content_lower:
                     logger.warning("Jet2: PX challenge on homepage, waiting longer")
                     await asyncio.sleep(10.0)
                     await self._dismiss_overlays(page)
@@ -420,7 +421,8 @@ class Jet2ConnectorClient:
 
         # Extract prices from HTML
         html = r.text
-        if "Access Denied" in html or "PerimeterX" in html:
+        html_lower = html.lower()
+        if "access denied" in html_lower or "perimeterx" in html_lower:
             logger.warning("Jet2: PX block on cheap-flights page")
             return None
 
@@ -575,7 +577,8 @@ class Jet2ConnectorClient:
 
             # Check for PX block and wait if needed
             content = await page.content()
-            if "Access Denied" in content or "px-captcha" in content.lower():
+            content_lower = content.lower()
+            if "access denied" in content_lower or "px-captcha" in content_lower:
                 logger.warning("Jet2: PX challenge detected, waiting for resolution")
                 await asyncio.sleep(10.0)
                 await self._dismiss_overlays(page)
@@ -723,7 +726,8 @@ class Jet2ConnectorClient:
             }""", path)
             if not html:
                 return None
-            if "Access Denied" in html or "PerimeterX" in html:
+            html_lower = html.lower()
+            if "access denied" in html_lower or "perimeterx" in html_lower:
                 logger.warning("Jet2: PX block on in-browser HTML fetch")
                 return None
             offers = self._parse_html_prices(html, req)
