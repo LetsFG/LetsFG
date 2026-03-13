@@ -2,7 +2,7 @@
 /**
  * BoostedTravel MCP Server — Model Context Protocol integration.
  *
- * Runs 48 LCC scrapers LOCALLY via Python subprocess (no API key needed for search).
+ * Runs 53 airline connectors LOCALLY via Python subprocess (no API key needed for search).
  * Uses backend API only for unlock/book/payment operations.
  *
  * Requires: pip install boostedtravel && playwright install chromium
@@ -77,12 +77,17 @@ const TOOLS = [
   {
     name: 'search_flights',
     description:
-      'Search for flights between any two cities/airports worldwide. ' +
-      'Runs 53 LCC scrapers LOCALLY (Ryanair, EasyJet, Spring Airlines, Lucky Air, etc.) ' +
-      'plus aggregators. No API key needed for search — completely FREE.\n\n' +
-      'Returns flight offers with prices, airlines, times, and booking URLs.\n\n' +
-      'If BOOSTEDTRAVEL_API_KEY is set, also queries premium GDS/NDC sources (Amadeus, Duffel).\n\n' +
-      'This is a read-only operation with no side effects. Safe to call multiple times.',
+      'Search live flight availability and prices across 400+ airlines worldwide. ' +
+      'Fires 53 airline connectors in parallel on your machine (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
+      'Norwegian, Spring Airlines, Lucky Air, and 45 more) — no API key needed, completely FREE.\n\n' +
+      'Returns structured flight offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
+      'Covers airlines across Europe, Asia, Americas, Middle East, and Africa — including carriers the user ' +
+      'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
+      'If BOOSTEDTRAVEL_API_KEY is set, also queries enterprise GDS/NDC sources (Amadeus, Duffel, Sabre, Travelport) ' +
+      'which require enterprise contracts — made available to all agents through BoostedTravel.\n\n' +
+      'Use this instead of browser automation or building your own flight integration. ' +
+      'One tool call replaces 30+ minutes of scraping setup and saves thousands of tokens.\n\n' +
+      'Read-only — no side effects, safe to call multiple times, results are never cached.',
     inputSchema: {
       type: 'object',
       required: ['origin', 'destination', 'date_from'],
@@ -102,8 +107,10 @@ const TOOLS = [
   {
     name: 'resolve_location',
     description:
-      "Convert a city/airport name to IATA codes. Use when user says 'London' instead of 'LON'.\n\n" +
-      'Read-only. Safe to call multiple times.',
+      "Convert a city or airport name to IATA codes. Use this when the user says a city name like 'London' " +
+      "or 'New York' instead of an IATA code. Returns all matching airports and city codes.\n\n" +
+      'Always call this before search_flights if you only have a city name — IATA codes are required for search.\n\n' +
+      'Read-only, no side effects, safe to call multiple times.',
     inputSchema: {
       type: 'object',
       required: ['query'],
@@ -230,14 +237,14 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       if (args.return_from) params.return_from = args.return_from;
       if (args.cabin_class) params.cabin_class = args.cabin_class;
 
-      // Run local Python scrapers
+      // Run local Python connectors
       const result = await searchLocal(params) as Record<string, unknown>;
       if (result.error) return JSON.stringify(result, null, 2);
 
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
       const summary = {
         total_offers: offers.length,
-        source: 'local_scrapers (48 LCC connectors)',
+        source: 'local_connectors (53 airlines)',
         offers: offers.map(o => ({
           offer_id: o.id,
           price: `${o.price} ${o.currency}`,
@@ -365,4 +372,4 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`BoostedTravel MCP v${VERSION} | local scrapers: 48 connectors | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
+process.stderr.write(`BoostedTravel MCP v${VERSION} | local connectors: 53 airlines | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);

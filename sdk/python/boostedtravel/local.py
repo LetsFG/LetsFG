@@ -1,5 +1,5 @@
 """
-Local flight search — runs 53 LCC scrapers on the user's machine.
+Local flight search — runs 53 airline connectors on the user's machine.
 
 Can be used programmatically:
 
@@ -38,10 +38,10 @@ async def search_local(
     limit: int = 50,
 ) -> dict:
     """
-    Run all 53 local LCC connectors and return results as a dict.
+    Run all 53 local airline connectors and return results as a dict.
 
     This is the core local search — no API key needed, no backend.
-    Scrapers run on the user's machine via Playwright + httpx.
+    Connectors run on the user's machine via Playwright + httpx.
     """
     from boostedtravel.connectors.engine import multi_provider
 

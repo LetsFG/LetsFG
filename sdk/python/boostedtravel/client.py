@@ -223,7 +223,7 @@ class BoostedTravel:
                 "Note: search_local() works without an API key."
             )
 
-    # ── Local search (48 LCC scrapers, no API key needed) ────────────────
+    # ── Local search (53 airline connectors, no API key needed) ────────────────
 
     def search_local(
         self,
@@ -240,10 +240,10 @@ class BoostedTravel:
         limit: int = 50,
     ) -> FlightSearchResult:
         """
-        Search flights using 48 local LCC scrapers — FREE, no API key needed.
+        Search flights using 53 local airline connectors — FREE, no API key needed.
 
-        Runs Ryanair, EasyJet, Spring Airlines, Lucky Air, and 44 more
-        airline scrapers directly on your machine. No backend call.
+        Runs Ryanair, EasyJet, Spring Airlines, Lucky Air, and 49 more
+        airline connectors directly on your machine. No backend call.
 
         Requires: playwright install chromium  (one-time setup)
 
