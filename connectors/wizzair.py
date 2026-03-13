@@ -76,7 +76,7 @@ _persistent_page = None          # stays on wizzair.com — KPSDK JS active
 _api_version: Optional[str] = None  # e.g. "28.1.0"
 _page_ready = False              # True once KPSDK is loaded
 _session_farm_ts: float = 0.0   # monotonic time when page was last farmed
-_last_request_ts: float = 0.0   # monotonic time of last API request
+_last_request_ts: float = 0.0   # monotonic time of last API request (0 = no prior request)
 
 
 def _get_lock() -> asyncio.Lock:
@@ -268,6 +268,7 @@ class WizzairConnectorClient:
             # Exponential backoff between retries (longer after 429)
             if attempt > 1:
                 if got_429:
+                    # Exponential: 3s, 6s, 12s, ...
                     backoff = _429_BACKOFF_BASE * (2 ** (attempt - 2))
                     logger.info("Wizzair: 429 backoff %.1fs before attempt %d", backoff, attempt)
                     await asyncio.sleep(backoff)
