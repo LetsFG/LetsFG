@@ -1,17 +1,11 @@
 """
-Eurowings CDP Chrome scraper — navigates to Eurowings homepage and searches flights.
-
-The direct API is behind WAF (Akamai) — requires browser session.
-Real Chrome via CDP passes Akamai better than Playwright's bundled Chromium.
+Eurowings cookie-farm hybrid connector.
 
 Strategy (converted Mar 2026):
-1. Launch real system Chrome via CDP (persistent, passes Akamai better)
-2. Navigate to eurowings.com/en.html homepage
-3. Dismiss cookie banner, remove overlays
-4. Fill departure/destination via autocomplete dialogs
-5. Fill date
-6. Click search, intercept API response
-7. Parse results → FlightOffers
+1. Farm Cloudflare cookies via CDP Chrome (once per ~25 min, just visit homepage)
+2. POST to apps.eurowings.com/flightsearch/v1/booking/flight-data via curl_cffi (~0.7s)
+3. Parse QUERY_FLIGHT_DATA JSON → FlightOffers
+4. Fall back to full Playwright browser automation if API fails
 """
 
 from __future__ import annotations
@@ -27,6 +21,8 @@ import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
+
+from curl_cffi import requests as cffi_requests
 
 from boostedtravel.models.flights import (
     FlightOffer,
@@ -58,10 +54,18 @@ _CHROME_PATHS = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 ]
 
+_API_URL = "https://apps.eurowings.com/flightsearch/v1/booking/flight-data?action=QUERY_FLIGHT_DATA"
+_IMPERSONATE = "chrome136"
+_COOKIE_MAX_AGE = 25 * 60  # 25 minutes
+
 _chrome_proc: subprocess.Popen | None = None
 _pw_instance = None
 _cdp_browser = None
 _browser_lock: Optional[asyncio.Lock] = None
+
+_farm_lock: Optional[asyncio.Lock] = None
+_farmed_cookies: list[dict] = []
+_farm_timestamp: float = 0
 
 
 def _get_lock() -> asyncio.Lock:
@@ -69,6 +73,13 @@ def _get_lock() -> asyncio.Lock:
     if _browser_lock is None:
         _browser_lock = asyncio.Lock()
     return _browser_lock
+
+
+def _get_farm_lock() -> asyncio.Lock:
+    global _farm_lock
+    if _farm_lock is None:
+        _farm_lock = asyncio.Lock()
+    return _farm_lock
 
 
 def _find_chrome() -> str:
@@ -127,24 +138,202 @@ async def _get_browser():
 
 
 class EurowingsConnectorClient:
-    """Eurowings Playwright scraper — homepage form search + API interception."""
+    """Eurowings hybrid scraper — cookie-farm + curl_cffi direct API."""
 
-    def __init__(self, timeout: float = 60.0):
+    def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
 
     async def close(self):
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """
+        Search Eurowings flights via cookie-farm + curl_cffi direct API.
+
+        Fast path (~0.7s): curl_cffi with farmed CF cookies → POST QUERY_FLIGHT_DATA.
+        Slow path (~15s): Playwright farms cookies first, then curl_cffi.
+        Fallback: Full Playwright interception if API fails.
+        """
         t0 = time.monotonic()
+
+        try:
+            # Fast path: try with existing farmed cookies
+            cookies = await self._ensure_cookies()
+            data = None
+            if cookies:
+                data = await self._api_search(req, cookies)
+
+            # Re-farm once if stale / rejected
+            if data is None:
+                logger.info("Eurowings: API search failed, re-farming cookies")
+                cookies = await self._farm_cookies()
+                if cookies:
+                    data = await self._api_search(req, cookies)
+
+            if data:
+                elapsed = time.monotonic() - t0
+                offers = self._parse_response(data, req)
+                if offers:
+                    offers.sort(key=lambda o: o.price)
+                    logger.info(
+                        "Eurowings %s→%s returned %d offers in %.1fs (hybrid API)",
+                        req.origin, req.destination, len(offers), elapsed,
+                    )
+                    return self._build_response(offers, req, elapsed)
+
+            # Last resort: full Playwright browser fallback
+            logger.warning("Eurowings: API returned no data, falling back to Playwright")
+            return await self._playwright_fallback(req, t0)
+
+        except Exception as e:
+            logger.error("Eurowings hybrid error: %s", e)
+            return self._empty(req)
+
+    # ------------------------------------------------------------------
+    # Cookie farm — Playwright generates CF cookies
+    # ------------------------------------------------------------------
+
+    async def _ensure_cookies(self) -> list[dict]:
+        """Return valid farmed cookies, farming new ones if needed."""
+        global _farmed_cookies, _farm_timestamp
+        lock = _get_farm_lock()
+        async with lock:
+            age = time.monotonic() - _farm_timestamp
+            if _farmed_cookies and age < _COOKIE_MAX_AGE:
+                return _farmed_cookies
+            return await self._farm_cookies()
+
+    async def _farm_cookies(self) -> list[dict]:
+        """Visit Eurowings homepage to harvest Cloudflare cookies."""
+        global _farmed_cookies, _farm_timestamp
+
+        browser = await _get_browser()
+        ctx = await browser.new_context(
+            viewport=random.choice(_VIEWPORTS),
+            locale=random.choice(_LOCALES),
+            timezone_id=random.choice(_TIMEZONES),
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            ),
+        )
+        try:
+            page = await ctx.new_page()
+            logger.info("Eurowings: farming cookies via homepage visit")
+            await page.goto(
+                "https://www.eurowings.com/en.html",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            await asyncio.sleep(random.uniform(2.5, 4))
+            await self._dismiss_cookies(page)
+            await asyncio.sleep(1)
+
+            cookies = await ctx.cookies()
+            _farmed_cookies = cookies
+            _farm_timestamp = time.monotonic()
+            logger.info("Eurowings: farmed %d cookies", len(cookies))
+            return cookies
+        except Exception as e:
+            logger.error("Eurowings: cookie farm error: %s", e)
+            return []
+        finally:
+            await ctx.close()
+
+    # ------------------------------------------------------------------
+    # Direct API via curl_cffi
+    # ------------------------------------------------------------------
+
+    async def _api_search(
+        self, req: FlightSearchRequest, cookies: list[dict],
+    ) -> Optional[dict]:
+        """POST QUERY_FLIGHT_DATA via curl_cffi with farmed cookies."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._api_search_sync, req, cookies)
+
+    def _api_search_sync(
+        self, req: FlightSearchRequest, cookies: list[dict],
+    ) -> Optional[dict]:
+        """Synchronous curl_cffi QUERY_FLIGHT_DATA search."""
+        sess = cffi_requests.Session(impersonate=_IMPERSONATE)
+
+        for c in cookies:
+            domain = c.get("domain", "")
+            sess.cookies.set(c["name"], c["value"], domain=domain)
+
+        body = json.dumps(self._build_api_body(req))
+
+        try:
+            r = sess.post(
+                _API_URL,
+                headers={
+                    "content-type": "application/json",
+                    "accept": "application/json, text/plain, */*",
+                    "referer": "https://www.eurowings.com/",
+                },
+                data=body,
+                timeout=15,
+            )
+        except Exception as e:
+            logger.error("Eurowings: API request failed: %s", e)
+            return None
+
+        if r.status_code != 200:
+            logger.warning("Eurowings: API returned %d", r.status_code)
+            return None
+
+        try:
+            data = r.json()
+        except Exception:
+            logger.warning("Eurowings: API response not JSON")
+            return None
+
+        status = data.get("_payload", {}).get("_status", "")
+        if status != "SUCCESS":
+            logger.warning("Eurowings: API status=%s", status)
+            return None
+
+        return data
+
+    @staticmethod
+    def _build_api_body(req: FlightSearchRequest) -> dict:
+        """Build the QUERY_FLIGHT_DATA request payload."""
+        return {
+            "_payload": {
+                "_type": "UPDATE_COMPONENT",
+                "_updates": [{
+                    "_type": "ew/components/booking/shoppingexperience",
+                    "_path": "/content/eurowings/en/booking/flights/flight-search/shopping/select/jcr:content/main/flightselect",
+                    "_action": "QUERY_FLIGHT_DATA",
+                    "_parameters": {
+                        "origin": req.origin,
+                        "destination": req.destination,
+                        "outwardDate": req.date_from.strftime("%Y-%m-%d"),
+                        "adultCount": req.adults,
+                        "childCount": req.children,
+                        "infantCount": req.infants,
+                        "tripType": "ONE_WAY",
+                        "locale": "en-GB",
+                        "systemType": "SYS_1N",
+                    },
+                }],
+            }
+        }
+
+    # ------------------------------------------------------------------
+    # Playwright browser fallback
+    # ------------------------------------------------------------------
+
+    async def _playwright_fallback(
+        self, req: FlightSearchRequest, t0: float,
+    ) -> FlightSearchResponse:
+        """Full browser automation fallback — fill form + intercept API."""
         browser = await _get_browser()
         vp = random.choice(_VIEWPORTS)
-        locale = random.choice(_LOCALES)
-        tz = random.choice(_TIMEZONES)
         ctx = await browser.new_context(
             viewport=vp,
-            locale=locale,
-            timezone_id=tz,
+            locale=random.choice(_LOCALES),
+            timezone_id=random.choice(_TIMEZONES),
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -174,7 +363,7 @@ class EurowingsConnectorClient:
         page.on("response", on_response)
 
         try:
-            logger.info("Eurowings %s→%s: navigating to homepage …", req.origin, req.destination)
+            logger.info("Eurowings %s→%s: Playwright fallback …", req.origin, req.destination)
             await page.goto("https://www.eurowings.com/en.html", wait_until="domcontentloaded", timeout=45000)
             await asyncio.sleep(random.uniform(2.5, 4))
 
@@ -187,7 +376,6 @@ class EurowingsConnectorClient:
             start_url = page.url
             await self._click_search(page)
 
-            # Wait for SPA navigation or API capture (whichever first)
             deadline = time.monotonic() + 25
             while time.monotonic() < deadline:
                 if captured.get("data"):
@@ -211,7 +399,7 @@ class EurowingsConnectorClient:
             elapsed = time.monotonic() - t0
             return self._build_response(offers, req, elapsed) if offers else self._empty(req)
         except Exception as exc:
-            logger.warning("Eurowings scraper error: %s", exc)
+            logger.warning("Eurowings Playwright fallback error: %s", exc)
             return self._empty(req)
         finally:
             try:
@@ -782,7 +970,7 @@ class EurowingsConnectorClient:
 
     def _build_response(self, offers: list[FlightOffer], req: FlightSearchRequest, elapsed: float) -> FlightSearchResponse:
         offers.sort(key=lambda o: o.price)
-        logger.info("Eurowings %s→%s returned %d offers in %.1fs (Playwright)", req.origin, req.destination, len(offers), elapsed)
+        logger.info("Eurowings %s→%s returned %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
         search_hash = hashlib.md5(f"eurowings{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{search_hash}", origin=req.origin, destination=req.destination,
