@@ -287,6 +287,12 @@ class CebuPacificConnectorClient:
         except Exception:
             pass
 
+    @staticmethod
+    def _sanitize_iata(code: str) -> str:
+        """Return a sanitized IATA code (2-4 uppercase letters) safe for selectors."""
+        clean = re.sub(r"[^A-Za-z]", "", code)[:4].upper()
+        return clean if 2 <= len(clean) <= 4 else ""
+
     async def _fill_airport_field(self, page, label: str, iata: str, index: int) -> bool:
         """Fill origin/destination on CebuPacific's Navitaire booking form.
 
@@ -294,6 +300,9 @@ class CebuPacificConnectorClient:
         autocomplete suggestion, modelled after the Scoot connector's approach
         for Navitaire Angular SPAs.
         """
+        iata = self._sanitize_iata(iata)
+        if not iata:
+            return False
         is_origin = index == 0
 
         # ── Strategy 1: Navitaire-standard element IDs via JS ────────────
@@ -304,37 +313,44 @@ class CebuPacificConnectorClient:
             if is_origin
             else ["destinationStation", "destination", "flight-DestinationStationCode", "toCity", "arrivalStation"]
         )
+        # Shared JS helper finds a visible <input> by ID / name / data-testid.
+        _FIND_VISIBLE_INPUT_JS = """(fieldId) => {
+            const sel = 'input#' + CSS.escape(fieldId) +
+                ', input[name="' + CSS.escape(fieldId) + '"]' +
+                ', input[data-testid="' + CSS.escape(fieldId) + '"]';
+            const els = document.querySelectorAll(sel);
+            for (const el of els) {
+                if (el.offsetHeight > 0 || el.offsetParent !== null) return el;
+            }
+            return null;
+        }"""
         for field_id in navitaire_ids:
             try:
-                clicked = await page.evaluate("""(fieldId) => {
-                    const els = document.querySelectorAll('input#' + fieldId +
-                        ', input[name="' + fieldId + '"]' +
-                        ', input[data-testid="' + fieldId + '"]');
-                    for (const el of els) {
-                        if (el.offsetHeight > 0 || el.offsetParent !== null) {
-                            el.scrollIntoView({block: 'center'});
-                            el.click();
-                            el.focus();
-                            return true;
-                        }
-                    }
-                    return false;
-                }""", field_id)
+                clicked = await page.evaluate(
+                    """(fieldId) => {
+                        const find = """ + _FIND_VISIBLE_INPUT_JS + """;
+                        const el = find(fieldId);
+                        if (!el) return false;
+                        el.scrollIntoView({block: 'center'});
+                        el.click();
+                        el.focus();
+                        return true;
+                    }""",
+                    field_id,
+                )
                 if clicked:
                     await asyncio.sleep(0.4)
-                    await page.evaluate("""(fieldId) => {
-                        const els = document.querySelectorAll('input#' + fieldId +
-                            ', input[name="' + fieldId + '"]' +
-                            ', input[data-testid="' + fieldId + '"]');
-                        for (const el of els) {
-                            if (el.offsetHeight > 0 || el.offsetParent !== null) {
-                                el.value = '';
-                                el.dispatchEvent(new Event('input', {bubbles: true}));
-                                el.dispatchEvent(new Event('change', {bubbles: true}));
-                                return;
-                            }
-                        }
-                    }""", field_id)
+                    await page.evaluate(
+                        """(fieldId) => {
+                            const find = """ + _FIND_VISIBLE_INPUT_JS + """;
+                            const el = find(fieldId);
+                            if (!el) return;
+                            el.value = '';
+                            el.dispatchEvent(new Event('input', {bubbles: true}));
+                            el.dispatchEvent(new Event('change', {bubbles: true}));
+                        }""",
+                        field_id,
+                    )
                     await asyncio.sleep(0.2)
                     await page.keyboard.type(iata, delay=80)
                     await asyncio.sleep(2.5)
@@ -415,10 +431,15 @@ class CebuPacificConnectorClient:
 
         Tries multiple Navitaire-specific selector patterns used across
         CebuPacific, Scoot, Spirit, and other Navitaire Angular SPAs.
+        *iata* is already sanitized by the caller (_sanitize_iata).
         """
-        # JS-based: search overlay containers for a matching station
+        # JS-based: search overlay containers for a matching station.
+        # The iata parameter is pre-validated as 2-4 alpha chars by
+        # _sanitize_iata, so it is safe to use in textContent comparisons.
+        # Attribute selectors use CSS.escape() for defence-in-depth.
         try:
             clicked = await page.evaluate("""(iata) => {
+                const esc = CSS.escape(iata);
                 const overlays = document.querySelectorAll(
                     '.stations-overlay, .station-list, .airport-list, ' +
                     '[class*="suggestion"], [class*="autocomplete"], [class*="dropdown"], ' +
@@ -427,7 +448,7 @@ class CebuPacificConnectorClient:
                 );
                 for (const ov of overlays) {
                     if (ov.offsetHeight === 0) continue;
-                    const byAria = ov.querySelector('div[aria-label="' + iata + '"], li[aria-label="' + iata + '"]');
+                    const byAria = ov.querySelector('div[aria-label="' + esc + '"], li[aria-label="' + esc + '"]');
                     if (byAria && byAria.offsetHeight > 0) { byAria.click(); return 'aria-label'; }
                     const codes = ov.querySelectorAll('.code, .iata, .station-code, .airport-code, [class*="iata"], [class*="code"]');
                     for (const c of codes) {
