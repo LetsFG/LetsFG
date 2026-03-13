@@ -63,15 +63,15 @@
 | 9 | indigo | 6E | [#17](https://github.com/Boosted-Chat/BoostedTravel/issues/17) | `done` | claude-connector-fix | 2026-03-13T21:08Z | headed Chrome + city-selection selectors (73 offers DEL→BOM) |
 | 10 | jet2 | LS | [#32](https://github.com/Boosted-Chat/BoostedTravel/issues/32) | `done` | copilot-eurowings-fix | 2026-03-13T21:30Z | persistent headed Chrome for Akamai bypass |
 | 11 | jetsmart | JA | — | `done` | copilot-batikair-fix | 2026-03-13T21:17Z | Already fixed — timetable API. Tested SCL→LIM (1 offer, 60790 CLP, 2.1s). |
-| 12 | jetstar | JQ | [#31](https://github.com/Boosted-Chat/BoostedTravel/issues/31) | `claimed` | copilot-eurowings-fix | 2026-03-14T00:00Z | |
-| 13 | lionair | JT | [#35](https://github.com/Boosted-Chat/BoostedTravel/issues/35) | `claimed` | copilot-main | 2026-03-13T22:00Z | |
+| 12 | jetstar | JQ | [#31](https://github.com/Boosted-Chat/BoostedTravel/issues/31) | `done` | copilot-eurowings-fix | 2026-03-14T00:00Z | CDP Chrome + Kasada warm-up bypass |
+| 13 | lionair | JT | [#35](https://github.com/Boosted-Chat/BoostedTravel/issues/35) | `blocked` | copilot-main | 2026-03-13T22:00Z | IBE2 booking engine dead (0-byte responses), booking.lionair.co.id connection refused |
 | 14 | luckyair | 8L | — | `broken` | | | |
 | 15 | nineair | AQ | — | `broken` | | | |
 | 16 | norwegian | DY | [#22](https://github.com/Boosted-Chat/BoostedTravel/issues/22) | `done` | copilot-batikair-fix | 2026-03-13T21:17Z | Headed CDP Chrome for Incapsula cookies; 20 offers OSL→LGW 1.1s cached |
 | 17 | peach | MM | [#36](https://github.com/Boosted-Chat/BoostedTravel/issues/36) | `claimed` | claude-connector-fix | 2026-03-13T21:42Z | |
-| 18 | pegasus | PC | [#37](https://github.com/Boosted-Chat/BoostedTravel/issues/37) | `broken` | | | |
+| 18 | pegasus | PC | [#37](https://github.com/Boosted-Chat/BoostedTravel/issues/37) | `claimed` | copilot-main | 2026-03-13T22:15Z | |
 | 19 | porter | — | [#24](https://github.com/Boosted-Chat/BoostedTravel/issues/24) | `broken` | | | |
-| 20 | scoot | TR | [#30](https://github.com/Boosted-Chat/BoostedTravel/issues/30) | `broken` | | | |
+| 20 | scoot | TR | [#30](https://github.com/Boosted-Chat/BoostedTravel/issues/30) | `claimed` | copilot-batikair-fix | 2026-03-14T00:30Z | |
 | 21 | volotea | V7 | [#18](https://github.com/Boosted-Chat/BoostedTravel/issues/18) | `broken` | | | |
 | 22 | volaris | Y4 | [#21](https://github.com/Boosted-Chat/BoostedTravel/issues/21) | `broken` | | | |
 
