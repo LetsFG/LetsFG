@@ -90,25 +90,10 @@ async def _get_browser():
     async with lock:
         if _browser and _browser.is_connected():
             return _browser
-        from playwright.async_api import async_playwright
-
-        from boostedtravel.connectors.browser import find_chrome, stealth_args, stealth_popen_kwargs
-        chrome_path = find_chrome()
-        user_data = os.path.join(os.environ.get("TEMP", "/tmp"), "chrome-cdp-vietjet")
-        _chrome_proc = subprocess.Popen([
-            chrome_path,
-            f"--remote-debugging-port={_CDP_PORT}",
-            f"--user-data-dir={user_data}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-blink-features=AutomationControlled",
-            *stealth_args(),
-        ], **stealth_popen_kwargs())
-        await asyncio.sleep(1.5)
-
-        pw = await async_playwright().start()
-        _browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_CDP_PORT}")
-        logger.info("VietJet: Connected to real Chrome via CDP (port %d)", _CDP_PORT)
+        from boostedtravel.connectors.browser import get_or_launch_cdp
+        _user_data = os.path.join(os.environ.get("TEMP", "/tmp"), "chrome-cdp-vietjet")
+        _browser, _chrome_proc = await get_or_launch_cdp(_CDP_PORT, _user_data)
+        logger.info("VietJet: Chrome ready via CDP (port %d)", _CDP_PORT)
         return _browser
 
 
@@ -788,10 +773,13 @@ class VietJetConnectorClient:
         else:
             airline = str(airline_raw) if airline_raw else "VJ"
 
+        flight_no_raw = str(flt.get("flightNumber", ""))
+        flight_no = f"{airline}{flight_no_raw}" if flight_no_raw and not flight_no_raw.startswith(airline) else flight_no_raw
+
         return FlightSegment(
             airline=airline,
             airline_name="VietJet Air",
-            flight_no=str(flt.get("flightNumber", "")),
+            flight_no=flight_no,
             origin=dep_airport.get("code", req.origin) if isinstance(dep_airport, dict) else req.origin,
             destination=arr_airport.get("code", req.destination) if isinstance(arr_airport, dict) else req.destination,
             departure=self._parse_dt(dep_time),
