@@ -1,7 +1,7 @@
 """
 Unified flight search engine — fires ALL sources in parallel:
 
-1. Local agent-device connectors (53 LCC scrapers) — zero auth, free
+1. Local agent-device connectors (46+ LCC scrapers) — zero auth, free
 2. Cloud Run backend API (Duffel, Amadeus, Sabre, Travelport, etc.) — paid providers
 
 Both fire simultaneously via asyncio.gather. The backend call is a single
@@ -24,66 +24,84 @@ from typing import Optional
 
 import httpx
 
-from boostedtravel.connectors.combo_engine import build_combos
-from boostedtravel.connectors.currency import fetch_rates, _fallback_convert
-from boostedtravel.connectors.airline_routes import get_country, get_relevant_connectors, AIRLINE_COUNTRIES
-from boostedtravel.connectors.ryanair import RyanairConnectorClient
-from boostedtravel.connectors.wizzair import WizzairConnectorClient
-from boostedtravel.connectors.kiwi import KiwiConnectorClient
+from connectors.combo_engine import build_combos
+from connectors.currency import fetch_rates, _fallback_convert
+from connectors.airline_routes import get_country, get_relevant_connectors, AIRLINE_COUNTRIES
+from connectors.ryanair import RyanairConnectorClient
+from connectors.wizzair import WizzairConnectorClient
+from connectors.kiwi import KiwiConnectorClient
 
 # ── Direct airline website connectors (LCCs not in GDS) ────────────────────────
-from boostedtravel.connectors.easyjet import EasyjetConnectorClient
-from boostedtravel.connectors.southwest import SouthwestConnectorClient
-from boostedtravel.connectors.airasia import AirAsiaConnectorClient
-from boostedtravel.connectors.indigo import IndiGoConnectorClient
-from boostedtravel.connectors.norwegian import NorwegianConnectorClient
-from boostedtravel.connectors.vueling import VuelingConnectorClient
-from boostedtravel.connectors.eurowings import EurowingsConnectorClient
-from boostedtravel.connectors.transavia import TransaviaConnectorClient
-from boostedtravel.connectors.pegasus import PegasusConnectorClient
-from boostedtravel.connectors.flydubai import FlydubaiConnectorClient
-from boostedtravel.connectors.spirit import SpiritConnectorClient
-from boostedtravel.connectors.frontier import FrontierConnectorClient
-from boostedtravel.connectors.volaris import VolarisConnectorClient
-from boostedtravel.connectors.airarabia import AirArabiaConnectorClient
-from boostedtravel.connectors.vietjet import VietJetConnectorClient
-from boostedtravel.connectors.cebupacific import CebuPacificConnectorClient
-from boostedtravel.connectors.scoot import ScootConnectorClient
-from boostedtravel.connectors.jetsmart import JetSmartConnectorClient
-from boostedtravel.connectors.jetstar import JetstarConnectorClient
-from boostedtravel.connectors.jet2 import Jet2ConnectorClient
-from boostedtravel.connectors.flynas import FlynasConnectorClient
-from boostedtravel.connectors.gol import GolConnectorClient
-from boostedtravel.connectors.azul import AzulConnectorClient
-from boostedtravel.connectors.flysafair import FlySafairConnectorClient
-from boostedtravel.connectors.vivaaerobus import VivaAerobusConnectorClient
-from boostedtravel.connectors.allegiant import AllegiantConnectorClient
-from boostedtravel.connectors.jetblue import JetBlueConnectorClient
-from boostedtravel.connectors.flair import FlairConnectorClient
-from boostedtravel.connectors.spicejet import SpiceJetConnectorClient
-from boostedtravel.connectors.akasa import AkasaConnectorClient
-from boostedtravel.connectors.spring import SpringConnectorClient
-from boostedtravel.connectors.peach import PeachConnectorClient
-from boostedtravel.connectors.zipair import ZipairConnectorClient
-from boostedtravel.connectors.condor import CondorConnectorClient
-from boostedtravel.connectors.play import PlayConnectorClient
-from boostedtravel.connectors.sunexpress import SunExpressConnectorClient
-from boostedtravel.connectors.volotea import VoloteaConnectorClient
-from boostedtravel.connectors.smartwings import SmartwingsConnectorClient
-from boostedtravel.connectors.flybondi import FlybondiConnectorClient
-from boostedtravel.connectors.jejuair import JejuAirConnectorClient
-from boostedtravel.connectors.twayair import TwayAirConnectorClient
-from boostedtravel.connectors.porter import PorterConnectorClient
-from boostedtravel.connectors.nokair import NokAirConnectorClient
-from boostedtravel.connectors.airpeace import AirPeaceConnectorClient
-from boostedtravel.connectors.airindiaexpress import AirIndiaExpressConnectorClient
-from boostedtravel.connectors.batikair import BatikAirConnectorClient
-from boostedtravel.connectors.luckyair import LuckyAirConnectorClient
-from boostedtravel.connectors.nineair import NineAirConnectorClient
+from connectors.easyjet import EasyjetConnectorClient
+from connectors.southwest import SouthwestConnectorClient
+from connectors.airasia import AirAsiaConnectorClient
+from connectors.indigo import IndiGoConnectorClient
+from connectors.norwegian import NorwegianConnectorClient
+from connectors.vueling import VuelingConnectorClient
+from connectors.eurowings import EurowingsConnectorClient
+from connectors.transavia import TransaviaConnectorClient
+from connectors.pegasus import PegasusConnectorClient
+from connectors.flydubai import FlydubaiConnectorClient
+from connectors.spirit import SpiritConnectorClient
+from connectors.frontier import FrontierConnectorClient
+from connectors.volaris import VolarisConnectorClient
+from connectors.airarabia import AirArabiaConnectorClient
+from connectors.vietjet import VietJetConnectorClient
+from connectors.cebupacific import CebuPacificConnectorClient
+from connectors.scoot import ScootConnectorClient
+from connectors.jetsmart import JetSmartConnectorClient
+from connectors.jetstar import JetstarConnectorClient
+from connectors.jet2 import Jet2ConnectorClient
+from connectors.flynas import FlynasConnectorClient
+from connectors.gol import GolConnectorClient
+from connectors.azul import AzulConnectorClient
+from connectors.flysafair import FlySafairConnectorClient
+from connectors.vivaaerobus import VivaAerobusConnectorClient
+from connectors.allegiant import AllegiantConnectorClient
+from connectors.jetblue import JetBlueConnectorClient
+from connectors.flair import FlairConnectorClient
+from connectors.spicejet import SpiceJetConnectorClient
+from connectors.akasa import AkasaConnectorClient
+from connectors.spring import SpringConnectorClient
+from connectors.peach import PeachConnectorClient
+from connectors.zipair import ZipairConnectorClient
+from connectors.condor import CondorConnectorClient
+from connectors.play import PlayConnectorClient
+from connectors.sunexpress import SunExpressConnectorClient
+from connectors.volotea import VoloteaConnectorClient
+from connectors.smartwings import SmartwingsConnectorClient
+from connectors.flybondi import FlybondiConnectorClient
+from connectors.jejuair import JejuAirConnectorClient
+from connectors.twayair import TwayAirConnectorClient
+from connectors.porter import PorterConnectorClient
+from connectors.nokair import NokAirConnectorClient
+from connectors.airpeace import AirPeaceConnectorClient
+from connectors.airindiaexpress import AirIndiaExpressConnectorClient
+from connectors.batikair import BatikAirConnectorClient
+from connectors.luckyair import LuckyAirConnectorClient
+from connectors.nineair import NineAirConnectorClient
+from connectors.avelo import AveloConnectorClient
+from connectors.salamair import SalamAirConnectorClient
 
-from boostedtravel.models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
+from models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
 logger = logging.getLogger(__name__)
+
+# Connectors that launch Chrome/Playwright browsers.
+# These are throttled by a semaphore to prevent 20+ Chrome processes at once.
+_BROWSER_SOURCES: set[str] = {
+    "airasia_direct", "allegiant_direct", "azul_direct", "batikair_direct",
+    "cebupacific_direct", "condor_direct", "easyjet_direct", "eurowings_direct",
+    "flybondi_direct", "flydubai_direct", "flynas_direct", "frontier_direct",
+    "gol_direct", "indigo_direct", "jet2_direct", "jetsmart_direct",
+    "jetstar_direct", "luckyair_direct", "9air_direct",
+    "jetblue_direct", "avelo_direct",
+    "norwegian_direct", "peach_direct", "pegasus_direct", "play_direct",
+    "porter_direct", "scoot_direct", "smartwings_direct", "southwest_direct",
+    "spirit_direct", "sunexpress_direct", "transavia_direct", "twayair_direct",
+    "vietjet_direct", "volaris_direct", "volotea_direct", "vueling_direct",
+    "zipair_direct",
+}
 
 # Registry of direct airline connectors: (source_name, connector_class, timeout)
 # All are zero-auth, always available, "free" tier.
@@ -134,6 +152,8 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("batikair_direct", BatikAirConnectorClient, 25.0),
     ("luckyair_direct", LuckyAirConnectorClient, 30.0),
     ("9air_direct", NineAirConnectorClient, 30.0),
+    ("avelo_direct", AveloConnectorClient, 45.0),
+    ("salamair_direct", SalamAirConnectorClient, 20.0),
 ]
 
 
@@ -462,7 +482,24 @@ class MultiProvider:
             source_tiers=source_tiers,
         )
 
-    # ── Browser cleanup ──────────────────────────────────────────────────────────
+    # ── Per-connector browser cleanup ──────────────────────────────────────────
+
+    async def _cleanup_single_connector(self, client) -> None:
+        """Close a single connector's module-level browser resources immediately.
+
+        Called after a browser-based connector finishes so its Chrome process
+        is freed without waiting for the full search to complete.
+        """
+        from connectors.browser import cleanup_module_browsers
+
+        mod = sys.modules.get(type(client).__module__)
+        if mod:
+            closed = await cleanup_module_browsers(mod)
+            if closed:
+                logger.debug("Early cleanup: closed %d resource(s) for %s",
+                             closed, type(client).__name__)
+
+    # ── Full browser cleanup ─────────────────────────────────────────────────────
 
     async def _cleanup_connectors(self):
         """Close all browser instances launched by connectors during search.
@@ -471,7 +508,7 @@ class MultiProvider:
         _nd_browser etc.) in every imported connector module and terminates them.
         Only affects processes we created — never kills the user's own Chrome.
         """
-        from boostedtravel.connectors.browser import cleanup_module_browsers, cleanup_all_browsers
+        from connectors.browser import cleanup_module_browsers, cleanup_all_browsers
 
         modules_to_clean = []
         seen = set()
@@ -587,7 +624,15 @@ class MultiProvider:
     async def _search_connector_generic(
         self, client, req: FlightSearchRequest, source: str
     ) -> FlightSearchResponse:
-        """Generic wrapper for direct airline connectors — tags source/tier, ensures cleanup."""
+        """Generic wrapper for direct airline connectors — tags source/tier, ensures cleanup.
+
+        Browser-based connectors are throttled by a semaphore so at most 4
+        Chrome processes run simultaneously (prevents resource exhaustion).
+        """
+        uses_browser = source in _BROWSER_SOURCES
+        if uses_browser:
+            from connectors.browser import acquire_browser_slot
+            await acquire_browser_slot()
         try:
             result = await client.search_flights(req)
             for offer in result.offers:
@@ -596,6 +641,12 @@ class MultiProvider:
             return result
         finally:
             await client.close()
+            if uses_browser:
+                # Close module-level browser globals immediately so Chrome
+                # doesn't linger until the full search completes.
+                await self._cleanup_single_connector(client)
+                from connectors.browser import release_browser_slot
+                release_browser_slot()
 
     def _combo_search_fn(self, label: str):
         """Return the appropriate search method for combo one-way legs."""
