@@ -1,15 +1,20 @@
 """
-Spirit Airlines Playwright scraper -- navigates to spirit.com and searches flights.
+Spirit Airlines scraper — patchright + stealth + US proxy.
 
 Spirit (IATA: NK) is a US ultra-low-cost carrier operating domestic and
-Caribbean/Latin America routes. Heavy Akamai/PerimeterX bot protection.
+Caribbean/Latin America routes. Heavy PerimeterX (PX) Enterprise + Akamai WAF.
 
-Strategy:
-1. Navigate to spirit.com homepage
-2. Dismiss cookie/overlay banners
-3. Fill search form (origin, destination, date, one-way)
-4. Intercept API responses (availability/shopping endpoints)
-5. Parse results -> FlightOffers
+Strategy (form fill + API interception):
+1. Launch patchright Chromium (anti-detection Playwright fork) with US proxy.
+2. Apply playwright_stealth + custom init script to defeat JS fingerprinting.
+3. Navigate to spirit.com, fill search form (One Way, airports, date).
+4. Intercept /api/prod-availability/ or /api/prod-shopping/ JSON response.
+5. Falls back to direct booking URL navigation if form fill fails.
+6. Resets browser between attempts (PX taints sessions after detection).
+
+STATUS: BLOCKED — PX Enterprise detects all tested automation tools even with
+US proxy + stealth patches. Token endpoint returns 403 → Angular app refuses
+to make search API calls. May work with nodriver or residential proxies.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import logging
 import os
 import random
 import re
+import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
@@ -31,6 +37,7 @@ from models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from connectors.browser import find_chrome, stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +54,37 @@ _TIMEZONES = [
     "America/Los_Angeles", "America/Phoenix",
 ]
 
+_CDP_PORT = 9463
+_USER_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".spirit_chrome_data"
+)
+
+# ── Proxy config ────────────────────────────────────────────────────────
+# Set SPIRIT_PROXY=http://user:pass@host:port  or individual vars below
+_PROXY_URL = os.environ.get("SPIRIT_PROXY", "")
+_PROXY_HOST = os.environ.get("SPIRIT_PROXY_HOST", "us.decodo.com")
+_PROXY_PORT = os.environ.get("SPIRIT_PROXY_PORT", "10001")
+_PROXY_USER = os.environ.get("SPIRIT_PROXY_USER", "")
+_PROXY_PASS = os.environ.get("SPIRIT_PROXY_PASS", "")
+
+
+def _get_proxy_config() -> Optional[dict]:
+    """Build Playwright proxy dict from env vars. Returns None if no proxy configured."""
+    if _PROXY_URL:
+        return {"server": _PROXY_URL}
+    if _PROXY_USER and _PROXY_PASS:
+        return {
+            "server": f"http://{_PROXY_HOST}:{_PROXY_PORT}",
+            "username": _PROXY_USER,
+            "password": _PROXY_PASS,
+        }
+    return None
+
+
 # ── Shared browser singleton ────────────────────────────────────────────
 _browser = None
 _pw_instance = None
+_chrome_proc = None
 _browser_lock: Optional[asyncio.Lock] = None
 
 
@@ -60,54 +95,177 @@ def _get_lock() -> asyncio.Lock:
     return _browser_lock
 
 
-def _get_proxy() -> Optional[dict]:
-    """Read proxy from SPIRIT_PROXY env var.
-
-    Spirit's PerimeterX may geo-block or risk-score non-US IPs.
-    Set SPIRIT_PROXY="http://user:pass@us-proxy:10001" if needed.
-    """
-    raw = os.environ.get("SPIRIT_PROXY", "").strip()
-    if not raw:
-        return None
-    from urllib.parse import urlparse
-    p = urlparse(raw)
-    result: dict[str, str] = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
-    if p.username:
-        result["username"] = p.username
-    if p.password:
-        result["password"] = p.password
-    return result
-
-
 async def _get_browser():
-    """Launch headed Chrome via Playwright (PX detects both --headless=new and CDP)."""
-    global _pw_instance, _browser
+    """Return a browser instance. Prefers Playwright headed with proxy (US IP)."""
+    global _pw_instance, _browser, _chrome_proc
     lock = _get_lock()
     async with lock:
-        if _browser and _browser.is_connected():
-            return _browser
-        from playwright.async_api import async_playwright
-        _pw_instance = await async_playwright().start()
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--window-position=-2400,-2400",
-            "--window-size=1366,768",
-        ]
-        launch_kw: dict = {
-            "headless": False,
-            "channel": "chrome",
-            "args": launch_args,
-        }
-        proxy = _get_proxy()
-        if proxy:
-            launch_kw["proxy"] = proxy
+        if _browser:
+            try:
+                if _browser.is_connected():
+                    return _browser
+            except Exception:
+                pass
+
+        # Use patchright (anti-detection Playwright fork) to bypass PX CDP fingerprinting
         try:
-            _browser = await _pw_instance.chromium.launch(**launch_kw)
+            from patchright.async_api import async_playwright
+        except ImportError:
+            from playwright.async_api import async_playwright
+
+        if _pw_instance:
+            try:
+                await _pw_instance.stop()
+            except Exception:
+                pass
+        _pw_instance = await async_playwright().start()
+
+        proxy = _get_proxy_config()
+
+        # When proxy is available, use patchright's own Chromium (deeper anti-detection)
+        # then fall back to system Chrome
+        if proxy:
+            try:
+                _browser = await _pw_instance.chromium.launch(
+                    headless=False,
+                    proxy=proxy,
+                    args=["--disable-blink-features=AutomationControlled",
+                          "--no-sandbox",
+                          "--window-position=-2400,-2400"],
+                )
+                logger.info("Spirit: Patchright Chromium launched with proxy %s", proxy["server"])
+                return _browser
+            except Exception as e:
+                logger.warning("Spirit: patchright Chromium launch failed: %s", e)
+            try:
+                _browser = await _pw_instance.chromium.launch(
+                    headless=False,
+                    channel="chrome",
+                    proxy=proxy,
+                    args=["--disable-blink-features=AutomationControlled",
+                          "--no-sandbox",
+                          "--window-position=-2400,-2400"],
+                )
+                logger.info("Spirit: Playwright Chromium launched with proxy")
+                return _browser
+            except Exception as e:
+                logger.warning("Spirit: proxy launch fallback failed: %s", e)
+
+        # No proxy — try CDP Chrome (real Chrome, better fingerprint)
+        try:
+            _browser = await _pw_instance.chromium.connect_over_cdp(
+                f"http://localhost:{_CDP_PORT}"
+            )
+            logger.info("Spirit: connected to existing Chrome via CDP")
+            return _browser
         except Exception:
-            launch_kw.pop("channel", None)
-            _browser = await _pw_instance.chromium.launch(**launch_kw)
-        logger.info("Spirit: headed Chrome launched (proxy=%s)", bool(proxy))
+            pass
+
+        chrome_path = find_chrome()
+        if chrome_path:
+            os.makedirs(_USER_DATA_DIR, exist_ok=True)
+            vp = random.choice(_VIEWPORTS)
+            _chrome_proc = subprocess.Popen(
+                [
+                    chrome_path,
+                    f"--remote-debugging-port={_CDP_PORT}",
+                    f"--user-data-dir={_USER_DATA_DIR}",
+                    f"--window-size={vp['width']},{vp['height']}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--disable-blink-features=AutomationControlled",
+                    "--window-position=-2400,-2400",
+                    "about:blank",
+                ],
+                **stealth_popen_kwargs(),
+            )
+            await asyncio.sleep(2.5)
+            try:
+                _browser = await _pw_instance.chromium.connect_over_cdp(
+                    f"http://localhost:{_CDP_PORT}"
+                )
+                logger.info("Spirit: CDP Chrome connected (port %d)", _CDP_PORT)
+                return _browser
+            except Exception as e:
+                logger.warning("Spirit: CDP connect failed: %s, falling back", e)
+                if _chrome_proc:
+                    _chrome_proc.terminate()
+                    _chrome_proc = None
+
+        # Final fallback: Playwright headed (no proxy, no CDP)
+        try:
+            _browser = await _pw_instance.chromium.launch(
+                headless=False,
+                channel="chrome",
+                args=["--disable-blink-features=AutomationControlled",
+                      "--window-position=-2400,-2400"],
+            )
+        except Exception:
+            _browser = await _pw_instance.chromium.launch(
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled",
+                      "--no-sandbox",
+                      "--window-position=-2400,-2400"],
+            )
+        logger.info("Spirit: Playwright browser launched (headed fallback)")
         return _browser
+
+
+async def _reset_browser():
+    """Close the browser singleton so the next _get_browser() creates a fresh one."""
+    global _browser, _pw_instance, _chrome_proc
+    lock = _get_lock()
+    async with lock:
+        if _browser:
+            try:
+                await _browser.close()
+            except Exception:
+                pass
+            _browser = None
+        if _chrome_proc:
+            try:
+                _chrome_proc.terminate()
+            except Exception:
+                pass
+            _chrome_proc = None
+        if _pw_instance:
+            try:
+                await _pw_instance.stop()
+            except Exception:
+                pass
+            _pw_instance = None
+
+
+# ── Stealth init script (runs before page JS) ──────────────────────────
+_STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+try { delete navigator.__proto__.webdriver; } catch(e) {}
+
+// Chrome runtime stub (real Chrome has this)
+if (!window.chrome) window.chrome = {};
+if (!window.chrome.runtime) {
+    window.chrome.runtime = {
+        connect: function() {},
+        sendMessage: function() {},
+    };
+}
+
+// Permissions query patch
+const _origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
+window.navigator.permissions.query = (params) => (
+    params.name === 'notifications'
+        ? Promise.resolve({state: Notification.permission})
+        : _origQuery(params)
+);
+
+// Override getParameter for WebGL to return realistic values
+const _getParam = WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter = function(param) {
+    if (param === 37445) return 'Google Inc. (NVIDIA)';
+    if (param === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    return _getParam.call(this, param);
+};
+"""
 
 
 class SpiritConnectorClient:
@@ -124,11 +282,28 @@ class SpiritConnectorClient:
 
         for attempt in range(3):
             browser = await _get_browser()
-            context = await browser.new_context(
-                viewport=random.choice(_VIEWPORTS),
-                locale=random.choice(_LOCALES),
-                timezone_id=random.choice(_TIMEZONES),
-            )
+            # Use default CDP context if available (preserves PX cookies)
+            is_cdp = hasattr(browser, "contexts") and browser.contexts
+            if is_cdp:
+                context = browser.contexts[0]
+            else:
+                context = await browser.new_context(
+                    viewport=random.choice(_VIEWPORTS),
+                    locale=random.choice(_LOCALES),
+                    timezone_id=random.choice(_TIMEZONES),
+                )
+            # Apply stealth patches to defeat PerimeterX fingerprinting
+            try:
+                from playwright_stealth import Stealth
+                await Stealth().apply_stealth_async(context)
+                logger.debug("Spirit: playwright_stealth applied to context")
+            except Exception:
+                pass
+            # Fallback init script for navigator.webdriver + chrome runtime
+            try:
+                await context.add_init_script(_STEALTH_INIT_SCRIPT)
+            except Exception:
+                pass
             try:
                 result = await self._attempt_search(context, req, t0)
                 if result and result.total_results > 0:
@@ -138,34 +313,54 @@ class SpiritConnectorClient:
             except Exception as e:
                 logger.warning("Spirit: attempt %d error: %s", attempt + 1, e)
             finally:
-                await context.close()
+                if not is_cdp:
+                    await context.close()
+                # Reset browser between attempts — PX taints sessions
+                if attempt < 2:
+                    await _reset_browser()
             await asyncio.sleep(2.0)
 
         logger.warning("Spirit: all attempts exhausted for %s->%s", req.origin, req.destination)
         return self._empty(req)
 
-    async def _attempt_search(self, context, req: FlightSearchRequest, t0: float) -> FlightSearchResponse:
-        """Single search attempt within a fresh browser context."""
+    async def _simulate_human(self, page) -> None:
+        """Mouse movements, scrolling, and clicks to help PX pass its challenge."""
         try:
-            from playwright_stealth import stealth_async
-            page = await context.new_page()
-            await stealth_async(page)
-        except ImportError:
-            page = await context.new_page()
+            vp = await page.evaluate("({w: window.innerWidth, h: window.innerHeight})")
+            w, h = vp.get("w", 1200), vp.get("h", 700)
+        except Exception:
+            w, h = 1200, 700
+        for _ in range(random.randint(4, 7)):
+            x = random.randint(50, w - 50)
+            y = random.randint(50, h - 50)
+            await page.mouse.move(x, y, steps=random.randint(8, 20))
+            await asyncio.sleep(random.uniform(0.1, 0.4))
+        await page.mouse.wheel(0, random.randint(200, 500))
+        await asyncio.sleep(random.uniform(0.4, 0.8))
+        await page.mouse.wheel(0, random.randint(-300, -100))
+        await asyncio.sleep(random.uniform(0.3, 0.6))
+        # Click an empty area near center
+        await page.mouse.click(w // 2 + random.randint(-100, 100),
+                               h // 2 + random.randint(-100, 100))
+        await asyncio.sleep(random.uniform(0.2, 0.5))
+
+    async def _attempt_search(self, context, req: FlightSearchRequest, t0: float) -> FlightSearchResponse:
+        """Navigate to spirit.com, fill form, intercept API response.
+        Falls back to direct booking URL if form fill doesn't trigger API."""
+        page = await context.new_page()
 
         captured_data: dict = {}
         api_event = asyncio.Event()
-        px_blocked = {"token": False}
 
         async def on_response(response):
             try:
                 url = response.url
-                # Detect PX block on token endpoint
-                if "/api/prod-token/" in url and response.status == 403:
-                    px_blocked["token"] = True
-                if response.status == 200 and (
-                    "/api/prod-availability/api/availability/v3/search" in url
-                    or ("/availability" in url and "/search" in url)
+                # Log non-CMS, non-collector API calls
+                if "/api/" in url and "content.spirit.com" not in url and "collector" not in url:
+                    logger.debug("Spirit: API response %d %s", response.status, url[:150])
+                # Only match actual flight search responses (spirit.com/api/prod-*)
+                if response.status == 200 and "spirit.com/api/prod-" in url and (
+                    "/availability" in url or "/shopping" in url
                 ):
                     ct = response.headers.get("content-type", "")
                     if "json" in ct:
@@ -173,29 +368,29 @@ class SpiritConnectorClient:
                         if data and isinstance(data, dict):
                             captured_data["json"] = data
                             api_event.set()
-                            logger.info("Spirit: captured search API response")
+                            logger.info("Spirit: captured search API from %s", url[:120])
             except Exception:
                 pass
 
         page.on("response", on_response)
 
         logger.info("Spirit: loading homepage for %s->%s", req.origin, req.destination)
-        await page.goto(
-            "https://www.spirit.com/",
-            wait_until="domcontentloaded",
-            timeout=int(self.timeout * 1000),
-        )
-        await asyncio.sleep(12.0)  # Let PerimeterX fully initialize
+        try:
+            await page.goto(
+                "https://www.spirit.com/",
+                wait_until="domcontentloaded",
+                timeout=int(self.timeout * 1000),
+            )
+        except Exception as e:
+            logger.debug("Spirit: homepage goto: %s", e)
 
+        await asyncio.sleep(3.0)
         await self._dismiss_cookies(page)
-        await asyncio.sleep(0.5)
+        await self._simulate_human(page)
+        await asyncio.sleep(2.0)
         await self._dismiss_cookies(page)
 
-        # Check if PX already blocked the token (Angular fetches it on page load)
-        if px_blocked["token"]:
-            logger.warning("Spirit: PerimeterX blocked token endpoint — session poisoned")
-            return self._empty(req)
-
+        # Try form fill
         await self._set_one_way(page)
         await asyncio.sleep(0.5)
 
@@ -211,27 +406,28 @@ class SpiritConnectorClient:
             return self._empty(req)
         await asyncio.sleep(0.5)
 
-        # Check PX again after form fill (Angular may refresh token)
-        if px_blocked["token"]:
-            logger.warning("Spirit: PerimeterX blocked token during form fill")
-            return self._empty(req)
-
         ok = await self._fill_date(page, req)
         if not ok:
-            logger.warning("Spirit: date fill failed")
-            return self._empty(req)
-        await asyncio.sleep(0.3)
-
-        await self._click_search(page)
+            logger.warning("Spirit: date fill failed — trying direct URL")
+            # Fall back to direct booking URL navigation
+            booking_url = self._build_booking_url(req)
+            try:
+                await page.goto(booking_url, wait_until="domcontentloaded",
+                                timeout=int(self.timeout * 1000))
+            except Exception:
+                pass
+            await asyncio.sleep(3.0)
+        else:
+            await asyncio.sleep(0.3)
+            await self._click_search(page)
+            await asyncio.sleep(2.0)
+            logger.info("Spirit: URL after search: %s", page.url[:200])
 
         remaining = max(self.timeout - (time.monotonic() - t0), 10)
         try:
-            await asyncio.wait_for(api_event.wait(), timeout=min(remaining, 25))
+            await asyncio.wait_for(api_event.wait(), timeout=min(remaining, 30))
         except asyncio.TimeoutError:
-            if px_blocked["token"]:
-                logger.warning("Spirit: search timed out (PX blocked token)")
-            else:
-                logger.warning("Spirit: timed out waiting for API response")
+            logger.warning("Spirit: timed out waiting for search API response")
             return self._empty(req)
 
         data = captured_data.get("json", {})
@@ -240,6 +436,7 @@ class SpiritConnectorClient:
 
         elapsed = time.monotonic() - t0
         offers = self._parse_response(data, req)
+        logger.info("Spirit: returned %d offers in %.1fs", len(offers), elapsed)
         return self._build_response(offers, req, elapsed)
 
     async def _dismiss_cookies(self, page) -> None:

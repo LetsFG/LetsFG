@@ -89,7 +89,7 @@
 |---|-----------|------|-------|--------|--------|
 | 26 | allegiant | G4 | [#38](https://github.com/Boosted-Chat/BoostedTravel/issues/38) | `done` | **US IP required.** Headed Chrome + GraphQL interception. Set ALLEGIANT_PROXY if outside US. |
 | 27 | southwest | WN | [#26](https://github.com/Boosted-Chat/BoostedTravel/issues/26) | `done` | **US IP required.** Headed Chrome + Playwright form fill + API interception. Set SOUTHWEST_PROXY if outside US. |
-| 28 | spirit | NK | [#28](https://github.com/Boosted-Chat/BoostedTravel/issues/28) | `blocked` | PerimeterX blocks CDP+Playwright from EU IPs (403). Code uses page.evaluate(fetch) approach (like Wizzair) but PX detects automation and geo-blocks. Needs US proxy. — `copilot-eurowings-fix` |
+| 28 | spirit | NK | [#28](https://github.com/Boosted-Chat/BoostedTravel/issues/28) | `blocked` | PX Enterprise detects all automation (Playwright, patchright, stealth patches) even with US proxy. Token endpoint 403 → Angular app can't search. Tried: proxy+stealth, patchright Chromium, form fill+interception, direct API (Akamai WAF blocks). Code has proxy+patchright+stealth ready for when detection is bypassed (e.g. nodriver/residential proxy). — `copilot-eurowings-fix` |
 | 29 | smartwings | QS | [#23](https://github.com/Boosted-Chat/BoostedTravel/issues/23) | `done` | Headed CDP Chrome + CF Turnstile bypass (launch with URL before CDP attaches) |
 | 30 | transavia | HV | [#25](https://github.com/Boosted-Chat/BoostedTravel/issues/25) | `done` | Headed CDP Chrome to bypass Cloudflare WAF |
 | 31 | wizzair | W6 | [#27](https://github.com/Boosted-Chat/BoostedTravel/issues/27) | `done` | Fixed: launch Chrome headed (Kasada detects --headless=new) — `copilot-eurowings-fix` |
@@ -127,7 +127,7 @@
 | # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
 |---|-----------|------|------|--------|------------|-----------|-------|
 | 50 | salamair | OV | API | `done` | claude-connector-builder | 2026-03-14T12:00Z | Pure httpx, api.salamair.com REST API. MCT hub → IN/BD/ME/AF. Tested MCT→SLL (8 offers 48.99 OMR), MCT→BOM (4 offers 124.94 OMR), MCT→DAC (4 offers 66.99 OMR), MCT→CGP (4 offers 132.40 OMR). |
-| 51 | usbangla | BS | Browser | `broken` | | | US-Bangla Airlines. Zenith FrontOffice booking engine at alphaapi.usbair.com (401 without browser session). DAC hub → ME/IN. |
+| 51 | usbangla | BS | Browser | `done` | | | US-Bangla Airlines. Playwright form flow → Zenith FrontOffice DOM scraping. DAC hub → AE/OM/QA/SA/IN/MY/SG/TH/CN/MV/NP/DE/GB/US. |
 | 52 | biman | BG | TBD | `broken` | | | Biman Bangladesh Airlines. bimanair.com returns 200, biman-airlines.com returns 403 (CloudFlare). DAC hub → ME/EU/AS. |
 | 53 | gulfair | GF | TBD | `blocked` | | | Gulf Air. flights.gulfair.com protected by GeeTest CAPTCHA. BAH hub → IN/BD/ME/EU. Likely blocked. |
 
