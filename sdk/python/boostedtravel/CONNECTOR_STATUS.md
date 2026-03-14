@@ -119,8 +119,8 @@
 | 45 | hawaiian | HA | Major | `done` | Same Alaska Airlines Group infrastructure. In-browser fetch to /search/api/flightresults via Playwright. Inter-island, mainland-Hawaii, Asia/Pacific. hawaiianairlines.com. |
 | 46 | american | AA | Major | `done` | CDP Chrome + form fill + ng-state extraction. World's largest airline, 350+ destinations in 60+ countries. aa.com — Angular 20 SSR/SPA with Akamai. |
 | 47 | united | UA | Major | `ok` | copilot-eurowings-fix | 2026-03-14T15:00Z | Playwright + SSE via CDP. No manual UA (Akamai). 60 offers ORD→LAX. |
-| 48 | delta | DL | Major | `broken` | **US IP required.** 3rd largest US carrier, ATL world's busiest hub. delta.com — complex SPA. |
-| 49 | jsx | XE | Premium | `broken` | **US IP required.** Semi-private $100-400/seat, FBO terminals (no TSA). jsx.com. |
+| 48 | delta | DL | Major | `done` | CDP Chrome + form fill + GraphQL API interception. #2 US carrier, ATL world's busiest hub. 20 offers ATL→LAX in ~30s. |
+| 49 | jsx | XE | Premium | `blocked` | copilot-eurowings-fix | 2026-03-14T16:00Z | **US IP required.** ERR_HTTP2_PROTOCOL_ERROR from EU. Semi-private $100-400/seat, FBO terminals. jsx.com. |
 
 ### New India/Bangladesh → Middle East Connectors (4)
 
@@ -135,8 +135,8 @@
 
 | # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
 |---|-----------|------|------|--------|------------|-----------|-------|
-| 54 | emirates | EK | — | `broken` | | | Emirates. World's largest intl airline by RPK. DXB hub → 150+ destinations, 6 continents. emirates.com. |
-| 55 | qatar | QR | — | `broken` | | | Qatar Airways. DOH hub, Skytrax best airline. 170+ destinations. qatarairways.com — Amadeus booking engine. |
+| 54 | emirates | EK | Browser | `done` | copilot-main | 2026-03-16T12:00Z | CDP Chrome + form fill + DOM scraping. Akamai WAF bypass via headed Chrome. 10 offers DXB→LHR (AED 2,155 cheapest). emirates.com/english/book/ — Next.js SPA with auto-suggest airports, DayPicker calendar. |
+| 55 | qatar | QR | — | `blocked` | copilot-main | 2026-03-16T12:00Z | **Airspace CLOSED.** Booking form hidden behind disruption notice. Shadow DOM structure mapped (app-nbx-explore >> mat-input-0/1, dpFromDate, Search flights button) — all elements exist but "not visible". booking.qatarairways.com returns errors. Defer until airspace reopens. |
 | 56 | etihad | EY | `etihad.py` | `done` | | CDP Chrome + form fill + calendar pricing API interception | Etihad Airways. AUH hub → 70+ destinations. Calendar pricing via ada-services/bff-calendar-pricing. |
 | 57 | saudia | SV | — | `broken` | | | Saudia (Saudi Arabian Airlines). JED/RUH hubs → 100+ destinations. Hajj/Umrah traffic + regional. saudia.com. |
 | 58 | omanair | WY | — | `broken` | | | Oman Air. MCT hub → 50+ destinations (complements SalamAir). book.omanair.com — Incapsula protected. |
@@ -148,7 +148,7 @@
 | 64 | thai | TG | — | `broken` | | | Thai Airways. BKK hub → Asia/EU/AU. thaiairways.com. |
 | 65 | ana | NH | — | `broken` | | | ANA (All Nippon Airways). NRT/HND hubs → Asia/EU/NA. ana.co.jp. |
 | 66 | korean | KE | — | `broken` | | | Korean Air. ICN hub → Asia/EU/NA/AU. koreanair.com. |
-| 67 | malaysia | MH | — | `broken` | | | Malaysia Airlines. KUL hub → Asia/EU/AU. malaysiaairlines.com. |
+| 67 | malaysia | MH | malaysia_direct | `done` | httpx | lowFares+flightSearch | Malaysia Airlines. KUL hub → Asia/EU/AU. malaysiaairlines.com. httpx-only via lowFares GET (daily prices) + flightSearch JSON POST (booking URL). |
 
 ---
 
