@@ -1,6 +1,6 @@
 # BoostedTravel
 
-Agent-native flight search & booking. 400+ airlines, 53 ready-to-run airline connectors, virtual interlining — straight from the terminal. Built for AI agents and developers.
+Agent-native flight search & booking. 400+ airlines, 58 ready-to-run airline connectors, virtual interlining — straight from the terminal. Built for AI agents and developers.
 
 **API Base URL:** `https://api.boostedchat.com`
 
@@ -18,7 +18,7 @@ Flight websites inflate prices with demand tracking, cookie-based pricing, and s
 | View details & price | Free (with tracking/inflation) | **Free** (no tracking) |
 | Book | Ticket + hidden markup | **$1 unlock + ticket price** |
 | Price goes up on repeat search? | Yes | **Never** |
-| LCC coverage | Missing many low-cost carriers | **53 direct airline connectors** |
+| LCC coverage | Missing many low-cost carriers | **58 direct airline connectors** |
 
 ## Quick Start
 
@@ -129,7 +129,7 @@ All commands accept `--json` for structured output and `--api-key` to override t
 | Mode | What it does | Speed | Auth |
 |------|-------------|-------|------|
 | **Cloud search** | Queries GDS/NDC providers (Duffel, Amadeus, Sabre, Travelport, Kiwi) via backend API | 2-15s | API key |
-| **Local search** | Fires 53 LCC connectors on your machine via Playwright + httpx | 5-25s | None |
+| **Local search** | Fires 58 LCC connectors on your machine via Playwright + httpx | 5-25s | None |
 
 Both modes run simultaneously by default. Results are merged, deduplicated, currency-normalized, and sorted.
 
@@ -144,7 +144,7 @@ The combo engine builds cross-airline round-trips by combining one-way fares fro
 │  AI Agents / CLI / SDK / MCP Server                 │
 ├──────────────────┬──────────────────────────────────┤
 │  Local connectors │  Enterprise Cloud API            │
-│  (53 airlines via │  (Amadeus, Duffel, Sabre,        │
+│  (58 airlines via │  (Amadeus, Duffel, Sabre,        │
 │   Playwright)     │   Travelport, Kiwi — contract-   │
 │                   │   only GDS/NDC providers)        │
 ├──────────────────┴──────────────────────────────────┤
@@ -153,9 +153,9 @@ The combo engine builds cross-airline round-trips by combining one-way fares fro
 └─────────────────────────────────────────────────────┘
 ```
 
-## Local Airline Connectors (53 Airlines)
+## Local Airline Connectors (58 Airlines)
 
-The Python SDK includes 53 production-grade airline connectors — not fragile scrapers, but maintained integrations that handle each airline's specific API pattern. No API key needed for local search. Each connector uses one of three proven strategies:
+The Python SDK includes 58 production-grade airline connectors — not fragile scrapers, but maintained integrations that handle each airline's specific API pattern. No API key needed for local search. Each connector uses one of three proven strategies:
 
 | Strategy | How it works | Example airlines |
 |----------|-------------|-----------------|
@@ -166,13 +166,13 @@ The Python SDK includes 53 production-grade airline connectors — not fragile s
 ### Supported Airlines
 
 <details>
-<summary>Full list of 53 LCC connectors</summary>
+<summary>Full list of 58 LCC connectors</summary>
 
 | Region | Airlines |
 |--------|----------|
 | **Europe** | Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Condor, Play, SunExpress, Volotea, Smartwings, Jet2, airBaltic |
 | **Middle East & Africa** | flydubai, Air Arabia, flynas, Jazeera Airways, Air Peace, FlySafair |
-| **Asia-Pacific** | AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Lion Air, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR |
+| **Asia-Pacific** | AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Lion Air, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Singapore Airlines, Cathay Pacific, Thai Airways, Korean Air, ANA |
 | **Americas** | Southwest, Spirit, Frontier, Volaris, VivaAerobus, Allegiant, Flair, GOL, Azul, JetSmart, Flybondi, Porter |
 | **Aggregator** | Kiwi.com (virtual interlining + LCC fallback) |
 
@@ -215,7 +215,7 @@ All browser-based connectors share a common launcher (`connectors/browser.py`) w
 
 | Package | Install | What it is |
 |---------|---------|------------|
-| **Python SDK + CLI** | `pip install boostedtravel` | SDK + `boostedtravel` CLI + 53 local LCC connectors |
+| **Python SDK + CLI** | `pip install boostedtravel` | SDK + `boostedtravel` CLI + 58 local LCC connectors |
 | **JS/TS SDK + CLI** | `npm install -g boostedtravel` | SDK + `boostedtravel` CLI command |
 | **MCP Server** | `npx boostedtravel-mcp` | Model Context Protocol for Claude, Cursor, Windsurf |
 | **Remote MCP** | `https://api.boostedchat.com/mcp` | Streamable HTTP — no install needed |

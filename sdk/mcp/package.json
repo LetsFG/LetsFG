@@ -1,8 +1,8 @@
 {
   "name": "boostedtravel-mcp",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "mcpName": "com.boostedchat/travel",
-  "description": "BoostedTravel MCP Server — 53 airline connectors run locally + enterprise GDS/NDC APIs. Flight search & booking for Claude, Cursor, Windsurf, and any MCP-compatible AI agent.",
+  "description": "BoostedTravel MCP Server — 58 airline connectors run locally + enterprise GDS/NDC APIs. Flight search & booking for Claude, Cursor, Windsurf, and any MCP-compatible AI agent.",
   "main": "dist/index.js",
   "bin": {
     "boostedtravel-mcp": "dist/index.js"

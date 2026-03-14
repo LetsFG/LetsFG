@@ -26,10 +26,12 @@ Each connector implements `search_flights(request)` and returns standardized `Fl
 | `airpeace.py` | Air Peace | West Africa |
 | `akasa.py` | Akasa Air | India |
 | `allegiant.py` | Allegiant Air | US domestic |
+| `ana.py` | ANA (All Nippon Airways) | Japan, Asia, US, Europe |
 | `azul.py` | Azul | Brazil, South America |
 | `batikair.py` | Batik Air | Indonesia, SE Asia |
 | `cebupacific.py` | Cebu Pacific | Philippines, Asia |
 | `condor.py` | Condor | Europe, Americas |
+| `cathay.py` | Cathay Pacific | Hong Kong, Asia, Europe, US |
 | `easyjet.py` | easyJet | Europe |
 | `eurowings.py` | Eurowings | Europe |
 | `flair.py` | Flair Airlines | Canada |
@@ -45,6 +47,7 @@ Each connector implements `search_flights(request)` and returns standardized `Fl
 | `jetsmart.py` | JetSMART | Chile, Argentina, South America |
 | `jetstar.py` | Jetstar | Australia, NZ, Asia |
 | `kiwi.py` | Kiwi.com | Worldwide (aggregator) |
+| `korean.py` | Korean Air | South Korea, Asia, US, Europe |
 | `lionair.py` | Lion Air | Indonesia, SE Asia |
 | `nokair.py` | Nok Air | Thailand, SE Asia |
 | `norwegian.py` | Norwegian | Scandinavia, Europe |
@@ -54,12 +57,14 @@ Each connector implements `search_flights(request)` and returns standardized `Fl
 | `porter.py` | Porter Airlines | Canada |
 | `ryanair.py` | Ryanair | Europe |
 | `scoot.py` | Scoot | Singapore, Asia |
+| `singapore.py` | Singapore Airlines | Singapore, Asia, Global |
 | `smartwings.py` | Smartwings | Czech Republic, Europe |
 | `southwest.py` | Southwest Airlines | US domestic |
 | `spicejet.py` | SpiceJet | India, ME |
 | `spirit.py` | Spirit Airlines | US, Caribbean |
 | `spring.py` | Spring Airlines | China, Asia |
 | `sunexpress.py` | SunExpress | Turkey, Europe |
+| `thai.py` | Thai Airways | Thailand, Asia, Europe |
 | `transavia.py` | Transavia | Netherlands, France, Europe |
 | `twayair.py` | T'way Air | South Korea, Asia |
 | `vietjet.py` | VietJet Air | Vietnam, SE Asia |
@@ -72,7 +77,7 @@ Each connector implements `search_flights(request)` and returns standardized `Fl
 
 ## Route Filtering
 
-`airline_routes.py` maps 400+ IATA airport codes to countries and 49 airlines to their operating regions. The engine uses this to only query connectors relevant to a given route — no point asking Ryanair about flights in Brazil.
+The engine uses this to only query connectors relevant to a given route — no point asking Ryanair about flights in Brazil.
 
 ## Adding a Connector
 

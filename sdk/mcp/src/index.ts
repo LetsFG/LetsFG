@@ -2,7 +2,7 @@
 /**
  * BoostedTravel MCP Server — Model Context Protocol integration.
  *
- * Runs 53 airline connectors LOCALLY via Python subprocess (no API key needed for search).
+ * Runs 58 airline connectors LOCALLY via Python subprocess (no API key needed for search).
  * Uses backend API only for unlock/book/payment operations.
  *
  * Requires: pip install boostedtravel && playwright install chromium
@@ -78,8 +78,8 @@ const TOOLS = [
     name: 'search_flights',
     description:
       'Search live flight availability and prices across 400+ airlines worldwide. ' +
-      'Fires 53 airline connectors in parallel on your machine (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
-      'Norwegian, Spring Airlines, Lucky Air, and 45 more) — no API key needed, completely FREE.\n\n' +
+      'Fires 58 airline connectors in parallel on your machine (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
+      'Norwegian, Spring Airlines, Lucky Air, and 50 more) — no API key needed, completely FREE.\n\n' +
       'Returns structured flight offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
       'Covers airlines across Europe, Asia, Americas, Middle East, and Africa — including carriers the user ' +
       'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
@@ -244,7 +244,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
       const summary = {
         total_offers: offers.length,
-        source: 'local_connectors (53 airlines)',
+        source: 'local_connectors (58 airlines)',
         offers: offers.map(o => ({
           offer_id: o.id,
           price: `${o.price} ${o.currency}`,
@@ -372,4 +372,4 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`BoostedTravel MCP v${VERSION} | local connectors: 53 airlines | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
+process.stderr.write(`BoostedTravel MCP v${VERSION} | local connectors: 58 airlines | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);

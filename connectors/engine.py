@@ -99,6 +99,7 @@ from connectors.delta import DeltaConnectorClient
 from connectors.cathay import CathayConnectorClient
 from connectors.singapore import SingaporeConnectorClient
 from connectors.korean import KoreanConnectorClient
+from connectors.nh import ANAConnectorClient
 
 from models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -131,6 +132,7 @@ _BROWSER_SOURCES: set[str] = {
     "cathay_direct",
     "singapore_direct",
     "korean_direct",
+    "nh_direct",
 }
 
 # Registry of direct airline connectors: (source_name, connector_class, timeout)
@@ -201,6 +203,7 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("singapore_direct", SingaporeConnectorClient, 60.0),
     ("thai_direct", ThaiConnectorClient, 25.0),
     ("korean_direct", KoreanConnectorClient, 45.0),
+    ("nh_direct", ANAConnectorClient, 60.0),
 ]
 
 
