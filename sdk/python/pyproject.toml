@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "boostedtravel"
-version = "0.2.7"
+version = "0.2.9"
 description = "Agent-native flight search & booking. 400+ airlines, 58 direct LCC scrapers run locally. Built for autonomous AI agents."
 readme = "README.md"
 license = {text = "MIT"}
@@ -36,6 +36,9 @@ dependencies = [
     "playwright>=1.40.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.0.0",
+    "curl_cffi>=0.7.0",
+    "playwright_stealth>=1.0.6",
+    "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +51,8 @@ all = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "click>=8.0,<8.2",
+    "nodriver>=0.38",
+    "patchright>=1.0",
 ]
 
 [project.scripts]

@@ -26,5 +26,14 @@ class PlayConnectorClient:
     def __init__(self, timeout: float = 25.0, **kwargs):
         pass
 
-    async def search(self, req: FlightSearchRequest, **kw: Any) -> FlightSearchResponse:
-        return FlightSearchResponse(search_id="play_defunct", offers=[], total_results=0)
+    async def search_flights(self, req: FlightSearchRequest, **kw: Any) -> FlightSearchResponse:
+        return FlightSearchResponse(
+            search_id="play_defunct",
+            origin=req.origin,
+            destination=req.destination,
+            offers=[],
+            total_results=0,
+        )
+
+    async def close(self):
+        pass

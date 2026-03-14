@@ -459,6 +459,7 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "US",
         "ZA", "KE",
     },
+    "suncountry": {"US", "MX", "JM", "BZ", "CR", "DO"},
 }
 
 
@@ -469,9 +470,10 @@ def get_relevant_connectors(
 ) -> list[tuple[str, type, float]]:
     """Filter connectors to only those that could serve the given route.
 
-    Returns the subset of connectors whose airlines operate in at least one
-    of the origin or destination countries. If country lookup fails for
-    either airport, all connectors are returned (safe fallback).
+    A connector is included when the airline serves BOTH the origin and
+    destination countries (all our connectors search direct flights only,
+    they don't build connections).  If the country lookup fails for either
+    airport, all connectors are returned (safe fallback).
 
     Args:
         origin: IATA airport/city code (e.g. "CDG", "LON")
@@ -502,8 +504,8 @@ def get_relevant_connectors(
         if countries is None:
             # Unknown airline — always include (safe default)
             relevant.append((source, cls, timeout))
-        elif origin_country in countries or dest_country in countries:
+        elif origin_country in countries and dest_country in countries:
             relevant.append((source, cls, timeout))
-        # else: skip — neither endpoint is in this airline's network
+        # else: skip — airline doesn't serve both endpoints
 
     return relevant
