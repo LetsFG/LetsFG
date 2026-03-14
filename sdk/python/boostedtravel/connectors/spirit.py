@@ -1,11 +1,11 @@
 """
-Spirit Airlines scraper — patchright + stealth + US proxy.
+Spirit Airlines connector — patchright + stealth + regional routing.
 
 Spirit (IATA: NK) is a US ultra-low-cost carrier operating domestic and
 Caribbean/Latin America routes. Heavy PerimeterX (PX) Enterprise + Akamai WAF.
 
 Strategy (form fill + API interception):
-1. Launch patchright Chromium (anti-detection Playwright fork) with US proxy.
+1. Launch patchright Chromium (anti-detection Playwright fork) with regional routing.
 2. Apply playwright_stealth + custom init script to defeat JS fingerprinting.
 3. Navigate to spirit.com, fill search form (One Way, airports, date).
 4. Intercept /api/prod-availability/ or /api/prod-shopping/ JSON response.
@@ -13,8 +13,8 @@ Strategy (form fill + API interception):
 6. Resets browser between attempts (PX taints sessions after detection).
 
 STATUS: BLOCKED — PX Enterprise detects all tested automation tools even with
-US proxy + stealth patches. Token endpoint returns 403 → Angular app refuses
-to make search API calls. May work with nodriver or residential proxies.
+stealth patches. Token endpoint returns 403 → Angular app refuses
+to make search API calls. May work with nodriver or residential routing.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ _USER_DATA_DIR = os.path.join(
 # ── Proxy config ────────────────────────────────────────────────────────
 # Set SPIRIT_PROXY=http://user:pass@host:port  or individual vars below
 _PROXY_URL = os.environ.get("SPIRIT_PROXY", "")
-_PROXY_HOST = os.environ.get("SPIRIT_PROXY_HOST", "us.decodo.com")
+_PROXY_HOST = os.environ.get("SPIRIT_PROXY_HOST", "")
 _PROXY_PORT = os.environ.get("SPIRIT_PROXY_PORT", "10001")
 _PROXY_USER = os.environ.get("SPIRIT_PROXY_USER", "")
 _PROXY_PASS = os.environ.get("SPIRIT_PROXY_PASS", "")

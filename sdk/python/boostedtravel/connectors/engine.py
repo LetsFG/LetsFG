@@ -87,6 +87,8 @@ from connectors.usbangla import USBanglaConnectorClient
 from connectors.biman import BimanConnectorClient
 from connectors.etihad import EtihadConnectorClient
 from connectors.turkish import TurkishConnectorClient
+from connectors.emirates import EmiratesConnectorClient
+from connectors.malaysia import MalaysiaConnectorClient
 from connectors.suncountry import SunCountryConnectorClient
 from connectors.alaska import AlaskaConnectorClient
 from connectors.hawaiian import HawaiianConnectorClient
@@ -114,6 +116,7 @@ _BROWSER_SOURCES: set[str] = {
     "usbangla_direct",
     "etihad_direct",
     "turkish_direct",
+    "emirates_direct",
     "zipair_direct",
     "suncountry_direct",
     "alaska_direct",
@@ -179,6 +182,8 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("biman_direct", BimanConnectorClient, 25.0),
     ("etihad_direct", EtihadConnectorClient, 35.0),
     ("turkish_direct", TurkishConnectorClient, 45.0),
+    ("emirates_direct", EmiratesConnectorClient, 60.0),
+    ("malaysia_direct", MalaysiaConnectorClient, 25.0),
     ("suncountry_direct", SunCountryConnectorClient, 45.0),
     ("alaska_direct", AlaskaConnectorClient, 45.0),
     ("hawaiian_direct", HawaiianConnectorClient, 45.0),

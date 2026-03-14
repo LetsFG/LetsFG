@@ -398,6 +398,28 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "ZA", "KE", "ET", "NG", "GH", "SN", "CI", "TZ", "MZ", "MU",
         "CM", "GA", "CG", "CD", "SD", "DJ", "SO", "MG", "RW", "UG",
     },
+    "emirates": {
+        "AE", "SA", "QA", "KW", "BH", "OM", "EG", "JO", "LB", "IQ", "IR",
+        "PK", "IN", "LK", "BD", "NP", "MV",
+        "TH", "MY", "SG", "ID", "PH", "VN", "KH", "MM",
+        "CN", "HK", "JP", "KR", "TW", "AU", "NZ",
+        "GB", "IE", "FR", "DE", "IT", "ES", "PT", "CH", "NL", "BE",
+        "AT", "SE", "NO", "DK", "FI", "PL", "CZ", "HU", "RO", "BG",
+        "GR", "CY", "TR", "RU",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO",
+        "KE", "TZ", "ZA", "NG", "ET", "GH", "UG", "MU", "SC",
+        "KZ", "UZ", "AZ",
+    },
+    "malaysia": {
+        "MY", "SG", "TH", "ID", "VN", "KH", "MM", "PH", "BN", "LA",
+        "IN", "LK", "BD", "NP", "MV",
+        "CN", "HK", "TW", "JP", "KR",
+        "AU", "NZ",
+        "AE", "SA", "QA", "BH", "OM",
+        "GB", "NL", "FR", "DE", "TR",
+        "US",
+        "KE", "ZA",
+    },
 }
 
 
