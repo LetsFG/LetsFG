@@ -334,6 +334,13 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "GB", "DE", "FR", "IT", "CH", "AT", "DK", "SE", "NO", "BE",
         "TR",
     },
+    "korean": {
+        "KR", "JP", "CN", "HK", "TW", "SG", "TH", "VN", "KH", "PH",
+        "MY", "ID", "IN", "LK", "BD", "NP", "MN", "UZ", "KZ", "AU",
+        "US", "CA", "GB", "FR", "DE", "IT", "NL", "CH", "AT", "CZ",
+        "HU", "PL", "HR", "SE", "DK", "FI", "ES", "TR", "IL", "AE",
+        "RU", "NZ",
+    },
 
     # ── Middle East / Africa / India ──
     "flydubai": {
@@ -434,6 +441,16 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "US", "CA",
         "AE", "QA", "SA",
         "ZA", "KE", "SN",
+    },
+    "singapore": {
+        "SG", "MY", "TH", "ID", "VN", "PH", "KH", "MM", "BN", "LA",
+        "IN", "LK", "BD", "NP", "MV",
+        "CN", "HK", "TW", "JP", "KR",
+        "AU", "NZ",
+        "AE", "SA", "BH", "IL",
+        "GB", "FR", "DE", "IT", "ES", "NL", "CH", "DK", "SE", "TR",
+        "US",
+        "ZA", "KE",
     },
 }
 
