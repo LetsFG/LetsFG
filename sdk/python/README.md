@@ -2,12 +2,12 @@
 
 <!-- mcp-name: com.boostedchat/travel -->
 
-Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. 58 direct LCC connectors run locally, plus GDS/NDC providers via cloud API. Built for autonomous AI agents.
+Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. 69 direct airline connectors run locally, plus GDS/NDC providers via cloud API. Built for autonomous AI agents.
 
 ## Install
 
 ```bash
-pip install boostedtravel           # SDK + 58 LCC connectors
+pip install boostedtravel           # SDK + 69 airline connectors
 pip install boostedtravel[cli]      # SDK + CLI (adds typer, rich)
 ```
 
@@ -274,21 +274,21 @@ if best:
 
 ## Local LCC Search (No API Key)
 
-The SDK includes 58 connectors for low-cost carriers that run directly on your machine. No API key, no backend, completely free:
+The SDK includes 69 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
 
 ```python
 from boostedtravel.local import search_local
 
-# Fires all relevant LCC connectors — Ryanair, Wizz Air, EasyJet, etc.
+# Fires all relevant airline connectors — Ryanair, Wizz Air, EasyJet, etc.
 result = await search_local("GDN", "BCN", "2026-06-15")
-print(f"{result['total_results']} offers from local scrapers")
+print(f"{result['total_results']} offers from local connectors")
 ```
 
 The full search (`bt.search()`) runs both local connectors and cloud providers simultaneously and merges results.
 
-### Supported LCC Airlines (58)
+### Supported Airlines (69)
 
-Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Southwest, AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Lion Air, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, flydubai, Air Arabia, flynas, Jazeera, Condor, Play, SunExpress, Volotea, Smartwings, Jet2, airBaltic, Spirit, Frontier, Volaris, VivaAerobus, Allegiant, Flair, GOL, Azul, JetSmart, Flybondi, Porter, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Air Peace, FlySafair, Kiwi.com, Singapore Airlines, Cathay Pacific, Thai Airways, Korean Air, ANA
+Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Southwest, AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, flydubai, Air Arabia, flynas, Salam Air, Emirates, Etihad, Condor, SunExpress, Volotea, Smartwings, Jet2, Frontier, Volaris, VivaAerobus, Allegiant, JetBlue, Flair, GOL, Azul, JetSmart, Flybondi, Porter, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Air Peace, FlySafair, Avelo, Breeze, Sun Country, Alaska Airlines, Hawaiian Airlines, American Airlines, United Airlines, Delta Air Lines, Singapore Airlines, Cathay Pacific, Malaysian Airlines, Thai Airways, Korean Air, ANA, US-Bangla, Biman Bangladesh, Kiwi.com
 
 ## Quick Start (CLI)
 
@@ -362,12 +362,18 @@ Every command supports `--json` for machine-readable output.
 
 Prices are cheaper because we connect directly to airlines — no OTA markup.
 
+### City-Wide Airport Expansion
+
+Search a city code and all airports in that city are searched automatically. `LON` → LHR, LGW, STN, LTN, SEN, LCY. `NYC` → JFK, EWR, LGA. Works for 25+ major cities.
+
 ## For Agents
 
 The SDK client uses **only Python stdlib** (`urllib`) for API calls — safe for sandboxed environments. The local LCC connectors additionally require `playwright`, `httpx`, and `beautifulsoup4` for browser automation.
 
 The `--json` flag on every CLI command outputs structured JSON for easy parsing by agents.
+### Virtual Interlining
 
+The combo engine builds cross-airline round-trips by combining one-way fares from different carriers. A Ryanair outbound + Wizz Air return can save 30-50% vs booking a round-trip on either airline alone.
 ## License
 
 MIT
