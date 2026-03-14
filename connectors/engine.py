@@ -80,6 +80,8 @@ from connectors.airindiaexpress import AirIndiaExpressConnectorClient
 from connectors.batikair import BatikAirConnectorClient
 from connectors.luckyair import LuckyAirConnectorClient
 from connectors.nineair import NineAirConnectorClient
+from connectors.avelo import AveloConnectorClient
+from connectors.salamair import SalamAirConnectorClient
 
 from models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -93,7 +95,7 @@ _BROWSER_SOURCES: set[str] = {
     "flybondi_direct", "flydubai_direct", "flynas_direct", "frontier_direct",
     "gol_direct", "indigo_direct", "jet2_direct", "jetsmart_direct",
     "jetstar_direct", "luckyair_direct", "9air_direct",
-    "jetblue_direct",
+    "jetblue_direct", "avelo_direct",
     "norwegian_direct", "peach_direct", "pegasus_direct", "play_direct",
     "porter_direct", "scoot_direct", "smartwings_direct", "southwest_direct",
     "spirit_direct", "sunexpress_direct", "transavia_direct", "twayair_direct",
@@ -150,6 +152,8 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("batikair_direct", BatikAirConnectorClient, 25.0),
     ("luckyair_direct", LuckyAirConnectorClient, 30.0),
     ("9air_direct", NineAirConnectorClient, 30.0),
+    ("avelo_direct", AveloConnectorClient, 45.0),
+    ("salamair_direct", SalamAirConnectorClient, 20.0),
 ]
 
 

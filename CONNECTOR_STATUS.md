@@ -113,7 +113,7 @@
 |---|-----------|------|------|--------|--------|
 | 40 | jetblue | B6 | LCC | `done` | bestFares calendar API (no auth, ~2s), Playwright fallback for details. 114+ destinations. |
 | 41 | breeze | MX | LCC | `broken` | **US IP required.** 75 destinations, unique unserved city pairs (A220 fleet). flybreeze.com. |
-| 42 | avelo | XP | ULCC | `broken` | **US IP required.** Ultra-low fares $19-59, serves small airports (New Haven, Wilmington DE). aveloair.com. |
+| 42 | avelo | XP | ULCC | `done` | Playwright deep-link scraper. 42 US domestic routes. Deep link URL bypasses form fill. Blazor WASM app. |
 | 43 | suncountry | SY | ULCC | `broken` | **US IP required.** 81+ destinations from MSP hub, best low-cost carrier NA. suncountry.com. |
 | 44 | alaska | AS | Major | `broken` | **US IP required.** West Coast dominant + Hawaii monopoly (post-Hawaiian merger). alaskaair.com. |
 | 45 | hawaiian | HA | Major | `broken` | **US IP required.** Hawaii inter-island + mainland-Hawaii + Asia/Pacific. hawaiianairlines.com. |
@@ -121,6 +121,15 @@
 | 47 | united | UA | Major | `broken` | **US IP required.** 2nd largest US carrier, massive hub network. united.com — complex SPA. |
 | 48 | delta | DL | Major | `broken` | **US IP required.** 3rd largest US carrier, ATL world's busiest hub. delta.com — complex SPA. |
 | 49 | jsx | XE | Premium | `broken` | **US IP required.** Semi-private $100-400/seat, FBO terminals (no TSA). jsx.com. |
+
+### New India/Bangladesh → Middle East Connectors (4)
+
+| # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
+|---|-----------|------|------|--------|------------|-----------|-------|
+| 50 | salamair | OV | API | `done` | claude-connector-builder | 2026-03-14T12:00Z | Pure httpx, api.salamair.com REST API. MCT hub → IN/BD/ME/AF. Tested MCT→SLL (8 offers 48.99 OMR), MCT→BOM (4 offers 124.94 OMR), MCT→DAC (4 offers 66.99 OMR), MCT→CGP (4 offers 132.40 OMR). |
+| 51 | usbangla | BS | Browser | `broken` | | | US-Bangla Airlines. Zenith FrontOffice booking engine at alphaapi.usbair.com (401 without browser session). DAC hub → ME/IN. |
+| 52 | biman | BG | TBD | `broken` | | | Biman Bangladesh Airlines. bimanair.com returns 200, biman-airlines.com returns 403 (CloudFlare). DAC hub → ME/EU/AS. |
+| 53 | gulfair | GF | TBD | `blocked` | | | Gulf Air. flights.gulfair.com protected by GeeTest CAPTCHA. BAH hub → IN/BD/ME/EU. Likely blocked. |
 
 ---
 
