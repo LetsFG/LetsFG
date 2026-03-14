@@ -58,6 +58,7 @@ from boostedtravel.connectors.azul import AzulConnectorClient
 from boostedtravel.connectors.flysafair import FlySafairConnectorClient
 from boostedtravel.connectors.vivaaerobus import VivaAerobusConnectorClient
 from boostedtravel.connectors.allegiant import AllegiantConnectorClient
+from boostedtravel.connectors.jetblue import JetBlueConnectorClient
 from boostedtravel.connectors.flair import FlairConnectorClient
 from boostedtravel.connectors.spicejet import SpiceJetConnectorClient
 from boostedtravel.connectors.akasa import AkasaConnectorClient
@@ -112,8 +113,7 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("azul_direct", AzulConnectorClient, 25.0),
     ("flysafair_direct", FlySafairConnectorClient, 25.0),
     ("vivaaerobus_direct", VivaAerobusConnectorClient, 25.0),
-    ("allegiant_direct", AllegiantConnectorClient, 25.0),
-    ("flair_direct", FlairConnectorClient, 25.0),
+    ("allegiant_direct", AllegiantConnectorClient, 25.0),    ("jetblue_direct", JetBlueConnectorClient, 25.0),    ("flair_direct", FlairConnectorClient, 25.0),
     ("spicejet_direct", SpiceJetConnectorClient, 25.0),
     ("akasa_direct", AkasaConnectorClient, 25.0),
     ("spring_direct", SpringConnectorClient, 25.0),

@@ -263,6 +263,7 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
     "spirit": {"US", "PR", "CO", "MX", "JM", "DO", "GT", "SV", "HN", "CR", "PA", "PE", "EC"},
     "frontier": {"US", "MX", "DO", "JM", "PR", "GT", "CR"},
     "allegiant": {"US", "MX", "PR", "DO"},
+    "jetblue": {"US", "PR", "DO", "JM", "BS", "MX", "CR", "CO", "EC", "PE", "GB", "FR", "NL"},
     "volaris": {"US", "MX", "GT", "SV", "HN", "CR", "NI"},
     "vivaaerobus": {"US", "MX", "CO", "CU", "DO", "PE"},
     "jetsmart": {"CL", "AR", "PE", "CO", "BR"},
