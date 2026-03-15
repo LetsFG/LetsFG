@@ -47,6 +47,9 @@ Search 400+ airlines across multiple providers + 73 local LCC connectors. Return
 ```python
 from boostedtravel.local import search_local
 result = await search_local("GDN", "BCN", "2026-06-15")
+
+# Limit concurrency on constrained machines
+result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 ```
 
 ### 2. Unlock ($1.00)
@@ -175,6 +178,7 @@ boostedtravel search GDN BER 2026-03-03 --json
 | `--currency` | | `EUR` | Currency code |
 | `--limit` | `-l` | `20` | Max results (1–100) |
 | `--sort` | | `price` | `price` or `duration` |
+| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search (1–32) |
 | `--json` | `-j` | | JSON output for machine consumption |
 
 ### Python SDK

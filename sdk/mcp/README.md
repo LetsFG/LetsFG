@@ -63,6 +63,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
+> **Note:** Add `"BOOSTEDTRAVEL_MAX_BROWSERS": "4"` to `env` to limit browser concurrency on constrained machines.
+
 ### Cursor
 
 Add to `.cursor/mcp.json` in your project root:
@@ -169,6 +171,7 @@ To avoid unexpected updates:
 | `book_flight` | Create real airline reservation (PNR) | FREE | Creates booking |
 | `setup_payment` | Attach payment card (once) | FREE | Updates payment |
 | `get_agent_profile` | Usage stats & payment status | FREE | None (read-only) |
+| `system_info` | System resources & concurrency tier | FREE | None (read-only) |
 
 ### Booking Flow
 
@@ -180,6 +183,10 @@ search_flights  →  unlock_flight_offer  →  book_flight
 1. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 73 airlines
 2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min, costs $1
 3. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket
+
+The `search_flights` tool accepts an optional `max_browsers` parameter (1–32) to limit concurrent browser instances. Omit it to auto-detect based on system RAM.
+
+The `system_info` tool returns your system profile (RAM, CPU, tier, recommended max browsers) — useful for agents to decide concurrency before searching.
 
 The agent has native tools — no API docs needed, no URL building, no token-burning browser automation.
 

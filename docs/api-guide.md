@@ -20,11 +20,17 @@ from boostedtravel.local import search_local
 result = await search_local("LHR", "BCN", "2026-04-15")
 for offer in result.offers:
     print(f"{offer.airlines[0]}: {offer.currency} {offer.price}")
+
+# Limit browser concurrency on constrained machines
+result = await search_local("LHR", "BCN", "2026-04-15", max_browsers=4)
 ```
 
 ```bash
 # CLI — works immediately after pip install
 boostedtravel search-local LHR BCN 2026-04-15
+
+# Limit browsers
+boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
 ```
 
 ### Full Search (API Key)

@@ -201,6 +201,7 @@ console.log(`${flights.totalResults} offers`);
 | `boostedtravel unlock <offer_id>` | Unlock offer details ($1) |
 | `boostedtravel book <offer_id>` | Book the flight (free after unlock) |
 | `boostedtravel setup-payment` | Set up payment method |
+| `boostedtravel system-info` | Show system resources & concurrency tier |
 | `boostedtravel me` | View profile & usage stats |
 
 All commands accept `--json` for structured output and `--api-key` to override the env variable.
@@ -276,11 +277,17 @@ from boostedtravel.local import search_local
 
 # Runs all relevant connectors on your machine — completely free
 result = await search_local("GDN", "BCN", "2026-06-15")
+
+# Limit browser concurrency for constrained environments
+result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 ```
 
 ```bash
 # CLI local-only search
 boostedtravel search-local GDN BCN 2026-06-15
+
+# Limit browser concurrency
+boostedtravel search-local GDN BCN 2026-06-15 --max-browsers 4
 ```
 
 ### Shared Browser Infrastructure
@@ -291,7 +298,44 @@ All browser-based connectors share a common launcher (`connectors/browser.py`) w
 - Stealth headless mode (`--headless=new`) — undetectable by airline bot protection
 - Off-screen window positioning to avoid stealing focus
 - CDP persistent sessions for airlines that require cookie state
+- Adaptive concurrency — automatically scales browser instances based on system RAM
 - `BOOSTED_BROWSER_VISIBLE=1` to show browser windows for debugging
+
+### Performance Tuning
+
+BoostedTravel auto-detects your system's available RAM and scales browser concurrency accordingly:
+
+| System RAM | Tier | Max Browsers | Notes |
+|-----------|------|-------------|-------|
+| < 2 GB | Minimal | 2 | Low-end VMs, CI runners |
+| 2–4 GB | Low | 3 | Budget laptops |
+| 4–8 GB | Moderate | 5 | Standard laptops |
+| 8–16 GB | Standard | 8 | Most desktops |
+| 16–32 GB | High | 12 | Dev workstations |
+| 32+ GB | Maximum | 16 | Servers |
+
+Override auto-detection when needed:
+
+```bash
+# Environment variable (highest priority)
+export BOOSTEDTRAVEL_MAX_BROWSERS=4
+
+# CLI flag
+boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+
+# Check your system profile
+boostedtravel system-info
+```
+
+```python
+# Python SDK
+from boostedtravel import configure_max_browsers, get_system_profile
+
+profile = get_system_profile()
+print(f"RAM: {profile['ram_available_gb']:.1f} GB, Tier: {profile['tier']}, Recommended: {profile['recommended_max_browsers']}")
+
+configure_max_browsers(4)  # explicit override
+```
 
 ## Error Handling
 

@@ -25,6 +25,8 @@ Provides:
 - `BoostedTravel` client class with `search()`, `unlock()`, `book()`, `me()`, `resolve_location()`, `setup_payment()`
 - **73 local airline connectors** — run directly on your machine (Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, and 67 more)
 - `search_local()` — free local-only search, no API key needed
+- `get_system_profile()` — detect system RAM/CPU and recommended concurrency
+- `configure_max_browsers(n)` — set max concurrent browser instances (1–32)
 - CLI command `boostedtravel` with all operations
 - Virtual interlining engine — cross-airline round-trips from one-way fares
 - Shared browser infrastructure — stealth Chrome launcher, CDP sessions, anti-bot handling
@@ -117,6 +119,7 @@ https://api.boostedchat.com/mcp
 | `search_flights` | Search 400+ airlines for flights |
 | `get_agent_profile` | View account info and usage stats |
 | `resolve_location` | Convert city names to IATA codes |
+| `system_info` | System resources & recommended concurrency |
 | `setup_payment` | Attach a Stripe payment method |
 | `unlock_flight_offer` | Confirm price and reserve ($1) |
 | `book_flight` | Create airline booking (PNR) |
