@@ -23,6 +23,7 @@ The `boostedtravel` CLI is available via both Python and JavaScript. Same comman
 | `boostedtravel register` | Create account and get API key |
 | `boostedtravel search <origin> <dest> <date>` | Search flights (free, requires API key) |
 | `boostedtravel search-local <origin> <dest> <date>` | Search flights locally (free, **no API key**) |
+| `boostedtravel system-info` | Show system resources & concurrency tier |
 | `boostedtravel locations <query>` | Resolve city/airport to IATA codes |
 | `boostedtravel unlock <offer_id>` | Unlock offer details ($1) |
 | `boostedtravel book <offer_id>` | Book the flight (free after unlock) |
@@ -43,6 +44,7 @@ All commands accept `--json` for structured output and `--api-key` to override t
 | `--currency` | | `EUR` | 3-letter currency code |
 | `--limit` | `-l` | `20` | Maximum number of results (1–100) |
 | `--sort` | | `price` | Sort by `price` or `duration` |
+| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search (1–32) |
 | `--json` | `-j` | | Output raw JSON (for agents/scripts) |
 
 ## Cabin Class Codes
@@ -66,6 +68,9 @@ boostedtravel search-local LHR JFK 2026-04-15
 
 # With cabin class and JSON output
 boostedtravel search-local LON BCN 2026-04-01 --cabin M --json
+
+# Limit browser concurrency for constrained environments
+boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
 ```
 
 Local search queries 73 airline websites directly. No API key needed — install and search immediately.
@@ -144,3 +149,24 @@ boostedtravel book "$OFFER_ID" \
 
 !!! warning "Real Passenger Details Required"
     Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.
+
+### System Info
+
+```bash
+# Show system resources and concurrency tier
+boostedtravel system-info
+
+# Machine-readable output
+boostedtravel system-info --json
+```
+
+Output includes platform, CPU cores, total/available RAM, tier name, recommended max browsers, and current setting.
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `BOOSTEDTRAVEL_API_KEY` | Your agent API key (for cloud search, unlock, book) |
+| `BOOSTEDTRAVEL_BASE_URL` | API URL override (default: `https://api.boostedchat.com`) |
+| `BOOSTEDTRAVEL_MAX_BROWSERS` | Max concurrent browser instances for local search (1–32). Auto-detected from RAM if not set. |
+| `BOOSTED_BROWSER_VISIBLE` | Set to `1` to show browser windows for debugging |

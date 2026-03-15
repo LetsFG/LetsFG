@@ -11,6 +11,10 @@ info:
     2. **Unlock** ($1) — confirm live price, reserve for 30 minutes
     3. **Book** (free) — create real airline PNR
 
+    ## Local Search
+    The Python SDK runs 73 airline connectors locally with adaptive browser concurrency
+    that auto-scales based on system RAM. Override with `BOOSTEDTRAVEL_MAX_BROWSERS` env var.
+
     ## Authentication
     Pass your API key via the `X-API-Key` header. Get one free:
     ```

@@ -72,9 +72,47 @@ boostedtravel book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john
 - `offerSummary(offer)` — One-line string summary
 - `cheapestOffer(result)` — Get cheapest offer from search
 
+### `searchLocal(origin, destination, dateFrom, options?)`
+
+Search 73 airline connectors locally (no API key needed). Requires Python + `boostedtravel` installed.
+
+```typescript
+import { searchLocal } from 'boostedtravel';
+
+const result = await searchLocal('GDN', 'BCN', '2026-06-15');
+console.log(result.total_results);
+
+// Limit browser concurrency for constrained environments
+const result2 = await searchLocal('GDN', 'BCN', '2026-06-15', { maxBrowsers: 4 });
+```
+
+### `systemInfo()`
+
+Get system resource profile and recommended concurrency settings.
+
+```typescript
+import { systemInfo } from 'boostedtravel';
+
+const info = await systemInfo();
+console.log(info);
+// { platform: 'win32', cpu_cores: 16, ram_total_gb: 31.2, ram_available_gb: 14.7,
+//   tier: 'standard', recommended_max_browsers: 8, current_max_browsers: 8 }
+```
+
 ## Zero Dependencies
 
 Uses native `fetch` (Node 18+). No `axios`, no `node-fetch`, nothing. Safe for sandboxed environments.
+
+## Performance Tuning
+
+Local search auto-scales browser concurrency based on available RAM. Override with `maxBrowsers`:
+
+```typescript
+// Limit to 4 concurrent browsers
+await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 });
+```
+
+Or set the `BOOSTEDTRAVEL_MAX_BROWSERS` environment variable globally.
 
 ## License
 

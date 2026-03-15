@@ -19,6 +19,7 @@ BoostedTravel/
 │   │   │   ├── client.py            # BoostedTravel main client class (urllib-based)
 │   │   │   ├── cli.py               # CLI entry point (typer)
 │   │   │   ├── local.py             # Local LCC search runner (no API key needed)
+│   │   │   ├── system_info.py       # System resource detection (RAM, CPU, tier)
 │   │   │   ├── models.py            # Re-exports from models/
 │   │   │   ├── models/
 │   │   │   │   ├── __init__.py
@@ -86,11 +87,19 @@ The `connectors/` directory contains scrapers for 73 low-cost airlines. Three co
 - **API Interception** — Playwright navigation + response capture (~5-15s)
 
 Key infrastructure files in `connectors/`:
-- `browser.py` — Shared Chrome discovery, stealth launch (headless/CDP), cleanup
+- `browser.py` — Shared Chrome discovery, stealth launch (headless/CDP), adaptive concurrency, cleanup
 - `engine.py` — Orchestrates all connectors in parallel, merges/deduplicates results
 - `combo_engine.py` — Virtual interlining (cross-airline round-trips from one-way fares)
 - `currency.py` — Real-time currency conversion for price normalization
 - `airline_routes.py` — Maps countries to relevant connectors (only fires scrapers for relevant routes)
+
+### Browser Concurrency Management
+`browser.py` throttles concurrent Chrome instances with an `asyncio.Semaphore`. The limit is resolved in priority order:
+1. `BOOSTEDTRAVEL_MAX_BROWSERS` env var (highest priority)
+2. Explicit call to `configure_max_browsers(n)` or `--max-browsers` CLI flag
+3. Auto-detect from available RAM via `system_info.py` (default)
+
+`system_info.py` provides `get_system_profile()` which returns RAM, CPU, tier, and recommended max browsers. Tiers: minimal (<2GB, 2), low (2-4GB, 3), moderate (4-8GB, 5), standard (8-16GB, 8), high (16-32GB, 12), maximum (32+GB, 16).
 
 ### Zero Price Bias
 The API returns raw airline prices — no demand-based inflation, no cookie tracking, no surge pricing. This is a core selling point.
