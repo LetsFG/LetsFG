@@ -9,12 +9,16 @@ startCommand:
       BOOSTEDTRAVEL_API_KEY:
         type: string
         description: "BoostedTravel API key (optional — local search works without it). Get one free: boostedtravel register --email you@example.com"
+      BOOSTEDTRAVEL_MAX_BROWSERS:
+        type: string
+        description: "Max concurrent browser instances for local search (1–32). Auto-detected from system RAM if not set."
     required: []
   commandFunction: |-
     (config) => ({
       command: "npx",
       args: ["-y", "boostedtravel-mcp"],
       env: {
-        BOOSTEDTRAVEL_API_KEY: config.BOOSTEDTRAVEL_API_KEY || ""
+        BOOSTEDTRAVEL_API_KEY: config.BOOSTEDTRAVEL_API_KEY || "",
+        ...(config.BOOSTEDTRAVEL_MAX_BROWSERS && { BOOSTEDTRAVEL_MAX_BROWSERS: config.BOOSTEDTRAVEL_MAX_BROWSERS })
       }
     })

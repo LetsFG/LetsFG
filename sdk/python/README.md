@@ -282,6 +282,9 @@ from boostedtravel.local import search_local
 # Fires all relevant airline connectors — Ryanair, Wizz Air, EasyJet, etc.
 result = await search_local("GDN", "BCN", "2026-06-15")
 print(f"{result['total_results']} offers from local connectors")
+
+# Limit browser concurrency for constrained environments
+result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 ```
 
 The full search (`bt.search()`) runs both local connectors and cloud providers simultaneously and merges results.
@@ -341,6 +344,8 @@ boostedtravel locations "Berlin"
 | `locations` | Resolve city name to IATA codes | FREE |
 | `unlock` | Unlock offer (confirms price, reserves 30min) | $1 |
 | `book` | Book flight (creates real airline PNR) | FREE |
+| `search-local` | Search 73 local airline connectors | FREE |
+| `system-info` | Show system resources & concurrency tier | FREE |
 | `register` | Register new agent, get API key | FREE |
 | `setup-payment` | Attach payment card (payment token) | FREE |
 | `me` | Show agent profile and usage stats | FREE |
@@ -353,6 +358,47 @@ Every command supports `--json` for machine-readable output.
 |----------|-------------|
 | `BOOSTEDTRAVEL_API_KEY` | Your agent API key |
 | `BOOSTEDTRAVEL_BASE_URL` | API URL (default: `https://api.boostedchat.com`) |
+| `BOOSTEDTRAVEL_MAX_BROWSERS` | Max concurrent browser instances (1–32). Auto-detected from RAM if not set. |
+
+## Performance Tuning
+
+BoostedTravel auto-detects your system's available RAM and scales browser concurrency:
+
+| Available RAM | Tier | Max Browsers |
+|-------------|------|-------------|
+| < 2 GB | Minimal | 2 |
+| 2–4 GB | Low | 3 |
+| 4–8 GB | Moderate | 5 |
+| 8–16 GB | Standard | 8 |
+| 16–32 GB | High | 12 |
+| 32+ GB | Maximum | 16 |
+
+```python
+from boostedtravel import get_system_profile, configure_max_browsers
+
+# Check system resources and recommended concurrency
+profile = get_system_profile()
+print(f"RAM: {profile['ram_available_gb']:.1f} GB available")
+print(f"Tier: {profile['tier']} → {profile['recommended_max_browsers']} browsers")
+
+# Override auto-detection
+configure_max_browsers(4)  # clamps to 1–32
+```
+
+```bash
+# Via CLI
+boostedtravel system-info
+boostedtravel system-info --json  # machine-readable
+
+# Override via env var
+export BOOSTEDTRAVEL_MAX_BROWSERS=4
+boostedtravel search-local LHR BCN 2026-04-15
+
+# Override via CLI flag
+boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+```
+
+Priority: env var > explicit config/flag > auto-detect.
 
 ## How It Works
 

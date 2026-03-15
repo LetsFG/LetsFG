@@ -164,6 +164,7 @@ except AuthenticationError:
 | `--limit` | `-l` | `20` | Maximum number of results (1–100) |
 | `--sort` | | `price` | Sort by `price` or `duration` |
 | `--json` | `-j` | | Output raw JSON (for agents/scripts) |
+| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search (1–32) |
 
 ## Multi-Passenger Examples
 
@@ -190,3 +191,46 @@ When you search with multiple passengers, the response includes `passenger_ids` 
 | `F` | First | Top-tier service, suites on some airlines, maximum comfort |
 
 If omitted, the search returns all cabin classes. Specify a cabin code to filter results to that class only.
+
+---
+
+## Performance Tuning
+
+BoostedTravel auto-detects system RAM and scales browser concurrency. This prevents Chrome from overwhelming low-end machines while maximizing throughput on powerful ones.
+
+| Available RAM | Tier | Max Browsers |
+|-------------|------|-------------|
+| < 2 GB | Minimal | 2 |
+| 2–4 GB | Low | 3 |
+| 4–8 GB | Moderate | 5 |
+| 8–16 GB | Standard | 8 |
+| 16–32 GB | High | 12 |
+| 32+ GB | Maximum | 16 |
+
+### Check Your System
+
+```bash
+boostedtravel system-info
+```
+
+### Override Auto-Detection
+
+```bash
+# Environment variable (highest priority)
+export BOOSTEDTRAVEL_MAX_BROWSERS=4
+
+# CLI flag (per-search)
+boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+```
+
+```python
+from boostedtravel import configure_max_browsers, get_system_profile
+
+profile = get_system_profile()
+print(f"Tier: {profile['tier']}, recommended: {profile['recommended_max_browsers']}")
+
+# Set explicitly
+configure_max_browsers(4)
+```
+
+Priority order: `BOOSTEDTRAVEL_MAX_BROWSERS` env var > explicit config > auto-detect from RAM.

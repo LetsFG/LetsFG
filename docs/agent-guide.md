@@ -11,6 +11,9 @@ Agents can use **local search** (free, no API key) for quick lookups, or **full 
 from boostedtravel.local import search_local
 result = await search_local("LHR", "JFK", "2026-06-01")
 
+# With concurrency limit for constrained environments
+result = await search_local("LHR", "JFK", "2026-06-01", max_browsers=4)
+
 # Full search — API key required, 400+ airlines via GDS/NDC
 from boostedtravel import BoostedTravel
 bt = BoostedTravel(api_key="trav_...")
@@ -41,6 +44,18 @@ User request → Agent parses intent → Resolve locations → Search (free)
 5. **Map passenger IDs correctly.** Search returns `passenger_ids` (e.g., `["pas_0", "pas_1"]`). When booking with multiple passengers, each passenger dict must include the correct `id` from this list. The first adult gets `pas_0`, second gets `pas_1`, etc.
 
 6. **Use REAL passenger details.** Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.
+
+7. **Be aware of system resources.** Local search fires up to 73 browser-based connectors in parallel. BoostedTravel auto-scales concurrency based on available RAM, but agents can check resources and override:
+
+```python
+from boostedtravel import get_system_profile, configure_max_browsers
+
+profile = get_system_profile()
+if profile['tier'] in ('minimal', 'low'):
+    configure_max_browsers(2)  # go easy on constrained machines
+```
+
+Or use the MCP `system_info` tool before `search_flights` to decide concurrency.
 
 ## Handling Edge Cases
 

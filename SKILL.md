@@ -50,6 +50,27 @@ Resolve city names to IATA airport/city codes.
 - **Input:** query (city name, e.g. "London")
 - **Output:** List of matching IATA codes (e.g. LON, LHR, LGW, STN, LTN, LCY)
 
+### get_system_profile
+Get system resource profile and recommended browser concurrency for local search.
+- **Cost:** FREE
+- **Input:** (none)
+- **Output:** ram_total_gb, ram_available_gb, cpu_cores, recommended_max_browsers, tier (minimal/low/moderate/standard/high/maximum), platform
+- **Tiers:** minimal (<2GB, 2 browsers), low (2-4GB, 3), moderate (4-8GB, 5), standard (8-16GB, 8), high (16-32GB, 12), maximum (32+GB, 16)
+- **Python:** `from boostedtravel import get_system_profile; profile = get_system_profile()`
+- **CLI:** `boostedtravel system-info` or `boostedtravel system-info --json`
+- **MCP:** `system_info` tool
+- **JS:** `import { systemInfo } from 'boostedtravel'; const info = await systemInfo();`
+
+### configure_max_browsers
+Override auto-detected browser concurrency limit for local search.
+- **Cost:** FREE
+- **Input:** max_browsers (integer, 1–32)
+- **Priority:** env var `BOOSTEDTRAVEL_MAX_BROWSERS` > explicit config > auto-detect from RAM
+- **Python:** `from boostedtravel import configure_max_browsers; configure_max_browsers(4)`
+- **CLI:** `boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4`
+- **MCP:** `search_flights` tool with `max_browsers` parameter
+- **JS:** `await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 })`
+
 ### unlock_flight_offer
 Confirm live price with airline and reserve offer for 30 minutes. This is the only paid step.
 - **Cost:** $1.00 (Stripe) — charged to saved payment method
