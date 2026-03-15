@@ -189,7 +189,7 @@ def search_local_cmd(
     max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ):
-    """Search flights locally — FREE, no API key required. Runs 73 airline connectors on your machine.
+    """Search flights locally — FREE, no API key required. Runs 75 airline connectors on your machine.
 
     Set BOOSTEDTRAVEL_API_KEY to also query Amadeus, Duffel, Sabre and Travelport for full-service airline fares.
 

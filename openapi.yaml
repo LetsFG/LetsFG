@@ -3,7 +3,7 @@ info:
   title: BoostedTravel API
   version: 0.2.16
   description: |
-    Agent-native flight search & booking API. 400+ airlines, 73 direct airline connectors,
+    Agent-native flight search & booking API. 400+ airlines, 75 direct airline connectors,
     virtual interlining — built for AI agents (OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf) and developers.
 
     ## How It Works
@@ -12,7 +12,7 @@ info:
     3. **Book** (free) — create real airline PNR
 
     ## Local Search
-    The Python SDK runs 73 airline connectors locally with adaptive browser concurrency
+    The Python SDK runs 75 airline connectors locally with adaptive browser concurrency
     that auto-scales based on system RAM. Override with `BOOSTEDTRAVEL_MAX_BROWSERS` env var.
 
     ## Authentication

@@ -6,12 +6,12 @@ BoostedTravel offers two search modes:
 
 | Mode | Command / Method | API Key | Coverage | Cost |
 |------|-----------------|---------|----------|------|
-| **Local search** | `search-local` / `search_local()` | **Not needed** | 73 airline connectors | Free |
+| **Local search** | `search-local` / `search_local()` | **Not needed** | 75 airline connectors | Free |
 | **Full search** | `search` / `bt.search()` | Required | 400+ airlines (GDS/NDC) | Free (unlock $1) |
 
 ### Local Search (No API Key)
 
-Search 73 airline websites directly — completely free, no registration required:
+Search 75 airline websites directly — completely free, no registration required:
 
 ```python
 from boostedtravel.local import search_local

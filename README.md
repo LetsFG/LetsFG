@@ -13,13 +13,13 @@ Agent-native flight search & booking. 400+ airlines, 73 ready-to-run airline con
   <img src="assets/demo.gif" alt="Demo: BoostedTravel vs Default Agent Search" width="640">
 </div>
 
-> Side-by-side comparison: default agent search (OpenClaw, Perplexity Computer) vs BoostedTravel CLI. Same query — BoostedTravel finds cheaper flights across 73 airlines in seconds.
+> Side-by-side comparison: default agent search (OpenClaw, Perplexity Computer) vs BoostedTravel CLI. Same query — BoostedTravel finds cheaper flights across 75 airlines in seconds.
 
 ## Why BoostedTravel?
 
 Flight websites inflate prices with demand tracking, cookie-based pricing, and surge markup. The same flight is often **$20–$50 cheaper** through BoostedTravel — raw airline price, zero markup.
 
-BoostedTravel works by finding the best price across the entire internet. It fires 73 airline connectors in parallel, scanning carriers across Europe, Asia, Americas, Middle East, and Africa — then merges results with enterprise GDS/NDC sources (Amadeus, Duffel, Sabre, Travelport) that provide competitive pricing from 400+ carriers including premium airlines like Lufthansa, British Airways, and Emirates. The best price wins.
+BoostedTravel works by finding the best price across the entire internet. It fires 75 airline connectors in parallel, scanning carriers across Europe, Asia, Americas, Middle East, and Africa — then merges results with enterprise GDS/NDC sources (Amadeus, Duffel, Sabre, Travelport) that provide competitive pricing from 400+ carriers including premium airlines like Lufthansa, British Airways, and Emirates. The best price wins.
 
 | | Google Flights / Booking.com / Expedia | **BoostedTravel** |
 |---|---|---|
@@ -43,7 +43,7 @@ That's it. You can search flights immediately — no account, no API key, no con
 boostedtravel search-local GDN BCN 2026-06-15
 ```
 
-This runs 73 airline connectors locally on your machine and returns real-time prices. Completely free, unlimited, zero setup.
+This runs 75 airline connectors locally on your machine and returns real-time prices. Completely free, unlimited, zero setup.
 
 ---
 
@@ -59,7 +59,7 @@ boostedtravel search-local LHR BCN 2026-04-15
 ```
 
 **What you get:**
-- 73 airline connectors running on your machine (Ryanair, Wizz Air, EasyJet, Southwest, AirAsia, Norwegian, and 67 more)
+- 75 airline connectors running on your machine (Ryanair, Wizz Air, EasyJet, Southwest, AirAsia, Norwegian, and 69 more)
 - Real-time prices scraped directly from airline websites
 - Virtual interlining — cross-airline round-trips that save 30–50%
 - Completely free, unlimited searches
@@ -225,7 +225,7 @@ All commands accept `--json` for structured output and `--api-key` to override t
 | Mode | What it does | Speed | Auth |
 |------|-------------|-------|------|
 | **Cloud search** | Queries GDS/NDC providers (Duffel, Amadeus, Sabre, Travelport, Kiwi) via backend API | 2-15s | API key |
-| **Local search** | Fires 73 airline connectors on your machine via Playwright + httpx | 5-25s | None |
+| **Local search** | Fires 75 airline connectors on your machine via Playwright + httpx | 5-25s | None |
 
 Both modes run simultaneously by default. Results are merged, deduplicated, currency-normalized, and sorted.
 
@@ -244,7 +244,7 @@ Search a city code and BoostedTravel automatically searches all airports in that
 │  AI Agents / CLI / SDK / MCP Server                 │
 ├──────────────────┬──────────────────────────────────┤
 │  Local connectors │  Enterprise Cloud API            │
-│  (73 airlines via │  (Amadeus, Duffel, Sabre,        │
+│  (75 airlines via │  (Amadeus, Duffel, Sabre,        │
 │   Playwright)     │   Travelport, Kiwi — contract-   │
 │                   │   only GDS/NDC providers)        │
 ├──────────────────┴──────────────────────────────────┤
@@ -253,9 +253,9 @@ Search a city code and BoostedTravel automatically searches all airports in that
 └─────────────────────────────────────────────────────┘
 ```
 
-## Local Airline Connectors (73 airlines)
+## Local Airline Connectors (75 airlines)
 
-The Python SDK includes 73 production-grade airline connectors — not fragile scrapers, but maintained integrations that handle each airline's specific API pattern. No API key needed for local search. Each connector uses one of three proven strategies:
+The Python SDK includes 75 production-grade airline connectors — not fragile scrapers, but maintained integrations that handle each airline's specific API pattern. No API key needed for local search. Each connector uses one of three proven strategies:
 
 | Strategy | How it works | Example airlines |
 |----------|-------------|-----------------|
@@ -266,14 +266,14 @@ The Python SDK includes 73 production-grade airline connectors — not fragile s
 ### Supported Airlines
 
 <details>
-<summary>Full list of 73 airline connectors</summary>
+<summary>Full list of 75 airline connectors</summary>
 
 | Region | Airlines |
 |--------|----------|
-| **Europe** | Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Condor, SunExpress, Volotea, Smartwings, Jet2 |
-| **Middle East & Africa** | Emirates, Etihad, flydubai, Air Arabia, flynas, Salam Air, Air Peace, FlySafair |
+| **Europe** | Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Condor, SunExpress, Volotea, Smartwings, Jet2, LOT Polish Airlines |
+| **Middle East & Africa** | Emirates, Etihad, Qatar Airways, flydubai, Air Arabia, flynas, Salam Air, Air Peace, FlySafair |
 | **Asia-Pacific** | AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Singapore Airlines, Cathay Pacific, Malaysian Airlines, Thai Airways, Korean Air, ANA, US-Bangla, Biman Bangladesh |
-| **Americas** | American Airlines, Delta, United, Southwest, JetBlue, Alaska Airlines, Hawaiian Airlines, Sun Country, Frontier, Volaris, VivaAerobus, Allegiant, Avelo, Breeze, Flair, GOL, Azul, JetSmart, Flybondi, Porter |
+| **Americas** | American Airlines, Delta, United, Southwest, JetBlue, Alaska Airlines, Hawaiian Airlines, Sun Country, Frontier, Volaris, VivaAerobus, Allegiant, Avelo, Breeze, Flair, GOL, Azul, JetSmart, Flybondi, Porter, WestJet, LATAM, Copa, Avianca |
 | **Aggregator** | Kiwi.com (virtual interlining + LCC fallback) |
 
 </details>

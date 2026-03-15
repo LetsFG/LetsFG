@@ -76,7 +76,7 @@ boostedtravel book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john
 
 ### `searchLocal(origin, destination, dateFrom, options?)`
 
-Search 73 airline connectors locally (no API key needed). Requires Python + `boostedtravel` installed.
+Search 75 airline connectors locally (no API key needed). Requires Python + `boostedtravel` installed.
 
 ```typescript
 import { searchLocal } from 'boostedtravel';

@@ -1,7 +1,7 @@
 /**
  * BoostedTravel — Agent-native flight search & booking SDK for Node.js/TypeScript.
  *
- * 73 airline connectors run locally via Python + backend API for enterprise GDS/NDC sources.
+ * 75 airline connectors run locally via Python + backend API for enterprise GDS/NDC sources.
  * Zero external JS dependencies. Uses native fetch (Node 18+).
  *
  * @example

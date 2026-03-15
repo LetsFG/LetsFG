@@ -223,7 +223,7 @@ class BoostedTravel:
                 "Note: search_local() works without an API key."
             )
 
-    # ── Local search (73 airline connectors, no API key needed) ────────────────
+    # ── Local search (75 airline connectors, no API key needed) ────────────────
 
     def search_local(
         self,

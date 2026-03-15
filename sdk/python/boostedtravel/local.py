@@ -1,5 +1,5 @@
 """
-Local flight search — runs 73 airline connectors on the user's machine.
+Local flight search — runs 75 airline connectors on the user's machine.
 
 Can be used programmatically:
 

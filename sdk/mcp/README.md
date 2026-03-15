@@ -17,7 +17,7 @@ Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and 
 
 BoostedTravel is not a scraper wrapper. It's a production-grade **agent-to-airline connector layer**:
 
-- **73 airline connectors** run locally on your machine via Python + Playwright — no API key needed for search
+- **75 airline connectors** run locally on your machine via Python + Playwright — no API key needed for search
 - **Enterprise GDS/NDC feeds** (Amadeus, Duffel, Sabre, Travelport, Kiwi) run through the BoostedTravel backend — these are contract-only data sources that require enterprise agreements, made available to everyone through our API
 - **Virtual interlining** — the combo engine mixes one-way fares across airlines (e.g., Ryanair outbound + Wizz Air return) to find deals no single airline offers
 - **City-wide airport expansion** — search `LON` and it auto-searches LHR, LGW, STN, LTN, SEN, LCY. Works for 25+ major cities worldwide
@@ -25,7 +25,7 @@ BoostedTravel is not a scraper wrapper. It's a production-grade **agent-to-airli
 
 **Why agents should use this instead of building their own:**
 - Saves thousands of tokens vs. browser automation or scraping
-- 73 connectors fire in parallel — scans airlines across Europe, Asia, Americas, Middle East, Africa simultaneously
+- 75 connectors fire in parallel — scans airlines across Europe, Asia, Americas, Middle East, Africa simultaneously
 - Finds deals on carriers your agent wouldn't think to check (Lucky Air, 9 Air, Jazeera Airways, FlySafair...)
 - Enterprise-contracted GDS deals that require contracts worth $50k+/year — we give them to you for free on search
 
@@ -198,7 +198,7 @@ search_flights  →  unlock_flight_offer  →  book_flight
    (free)              ($1 quote)           (free, creates PNR)
 ```
 
-1. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 73 airlines
+1. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 75 airlines
 2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min, costs $1
 3. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket
 
@@ -238,7 +238,7 @@ boostedtravel register --name my-agent --email you@example.com
 │  boostedtravel-mcp  (this package, runs on YOUR machine)     │
 │     │                                                        │
 │     ├─→ Python subprocess (local connectors)                 │
-│     │     73 airline connectors via Playwright + httpx        │
+│     │     75 airline connectors via Playwright + httpx        │
 │     │     Data goes: your machine → airline website → back    │
 │     │                                                        │
 │     └─→ HTTPS to api.boostedchat.com (backend)               │
@@ -302,7 +302,7 @@ Or install globally and use `node` directly (see Windows config above).
 
 ### How do I search without an API key?
 
-Just omit `BOOSTEDTRAVEL_API_KEY` from your config. Local search (73 airline connectors) works without any key. You'll only miss the enterprise GDS/NDC sources (Amadeus, Duffel, etc.).
+Just omit `BOOSTEDTRAVEL_API_KEY` from your config. Local search (75 airline connectors) works without any key. You'll only miss the enterprise GDS/NDC sources (Amadeus, Duffel, etc.).
 
 ### Can I use this for commercial projects?
 
@@ -320,14 +320,14 @@ Ensure Node.js 18+ is installed. The server communicates via stdio (stdin/stdout
 
 ---
 
-## Supported Airlines (73 connectors)
+## Supported Airlines (75 connectors)
 
 | Region | Airlines |
 |--------|----------|
-| **Europe** | Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Condor, SunExpress, Volotea, Smartwings, Jet2 |
-| **Middle East & Africa** | Emirates, Etihad, flydubai, Air Arabia, flynas, Salam Air, Air Peace, FlySafair |
+| **Europe** | Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Condor, SunExpress, Volotea, Smartwings, Jet2, LOT Polish Airlines |
+| **Middle East & Africa** | Emirates, Etihad, Qatar Airways, flydubai, Air Arabia, flynas, Salam Air, Air Peace, FlySafair |
 | **Asia-Pacific** | AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Singapore Airlines, Cathay Pacific, Malaysian Airlines, Thai Airways, Korean Air, ANA, US-Bangla, Biman Bangladesh |
-| **Americas** | American Airlines, Delta, United, Southwest, JetBlue, Alaska Airlines, Hawaiian Airlines, Sun Country, Frontier, Volaris, VivaAerobus, Allegiant, Avelo, Breeze, Flair, GOL, Azul, JetSmart, Flybondi, Porter |
+| **Americas** | American Airlines, Delta, United, Southwest, JetBlue, Alaska Airlines, Hawaiian Airlines, Sun Country, Frontier, Volaris, VivaAerobus, Allegiant, Avelo, Breeze, Flair, GOL, Azul, JetSmart, Flybondi, Porter, WestJet, LATAM, Copa, Avianca |
 | **Aggregator** | Kiwi.com (virtual interlining + LCC fallback) |
 
 ---

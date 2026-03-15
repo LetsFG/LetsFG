@@ -27,7 +27,7 @@
 
 ---
 
-## Connectors (73 total)
+## Connectors (75 total)
 
 ### Already Working (20) — DO NOT TOUCH
 
@@ -136,7 +136,7 @@
 | # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
 |---|-----------|------|------|--------|------------|-----------|-------|
 | 54 | emirates | EK | Browser | `done` | copilot-main | 2026-03-16T12:00Z | CDP Chrome + form fill + DOM scraping. Akamai WAF bypass via headed Chrome. 10 offers DXB→LHR (AED 2,155 cheapest). emirates.com/english/book/ — Next.js SPA with auto-suggest airports, DayPicker calendar. |
-| 55 | qatar | QR | — | `blocked` | copilot-main | 2026-03-16T12:00Z | **Airspace CLOSED.** Booking form hidden behind disruption notice. Shadow DOM structure mapped (app-nbx-explore >> mat-input-0/1, dpFromDate, Search flights button) — all elements exist but "not visible". booking.qatarairways.com returns errors. Defer until airspace reopens. |
+| 55 | qatar | QR | API | `done` | copilot-main | 2026-03-15T12:00Z | Direct API via CDP Chrome. `page.evaluate(fetch('/dapi/public/bff/web/flight-search/flight-offers'))` with `Accept-Language: en`. Homepage visit for Akamai cookies. 5 offers DOH→DXB, 15 offers DOH→LHR. |
 | 56 | etihad | EY | `etihad.py` | `done` | | CDP Chrome + form fill + calendar pricing API interception | Etihad Airways. AUH hub → 70+ destinations. Calendar pricing via ada-services/bff-calendar-pricing. |
 | 57 | saudia | SV | — | `broken` | | | Saudia (Saudi Arabian Airlines). JED/RUH hubs → 100+ destinations. Hajj/Umrah traffic + regional. saudia.com. |
 | 58 | omanair | WY | — | `broken` | | | Oman Air. MCT hub → 50+ destinations (complements SalamAir). book.omanair.com — Incapsula protected. |
@@ -149,6 +149,16 @@
 | 65 | ana | NH | nh_direct | `done` | nodriver+Playwright | Akamai bypass hybrid | ANA (All Nippon Airways). NRT/HND hubs → Asia/EU/NA. ana.co.jp. nodriver+Playwright hybrid (Akamai Bot Manager bypass). |
 | 66 | korean | KE | CDP Chrome | `live` | EveryMundo | airTRFX | Korean Air. ICN hub → Asia/EU/NA/AU. koreanair.com. CDP headed Chrome (WAF blocks httpx/headless). |
 | 67 | malaysia | MH | malaysia_direct | `done` | httpx | lowFares+flightSearch | Malaysia Airlines. KUL hub → Asia/EU/AU. malaysiaairlines.com. httpx-only via lowFares GET (daily prices) + flightSearch JSON POST (booking URL). |
+
+### New Global Carriers (6)
+
+| # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
+|---|-----------|------|------|--------|------------|-----------|-------|
+| 68 | westjet | WS | API | `done` | copilot-main | 2026-03-15T12:00Z | CDP Chrome + Vue.js SPA at `/shop/` (trailing slash critical). API interception of `flight-search-api/v1`. 13 offers YYC→YVR in 11.6s. |
+| 69 | lot | LO | API | `done` | copilot-main | 2026-03-15T12:00Z | Direct API via `page.evaluate(fetch('/api/v1/ibe/search/air-bounds'))` with Angular custom headers (language, market, channel, action, step, x-xsrf-token). 11 offers KRK→LHR $186.60+, 1 offer WAW→JFK $739.83. |
+| 70 | latam | LA | API | `done` | copilot-main | 2026-03-13T21:00Z | Direct API connector. 50 offers tested. LATAM Airlines — SCL/GRU hubs → Americas/EU/AU. |
+| 71 | copa | CM | API | `done` | copilot-main | 2026-03-13T21:00Z | Direct API connector. 9 offers tested. Copa Airlines — PTY hub → Americas. |
+| 72 | avianca | AV | API | `done` | copilot-main | 2026-03-13T21:00Z | Direct API connector. 24 offers tested. Avianca — BOG hub → Americas/EU. |
 
 ---
 

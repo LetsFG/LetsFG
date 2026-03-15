@@ -14,7 +14,7 @@ That's it. Search flights immediately:
 boostedtravel search-local LHR BCN 2026-04-15
 ```
 
-This runs 73 airline connectors locally on your machine — Ryanair, Wizz Air, EasyJet, Southwest, AirAsia, Norwegian, and 67 more. Completely free, unlimited, zero configuration.
+This runs 75 airline connectors locally on your machine — Ryanair, Wizz Air, EasyJet, Southwest, AirAsia, Norwegian, and 69 more. Completely free, unlimited, zero configuration.
 
 ```python
 from boostedtravel.local import search_local

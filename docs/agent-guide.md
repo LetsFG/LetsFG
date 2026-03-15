@@ -9,7 +9,7 @@ Guidelines for building autonomous AI agents that search, evaluate, and book fli
 Agents can use **local search** (free, no API key) for quick lookups, or **full search** (API key) for comprehensive results:
 
 ```python
-# Local search — no API key, 73 airline connectors
+# Local search — no API key, 75 airline connectors
 from boostedtravel.local import search_local
 result = await search_local("LHR", "JFK", "2026-06-01")
 

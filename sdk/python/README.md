@@ -9,7 +9,7 @@ Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.c
 ## Install
 
 ```bash
-pip install boostedtravel           # SDK + 73 airline connectors
+pip install boostedtravel           # SDK + 75 airline connectors
 pip install boostedtravel[cli]      # SDK + CLI (adds typer, rich)
 ```
 
@@ -276,7 +276,7 @@ if best:
 
 ## Local LCC Search (No API Key)
 
-The SDK includes 73 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
+The SDK includes 75 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
 
 ```python
 from boostedtravel.local import search_local
@@ -291,9 +291,9 @@ result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 
 The full search (`bt.search()`) runs both local connectors and cloud providers simultaneously and merges results.
 
-### Supported Airlines (73)
+### Supported Airlines (75)
 
-Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Southwest, AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, flydubai, Air Arabia, flynas, Salam Air, Emirates, Etihad, Condor, SunExpress, Volotea, Smartwings, Jet2, Frontier, Volaris, VivaAerobus, Allegiant, JetBlue, Flair, GOL, Azul, JetSmart, Flybondi, Porter, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Air Peace, FlySafair, Avelo, Breeze, Sun Country, Alaska Airlines, Hawaiian Airlines, American Airlines, United Airlines, Delta Air Lines, Singapore Airlines, Cathay Pacific, Malaysian Airlines, Thai Airways, Korean Air, ANA, US-Bangla, Biman Bangladesh, Kiwi.com
+Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, Turkish Airlines, Southwest, AirAsia, IndiGo, SpiceJet, Akasa Air, Air India Express, VietJet, Cebu Pacific, Scoot, Jetstar, Peach, Spring Airlines, Lucky Air, 9 Air, flydubai, Air Arabia, flynas, Salam Air, Emirates, Etihad, Qatar Airways, Condor, SunExpress, Volotea, Smartwings, Jet2, LOT Polish Airlines, Frontier, Volaris, VivaAerobus, Allegiant, JetBlue, Flair, GOL, Azul, JetSmart, Flybondi, Porter, WestJet, LATAM, Copa, Avianca, Nok Air, Batik Air, Jeju Air, T'way Air, ZIPAIR, Air Peace, FlySafair, Avelo, Breeze, Sun Country, Alaska Airlines, Hawaiian Airlines, American Airlines, United Airlines, Delta Air Lines, Singapore Airlines, Cathay Pacific, Malaysian Airlines, Thai Airways, Korean Air, ANA, US-Bangla, Biman Bangladesh, Kiwi.com
 
 ## Quick Start (CLI)
 

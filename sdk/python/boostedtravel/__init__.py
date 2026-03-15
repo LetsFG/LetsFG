@@ -1,7 +1,7 @@
 """
 BoostedTravel — Agent-native flight search & booking SDK.
 
-73 airline connectors run locally + enterprise GDS/NDC APIs via backend.
+75 airline connectors run locally + enterprise GDS/NDC APIs via backend.
 
 Local search (FREE, no API key):
     from boostedtravel.local import search_local
@@ -36,7 +36,7 @@ from boostedtravel.models import (
     AgentProfile,
 )
 
-__version__ = "0.2.15"
+__version__ = "0.2.16"
 __all__ = [
     "BoostedTravel",
     "BoostedTravelError",

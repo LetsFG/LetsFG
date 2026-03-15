@@ -4,20 +4,20 @@
 
 ## What is BoostedTravel?
 
-BoostedTravel is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 73 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
+BoostedTravel is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 75 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
 
-**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. BoostedTravel replaces all of that with a single function call that fires 73 airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
+**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. BoostedTravel replaces all of that with a single function call that fires 75 airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
 
 ### Two search channels run simultaneously:
 
-1. **73 local airline connectors** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Spring Airlines, and 66 more. These run directly on your machine via Python + Playwright. No API key needed, completely free, unlimited searches.
+1. **75 local airline connectors** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Spring Airlines, and 68 more. These run directly on your machine via Python + Playwright. No API key needed, completely free, unlimited searches.
 
 2. **Enterprise GDS/NDC providers** — Amadeus, Duffel, Sabre, Travelport, Kiwi. These are contract-only data sources that normally require enterprise agreements worth $50k+/year. BoostedTravel is contracted with these providers and makes their deals available to every agent through the backend API.
 
 ### What makes this different from flight websites:
 
 - **Zero price bias** — no demand-based inflation, no cookie tracking, no surge pricing. The same flight that costs $350 on a travel website is typically **$20–$50 cheaper** here because you're getting the raw airline price.
-- **73 airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, and Africa simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
+- **75 airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, and Africa simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
 - **Virtual interlining** — the combo engine builds cross-airline round-trips (e.g., Ryanair outbound + Wizz Air return) that save 30-50% vs booking with either airline alone.
 - **Token-efficient** — one tool call replaces what would take thousands of tokens of browser automation, scraping setup, and HTML parsing. Results come back as structured JSON.
 - **Works with any agent** — OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, or any MCP-compatible client. Also available as Python SDK, JS SDK, and CLI.
@@ -32,7 +32,7 @@ BoostedTravel is the largest agent-native flight search and booking toolkit. It 
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **BoostedTravel** | **10 seconds** | **1 tool call** | **73 airlines + GDS in parallel** | **We maintain it** |
+| **BoostedTravel** | **10 seconds** | **1 tool call** | **75 airlines + GDS in parallel** | **We maintain it** |
 
 Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **BoostedTravel returns the raw airline price every time.** The only fee is a flat $1 to unlock an offer before checkout.
 
@@ -42,7 +42,7 @@ Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate price
 ```
 POST /api/v1/flights/search
 ```
-Search 400+ airlines across multiple providers + 73 local LCC connectors. Returns real-time prices with zero markup or bias. Completely free, no limits.
+Search 400+ airlines across multiple providers + 75 local LCC connectors. Returns real-time prices with zero markup or bias. Completely free, no limits.
 
 **Local-only search** (no API key, no backend):
 ```python
