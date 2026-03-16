@@ -1,11 +1,11 @@
 """
-BoostedTravel Python SDK — agent-native flight search & booking.
+LetsFG Python SDK — agent-native flight search & booking.
 
 Zero-config, zero-browser, zero-markup. Built for autonomous agents.
 
-    from boostedtravel import BoostedTravel
+    from letsfg import LetsFG
 
-    bt = BoostedTravel(api_key="trav_...")
+    bt = LetsFG(api_key="trav_...")
     
     # Search (FREE)
     flights = bt.search("LON", "BCN", "2026-04-01")
@@ -37,7 +37,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 
-from boostedtravel.models import (
+from letsfg.models import (
     AgentProfile,
     BookingResult,
     CheckoutProgress,
@@ -55,9 +55,9 @@ DEFAULT_BASE_URL = "https://api.letsfg.co"
 # All other airlines are handled by the GenericCheckoutEngine via config.
 
 _BOOKABLE_CONNECTORS: dict[str, tuple[str, str]] = {
-    "ryanair_direct": ("boostedtravel.connectors.ryanair", "RyanairBookableConnector"),
-    "wizzair_api": ("boostedtravel.connectors.wizzair", "WizzairBookableConnector"),
-    "easyjet_direct": ("boostedtravel.connectors.easyjet", "EasyjetBookableConnector"),
+    "ryanair_direct": ("letsfg.connectors.ryanair", "RyanairBookableConnector"),
+    "wizzair_api": ("letsfg.connectors.wizzair", "WizzairBookableConnector"),
+    "easyjet_direct": ("letsfg.connectors.easyjet", "EasyjetBookableConnector"),
 }
 
 
@@ -80,7 +80,7 @@ def _get_bookable_connector(source: str):
 
     # 2. Fall back to generic checkout engine config
     try:
-        from boostedtravel.connectors.checkout_engine import AIRLINE_CONFIGS
+        from letsfg.connectors.checkout_engine import AIRLINE_CONFIGS
         if source in AIRLINE_CONFIGS:
             return _make_generic_connector(source)
     except ImportError:
@@ -91,8 +91,8 @@ def _get_bookable_connector(source: str):
 
 def _make_generic_connector(source: str):
     """Return a BookableConnector subclass backed by the generic engine."""
-    from boostedtravel.connectors.booking_base import BookableConnector, CheckoutProgress as _CP
-    from boostedtravel.connectors.checkout_engine import AIRLINE_CONFIGS, GenericCheckoutEngine
+    from letsfg.connectors.booking_base import BookableConnector, CheckoutProgress as _CP
+    from letsfg.connectors.checkout_engine import AIRLINE_CONFIGS, GenericCheckoutEngine
 
     config = AIRLINE_CONFIGS[source]
 
@@ -125,7 +125,7 @@ def _make_generic_connector(source: str):
 #   business   — requires human decision (payment declined, fare expired, policy violation)
 
 class ErrorCode:
-    """Machine-readable error codes returned in BoostedTravelError.error_code."""
+    """Machine-readable error codes returned in LetsFGError.error_code."""
     # ── Transient (safe to retry) ──
     SUPPLIER_TIMEOUT = "SUPPLIER_TIMEOUT"
     RATE_LIMITED = "RATE_LIMITED"
@@ -212,9 +212,9 @@ def _infer_error_code(status_code: int, detail: str) -> str:
     return ErrorCode.BOOKING_FAILED if status_code >= 500 else ErrorCode.INVALID_PARAMETER
 
 
-class BoostedTravelError(Exception):
+class LetsFGError(Exception):
     """
-    Base exception for BoostedTravel SDK.
+    Base exception for LetsFG SDK.
 
     Attributes:
         message: Human-readable error description.
@@ -241,32 +241,32 @@ class BoostedTravelError(Exception):
         super().__init__(message)
 
 
-class AuthenticationError(BoostedTravelError):
+class AuthenticationError(LetsFGError):
     """API key is missing or invalid."""
     pass
 
 
-class PaymentRequiredError(BoostedTravelError):
+class PaymentRequiredError(LetsFGError):
     """Payment method not set up or payment declined."""
     pass
 
 
-class OfferExpiredError(BoostedTravelError):
+class OfferExpiredError(LetsFGError):
     """Offer is no longer available — search again."""
     pass
 
 
-class ValidationError(BoostedTravelError):
+class ValidationError(LetsFGError):
     """Request parameters are invalid — fix input and retry."""
     pass
 
 
-class BoostedTravel:
+class LetsFG:
     """
-    BoostedTravel API client — for autonomous agents.
+    LetsFG API client — for autonomous agents.
 
     Get an API key: POST /api/v1/agents/register
-    Or set BOOSTEDTRAVEL_API_KEY environment variable.
+    Or set LETSFG_API_KEY environment variable.
 
     Pricing:
       - Search: FREE (unlimited)
@@ -280,15 +280,15 @@ class BoostedTravel:
         base_url: str | None = None,
         timeout: int = 30,
     ):
-        self.api_key = api_key or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
-        self.base_url = (base_url or os.environ.get("BOOSTEDTRAVEL_BASE_URL", DEFAULT_BASE_URL)).rstrip("/")
+        self.api_key = api_key or os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
+        self.base_url = (base_url or os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
 
     def _require_api_key(self) -> None:
         if not self.api_key:
             raise AuthenticationError(
                 "API key required for this operation. Set api_key parameter or "
-                "BOOSTEDTRAVEL_API_KEY env var. Get one: POST /api/v1/agents/register\n"
+                "LETSFG_API_KEY env var. Get one: POST /api/v1/agents/register\n"
                 "Note: search_local() works without an API key."
             )
 
@@ -332,7 +332,7 @@ class BoostedTravel:
             FlightSearchResult with offers from local scrapers.
         """
         import asyncio
-        from boostedtravel.local import search_local as _search
+        from letsfg.local import search_local as _search
 
         result_dict = asyncio.run(_search(
             origin=origin,
@@ -582,7 +582,7 @@ class BoostedTravel:
             CheckoutProgress with status, screenshot, and booking_url.
         """
         import asyncio
-        from boostedtravel.connectors.booking_base import (
+        from letsfg.connectors.booking_base import (
             FAKE_PASSENGER,
             CheckoutProgress as _CP,
         )
@@ -679,7 +679,7 @@ class BoostedTravel:
                 err = json.loads(body_text)
             except Exception:
                 err = {"detail": body_text}
-            raise BoostedTravelError(
+            raise LetsFGError(
                 err.get("detail", f"Registration failed ({e.code})"),
                 status_code=e.code,
                 response=err,
@@ -691,7 +691,7 @@ class BoostedTravel:
         return {
             "Content-Type": "application/json",
             "X-API-Key": self.api_key,
-            "User-Agent": "boostedtravel-python/0.1.0",
+            "User-Agent": "letsfg-python/1.0.0",
         }
 
     def _post(self, path: str, body: dict) -> Any:
@@ -728,13 +728,18 @@ class BoostedTravel:
             elif e.code == 422:
                 raise ValidationError(detail, status_code=422, response=err, error_code=code) from e
             else:
-                raise BoostedTravelError(detail, status_code=e.code, response=err, error_code=code) from e
+                raise LetsFGError(detail, status_code=e.code, response=err, error_code=code) from e
         except URLError as e:
-            raise BoostedTravelError(
+            raise LetsFGError(
                 f"Connection failed: {e.reason}",
                 error_code=ErrorCode.NETWORK_ERROR,
             ) from e
 
     def __repr__(self) -> str:
         masked = self.api_key[:8] + "..." if len(self.api_key) > 8 else "***"
-        return f"BoostedTravel(base_url={self.base_url!r}, api_key={masked!r})"
+        return f"LetsFG(base_url={self.base_url!r}, api_key={masked!r})"
+
+
+# Backward-compat aliases
+BoostedTravel = LetsFG
+BoostedTravelError = LetsFGError

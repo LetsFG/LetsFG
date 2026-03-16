@@ -1,18 +1,18 @@
 /**
- * BoostedTravel — Agent-native flight search & booking SDK for Node.js/TypeScript.
+ * LetsFG — Agent-native flight search & booking SDK for Node.js/TypeScript.
  *
  * 75 airline connectors run locally via Python + backend API for enterprise GDS/NDC sources.
  * Zero external JS dependencies. Uses native fetch (Node 18+).
  *
  * @example
  * ```ts
- * import { BoostedTravel, searchLocal } from 'boostedtravel';
+ * import { LetsFG, searchLocal } from 'letsfg';
  *
  * // Local search — FREE, no API key
  * const local = await searchLocal('SHA', 'CTU', '2026-03-20');
  *
  * // Full API — search + unlock + book
- * const bt = new BoostedTravel({ apiKey: 'trav_...' });
+ * const bt = new LetsFG({ apiKey: 'trav_...' });
  * const flights = await bt.search('GDN', 'BER', '2026-03-03');
  * ```
  */
@@ -143,7 +143,7 @@ export interface CheckoutProgress {
   details: Record<string, unknown>;
 }
 
-export interface BoostedTravelConfig {
+export interface LetsFGConfig {
   apiKey?: string;
   baseUrl?: string;
   timeout?: number;
@@ -228,7 +228,7 @@ function inferErrorCode(statusCode: number, detail: string): string {
 
 // ── Errors ────────────────────────────────────────────────────────────────
 
-export class BoostedTravelError extends Error {
+export class LetsFGError extends Error {
   statusCode: number;
   response: Record<string, unknown>;
   errorCode: string;
@@ -237,7 +237,7 @@ export class BoostedTravelError extends Error {
 
   constructor(message: string, statusCode = 0, response: Record<string, unknown> = {}, errorCode = '') {
     super(message);
-    this.name = 'BoostedTravelError';
+    this.name = 'LetsFGError';
     this.statusCode = statusCode;
     this.response = response;
     this.errorCode = errorCode || (response.error_code as string) || '';
@@ -246,14 +246,14 @@ export class BoostedTravelError extends Error {
   }
 }
 
-export class AuthenticationError extends BoostedTravelError {
+export class AuthenticationError extends LetsFGError {
   constructor(message: string, response: Record<string, unknown> = {}) {
     super(message, 401, response, ErrorCode.AUTH_INVALID);
     this.name = 'AuthenticationError';
   }
 }
 
-export class PaymentRequiredError extends BoostedTravelError {
+export class PaymentRequiredError extends LetsFGError {
   constructor(message: string, response: Record<string, unknown> = {}) {
     const code = message.toLowerCase().includes('declined') ? ErrorCode.PAYMENT_DECLINED : ErrorCode.PAYMENT_REQUIRED;
     super(message, 402, response, code);
@@ -261,14 +261,14 @@ export class PaymentRequiredError extends BoostedTravelError {
   }
 }
 
-export class OfferExpiredError extends BoostedTravelError {
+export class OfferExpiredError extends LetsFGError {
   constructor(message: string, response: Record<string, unknown> = {}) {
     super(message, 410, response, ErrorCode.OFFER_EXPIRED);
     this.name = 'OfferExpiredError';
   }
 }
 
-export class ValidationError extends BoostedTravelError {
+export class ValidationError extends LetsFGError {
   constructor(message: string, statusCode = 422, response: Record<string, unknown> = {}, errorCode = '') {
     super(message, statusCode, response, errorCode || ErrorCode.INVALID_PARAMETER);
     this.name = 'ValidationError';
@@ -308,7 +308,7 @@ export function cheapestOffer(result: FlightSearchResult): FlightOffer | null {
 /**
  * Search flights using 73 local airline connectors — FREE, no API key needed.
  *
- * Requires: pip install boostedtravel && playwright install chromium
+ * Requires: pip install letsfg && playwright install chromium
  *
  * @param origin - IATA code (e.g., "SHA")
  * @param destination - IATA code (e.g., "CTU")
@@ -338,7 +338,7 @@ export async function searchLocal(
 
   return new Promise((resolve, reject) => {
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const child = spawn(pythonCmd, ['-m', 'boostedtravel.local'], {
+    const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -351,20 +351,20 @@ export async function searchLocal(
     child.on('close', (code) => {
       try {
         const data = JSON.parse(stdout);
-        if (data.error) reject(new BoostedTravelError(data.error));
+        if (data.error) reject(new LetsFGError(data.error));
         else resolve(data as FlightSearchResult);
       } catch {
-        reject(new BoostedTravelError(
+        reject(new LetsFGError(
           `Python search failed (code ${code}): ${stdout || stderr}\n` +
-          'Make sure boostedtravel is installed: pip install boostedtravel && playwright install chromium'
+          'Make sure LetsFG is installed: pip install letsfg && playwright install chromium'
         ));
       }
     });
 
     child.on('error', (err) => {
-      reject(new BoostedTravelError(
+      reject(new LetsFGError(
         `Cannot start Python: ${err.message}\n` +
-        'Install: pip install boostedtravel && playwright install chromium'
+        'Install: pip install letsfg && playwright install chromium'
       ));
     });
 
@@ -377,21 +377,21 @@ export async function searchLocal(
 
 const DEFAULT_BASE_URL = 'https://api.letsfg.co';
 
-export class BoostedTravel {
+export class LetsFG {
   private apiKey: string;
   private baseUrl: string;
   private timeout: number;
 
-  constructor(config: BoostedTravelConfig = {}) {
-    this.apiKey = config.apiKey || process.env.BOOSTEDTRAVEL_API_KEY || '';
-    this.baseUrl = (config.baseUrl || process.env.BOOSTEDTRAVEL_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
+  constructor(config: LetsFGConfig = {}) {
+    this.apiKey = config.apiKey || process.env.LETSFG_API_KEY || '';
+    this.baseUrl = (config.baseUrl || process.env.LETSFG_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
     this.timeout = config.timeout || 30000;
   }
 
   private requireApiKey(): void {
     if (!this.apiKey) {
       throw new AuthenticationError(
-        'API key required for this operation. Set apiKey in config or BOOSTEDTRAVEL_API_KEY env var.\n' +
+        'API key required for this operation. Set apiKey in config or LETSFG_API_KEY env var.\n' +
         'Note: searchLocal() works without an API key.'
       );
     }
@@ -510,7 +510,7 @@ export class BoostedTravel {
 
   /**
    * Start checkout locally via Python (runs on your machine).
-   * Requires: pip install boostedtravel && playwright install chromium
+   * Requires: pip install letsfg && playwright install chromium
    *
    * @param offer - Full FlightOffer object from search results
    * @param passengers - Passenger details
@@ -534,7 +534,7 @@ export class BoostedTravel {
 
     return new Promise((resolve, reject) => {
       const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-      const child = spawn(pythonCmd, ['-m', 'boostedtravel.local'], {
+      const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 180_000,
       });
@@ -548,15 +548,15 @@ export class BoostedTravel {
       child.on('close', (code) => {
         try {
           const data = JSON.parse(stdout);
-          if (data.error) reject(new BoostedTravelError(data.error));
+          if (data.error) reject(new LetsFGError(data.error));
           else resolve(data as CheckoutProgress);
         } catch {
-          reject(new BoostedTravelError(`Checkout failed (code ${code}): ${stdout || stderr}`));
+          reject(new LetsFGError(`Checkout failed (code ${code}): ${stdout || stderr}`));
         }
       });
 
       child.on('error', (err) => {
-        reject(new BoostedTravelError(`Cannot start Python: ${err.message}`));
+        reject(new LetsFGError(`Cannot start Python: ${err.message}`));
       });
 
       child.stdin.write(input);
@@ -598,7 +598,7 @@ export class BoostedTravel {
 
     const data = await resp.json();
     if (!resp.ok) {
-      throw new BoostedTravelError(
+      throw new LetsFGError(
         data.detail || `Registration failed (${resp.status})`,
         resp.status,
         data,
@@ -630,7 +630,7 @@ export class BoostedTravel {
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': this.apiKey,
-          'User-Agent': 'boostedtravel-js/0.1.0',
+          'User-Agent': 'LetsFG-js/0.1.0',
           ...(init.headers || {}),
         },
         signal: controller.signal,
@@ -645,7 +645,7 @@ export class BoostedTravel {
         if (resp.status === 402) throw new PaymentRequiredError(detail, data);
         if (resp.status === 410) throw new OfferExpiredError(detail, data);
         if (resp.status === 422) throw new ValidationError(detail, resp.status, data, code);
-        throw new BoostedTravelError(detail, resp.status, data, code);
+        throw new LetsFGError(detail, resp.status, data, code);
       }
 
       return data as T;
@@ -664,7 +664,7 @@ export async function systemInfo(): Promise<Record<string, unknown>> {
 
   return new Promise((resolve, reject) => {
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const child = spawn(pythonCmd, ['-m', 'boostedtravel.local'], {
+    const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -677,19 +677,19 @@ export async function systemInfo(): Promise<Record<string, unknown>> {
     child.on('close', (code) => {
       try {
         const data = JSON.parse(stdout);
-        if (data.error) reject(new BoostedTravelError(data.error));
+        if (data.error) reject(new LetsFGError(data.error));
         else resolve(data as Record<string, unknown>);
       } catch {
-        reject(new BoostedTravelError(
+        reject(new LetsFGError(
           `Python system-info failed (code ${code}): ${stdout || stderr}`
         ));
       }
     });
 
     child.on('error', (err) => {
-      reject(new BoostedTravelError(
+      reject(new LetsFGError(
         `Cannot start Python: ${err.message}\n` +
-        'Install: pip install boostedtravel'
+        'Install: pip install letsfg'
       ));
     });
 
@@ -698,5 +698,10 @@ export async function systemInfo(): Promise<Record<string, unknown>> {
   });
 }
 
-export default BoostedTravel;
+export default LetsFG;
 export { searchLocal as localSearch, systemInfo as getSystemInfo };
+
+// Backward-compat aliases
+export const BoostedTravel = LetsFG;
+export const BoostedTravelError = LetsFGError;
+export type BoostedTravelConfig = LetsFGConfig;

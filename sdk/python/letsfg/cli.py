@@ -1,17 +1,17 @@
 """
-BoostedTravel CLI — Agent-native flight search & booking from terminal.
+LetsFG CLI — Agent-native flight search & booking from terminal.
 
 Usage (local — free, no API key):
-    boostedtravel search-local GDN BER 2026-03-03
-    boostedtravel search-local LON BCN 2026-04-01 --return 2026-04-08 --sort price
+    letsfg search-local GDN BER 2026-03-03
+    letsfg search-local LON BCN 2026-04-01 --return 2026-04-08 --sort price
 
 Usage (API — requires key):
-    boostedtravel search GDN BER 2026-03-03
-    boostedtravel unlock off_xxx
-    boostedtravel book off_xxx --passenger '{"id":"pas_xxx","given_name":"John",...}'
-    boostedtravel register --name my-agent --email agent@example.com
-    boostedtravel me
-    boostedtravel locations London
+    letsfg search GDN BER 2026-03-03
+    letsfg unlock off_xxx
+    letsfg book off_xxx --passenger '{"id":"pas_xxx","given_name":"John",...}'
+    letsfg register --name my-agent --email agent@example.com
+    letsfg me
+    letsfg locations London
 """
 
 from __future__ import annotations
@@ -30,29 +30,29 @@ try:
 except ImportError:
     HAS_RICH = False
 
-from boostedtravel.client import BoostedTravel, BoostedTravelError
+from letsfg.client import LetsFG, LetsFGError
 
 app = typer.Typer(
-    name="boostedtravel",
+    name="letsfg",
     help=(
-        "BoostedTravel — Agent-native flight search & booking.\n\n"
+        "LetsFG — Agent-native flight search & booking.\n\n"
         "Search 400+ airlines at raw airline prices — $20-50 cheaper than OTAs.\n"
         "Search is FREE. Unlock: $1. Book: FREE after unlock.\n\n"
-        "Local search (no API key): boostedtravel search-local GDN BCN 2026-06-15\n"
-        "Full search (API key):     boostedtravel search GDN BCN 2026-06-15"
+        "Local search (no API key): letsfg search-local GDN BCN 2026-06-15\n"
+        "Full search (API key):     letsfg search GDN BCN 2026-06-15"
     ),
     no_args_is_help=True,
 )
 console = Console() if HAS_RICH else None
 
 
-def _get_client(api_key: str | None = None, base_url: str | None = None) -> BoostedTravel:
-    key = api_key or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
-    url = base_url or os.environ.get("BOOSTEDTRAVEL_BASE_URL")
+def _get_client(api_key: str | None = None, base_url: str | None = None) -> LetsFG:
+    key = api_key or os.environ.get("LETSFG_API_KEY", "")
+    url = base_url or os.environ.get("LETSFG_BASE_URL")
     if not key:
-        _err("API key required. Set BOOSTEDTRAVEL_API_KEY or use --api-key flag.\n"
-             "Register: boostedtravel register --name my-agent --email you@example.com")
-    return BoostedTravel(api_key=key, base_url=url)
+        _err("API key required. Set LETSFG_API_KEY or use --api-key flag.\n"
+             "Register: letsfg register --name my-agent --email you@example.com")
+    return LetsFG(api_key=key, base_url=url)
 
 
 def _err(msg: str):
@@ -84,8 +84,8 @@ def search(
     limit: int = typer.Option(20, "--limit", "-l", help="Max results"),
     sort: str = typer.Option("price", "--sort", help="Sort: price or duration"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="BOOSTEDTRAVEL_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Search for flights — FREE, unlimited."""
     bt = _get_client(api_key, base_url)
@@ -103,7 +103,7 @@ def search(
             limit=limit,
             sort=sort,
         )
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -168,7 +168,7 @@ def search(
             print(f"  {i:3d}. {o.summary()}")
             print(f"       ID: {o.id}")
 
-    print(f"\n  To unlock: boostedtravel unlock <offer_id>")
+    print(f"\n  To unlock: letsfg unlock <offer_id>")
     print(f"  Passenger IDs needed for booking: {result.passenger_ids}\n")
 
 
@@ -191,17 +191,17 @@ def search_local_cmd(
 ):
     """Search flights locally — FREE, no API key required. Runs 75 airline connectors on your machine.
 
-    Set BOOSTEDTRAVEL_API_KEY to also query Amadeus, Duffel, Sabre and Travelport for full-service airline fares.
+    Set LETSFG_API_KEY to also query Amadeus, Duffel, Sabre and Travelport for full-service airline fares.
 
     Use --max-browsers to tune performance: lower values (2-4) for low-RAM machines, higher (12-16) for powerful ones.
-    Default: auto-detected from your system RAM. Run 'boostedtravel system-info' to see your profile.
+    Default: auto-detected from your system RAM. Run 'letsfg system-info' to see your profile.
     """
     import asyncio
     import logging
     import os
     import sys
     import warnings
-    from boostedtravel.local import search_local
+    from letsfg.local import search_local
 
     # Only show errors in CLI mode — suppress connector warning noise
     logging.basicConfig(level=logging.ERROR, stream=sys.stderr, format="%(message)s")
@@ -267,7 +267,7 @@ def search_local_cmd(
 
     source_tiers = result.get("source_tiers", {})
     has_backend = "paid" in source_tiers
-    mode_label = "LOCAL + BACKEND" if has_backend else "LOCAL only (set BOOSTEDTRAVEL_API_KEY for Amadeus/Duffel)"
+    mode_label = "LOCAL + BACKEND" if has_backend else "LOCAL only (set LETSFG_API_KEY for Amadeus/Duffel)"
 
     print(f"\n  {total} offers  |  {origin} → {destination}  |  {date}  |  {mode_label}")
 
@@ -327,14 +327,14 @@ def search_local_cmd(
 def unlock(
     offer_id: str = typer.Argument(..., help="Offer ID from search results"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="BOOSTEDTRAVEL_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Unlock a flight offer — $1 fee. Confirms price, reserves 30min."""
     bt = _get_client(api_key, base_url)
     try:
         result = bt.unlock(offer_id)
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -354,7 +354,7 @@ def unlock(
         print(f"    Confirmed price: {result.confirmed_currency} {result.confirmed_price:.2f}")
         print(f"    Expires at: {result.offer_expires_at}")
         print(f"    $1 unlock fee charged")
-        print(f"\n    Next: boostedtravel book {offer_id} --passenger '{{...}}' --email you@example.com\n")
+        print(f"\n    Next: letsfg book {offer_id} --passenger '{{...}}' --email you@example.com\n")
     else:
         _err(f"Unlock failed: {result.message}")
 
@@ -368,8 +368,8 @@ def book(
     email: str = typer.Option(..., "--email", "-e", help="Contact email"),
     phone: str = typer.Option("", "--phone", help="Contact phone"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="BOOSTEDTRAVEL_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Book a flight — FREE after unlock. Creates real airline reservation."""
     bt = _get_client(api_key, base_url)
@@ -388,7 +388,7 @@ def book(
             contact_email=email,
             contact_phone=phone,
         )
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -421,14 +421,14 @@ def book(
 def locations(
     query: str = typer.Argument(..., help="City or airport name to resolve"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="BOOSTEDTRAVEL_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Resolve city/airport name to IATA codes."""
     bt = _get_client(api_key, base_url)
     try:
         result = bt.resolve_location(query)
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -457,18 +457,18 @@ def register(
     owner: str = typer.Option("", "--owner", help="Owner name"),
     description: str = typer.Option("", "--desc", help="Agent description"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Register a new agent — get your API key."""
     try:
-        result = BoostedTravel.register(
+        result = LetsFG.register(
             agent_name=name,
             email=email,
             base_url=base_url,
             owner_name=owner,
             description=description,
         )
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -479,8 +479,8 @@ def register(
     print(f"    Agent ID: {result.get('agent_id')}")
     print(f"    API Key:  {result.get('api_key')}")
     print(f"\n    Save your API key:")
-    print(f"    export BOOSTEDTRAVEL_API_KEY={result.get('api_key')}")
-    print(f"\n    Next: boostedtravel setup-payment --token tok_visa\n")
+    print(f"    export LETSFG_API_KEY={result.get('api_key')}")
+    print(f"\n    Next: letsfg setup-payment --token tok_visa\n")
 
 
 # ── Setup Payment ──────────────────────────────────────────────────────────
@@ -489,14 +489,14 @@ def register(
 def setup_payment(
     token: str = typer.Option("tok_visa", "--token", "-t", help="Payment token"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="BOOSTEDTRAVEL_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Set up payment method for booking."""
     bt = _get_client(api_key, base_url)
     try:
         result = bt.setup_payment(token=token)
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -516,14 +516,14 @@ def setup_payment(
 @app.command()
 def me(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="BOOSTEDTRAVEL_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="BOOSTEDTRAVEL_BASE_URL"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
     """Show your agent profile and usage stats."""
     bt = _get_client(api_key, base_url)
     try:
         profile = bt.me()
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         _err(f"{e.message}")
 
     if output_json:
@@ -556,8 +556,8 @@ def system_info_cmd(
 
     Agents can use this to pick optimal --max-browsers values.
     """
-    from boostedtravel.system_info import get_system_profile
-    from boostedtravel.connectors.browser import get_max_browsers
+    from letsfg.system_info import get_system_profile
+    from letsfg.connectors.browser import get_max_browsers
 
     profile = get_system_profile()
     current_max = get_max_browsers()
@@ -576,8 +576,8 @@ def system_info_cmd(
     print(f"  Tier:         {profile['tier']}")
     print(f"  Recommended max browsers: {profile['recommended_max_browsers']}")
     print(f"  Current max browsers:     {current_max}")
-    print(f"\n  Override with: boostedtravel search-local ... --max-browsers {current_max}")
-    print(f"  Or set env:   BOOSTEDTRAVEL_MAX_BROWSERS={current_max}\n")
+    print(f"\n  Override with: letsfg search-local ... --max-browsers {current_max}")
+    print(f"  Or set env:   LETSFG_MAX_BROWSERS={current_max}\n")
 
 
 def main():

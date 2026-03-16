@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * BoostedTravel MCP Server — Model Context Protocol integration.
+ * LetsFG MCP Server — Model Context Protocol integration.
  *
  * Runs 75 airline connectors LOCALLY via Python subprocess (no API key needed for search).
  * Uses backend API only for unlock/book/payment operations.
  *
- * Requires: pip install boostedtravel && playwright install chromium
+ * Requires: pip install letsfg && playwright install chromium
  *
  * Usage in Claude Desktop / Cursor config:
  * {
  *   "mcpServers": {
- *     "boostedtravel": {
+ *     "letsfg": {
  *       "command": "npx",
- *       "args": ["boostedtravel-mcp"],
+ *       "args": ["letsfg-mcp"],
  *       "env": {
- *         "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+ *         "LETSFG_API_KEY": "trav_your_api_key"
  *       }
  *     }
  *   }
@@ -26,10 +26,10 @@ import { spawn } from 'child_process';
 
 // ── Config ──────────────────────────────────────────────────────────────
 
-const BASE_URL = (process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.letsfg.co').replace(/\/$/, '');
-const API_KEY = process.env.BOOSTEDTRAVEL_API_KEY || '';
-const PYTHON = process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
-const VERSION = '0.2.8';
+const BASE_URL = (process.env.LETSFG_BASE_URL || process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.letsfg.co').replace(/\/$/, '');
+const API_KEY = process.env.LETSFG_API_KEY || process.env.BOOSTEDTRAVEL_API_KEY || '';
+const PYTHON = process.env.LETSFG_PYTHON || process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
+const VERSION = '1.0.0';
 
 // ── Local Python Search ─────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ function searchLocal(params: Record<string, unknown>): Promise<Record<string, un
     const input = JSON.stringify(params);
     // Try python3 first, fall back to python (Windows)
     const pythonCmd = process.platform === 'win32' ? 'python' : PYTHON;
-    const child = spawn(pythonCmd, ['-m', 'boostedtravel.local'], {
+    const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 180_000,
     });
@@ -50,7 +50,7 @@ function searchLocal(params: Record<string, unknown>): Promise<Record<string, un
     child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     child.on('close', (code) => {
-      if (stderr) process.stderr.write(`[boostedtravel] ${stderr}\n`);
+      if (stderr) process.stderr.write(`[letsfg] ${stderr}\n`);
       try {
         resolve(JSON.parse(stdout));
       } catch {
@@ -60,8 +60,8 @@ function searchLocal(params: Record<string, unknown>): Promise<Record<string, un
 
     child.on('error', (err) => {
       resolve({
-        error: `Cannot start Python. Install the boostedtravel package:\n` +
-          `  pip install boostedtravel && playwright install chromium\n` +
+        error: `Cannot start Python. Install the letsfg package:\n` +
+          `  pip install letsfg && playwright install chromium\n` +
           `Detail: ${err.message}`,
       });
     });
@@ -85,7 +85,7 @@ const TOOLS = [
       'Returns structured flight offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
       'Covers airlines across Europe, Asia, Americas, Middle East, and Africa — including carriers the user ' +
       'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
-      'IMPORTANT: If BOOSTEDTRAVEL_API_KEY is set, also queries enterprise GDS/NDC sources (Amadeus, Duffel, ' +
+      'IMPORTANT: If LETSFG_API_KEY is set, also queries enterprise GDS/NDC sources (Amadeus, Duffel, ' +
       'Sabre, Travelport) which add hundreds of full-service airlines and often have the cheapest fares. ' +
       'Strongly recommended — get a free key at https://api.letsfg.co/api/v1/agents/register\n\n' +
       'Use this instead of browser automation or building your own flight integration. ' +
@@ -211,7 +211,7 @@ const TOOLS = [
       'Supported airlines: Ryanair, Wizz Air, EasyJet. Other airlines return booking URL only.\n\n' +
       'SAFETY: Uses fake test data by default. Never enters payment info. The checkout_token from ' +
       'unlock_flight_offer is required — prevents unauthorized usage.\n\n' +
-      'Runs locally via Python subprocess (pip install boostedtravel && playwright install chromium).',
+      'Runs locally via Python subprocess (pip install letsfg && playwright install chromium).',
     inputSchema: {
       type: 'object',
       required: ['offer_id', 'checkout_token'],
@@ -255,7 +255,7 @@ const TOOLS = [
 async function apiRequest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'User-Agent': 'boostedtravel-mcp/0.1.0',
+    'User-Agent': 'letsfg-mcp/1.0.0',
   };
   if (API_KEY) headers['X-API-Key'] = API_KEY;
 
@@ -301,7 +301,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         total_offers: offers.length,
         source: hasBackend
           ? 'local_connectors (75 airlines) + backend (Amadeus, Duffel, Sabre)'
-          : 'local_connectors (75 airlines) — set BOOSTEDTRAVEL_API_KEY to also query Amadeus/Duffel/Sabre for more results',
+          : 'local_connectors (75 airlines) — set LETSFG_API_KEY to also query Amadeus/Duffel/Sabre for more results',
         offers: offers.map(o => ({
           offer_id: o.id,
           price: `${o.price} ${o.currency}`,
@@ -426,7 +426,7 @@ rl.on('line', async (line) => {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'boostedtravel', version: VERSION },
+          serverInfo: { name: 'letsfg', version: VERSION },
         },
       });
       break;
@@ -463,4 +463,4 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`BoostedTravel MCP v${VERSION} | local connectors: 75 airlines | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
+process.stderr.write(`LetsFG MCP v${VERSION} | local connectors: 75 airlines | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);

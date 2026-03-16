@@ -4,7 +4,7 @@ System resource detection for adaptive concurrency tuning.
 Safely detects RAM, CPU cores, and available memory so agents and the
 engine can pick optimal concurrency settings automatically.
 
-    from boostedtravel.system_info import get_system_profile
+    from letsfg.system_info import get_system_profile
     profile = get_system_profile()
     # {'ram_total_gb': 16.0, 'ram_available_gb': 9.2, 'cpu_cores': 8,
     #  'recommended_max_browsers': 8, 'tier': 'standard'}

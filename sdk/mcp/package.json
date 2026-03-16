@@ -1,11 +1,11 @@
 {
-  "name": "boostedtravel-mcp",
-  "version": "0.2.9",
-  "mcpName": "io.github.Efistoffeles/boostedtravel",
-  "description": "LFG MCP Server (formerly BoostedTravel) — 75 airline connectors run locally + enterprise GDS/NDC APIs. Flight search & booking for Claude, Cursor, Windsurf, and any MCP-compatible AI agent.",
+  "name": "letsfg-mcp",
+  "version": "1.0.0",
+  "mcpName": "io.github.Efistoffeles/letsfg",
+  "description": "LetsFG MCP Server — 75 airline connectors run locally + enterprise GDS/NDC APIs. Flight search & booking for Claude, Cursor, Windsurf, and any MCP-compatible AI agent.",
   "main": "dist/index.js",
   "bin": {
-    "boostedtravel-mcp": "dist/index.js"
+    "letsfg-mcp": "dist/index.js"
   },
   "files": [
     "dist/",
@@ -26,11 +26,11 @@
     "travel",
     "booking"
   ],
-  "author": "LFG",
+  "author": "LetsFG",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Boosted-Chat/LetsFG.git"
+    "url": "https://github.com/LetsFG/LetsFG.git"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

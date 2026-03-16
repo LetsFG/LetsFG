@@ -1,45 +1,45 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.Efistoffeles/boostedtravel",
-  "title": "LFG (formerly BoostedTravel)",
+  "name": "io.github.Efistoffeles/letsfg",
+  "title": "LetsFG",
   "description": "Flight search & booking for AI agents. 400+ airlines, 75 free local connectors. letsfg.co",
   "repository": {
-    "url": "https://github.com/Boosted-Chat/LetsFG",
+    "url": "https://github.com/LetsFG/LetsFG",
     "source": "github"
   },
-  "version": "0.2.17",
+  "version": "1.0.0",
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "boostedtravel-mcp",
-      "version": "0.2.9",
+      "identifier": "letsfg-mcp",
+      "version": "1.0.0",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Your LFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
+          "description": "Your LetsFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
           "isRequired": false,
           "format": "string",
           "isSecret": true,
-          "name": "BOOSTEDTRAVEL_API_KEY"
+          "name": "LETSFG_API_KEY"
         }
       ]
     },
     {
       "registryType": "pypi",
-      "identifier": "boostedtravel",
-      "version": "0.2.17",
+      "identifier": "letsfg",
+      "version": "1.0.0",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Your LFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
+          "description": "Your LetsFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
           "isRequired": false,
           "format": "string",
           "isSecret": true,
-          "name": "BOOSTEDTRAVEL_API_KEY"
+          "name": "LETSFG_API_KEY"
         }
       ]
     }

@@ -10,10 +10,10 @@ Native to **OpenClaw**, **Perplexity Computer**, **Manus**, **Claude Code**, **C
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/boostedtravel)](https://pypi.org/project/boostedtravel/)
-[![npm](https://img.shields.io/npm/v/boostedtravel-mcp?label=npm%20%28MCP%29)](https://www.npmjs.com/package/boostedtravel-mcp)
-[![npm](https://img.shields.io/npm/v/boostedtravel?label=npm%20%28JS%20SDK%29)](https://www.npmjs.com/package/boostedtravel)
-[![Smithery](https://smithery.ai/badge/boostedtravel-mcp)](https://smithery.ai/server/boostedtravel-mcp)
+[![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
+[![npm](https://img.shields.io/npm/v/letsfg-mcp?label=npm%20%28MCP%29)](https://www.npmjs.com/package/letsfg-mcp)
+[![npm](https://img.shields.io/npm/v/letsfg?label=npm%20%28JS%20SDK%29)](https://www.npmjs.com/package/letsfg)
+[![Smithery](https://smithery.ai/badge/letsfg-mcp)](https://smithery.ai/server/letsfg-mcp)
 
 ## Demo: LetsFG vs Default Agent Search
 
@@ -43,13 +43,13 @@ LetsFG works by finding the best price across the entire internet. It fires 75 a
 ## One-Click Install
 
 ```bash
-pip install boostedtravel
+pip install letsfg
 ```
 
 That's it. You can search flights immediately — no account, no API key, no configuration:
 
 ```bash
-boostedtravel search-local GDN BCN 2026-06-15
+letsfg search-local GDN BCN 2026-06-15
 ```
 
 This runs 75 airline connectors locally on your machine and returns real-time prices. Completely free, unlimited, zero setup.
@@ -79,8 +79,8 @@ This runs 75 airline connectors locally on your machine and returns real-time pr
 Install and search. One command, zero configuration.
 
 ```bash
-pip install boostedtravel
-boostedtravel search-local LHR BCN 2026-04-15
+pip install letsfg
+letsfg search-local LHR BCN 2026-04-15
 ```
 
 **What you get:**
@@ -90,7 +90,7 @@ boostedtravel search-local LHR BCN 2026-04-15
 - Completely free, unlimited searches
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 
 result = await search_local("GDN", "BCN", "2026-06-15")
 for offer in result.offers[:5]:
@@ -102,12 +102,12 @@ for offer in result.offers[:5]:
 One extra command unlocks the full power of LetsFG:
 
 ```bash
-pip install boostedtravel
-boostedtravel register --name my-agent --email you@example.com
+pip install letsfg
+letsfg register --name my-agent --email you@example.com
 # → Returns: trav_xxxxx... (your API key)
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
-boostedtravel search LHR JFK 2026-04-15
+letsfg search LHR JFK 2026-04-15
 ```
 
 **What you get (in addition to everything in Option A):**
@@ -122,9 +122,9 @@ boostedtravel search LHR JFK 2026-04-15
 > ⭐ **Star this repo and register to get unlimited access for free — forever.** First 1,000 stars only.
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
-bt = BoostedTravel()  # reads BOOSTEDTRAVEL_API_KEY from env
+bt = LetsFG()  # reads LETSFG_API_KEY from env
 flights = bt.search("LHR", "JFK", "2026-04-15")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 ```
@@ -134,21 +134,21 @@ print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 ## Quick Start (Full Flow)
 
 ```bash
-pip install boostedtravel
+pip install letsfg
 
 # Register and get API key (free, instant)
-boostedtravel register --name my-agent --email you@example.com
-export BOOSTEDTRAVEL_API_KEY=trav_...
+letsfg register --name my-agent --email you@example.com
+export LETSFG_API_KEY=trav_...
 
 # Search (free, unlimited)
-boostedtravel search LHR JFK 2026-04-15
-boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
+letsfg search LHR JFK 2026-04-15
+letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
 
 # Unlock (confirms live price, reserves for 30 min)
-boostedtravel unlock off_xxx
+letsfg unlock off_xxx
 
 # Book
-boostedtravel book off_xxx \
+letsfg book off_xxx \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --email john.doe@example.com
 ```
@@ -156,7 +156,7 @@ boostedtravel book off_xxx \
 All commands support `--json` for machine-readable output:
 
 ```bash
-boostedtravel search GDN BER 2026-03-03 --json | jq '.offers[0]'
+letsfg search GDN BER 2026-03-03 --json | jq '.offers[0]'
 ```
 
 ## Install
@@ -164,20 +164,20 @@ boostedtravel search GDN BER 2026-03-03 --json | jq '.offers[0]'
 ### Python (recommended — includes 75 local airline connectors)
 
 ```bash
-pip install boostedtravel
+pip install letsfg
 playwright install chromium  # needed for browser-based connectors
 ```
 
 ### JavaScript / TypeScript (API client only)
 
 ```bash
-npm install -g boostedtravel
+npm install -g letsfg
 ```
 
 ### MCP Server (Claude Desktop / Cursor / Windsurf / OpenClaw)
 
 ```bash
-npx boostedtravel-mcp
+npx letsfg-mcp
 ```
 
 Add to your MCP config:
@@ -185,25 +185,25 @@ Add to your MCP config:
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
 }
 ```
 
-> **Note:** `BOOSTEDTRAVEL_API_KEY` is optional. Without it, the MCP server still runs all 75 local connectors. With it, you also get enterprise GDS/NDC sources (400+ more airlines).
+> **Note:** `LETSFG_API_KEY` is optional. Without it, the MCP server still runs all 75 local connectors. With it, you also get enterprise GDS/NDC sources (400+ more airlines).
 
 ### Python SDK
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 flights = bt.search("LHR", "JFK", "2026-04-15")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 
@@ -219,9 +219,9 @@ print(f"Booked! PNR: {booking.booking_reference}")
 ### JS SDK
 
 ```typescript
-import { BoostedTravel } from 'boostedtravel';
+import { LetsFG } from 'letsfg';
 
-const bt = new BoostedTravel({ apiKey: 'trav_...' });
+const bt = new LetsFG({ apiKey: 'trav_...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 console.log(`${flights.totalResults} offers`);
 ```
@@ -230,13 +230,13 @@ console.log(`${flights.totalResults} offers`);
 
 | Command | Description |
 |---------|-------------|
-| `boostedtravel register` | Get your API key |
-| `boostedtravel search <origin> <dest> <date>` | Search flights (free) |
-| `boostedtravel locations <query>` | Resolve city/airport to IATA codes |
-| `boostedtravel unlock <offer_id>` | Confirm live price & reserve for 30 min |
-| `boostedtravel book <offer_id>` | Book the flight |
-| `boostedtravel system-info` | Show system resources & concurrency tier |
-| `boostedtravel me` | View profile & usage stats |
+| `letsfg register` | Get your API key |
+| `letsfg search <origin> <dest> <date>` | Search flights (free) |
+| `letsfg locations <query>` | Resolve city/airport to IATA codes |
+| `letsfg unlock <offer_id>` | Confirm live price & reserve for 30 min |
+| `letsfg book <offer_id>` | Book the flight |
+| `letsfg system-info` | Show system resources & concurrency tier |
+| `letsfg me` | View profile & usage stats |
 
 All commands accept `--json` for structured output and `--api-key` to override the env variable.
 
@@ -307,7 +307,7 @@ The Python SDK includes 75 production-grade airline connectors — not fragile s
 ### Local Search (No API Key)
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 
 # Runs all relevant connectors on your machine — completely free
 result = await search_local("GDN", "BCN", "2026-06-15")
@@ -318,10 +318,10 @@ result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 
 ```bash
 # CLI local-only search
-boostedtravel search-local GDN BCN 2026-06-15
+letsfg search-local GDN BCN 2026-06-15
 
 # Limit browser concurrency
-boostedtravel search-local GDN BCN 2026-06-15 --max-browsers 4
+letsfg search-local GDN BCN 2026-06-15 --max-browsers 4
 ```
 
 ### Shared Browser Infrastructure
@@ -352,18 +352,18 @@ Override auto-detection when needed:
 
 ```bash
 # Environment variable (highest priority)
-export BOOSTEDTRAVEL_MAX_BROWSERS=4
+export LETSFG_MAX_BROWSERS=4
 
 # CLI flag
-boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+letsfg search-local LHR BCN 2026-04-15 --max-browsers 4
 
 # Check your system profile
-boostedtravel system-info
+letsfg system-info
 ```
 
 ```python
 # Python SDK
-from boostedtravel import configure_max_browsers, get_system_profile
+from letsfg import configure_max_browsers, get_system_profile
 
 profile = get_system_profile()
 print(f"RAM: {profile['ram_available_gb']:.1f} GB, Tier: {profile['tier']}, Recommended: {profile['recommended_max_browsers']}")
@@ -377,17 +377,17 @@ configure_max_browsers(4)  # explicit override
 |-----------|------|------|
 | `AuthenticationError` | 401 | Missing or invalid API key |
 | `OfferExpiredError` | 410 | Offer no longer available (search again) |
-| `BoostedTravelError` | any | Base class for all API errors |
+| `LetsFGError` | any | Base class for all API errors |
 
 ## Packages
 
 | Package | Install | What it is |
 |---------|---------|------------|
-| **Python SDK + CLI** | `pip install boostedtravel` | SDK + `boostedtravel` CLI + 75 local airline connectors |
-| **JS/TS SDK + CLI** | `npm install -g boostedtravel` | SDK + `boostedtravel` CLI command |
-| **MCP Server** | `npx boostedtravel-mcp` | Model Context Protocol for Claude, Cursor, Windsurf |
+| **Python SDK + CLI** | `pip install letsfg` | SDK + `letsfg` CLI + 75 local airline connectors |
+| **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command |
+| **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for Claude, Cursor, Windsurf |
 | **Remote MCP** | `https://api.letsfg.co/mcp` | Streamable HTTP — no install needed |
-| **Smithery** | [smithery.ai/server/boostedtravel-mcp](https://smithery.ai/server/boostedtravel-mcp) | One-click MCP install via Smithery |
+| **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install via Smithery |
 
 ## Documentation
 
@@ -409,15 +409,15 @@ configure_max_browsers(4)  # explicit override
 - **Agent discovery:** https://api.letsfg.co/.well-known/ai-plugin.json
 - **Agent manifest:** https://api.letsfg.co/.well-known/agent.json
 - **LLM instructions:** https://api.letsfg.co/llms.txt
-- **Smithery:** https://smithery.ai/server/boostedtravel-mcp
+- **Smithery:** https://smithery.ai/server/letsfg-mcp
 
 **Base URL:** `https://api.letsfg.co`
 
 ## Links
 
-- **PyPI:** https://pypi.org/project/boostedtravel/
-- **npm (JS SDK):** https://www.npmjs.com/package/boostedtravel
-- **npm (MCP):** https://www.npmjs.com/package/boostedtravel-mcp
+- **PyPI:** https://pypi.org/project/letsfg/
+- **npm (JS SDK):** https://www.npmjs.com/package/letsfg
+- **npm (MCP):** https://www.npmjs.com/package/letsfg-mcp
 
 ## Contributing
 

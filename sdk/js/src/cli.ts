@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * BoostedTravel CLI — Agent-native flight search & booking from terminal.
+ * LetsFG CLI — Agent-native flight search & booking from terminal.
  *
  * Usage:
- *   boostedtravel search GDN BER 2026-03-03
- *   boostedtravel unlock off_xxx
- *   boostedtravel book off_xxx --passenger '{"id":"pas_xxx",...}' --email john@example.com
- *   boostedtravel register --name my-agent --email agent@example.com
- *   boostedtravel me
- *   boostedtravel locations Berlin
+ *   letsfg search GDN BER 2026-03-03
+ *   letsfg unlock off_xxx
+ *   letsfg book off_xxx --passenger '{"id":"pas_xxx",...}' --email john@example.com
+ *   letsfg register --name my-agent --email agent@example.com
+ *   letsfg me
+ *   letsfg locations Berlin
  */
 
 import {
-  BoostedTravel,
-  BoostedTravelError,
+  LetsFG,
+  LetsFGError,
   offerSummary,
   type FlightSearchResult,
   type SearchOptions,
@@ -76,11 +76,11 @@ async function cmdSearch(args: string[]) {
 
   const [origin, destination, date] = args;
   if (!origin || !destination || !date) {
-    console.error('Usage: boostedtravel search <origin> <destination> <date> [options]');
+    console.error('Usage: letsfg search <origin> <destination> <date> [options]');
     process.exit(1);
   }
 
-  const bt = new BoostedTravel({ apiKey, baseUrl });
+  const bt = new LetsFG({ apiKey, baseUrl });
   const result = await bt.search(origin, destination, date, {
     returnDate,
     adults,
@@ -124,7 +124,7 @@ async function cmdSearch(args: string[]) {
     console.log(`       ID: ${o.id}`);
   });
 
-  console.log(`\n  To unlock: boostedtravel unlock <offer_id>`);
+  console.log(`\n  To unlock: letsfg unlock <offer_id>`);
   console.log(`  Passenger IDs needed for booking: ${JSON.stringify(result.passenger_ids)}\n`);
 }
 
@@ -135,11 +135,11 @@ async function cmdUnlock(args: string[]) {
   const offerId = args[0];
 
   if (!offerId) {
-    console.error('Usage: boostedtravel unlock <offer_id>');
+    console.error('Usage: letsfg unlock <offer_id>');
     process.exit(1);
   }
 
-  const bt = new BoostedTravel({ apiKey, baseUrl });
+  const bt = new LetsFG({ apiKey, baseUrl });
   const result = await bt.unlock(offerId);
 
   if (jsonOut) {
@@ -152,7 +152,7 @@ async function cmdUnlock(args: string[]) {
     console.log(`    Confirmed price: ${result.confirmed_currency} ${result.confirmed_price?.toFixed(2)}`);
     console.log(`    Expires at: ${result.offer_expires_at}`);
     console.log(`    $1 unlock fee charged`);
-    console.log(`\n    Next: boostedtravel book ${offerId} --passenger '{...}' --email you@example.com\n`);
+    console.log(`\n    Next: letsfg book ${offerId} --passenger '{...}' --email you@example.com\n`);
   } else {
     console.error(`  ✗ Unlock failed: ${result.message}`);
     process.exit(1);
@@ -169,12 +169,12 @@ async function cmdBook(args: string[]) {
   const offerId = args[0];
 
   if (!offerId || !passengerStrs.length || !email) {
-    console.error('Usage: boostedtravel book <offer_id> --passenger \'{"id":"pas_xxx",...}\' --email you@example.com');
+    console.error('Usage: letsfg book <offer_id> --passenger \'{"id":"pas_xxx",...}\' --email you@example.com');
     process.exit(1);
   }
 
   const passengers = passengerStrs.map(s => JSON.parse(s));
-  const bt = new BoostedTravel({ apiKey, baseUrl });
+  const bt = new LetsFG({ apiKey, baseUrl });
   const result = await bt.book(offerId, passengers, email, phone);
 
   if (jsonOut) {
@@ -203,11 +203,11 @@ async function cmdLocations(args: string[]) {
   const query = args[0];
 
   if (!query) {
-    console.error('Usage: boostedtravel locations <city-or-airport-name>');
+    console.error('Usage: letsfg locations <city-or-airport-name>');
     process.exit(1);
   }
 
-  const bt = new BoostedTravel({ apiKey, baseUrl });
+  const bt = new LetsFG({ apiKey, baseUrl });
   const result = await bt.resolveLocation(query);
 
   if (jsonOut) {
@@ -239,11 +239,11 @@ async function cmdRegister(args: string[]) {
   const desc = getFlag(args, '--desc') || '';
 
   if (!name || !email) {
-    console.error('Usage: boostedtravel register --name my-agent --email agent@example.com');
+    console.error('Usage: letsfg register --name my-agent --email agent@example.com');
     process.exit(1);
   }
 
-  const result = await BoostedTravel.register(name, email, baseUrl, owner, desc);
+  const result = await LetsFG.register(name, email, baseUrl, owner, desc);
 
   if (jsonOut) {
     console.log(JSON.stringify(result, null, 2));
@@ -254,8 +254,8 @@ async function cmdRegister(args: string[]) {
   console.log(`    Agent ID: ${result.agent_id}`);
   console.log(`    API Key:  ${result.api_key}`);
   console.log(`\n    Save your API key:`);
-  console.log(`    export BOOSTEDTRAVEL_API_KEY=${result.api_key}`);
-  console.log(`\n    Next: boostedtravel setup-payment --token tok_visa\n`);
+  console.log(`    export LETSFG_API_KEY=${result.api_key}`);
+  console.log(`\n    Next: LetsFG setup-payment --token tok_visa\n`);
 }
 
 async function cmdSetupPayment(args: string[]) {
@@ -264,7 +264,7 @@ async function cmdSetupPayment(args: string[]) {
   const baseUrl = getFlag(args, '--base-url');
   const token = getFlag(args, '--token', '-t') || 'tok_visa';
 
-  const bt = new BoostedTravel({ apiKey, baseUrl });
+  const bt = new LetsFG({ apiKey, baseUrl });
   const result = await bt.setupPayment(token);
 
   if (jsonOut) {
@@ -285,7 +285,7 @@ async function cmdMe(args: string[]) {
   const apiKey = getFlag(args, '--api-key', '-k');
   const baseUrl = getFlag(args, '--base-url');
 
-  const bt = new BoostedTravel({ apiKey, baseUrl });
+  const bt = new LetsFG({ apiKey, baseUrl });
   const profile = await bt.me();
 
   if (jsonOut) {
@@ -308,7 +308,7 @@ async function cmdMe(args: string[]) {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 const HELP = `
-BoostedTravel — Agent-native flight search & booking.
+LetsFG — Agent-native flight search & booking.
 
 Search 400+ airlines at raw airline prices — $20-50 cheaper than OTAs.
 Search is FREE. Unlock: $1. Book: FREE after unlock.
@@ -324,14 +324,14 @@ Commands:
 
 Options:
   --json, -j       Output raw JSON
-  --api-key, -k    API key (or set BOOSTEDTRAVEL_API_KEY)
+  --api-key, -k    API key (or set LETSFG_API_KEY)
   --base-url       API URL (default: https://api.letsfg.co)
 
 Examples:
-  boostedtravel search GDN BER 2026-03-03 --sort price
-  boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --json
-  boostedtravel unlock off_xxx
-  boostedtravel book off_xxx -p '{"id":"pas_xxx","given_name":"John","family_name":"Doe","born_on":"1990-01-15"}' -e john@ex.com
+  letsfg search GDN BER 2026-03-03 --sort price
+  letsfg search LON BCN 2026-04-01 --return 2026-04-08 --json
+  letsfg unlock off_xxx
+  letsfg book off_xxx -p '{"id":"pas_xxx","given_name":"John","family_name":"Doe","born_on":"1990-01-15"}' -e john@ex.com
 `;
 
 async function main() {
@@ -373,7 +373,7 @@ async function main() {
         process.exit(1);
     }
   } catch (e) {
-    if (e instanceof BoostedTravelError) {
+    if (e instanceof LetsFGError) {
       console.error(`Error: ${e.message}`);
       process.exit(1);
     }

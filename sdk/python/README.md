@@ -1,16 +1,16 @@
-# BoostedTravel — Agent-Native Flight Search & Booking
+# LetsFG — Agent-Native Flight Search & Booking
 
-<!-- mcp-name: io.github.Efistoffeles/boostedtravel -->
+<!-- mcp-name: io.github.Efistoffeles/letsfg -->
 
 Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. 75 direct airline connectors run locally, plus GDS/NDC providers via cloud API. Built for autonomous AI agents — works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible client.
 
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
+> 🎥 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs LetsFG CLI.
 
 ## Install
 
 ```bash
-pip install boostedtravel           # SDK + 75 airline connectors
-pip install boostedtravel[cli]      # SDK + CLI (adds typer, rich)
+pip install letsfg           # SDK + 75 airline connectors
+pip install letsfg[cli]      # SDK + CLI (adds typer, rich)
 ```
 
 **Dependencies:** `pydantic`, `httpx`, `playwright`, `beautifulsoup4`, `lxml`. The SDK client itself uses stdlib `urllib` for API calls (zero deps), while the local connectors need the above for browser automation.
@@ -18,17 +18,17 @@ pip install boostedtravel[cli]      # SDK + CLI (adds typer, rich)
 ## Authentication
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import BoostedTravel
 
 # Register (one-time, no auth needed)
-creds = BoostedTravel.register("my-agent", "agent@example.com")
+creds = LetsFG.register("my-agent", "agent@example.com")
 print(creds["api_key"])  # "trav_xxxxx..." — save this
 
 # Option A: Pass API key directly
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
-# Option B: Set BOOSTEDTRAVEL_API_KEY env var, then:
-bt = BoostedTravel()
+# Option B: Set LETSFG_API_KEY env var, then:
+bt = LetsFG()
 
 # Setup payment (required before unlock) — three options:
 
@@ -57,15 +57,15 @@ print(f"Searches: {profile.get('search_count', 0)}")
 ### Auth Failure Recovery
 
 ```python
-from boostedtravel import BoostedTravel, AuthenticationError
+from letsfg import LetsFG, AuthenticationError
 
 try:
-    bt = BoostedTravel(api_key="trav_...")
+    bt = LetsFG(api_key="trav_...")
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except AuthenticationError:
     # Key invalid or expired — re-register to get a new one
-    creds = BoostedTravel.register("my-agent", "agent@example.com")
-    bt = BoostedTravel(api_key=creds["api_key"])
+    creds = LetsFG.register("my-agent", "agent@example.com")
+    bt = LetsFG(api_key=creds["api_key"])
     bt.setup_payment(token="tok_visa")  # Re-attach payment on new key
     flights = bt.search("LHR", "JFK", "2026-04-15")
 ```
@@ -73,9 +73,9 @@ except AuthenticationError:
 ## Quick Start (Python)
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import BoostedTravel
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
 # Search flights — FREE
 flights = bt.search("GDN", "BER", "2026-03-03")
@@ -175,17 +175,17 @@ print(f"Best: {flights.cheapest.price} {flights.cheapest.currency}")
 ## Error Handling
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    BoostedTravel, LetsFGError,
     AuthenticationError, PaymentRequiredError, OfferExpiredError,
 )
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
 # Handle invalid locations
 try:
     flights = bt.search("INVALID", "JFK", "2026-04-15")
-except BoostedTravelError as e:
+except LetsFGError as e:
     if e.status_code == 422:
         # Resolve the location first
         locations = bt.resolve_location("London")
@@ -206,7 +206,7 @@ except OfferExpiredError:
     print("30-minute window expired — search and unlock again")
 except AuthenticationError:
     print("Invalid API key")
-except BoostedTravelError as e:
+except LetsFGError as e:
     print(f"API error ({e.status_code}): {e.message}")
 ```
 
@@ -215,7 +215,7 @@ except BoostedTravelError as e:
 | `AuthenticationError` | 401 | Missing or invalid API key |
 | `PaymentRequiredError` | 402 | No payment method (call `setup_payment()`) |
 | `OfferExpiredError` | 410 | Offer no longer available |
-| `BoostedTravelError` | any | Base class for all API errors |
+| `LetsFGError` | any | Base class for all API errors |
 
 ### Timeout and Retry Pattern
 
@@ -223,16 +223,16 @@ Airline APIs can be slow (2–15s for search). Use retry with backoff for produc
 
 ```python
 import time
-from boostedtravel import BoostedTravel, BoostedTravelError
+from letsfg import LetsFG, LetsFGError
 
-bt = BoostedTravel()
+bt = LetsFG()
 
 def search_with_retry(origin, dest, date, max_retries=3):
     """Retry with exponential backoff on rate limit or timeout."""
     for attempt in range(max_retries):
         try:
             return bt.search(origin, dest, date)
-        except BoostedTravelError as e:
+        except LetsFGError as e:
             if "429" in str(e) or "rate limit" in str(e).lower():
                 wait = 2 ** attempt  # 1s, 2s, 4s
                 print(f"Rate limited, waiting {wait}s...")
@@ -242,7 +242,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
                 time.sleep(1)
             else:
                 raise
-    raise BoostedTravelError("Max retries exceeded")
+    raise LetsFGError("Max retries exceeded")
 ```
 
 ### Rate Limits
@@ -279,7 +279,7 @@ if best:
 The SDK includes 75 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 
 # Fires all relevant airline connectors — Ryanair, Wizz Air, EasyJet, etc.
 result = await search_local("GDN", "BCN", "2026-06-15")
@@ -298,30 +298,30 @@ Ryanair, Wizz Air, EasyJet, Norwegian, Vueling, Eurowings, Transavia, Pegasus, T
 ## Quick Start (CLI)
 
 ```bash
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
 # Search (1 adult, one-way, economy — defaults)
-boostedtravel search GDN BER 2026-03-03 --sort price
+letsfg search GDN BER 2026-03-03 --sort price
 
 # Multi-passenger round trip
-boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --adults 2 --children 1 --cabin M
+letsfg search LON BCN 2026-04-01 --return 2026-04-08 --adults 2 --children 1 --cabin M
 
 # Business class, direct flights only
-boostedtravel search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
+letsfg search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
 
 # Machine-readable output (for agents)
-boostedtravel search LON BCN 2026-04-01 --json
+letsfg search LON BCN 2026-04-01 --json
 
 # Unlock
-boostedtravel unlock off_xxx
+letsfg unlock off_xxx
 
 # Book
-boostedtravel book off_xxx \
+letsfg book off_xxx \
   --passenger '{"id":"pas_xxx","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr","email":"john@example.com"}' \
   --email john@example.com
 
 # Resolve location
-boostedtravel locations "Berlin"
+letsfg locations "Berlin"
 ```
 
 ### Search Flags
@@ -358,13 +358,13 @@ Every command supports `--json` for machine-readable output.
 
 | Variable | Description |
 |----------|-------------|
-| `BOOSTEDTRAVEL_API_KEY` | Your agent API key |
-| `BOOSTEDTRAVEL_BASE_URL` | API URL (default: `https://api.letsfg.co`) |
-| `BOOSTEDTRAVEL_MAX_BROWSERS` | Max concurrent browser instances (1–32). Auto-detected from RAM if not set. |
+| `LETSFG_API_KEY` | Your agent API key |
+| `LETSFG_BASE_URL` | API URL (default: `https://api.letsfg.co`) |
+| `LETSFG_MAX_BROWSERS` | Max concurrent browser instances (1–32). Auto-detected from RAM if not set. |
 
 ## Performance Tuning
 
-BoostedTravel auto-detects your system's available RAM and scales browser concurrency:
+LetsFG auto-detects your system's available RAM and scales browser concurrency:
 
 | Available RAM | Tier | Max Browsers |
 |-------------|------|-------------|
@@ -376,7 +376,7 @@ BoostedTravel auto-detects your system's available RAM and scales browser concur
 | 32+ GB | Maximum | 16 |
 
 ```python
-from boostedtravel import get_system_profile, configure_max_browsers
+from letsfg import get_system_profile, configure_max_browsers
 
 # Check system resources and recommended concurrency
 profile = get_system_profile()
@@ -389,15 +389,15 @@ configure_max_browsers(4)  # clamps to 1–32
 
 ```bash
 # Via CLI
-boostedtravel system-info
-boostedtravel system-info --json  # machine-readable
+letsfg system-info
+letsfg system-info --json  # machine-readable
 
 # Override via env var
-export BOOSTEDTRAVEL_MAX_BROWSERS=4
-boostedtravel search-local LHR BCN 2026-04-15
+export LETSFG_MAX_BROWSERS=4
+letsfg search-local LHR BCN 2026-04-15
 
 # Override via CLI flag
-boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+letsfg search-local LHR BCN 2026-04-15 --max-browsers 4
 ```
 
 Priority: env var > explicit config/flag > auto-detect.

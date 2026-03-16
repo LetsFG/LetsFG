@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "boostedtravel"
-version = "0.2.17"
+name = "letsfg"
+version = "1.0.1"
 description = "Agent-native flight search & booking. 400+ airlines, 75 direct airline connectors run locally. Built for autonomous AI agents."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "BoostedTravel"},
+    {name = "LetsFG"},
 ]
 keywords = [
     "flights", "travel", "booking", "agent", "ai", "cli",
@@ -56,14 +56,14 @@ all = [
 ]
 
 [project.scripts]
-boostedtravel = "boostedtravel.cli:main"
+letsfg = "letsfg.cli:main"
 
 [project.urls]
 Homepage = "https://letsfg.co"
 Documentation = "https://api.letsfg.co/docs"
-Repository = "https://github.com/Boosted-Chat/LetsFG"
-Issues = "https://github.com/Boosted-Chat/LetsFG/issues"
+Repository = "https://github.com/LetsFG/LetsFG"
+Issues = "https://github.com/LetsFG/LetsFG/issues"
 "API Reference" = "https://api.letsfg.co/redoc"
 
 [tool.hatch.build.targets.wheel]
-packages = ["boostedtravel"]
+packages = ["letsfg"]

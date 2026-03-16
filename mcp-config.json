@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "YOUR_API_KEY_HERE (optional — omit for local-only search with 75 airline connectors)"
+        "LETSFG_API_KEY": "YOUR_API_KEY_HERE (optional — omit for local-only search with 75 airline connectors)"
       }
     }
   }

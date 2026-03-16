@@ -1,4 +1,4 @@
-"""Data models for BoostedTravel SDK — lightweight, no pydantic dependency."""
+"""Data models for LetsFG SDK — lightweight, no pydantic dependency."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ class FlightRoute:
 
 @dataclass
 class FlightOffer:
-    """A single flight offer from BoostedTravel."""
+    """A single flight offer from letsfg."""
     id: str
     price: float
     currency: str
@@ -118,7 +118,7 @@ class FlightOffer:
 
 @dataclass
 class FlightSearchResult:
-    """Full search result from BoostedTravel."""
+    """Full search result from letsfg."""
     search_id: str
     offer_request_id: str
     passenger_ids: list[str]

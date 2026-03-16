@@ -3,12 +3,12 @@ Local flight search — runs 75 airline connectors on the user's machine.
 
 Can be used programmatically:
 
-    from boostedtravel.local import search_local
+    from letsfg.local import search_local
     result = await search_local("SHA", "CTU", "2026-03-20")
 
 Or as a subprocess (used by the npm MCP server + JS SDK):
 
-    echo '{"origin":"SHA","destination":"CTU","date_from":"2026-03-20"}' | python -m boostedtravel.local
+    echo '{"origin":"SHA","destination":"CTU","date_from":"2026-03-20"}' | python -m letsfg.local
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import logging
 import sys
 from datetime import date
 
-from boostedtravel.models.flights import FlightSearchRequest
+from letsfg.models.flights import FlightSearchRequest
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +50,11 @@ async def search_local(
             Lower values use less memory but search slower.
             Higher values search faster but need more RAM.
     """
-    from boostedtravel.connectors.engine import multi_provider
+    from letsfg.connectors.engine import multi_provider
 
     # Apply concurrency setting before search starts
     if max_browsers is not None:
-        from boostedtravel.connectors.browser import configure_max_browsers
+        from letsfg.connectors.browser import configure_max_browsers
         configure_max_browsers(max_browsers)
 
     req = FlightSearchRequest(
@@ -109,8 +109,8 @@ def _main() -> None:
 
     # System info query (used by MCP server's system_info tool)
     if params.get("__system_info"):
-        from boostedtravel.system_info import get_system_profile
-        from boostedtravel.connectors.browser import get_max_browsers
+        from letsfg.system_info import get_system_profile
+        from letsfg.connectors.browser import get_max_browsers
         profile = get_system_profile()
         profile["current_max_browsers"] = get_max_browsers()
         json.dump(profile, sys.stdout)

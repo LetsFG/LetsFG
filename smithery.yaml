@@ -1,4 +1,4 @@
-# Smithery configuration for LFG MCP Server (formerly BoostedTravel)
+# Smithery configuration for LetsFG MCP Server
 # https://smithery.ai/docs/publishing
 
 startCommand:
@@ -6,19 +6,19 @@ startCommand:
   configSchema:
     type: object
     properties:
-      BOOSTEDTRAVEL_API_KEY:
+      LETSFG_API_KEY:
         type: string
-        description: "LFG API key (optional — local search works without it). Get one free: boostedtravel register --email you@example.com | letsfg.co"
-      BOOSTEDTRAVEL_MAX_BROWSERS:
+        description: "LetsFG API key (optional — local search works without it). Get one free: letsfg register --email you@example.com | letsfg.co"
+      LETSFG_MAX_BROWSERS:
         type: string
         description: "Max concurrent browser instances for local search (1–32). Auto-detected from system RAM if not set."
     required: []
   commandFunction: |-
     (config) => ({
       command: "npx",
-      args: ["-y", "boostedtravel-mcp"],
+      args: ["-y", "letsfg-mcp"],
       env: {
-        BOOSTEDTRAVEL_API_KEY: config.BOOSTEDTRAVEL_API_KEY || "",
-        ...(config.BOOSTEDTRAVEL_MAX_BROWSERS && { BOOSTEDTRAVEL_MAX_BROWSERS: config.BOOSTEDTRAVEL_MAX_BROWSERS })
+        LETSFG_API_KEY: config.LETSFG_API_KEY || "",
+        ...(config.LETSFG_MAX_BROWSERS && { LETSFG_MAX_BROWSERS: config.LETSFG_MAX_BROWSERS })
       }
     })
