@@ -1,36 +1,34 @@
-# BoostedTravel — Agent-Native Flight Search & Booking (Node.js)
+# LetsFG — Agent-Native Flight Search & Booking (Node.js)
 
-Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for autonomous AI agents — works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible client.
-
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
+Search 400+ airlines at raw airline prices — **$50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for autonomous AI agents — works with Claude, Cursor, Windsurf, and any MCP-compatible client.
 
 ## Install
 
 ```bash
-npm install boostedtravel
+npm install letsfg
 ```
 
 ## Quick Start (SDK)
 
 ```typescript
-import { BoostedTravel, cheapestOffer, offerSummary } from 'boostedtravel';
+import { LetsFG, cheapestOffer, offerSummary } from 'letsfg';
 
 // Register (one-time)
-const creds = await BoostedTravel.register('my-agent', 'agent@example.com');
+const creds = await LetsFG.register('my-agent', 'agent@example.com');
 console.log(creds.api_key); // Save this
 
 // Use
-const bt = new BoostedTravel({ apiKey: 'trav_...' });
+const bt = new LetsFG({ apiKey: 'trav_...' });
 
 // Search — FREE
 const flights = await bt.search('GDN', 'BER', '2026-03-03');
 const best = cheapestOffer(flights);
 console.log(offerSummary(best));
 
-// Unlock — $1
+// Unlock
 const unlock = await bt.unlock(best.id);
 
-// Book — FREE after unlock
+// Book
 const booking = await bt.book(
   best.id,
   [{
@@ -50,17 +48,17 @@ console.log(`PNR: ${booking.booking_reference}`);
 ## Quick Start (CLI)
 
 ```bash
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
-boostedtravel search GDN BER 2026-03-03 --sort price
-boostedtravel search LON BCN 2026-04-01 --json  # Machine-readable
-boostedtravel unlock off_xxx
-boostedtravel book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john@example.com
+letsfg search GDN BER 2026-03-03 --sort price
+letsfg search LON BCN 2026-04-01 --json  # Machine-readable
+letsfg unlock off_xxx
+letsfg book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john@example.com
 ```
 
 ## API
 
-### `new BoostedTravel({ apiKey, baseUrl?, timeout? })`
+### `new LetsFG({ apiKey, baseUrl?, timeout? })`
 
 ### `bt.search(origin, destination, dateFrom, options?)`
 ### `bt.resolveLocation(query)`
@@ -68,7 +66,7 @@ boostedtravel book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john
 ### `bt.book(offerId, passengers, contactEmail, contactPhone?)`
 ### `bt.setupPayment(token?)`
 ### `bt.me()`
-### `BoostedTravel.register(agentName, email, baseUrl?, ownerName?, description?)`
+### `LetsFG.register(agentName, email, baseUrl?, ownerName?, description?)`
 
 ### Helpers
 - `offerSummary(offer)` — One-line string summary
@@ -76,10 +74,10 @@ boostedtravel book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john
 
 ### `searchLocal(origin, destination, dateFrom, options?)`
 
-Search 75 airline connectors locally (no API key needed). Requires Python + `boostedtravel` installed.
+Search 75 airline connectors locally (no API key needed). Requires Python + `letsfg` installed.
 
 ```typescript
-import { searchLocal } from 'boostedtravel';
+import { searchLocal } from 'letsfg';
 
 const result = await searchLocal('GDN', 'BCN', '2026-06-15');
 console.log(result.total_results);
@@ -93,7 +91,7 @@ const result2 = await searchLocal('GDN', 'BCN', '2026-06-15', { maxBrowsers: 4 }
 Get system resource profile and recommended concurrency settings.
 
 ```typescript
-import { systemInfo } from 'boostedtravel';
+import { systemInfo } from 'letsfg';
 
 const info = await systemInfo();
 console.log(info);
@@ -114,7 +112,13 @@ Local search auto-scales browser concurrency based on available RAM. Override wi
 await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 });
 ```
 
-Or set the `BOOSTEDTRAVEL_MAX_BROWSERS` environment variable globally.
+Or set the `LETSFG_MAX_BROWSERS` environment variable globally.
+
+## Also Available As
+
+- **MCP Server**: `npx letsfg-mcp` — [npm](https://www.npmjs.com/package/letsfg-mcp)
+- **Python SDK + CLI**: `pip install letsfg` — [PyPI](https://pypi.org/project/letsfg/)
+- **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
 ## License
 

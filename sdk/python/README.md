@@ -4,7 +4,7 @@
 
 Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. 75 direct airline connectors run locally, plus GDS/NDC providers via cloud API. Built for autonomous AI agents — works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible client.
 
-> 🎥 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs LetsFG CLI.
+> 🎥 **[Watch the demo](https://github.com/LetsFG/LetsFG)** — side-by-side comparison of default agent search vs LetsFG CLI.
 
 ## Install
 
@@ -18,7 +18,7 @@ pip install letsfg[cli]      # SDK + CLI (adds typer, rich)
 ## Authentication
 
 ```python
-from letsfg import BoostedTravel
+from letsfg import LetsFG
 
 # Register (one-time, no auth needed)
 creds = LetsFG.register("my-agent", "agent@example.com")
@@ -73,7 +73,7 @@ except AuthenticationError:
 ## Quick Start (Python)
 
 ```python
-from letsfg import BoostedTravel
+from letsfg import LetsFG
 
 bt = LetsFG(api_key="trav_...")
 
@@ -176,7 +176,7 @@ print(f"Best: {flights.cheapest.price} {flights.cheapest.currency}")
 
 ```python
 from letsfg import (
-    BoostedTravel, LetsFGError,
+    LetsFG, LetsFGError,
     AuthenticationError, PaymentRequiredError, OfferExpiredError,
 )
 

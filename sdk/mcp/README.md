@@ -1,24 +1,22 @@
-# boostedtravel-mcp
+# letsfg-mcp
 
-The largest open flight-search MCP server. 73 ready-to-run airline connectors fire in parallel on your machine — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, and 68 more — plus enterprise GDS/NDC providers (Amadeus, Duffel, Sabre) through the BoostedTravel backend. One tool call scans the entire world for flights, including airlines your agent didn't know existed.
+The largest open flight-search MCP server. 75 ready-to-run airline connectors fire in parallel on your machine — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, and 70 more — plus enterprise GDS/NDC providers (Amadeus, Duffel, Sabre) through the LetsFG backend. One tool call scans the entire world for flights, including airlines your agent didn't know existed.
 
-**Your agent doesn't need to build a flight integration. It doesn't need to scrape. Just add this MCP server and it can search and book flights in seconds — what would take 30+ minutes of integration work becomes a single tool call.**
+**Your agent doesn't need to build a flight integration. It doesn't need to scrape. Just add this MCP server and it can search and book flights in seconds.**
 
-Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client.
+Works with Claude Desktop, Cursor, Windsurf, and any MCP-compatible client.
 
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
-
-[![npm](https://img.shields.io/npm/v/boostedtravel-mcp)](https://www.npmjs.com/package/boostedtravel-mcp)
+[![npm](https://img.shields.io/npm/v/letsfg-mcp)](https://www.npmjs.com/package/letsfg-mcp)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
 ---
 
 ## What This Is
 
-BoostedTravel is not a scraper wrapper. It's a production-grade **agent-to-airline connector layer**:
+LetsFG is not a scraper wrapper. It's a production-grade **agent-to-airline connector layer**:
 
 - **75 airline connectors** run locally on your machine via Python + Playwright — no API key needed for search
-- **Enterprise GDS/NDC feeds** (Amadeus, Duffel, Sabre, Travelport, Kiwi) run through the BoostedTravel backend — these are contract-only data sources that require enterprise agreements, made available to everyone through our API
+- **Enterprise GDS/NDC feeds** (Amadeus, Duffel, Sabre, Travelport, Kiwi) run through the LetsFG backend — these are contract-only data sources that require enterprise agreements, made available to everyone through our API
 - **Virtual interlining** — the combo engine mixes one-way fares across airlines (e.g., Ryanair outbound + Wizz Air return) to find deals no single airline offers
 - **City-wide airport expansion** — search `LON` and it auto-searches LHR, LGW, STN, LTN, SEN, LCY. Works for 25+ major cities worldwide
 - **Zero price bias** — no cookie tracking, no demand-based inflation, no surge pricing. Same raw airline price every time
@@ -27,21 +25,21 @@ BoostedTravel is not a scraper wrapper. It's a production-grade **agent-to-airli
 - Saves thousands of tokens vs. browser automation or scraping
 - 75 connectors fire in parallel — scans airlines across Europe, Asia, Americas, Middle East, Africa simultaneously
 - Finds deals on carriers your agent wouldn't think to check (Lucky Air, 9 Air, Jazeera Airways, FlySafair...)
-- Enterprise-contracted GDS deals that require contracts worth $50k+/year — we give them to you for free on search
+- Enterprise-contracted GDS deals that require contracts worth $50k+/year — available for free on search
 
 ---
 
 ## Quick Start
 
 ```bash
-npx boostedtravel-mcp
+npx letsfg-mcp
 ```
 
 That's it. The MCP server starts on stdio, ready for any MCP-compatible client.
 
 **Prerequisites for local search:**
 ```bash
-pip install boostedtravel
+pip install letsfg
 playwright install chromium
 ```
 
@@ -56,18 +54,18 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
 }
 ```
 
-> **Note:** Add `"BOOSTEDTRAVEL_MAX_BROWSERS": "4"` to `env` to limit browser concurrency on constrained machines.
+> **Note:** Add `"LETSFG_MAX_BROWSERS": "4"` to `env` to limit browser concurrency on constrained machines.
 
 ### Cursor
 
@@ -76,11 +74,11 @@ Add to `.cursor/mcp.json` in your project root:
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -94,11 +92,11 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -111,19 +109,19 @@ Add to `~/.continue/config.yaml`:
 
 ```yaml
 mcpServers:
-  - name: boostedtravel
+  - name: letsfg
     command: npx
-    args: ["-y", "boostedtravel-mcp"]
+    args: ["-y", "letsfg-mcp"]
     env:
-      BOOSTEDTRAVEL_API_KEY: trav_your_api_key
+      LETSFG_API_KEY: trav_your_api_key
 ```
 
-### OpenClaw / Perplexity Computer
+### Any MCP-Compatible Agent
 
-Any MCP-compatible agent works. Point it at the MCP server:
+Point it at the MCP server:
 
 ```bash
-npx boostedtravel-mcp
+npx letsfg-mcp
 ```
 
 Or connect via remote MCP (no install):
@@ -139,11 +137,11 @@ If you get `spawn npx ENOENT` on Windows, use the full path to `npx`:
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -155,11 +153,11 @@ Or use `node` directly:
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "node",
-      "args": ["C:\\Users\\YOU\\AppData\\Roaming\\npm\\node_modules\\boostedtravel-mcp\\dist\\index.js"],
+      "args": ["C:\\Users\\YOU\\AppData\\Roaming\\npm\\node_modules\\letsfg-mcp\\dist\\index.js"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -173,7 +171,7 @@ To avoid unexpected updates:
 ```json
 {
   "command": "npx",
-  "args": ["-y", "boostedtravel-mcp@0.2.4"]
+  "args": ["-y", "letsfg-mcp@1.0.0"]
 }
 ```
 
@@ -185,7 +183,7 @@ To avoid unexpected updates:
 |------|-------------|------|--------------|
 | `search_flights` | Search 400+ airlines worldwide | FREE | None (read-only) |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
-| `unlock_flight_offer` | Confirm live price, reserve 30 min | $1 | Charges $1 |
+| `unlock_flight_offer` | Confirm live price, reserve 30 min | — | Confirms price |
 | `book_flight` | Create real airline reservation (PNR) | FREE | Creates booking |
 | `setup_payment` | Attach payment card (once) | FREE | Updates payment |
 | `get_agent_profile` | Usage stats & payment status | FREE | None (read-only) |
@@ -195,11 +193,11 @@ To avoid unexpected updates:
 
 ```
 search_flights  →  unlock_flight_offer  →  book_flight
-   (free)              ($1 quote)           (free, creates PNR)
+   (free)              (quote)              (free, creates PNR)
 ```
 
 1. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 75 airlines
-2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min, costs $1
+2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min
 3. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket
 
 The `search_flights` tool accepts an optional `max_browsers` parameter (1–32) to limit concurrent browser instances. Omit it to auto-detect based on system RAM.
@@ -222,8 +220,8 @@ curl -X POST https://api.letsfg.co/api/v1/agents/register \
 
 Or via CLI:
 ```bash
-pip install boostedtravel
-boostedtravel register --name my-agent --email you@example.com
+pip install letsfg
+letsfg register --name my-agent --email you@example.com
 ```
 
 ---
@@ -235,13 +233,13 @@ boostedtravel register --name my-agent --email you@example.com
 │  MCP Client  (Claude Desktop / Cursor / Windsurf / etc.)     │
 │     ↕ stdio (JSON-RPC, local only)                           │
 ├──────────────────────────────────────────────────────────────┤
-│  boostedtravel-mcp  (this package, runs on YOUR machine)     │
+│  letsfg-mcp  (this package, runs on YOUR machine)            │
 │     │                                                        │
 │     ├─→ Python subprocess (local connectors)                 │
 │     │     75 airline connectors via Playwright + httpx        │
 │     │     Data goes: your machine → airline website → back    │
 │     │                                                        │
-│     └─→ HTTPS to api.letsfg.co (backend)               │
+│     └─→ HTTPS to api.letsfg.co (backend)                     │
 │           unlock, book, payment, enterprise GDS search        │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -262,12 +260,12 @@ boostedtravel register --name my-agent --email you@example.com
 ## Security & Privacy
 
 - **TLS everywhere** — all backend communication uses HTTPS. Local connectors connect to airline websites over HTTPS.
-- **No card storage** — payment cards are tokenized by Stripe. BoostedTravel never sees or stores raw card numbers.
-- **API key scoping** — `BOOSTEDTRAVEL_API_KEY` grants access only to your agent's account. Keys are prefixed `trav_` for easy identification and revocation.
-- **PII handling** — passenger names, emails, and DOBs are sent to the airline for booking (required by airlines). BoostedTravel does not store passenger PII after forwarding to the airline.
+- **No card storage** — payment cards are tokenized by Stripe. LetsFG never sees or stores raw card numbers.
+- **API key scoping** — `LETSFG_API_KEY` grants access only to your agent's account. Keys are prefixed `trav_` for easy identification and revocation.
+- **PII handling** — passenger names, emails, and DOBs are sent to the airline for booking (required by airlines). LetsFG does not store passenger PII after forwarding to the airline.
 - **No tracking** — no cookies, no session-based pricing, no fingerprinting. Every search returns the same raw airline price.
 - **Local search is fully local** — when searching without an API key, zero data leaves your machine except direct HTTPS requests to airline websites. The MCP server and Python connectors run entirely on your hardware.
-- **Open source** — all connector code is MIT-licensed and auditable at [github.com/Boosted-Chat/LetsFG](https://github.com/Boosted-Chat/LetsFG).
+- **Open source** — all connector code is MIT-licensed and auditable at [github.com/LetsFG/LetsFG](https://github.com/LetsFG/LetsFG).
 
 ---
 
@@ -279,7 +277,7 @@ Use Stripe's test token for payment setup without real charges:
 setup_payment with token: "tok_visa"
 ```
 
-This attaches a test Visa card. Unlock calls will show `$1.00` but use Stripe test mode — no real money is charged. Useful for agent development and testing the full search → unlock → book flow.
+This attaches a test Visa card. Unlock calls will use Stripe test mode — no real money is charged. Useful for agent development and testing the full search → unlock → book flow.
 
 ---
 
@@ -297,22 +295,16 @@ Or install globally and use `node` directly (see Windows config above).
 
 - Check IATA codes are correct — use `resolve_location` first
 - Try a date 2+ weeks in the future (airlines don't sell last-minute on all routes)
-- Ensure `pip install boostedtravel && playwright install chromium` completed successfully
+- Ensure `pip install letsfg && playwright install chromium` completed successfully
 - Check Python is available: the MCP server spawns a Python subprocess for local search
 
 ### How do I search without an API key?
 
-Just omit `BOOSTEDTRAVEL_API_KEY` from your config. Local search (75 airline connectors) works without any key. You'll only miss the enterprise GDS/NDC sources (Amadeus, Duffel, etc.).
+Just omit `LETSFG_API_KEY` from your config. Local search (75 airline connectors) works without any key. You'll only miss the enterprise GDS/NDC sources (Amadeus, Duffel, etc.).
 
 ### Can I use this for commercial projects?
 
-Yes. MIT license. The local connectors and SDK are fully open source. The backend API (unlock/book/GDS) is a hosted service with usage-based pricing ($1 per unlock).
-
-### How do I pin a version?
-
-```json
-"args": ["-y", "boostedtravel-mcp@0.2.4"]
-```
+Yes. MIT license. The local connectors and SDK are fully open source.
 
 ### MCP server hangs on start
 
@@ -334,9 +326,9 @@ Ensure Node.js 18+ is installed. The server communicates via stdio (stdin/stdout
 
 ## Also Available As
 
-- **Python SDK + CLI**: `pip install boostedtravel` — [PyPI](https://pypi.org/project/boostedtravel/)
-- **JavaScript/TypeScript SDK + CLI**: `npm install boostedtravel` — [npm](https://www.npmjs.com/package/boostedtravel)
-- **Agent docs**: [AGENTS.md](../../AGENTS.md) — complete reference for AI agents
+- **JavaScript/TypeScript SDK + CLI**: `npm install letsfg` — [npm](https://www.npmjs.com/package/letsfg)
+- **Python SDK + CLI**: `pip install letsfg` — [PyPI](https://pypi.org/project/letsfg/)
+- **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
 ## License
 
