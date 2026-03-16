@@ -1,10 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Efistoffeles/boostedtravel",
-  "title": "BoostedTravel",
-  "description": "Flight search & booking for AI agents. 400+ airlines, 75 free local connectors.",
+  "title": "LFG (formerly BoostedTravel)",
+  "description": "Flight search & booking for AI agents. 400+ airlines, 75 free local connectors. letsfg.co",
   "repository": {
-    "url": "https://github.com/Boosted-Chat/BoostedTravel",
+    "url": "https://github.com/Boosted-Chat/LetsFG",
     "source": "github"
   },
   "version": "0.2.17",
@@ -18,7 +18,7 @@
       },
       "environmentVariables": [
         {
-          "description": "Your BoostedTravel API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines)",
+          "description": "Your LFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
           "isRequired": false,
           "format": "string",
           "isSecret": true,
@@ -35,7 +35,7 @@
       },
       "environmentVariables": [
         {
-          "description": "Your BoostedTravel API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines)",
+          "description": "Your LFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
           "isRequired": false,
           "format": "string",
           "isSecret": true,

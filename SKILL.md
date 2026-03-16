@@ -1,20 +1,21 @@
 ---
 name: boostedtravel
-description: Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs.
+description: "LFG (formerly BoostedTravel) — Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
 ---
 
-# SKILL.md — BoostedTravel Capabilities
+# SKILL.md — LFG Capabilities
 
 > Machine-readable skill manifest for AI agents and documentation indexers.
+> **Note:** BoostedTravel has been rebranded to LFG. Package names remain `boostedtravel` for backward compatibility.
 
 ## Identity
 
-- **Name:** BoostedTravel
+- **Name:** LFG (formerly BoostedTravel)
 - **Type:** API + SDK + MCP Server + CLI
 - **Purpose:** Agent-native flight search, hotel search, and booking
 - **Compatible agents:** OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client
-- **API Base URL:** `https://api.boostedchat.com`
-- **MCP Endpoint:** `https://api.boostedchat.com/mcp` (Streamable HTTP)
+- **API Base URL:** `https://api.letsfg.co`
+- **MCP Endpoint:** `https://api.letsfg.co/mcp` (Streamable HTTP)
 - **Packages:** PyPI `boostedtravel` · npm `boostedtravel` · npm `boostedtravel-mcp`
 - **License:** MIT
 
@@ -235,7 +236,7 @@ print(f"PNR: {booking.booking_reference}")
 {
   "mcpServers": {
     "boostedtravel": {
-      "url": "https://api.boostedchat.com/mcp",
+      "url": "https://api.letsfg.co/mcp",
       "headers": {
         "X-API-Key": "trav_..."
       }

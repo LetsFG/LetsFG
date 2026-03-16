@@ -375,7 +375,7 @@ export async function searchLocal(
 
 // ── Client ────────────────────────────────────────────────────────────────
 
-const DEFAULT_BASE_URL = 'https://api.boostedchat.com';
+const DEFAULT_BASE_URL = 'https://api.letsfg.co';
 
 export class BoostedTravel {
   private apiKey: string;

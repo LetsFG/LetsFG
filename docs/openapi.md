@@ -1,17 +1,17 @@
 # OpenAPI Reference
 
-BoostedTravel provides a full OpenAPI 3.1 specification for the REST API.
+LFG provides a full OpenAPI 3.1 specification for the REST API.
 
 ## Interactive Documentation
 
-- **Swagger UI:** [api.boostedchat.com/docs](https://api.boostedchat.com/docs) — try every endpoint in your browser
-- **ReDoc:** [api.boostedchat.com/redoc](https://api.boostedchat.com/redoc) — clean, readable API reference
+- **Swagger UI:** [api.letsfg.co/docs](https://api.letsfg.co/docs) — try every endpoint in your browser
+- **ReDoc:** [api.letsfg.co/redoc](https://api.letsfg.co/redoc) — clean, readable API reference
 
 ## OpenAPI Spec
 
 The full OpenAPI specification is included in the repository:
 
-- **YAML:** [`openapi.yaml`](https://github.com/Boosted-Chat/BoostedTravel/blob/main/openapi.yaml)
+- **YAML:** [`openapi.yaml`](https://github.com/Boosted-Chat/LetsFG/blob/main/openapi.yaml)
 
 You can import this spec into any OpenAPI-compatible tool (Postman, Insomnia, Swagger Editor, etc.).
 
@@ -27,14 +27,14 @@ You can import this spec into any OpenAPI-compatible tool (Postman, Insomnia, Sw
 | `/api/v1/bookings/unlock` | POST | API key | Unlock offer ($1) |
 | `/api/v1/bookings/book` | POST | API key | Book flight (free after unlock) |
 
-**Base URL:** `https://api.boostedchat.com`
+**Base URL:** `https://api.letsfg.co`
 
 ## Authentication
 
 All endpoints except `/register` require an `X-API-Key` header:
 
 ```bash
-curl -X POST https://api.boostedchat.com/api/v1/flights/search \
+curl -X POST https://api.letsfg.co/api/v1/flights/search \
   -H "X-API-Key: trav_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
@@ -42,14 +42,14 @@ curl -X POST https://api.boostedchat.com/api/v1/flights/search \
 
 ## Agent Discovery
 
-BoostedTravel supports standard agent discovery protocols:
+LFG supports standard agent discovery protocols:
 
 | URL | Description |
 |-----|-------------|
-| `https://api.boostedchat.com/.well-known/ai-plugin.json` | OpenAI plugin manifest |
-| `https://api.boostedchat.com/.well-known/agent.json` | Agent discovery manifest |
-| `https://api.boostedchat.com/llms.txt` | LLM instructions |
-| `https://api.boostedchat.com/mcp` | MCP Streamable HTTP endpoint |
+| `https://api.letsfg.co/.well-known/ai-plugin.json` | OpenAI plugin manifest |
+| `https://api.letsfg.co/.well-known/agent.json` | Agent discovery manifest |
+| `https://api.letsfg.co/llms.txt` | LLM instructions |
+| `https://api.letsfg.co/mcp` | MCP Streamable HTTP endpoint |
 
 ## Local Search (No API Key)
 

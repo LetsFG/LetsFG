@@ -59,11 +59,11 @@ all = [
 boostedtravel = "boostedtravel.cli:main"
 
 [project.urls]
-Homepage = "https://boostedchat.com"
-Documentation = "https://api.boostedchat.com/docs"
-Repository = "https://github.com/Boosted-Chat/BoostedTravel"
-Issues = "https://github.com/Boosted-Chat/BoostedTravel/issues"
-"API Reference" = "https://api.boostedchat.com/redoc"
+Homepage = "https://letsfg.co"
+Documentation = "https://api.letsfg.co/docs"
+Repository = "https://github.com/Boosted-Chat/LetsFG"
+Issues = "https://github.com/Boosted-Chat/LetsFG/issues"
+"API Reference" = "https://api.letsfg.co/redoc"
 
 [tool.hatch.build.targets.wheel]
 packages = ["boostedtravel"]

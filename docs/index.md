@@ -3,7 +3,7 @@ hide:
   - toc
 ---
 
-# BoostedTravel
+# LFG
 
 **Flight search & booking for AI agents and developers.**
 400+ airlines, 73 direct airline connectors, virtual interlining — straight from the terminal.
@@ -13,7 +13,7 @@ hide:
 <div class="hero-actions">
 <a href="getting-started/" class="btn-primary">Get started</a>
 <a href="api-guide/" class="btn-ghost">API guide</a>
-<a href="https://api.boostedchat.com/docs" class="btn-ghost" target="_blank">Swagger ↗</a>
+<a href="https://api.letsfg.co/docs" class="btn-ghost" target="_blank">Swagger ↗</a>
 <a href="https://smithery.ai/server/boostedtravel-mcp" class="btn-ghost" target="_blank">Smithery ↗</a>
 </div>
 
@@ -51,7 +51,7 @@ hide:
 <p>Python SDK, JavaScript SDK, MCP Server for Claude & Cursor.</p>
 </a>
 
-<a class="card" href="https://api.boostedchat.com/docs" target="_blank">
+<a class="card" href="https://api.letsfg.co/docs" target="_blank">
 <span class="card-icon">📄</span>
 <strong>OpenAPI Reference</strong>
 <p>Interactive Swagger docs — try every endpoint in your browser.</p>

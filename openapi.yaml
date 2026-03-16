@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: BoostedTravel API
+  title: LFG API (formerly BoostedTravel)
   version: 0.2.16
   description: |
     Agent-native flight search & booking API. 400+ airlines, 75 direct airline connectors,
@@ -22,15 +22,15 @@ info:
     boostedtravel register --name my-agent --email you@example.com
     ```
   contact:
-    name: BoostedTravel Support
-    email: contact@boostedchat.com
-    url: https://boostedchat.com
+    name: LFG Support
+    email: contact@letsfg.co
+    url: https://letsfg.co
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://api.boostedchat.com
+  - url: https://api.letsfg.co
     description: Production
 
 security:
@@ -42,7 +42,7 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: "BoostedTravel API key (prefix: trav_)"
+      description: "LFG API key (prefix: trav_)"
 
   schemas:
     FlightSearchRequest:

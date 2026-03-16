@@ -1,10 +1,10 @@
 # Security Policy
 
-If you believe you've found a security vulnerability in BoostedTravel, please report it responsibly.
+If you believe you've found a security vulnerability in LFG (formerly BoostedTravel), please report it responsibly.
 
 ## Reporting a Vulnerability
 
-**Email:** contact@boostedchat.com
+**Email:** security@letsfg.co
 
 Please include:
 
@@ -45,7 +45,7 @@ We aim to acknowledge reports within 48 hours and provide a fix or mitigation wi
 ## API Security Model
 
 - **API keys** authenticate all requests. Keep your key secret.
-- **Stripe** handles all payment processing. BoostedTravel never stores card numbers.
+- **Stripe** handles all payment processing. LFG never stores card numbers.
 - **Passenger data** (names, emails) is passed directly to the airline for booking. We do not store passenger PII beyond the booking transaction.
 - **HTTPS only** — all API traffic is encrypted in transit.
 
@@ -57,5 +57,5 @@ We aim to acknowledge reports within 48 hours and provide a fix or mitigation wi
 
 ## Contact
 
-- **Security issues:** security@boostedchat.com
-- **General questions:** Open a [GitHub Issue](https://github.com/Boosted-Chat/BoostedTravel/issues)
+- **Security issues:** security@letsfg.co
+- **General questions:** Open a [GitHub Issue](https://github.com/Boosted-Chat/LetsFG/issues)

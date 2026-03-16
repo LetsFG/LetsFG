@@ -1,9 +1,9 @@
-site_name: BoostedTravel
-site_url: https://docs.boostedchat.com
+site_name: LFG (formerly BoostedTravel)
+site_url: https://docs.letsfg.co
 site_description: Agent-native flight search & booking API. 400+ airlines, straight from the terminal.
-site_author: Boosted Chat
+site_author: LFG
 
-repo_url: https://github.com/Boosted-Chat/BoostedTravel
+repo_url: https://github.com/Boosted-Chat/LetsFG
 
 theme:
   name: material

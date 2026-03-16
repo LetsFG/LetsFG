@@ -6,7 +6,7 @@ The largest open flight-search MCP server. 73 ready-to-run airline connectors fi
 
 Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client.
 
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/BoostedTravel#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
+> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
 
 [![npm](https://img.shields.io/npm/v/boostedtravel-mcp)](https://www.npmjs.com/package/boostedtravel-mcp)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
@@ -129,7 +129,7 @@ npx boostedtravel-mcp
 Or connect via remote MCP (no install):
 
 ```
-https://api.boostedchat.com/mcp
+https://api.letsfg.co/mcp
 ```
 
 ### Windows — `npx ENOENT` Fix
@@ -215,7 +215,7 @@ The agent has native tools — no API docs needed, no URL building, no token-bur
 **Search is free and works without a key.** An API key is needed for unlock, book, and enterprise GDS sources.
 
 ```bash
-curl -X POST https://api.boostedchat.com/api/v1/agents/register \
+curl -X POST https://api.letsfg.co/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 ```
@@ -241,7 +241,7 @@ boostedtravel register --name my-agent --email you@example.com
 │     │     75 airline connectors via Playwright + httpx        │
 │     │     Data goes: your machine → airline website → back    │
 │     │                                                        │
-│     └─→ HTTPS to api.boostedchat.com (backend)               │
+│     └─→ HTTPS to api.letsfg.co (backend)               │
 │           unlock, book, payment, enterprise GDS search        │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -251,11 +251,11 @@ boostedtravel register --name my-agent --email you@example.com
 | Operation | Where data flows | What is sent |
 |-----------|-----------------|--------------|
 | `search_flights` (local) | Your machine → airline websites | Route, date, passenger count |
-| `search_flights` (GDS) | Your machine → api.boostedchat.com → GDS providers | Route, date, passenger count, API key |
-| `resolve_location` | Your machine → api.boostedchat.com | City/airport name |
-| `unlock_flight_offer` | Your machine → api.boostedchat.com → airline | Offer ID, payment token |
-| `book_flight` | Your machine → api.boostedchat.com → airline | Passenger name, DOB, email, phone |
-| `setup_payment` | Your machine → api.boostedchat.com → Stripe | Payment token (card handled by Stripe) |
+| `search_flights` (GDS) | Your machine → api.letsfg.co → GDS providers | Route, date, passenger count, API key |
+| `resolve_location` | Your machine → api.letsfg.co | City/airport name |
+| `unlock_flight_offer` | Your machine → api.letsfg.co → airline | Offer ID, payment token |
+| `book_flight` | Your machine → api.letsfg.co → airline | Passenger name, DOB, email, phone |
+| `setup_payment` | Your machine → api.letsfg.co → Stripe | Payment token (card handled by Stripe) |
 
 ---
 
@@ -267,7 +267,7 @@ boostedtravel register --name my-agent --email you@example.com
 - **PII handling** — passenger names, emails, and DOBs are sent to the airline for booking (required by airlines). BoostedTravel does not store passenger PII after forwarding to the airline.
 - **No tracking** — no cookies, no session-based pricing, no fingerprinting. Every search returns the same raw airline price.
 - **Local search is fully local** — when searching without an API key, zero data leaves your machine except direct HTTPS requests to airline websites. The MCP server and Python connectors run entirely on your hardware.
-- **Open source** — all connector code is MIT-licensed and auditable at [github.com/Boosted-Chat/BoostedTravel](https://github.com/Boosted-Chat/BoostedTravel).
+- **Open source** — all connector code is MIT-licensed and auditable at [github.com/Boosted-Chat/LetsFG](https://github.com/Boosted-Chat/LetsFG).
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Two Ways to Search Flights
 
-BoostedTravel offers two search modes:
+LFG offers two search modes:
 
 | Mode | Command / Method | API Key | Coverage | Cost |
 |------|-----------------|---------|----------|------|
@@ -377,7 +377,7 @@ POST /api/v1/bookings/unlock
 
 ### What Happens When You Unlock
 
-1. BoostedTravel sends the `offer_id` to the airline's NDC/GDS system
+1. LFG sends the `offer_id` to the airline's NDC/GDS system
 2. The airline confirms the **current live price** (may differ slightly from search)
 3. A $1.00 charge is made via Stripe to your saved payment method
 4. The offer is **reserved for 30 minutes** — no one else can book it
@@ -421,7 +421,7 @@ boostedtravel unlock off_xxx
 ### cURL Example
 
 ```bash
-curl -X POST https://api.boostedchat.com/api/v1/bookings/unlock \
+curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"offer_id": "off_xxx"}'

@@ -123,7 +123,7 @@ FAKE_PASSENGER = {
 
 # ── Unlock token verification ────────────────────────────────────────────
 
-_DEFAULT_API_URL = "https://api.boostedchat.com"
+_DEFAULT_API_URL = "https://api.letsfg.co"
 
 
 def verify_checkout_token(
@@ -205,7 +205,7 @@ async def safe_click(page, selector: str, timeout: int = 10000, desc: str = "") 
         return False
 
 
-async def safe_fill(page, selector: str, value: str, timeout: int = 8000) -> bool:
+async def safe_fill(page, selector: str, value: str, timeout: int = 3000) -> bool:
     """Fill an input safely — returns True if filled."""
     try:
         el = page.locator(selector).first
