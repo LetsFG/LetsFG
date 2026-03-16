@@ -1107,6 +1107,140 @@ _register(_base_cfg("Porter", "porter_scraper",
     ],
 ))
 
+# ─── Meta-search aggregators ────────────────────────────────────────────
+
+_register(_base_cfg("Kiwi.com", "kiwi_connector",
+    # Kiwi booking URLs go straight to checkout — no flight/fare selection
+    # The URL is an opaque session token from their GraphQL API
+    # Checkout lands on Kiwi's own payment page (not airline direct)
+    cookie_selectors=[
+        "button[data-test='CookiesPopup-Accept']",
+        "button:has-text('Accept')",
+        "button:has-text('Accept all')",
+        "[class*='cookie'] button",
+        "button:has-text('Got it')",
+        "button:has-text('OK')",
+    ],
+    # Kiwi skips flight/fare selection — booking URL lands on passenger form
+    flight_cards_selector="[data-test='BookingPassengerRow'], [class*='PassengerForm'], [data-test*='passenger']",
+    flight_cards_timeout=20000,
+    first_flight_selectors=[],   # No flight cards to click — already selected
+    fare_selectors=[],           # No fare to pick — already selected
+    fare_upsell_decline=[
+        "button:has-text('No, thanks')",
+        "button:has-text('No thanks')",
+        "button:has-text('Continue without')",
+    ],
+    login_skip_selectors=[
+        "button:has-text('Continue as a guest')",
+        "button:has-text('Continue as guest')",
+        "button:has-text('Skip')",
+        "button:has-text('No thanks')",
+        "[data-test='SocialLogin-GuestButton']",
+        "[data-test*='guest'] button",
+    ],
+    # Kiwi passenger form
+    passenger_form_selector="[data-test='BookingPassengerRow'], input[name*='firstName'], [data-test*='passenger']",
+    passenger_form_timeout=20000,
+    title_mode="select",
+    title_select_selector="select[name*='title'], [data-test*='Title'] select",
+    first_name_selectors=[
+        "input[name*='firstName']",
+        "input[data-test*='firstName']",
+        "[data-test='BookingPassenger-FirstName'] input",
+        "input[placeholder*='First name' i]",
+        "input[placeholder*='Given name' i]",
+    ],
+    last_name_selectors=[
+        "input[name*='lastName']",
+        "input[data-test*='lastName']",
+        "[data-test='BookingPassenger-LastName'] input",
+        "input[placeholder*='Last name' i]",
+        "input[placeholder*='Family name' i]",
+    ],
+    gender_enabled=True,
+    gender_selectors_male=[
+        "[data-test*='gender'] label:has-text('Male')",
+        "label:has-text('Male')",
+        "[data-test*='Gender-male']",
+    ],
+    gender_selectors_female=[
+        "[data-test*='gender'] label:has-text('Female')",
+        "label:has-text('Female')",
+        "[data-test*='Gender-female']",
+    ],
+    dob_enabled=True,
+    dob_day_selectors=[
+        "input[name*='birthDay']",
+        "[data-test*='BirthDay'] input",
+        "input[placeholder*='DD']",
+    ],
+    dob_month_selectors=[
+        "input[name*='birthMonth']",
+        "[data-test*='BirthMonth'] input",
+        "select[name*='birthMonth']",
+        "input[placeholder*='MM']",
+    ],
+    dob_year_selectors=[
+        "input[name*='birthYear']",
+        "[data-test*='BirthYear'] input",
+        "input[placeholder*='YYYY']",
+    ],
+    nationality_enabled=True,
+    nationality_selectors=[
+        "input[name*='nationality']",
+        "[data-test*='Nationality'] input",
+        "input[placeholder*='Nationali' i]",
+    ],
+    email_selectors=[
+        "input[name*='email']",
+        "input[data-test*='contact-email']",
+        "[data-test='contact-email'] input",
+        "input[type='email']",
+    ],
+    phone_selectors=[
+        "input[name*='phone']",
+        "input[data-test*='contact-phone']",
+        "[data-test='contact-phone'] input",
+        "input[type='tel']",
+    ],
+    passenger_continue_selectors=[
+        "button[data-test='StepControls-passengers-next']",
+        "button:has-text('Continue')",
+        "button:has-text('Next')",
+        "[data-test*='continue'] button",
+    ],
+    extras_rounds=4,
+    extras_skip_selectors=[
+        "button:has-text('No, thanks')",
+        "button:has-text('No thanks')",
+        "button:has-text('Continue without')",
+        "button:has-text('Continue')",
+        "button:has-text('Skip')",
+        "button:has-text('Next')",
+        "[data-test*='skip'] button",
+        "[data-test*='decline'] button",
+        "button[data-test='StepControls-baggage-next']",
+        "button[data-test='StepControls-extras-next']",
+    ],
+    seats_skip_selectors=[
+        "button:has-text('Skip')",
+        "button:has-text('No thanks')",
+        "button:has-text('Continue without')",
+        "[data-test*='seats-skip']",
+        "button[data-test='StepControls-seating-next']",
+        "button:has-text('Continue')",
+    ],
+    price_selectors=[
+        "[data-test='TotalPrice']",
+        "[data-test*='total-price']",
+        "[class*='TotalPrice']",
+        "[class*='total-price']",
+        "[class*='summary'] [class*='price']",
+        "[data-test*='Price']",
+    ],
+))
+
 
 # ── Generic Checkout Engine ──────────────────────────────────────────────
 
