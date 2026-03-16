@@ -8,13 +8,13 @@ hide:
 **Flight search & booking for AI agents and developers.**
 400+ airlines, 73 direct airline connectors, virtual interlining — straight from the terminal.
 
-<div class="install-cmd"><span class="prompt">$</span> pip install boostedtravel</div>
+<div class="install-cmd"><span class="prompt">$</span> pip install letsfg</div>
 
 <div class="hero-actions">
 <a href="getting-started/" class="btn-primary">Get started</a>
 <a href="api-guide/" class="btn-ghost">API guide</a>
 <a href="https://api.letsfg.co/docs" class="btn-ghost" target="_blank">Swagger ↗</a>
-<a href="https://smithery.ai/server/boostedtravel-mcp" class="btn-ghost" target="_blank">Smithery ↗</a>
+<a href="https://smithery.ai/server/letsfg-mcp" class="btn-ghost" target="_blank">Smithery ↗</a>
 </div>
 
 ---
@@ -65,8 +65,8 @@ hide:
 
 | | **Local Only** (no API key) | **With API Key** (recommended) |
 |---|---|---|
-| Install | `pip install boostedtravel` | `pip install boostedtravel` |
-| Setup | Nothing | `boostedtravel register --email you@example.com` |
+| Install | `pip install letsfg` | `pip install letsfg` |
+| Setup | Nothing | `letsfg register --email you@example.com` |
 | Airlines | 73 via local connectors | 73 local + 400+ via GDS/NDC |
 | Price | Free | Free search, $1 unlock |
 | Coverage | LCCs + major carriers with public APIs | Full global coverage including premium carriers |

@@ -11,7 +11,7 @@ LFG provides a full OpenAPI 3.1 specification for the REST API.
 
 The full OpenAPI specification is included in the repository:
 
-- **YAML:** [`openapi.yaml`](https://github.com/Boosted-Chat/LetsFG/blob/main/openapi.yaml)
+- **YAML:** [`openapi.yaml`](https://github.com/LetsFG/LetsFG/blob/main/openapi.yaml)
 
 You can import this spec into any OpenAPI-compatible tool (Postman, Insomnia, Swagger Editor, etc.).
 
@@ -56,11 +56,11 @@ LFG supports standard agent discovery protocols:
 The 73 local airline connectors do not use the REST API — they run directly on your machine. No API key is needed:
 
 ```bash
-pip install boostedtravel
-boostedtravel search-local LHR BCN 2026-04-15
+pip install letsfg
+letsfg search-local LHR BCN 2026-04-15
 ```
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 result = await search_local("LHR", "BCN", "2026-04-15")
 ```

@@ -6,84 +6,84 @@ LFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP end
 
 | Package | Install | What it is | API Key Required? |
 |---------|---------|------------|-------------------|
-| **Python SDK + CLI** | `pip install boostedtravel` | SDK + CLI + 75 local airline connectors | No (local search). Yes (cloud search, unlock, book) |
-| **JS/TS SDK + CLI** | `npm install -g boostedtravel` | SDK + `boostedtravel` CLI command | Yes |
-| **MCP Server** | `npx boostedtravel-mcp` | Model Context Protocol for AI agents | No (local search). Yes (cloud search, unlock, book) |
+| **Python SDK + CLI** | `pip install letsfg` | SDK + CLI + 75 local airline connectors | No (local search). Yes (cloud search, unlock, book) |
+| **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Yes |
+| **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | No (local search). Yes (cloud search, unlock, book) |
 | **Remote MCP** | `https://api.letsfg.co/mcp` | Streamable HTTP — no install needed | Yes |
-| **Smithery** | [smithery.ai/server/boostedtravel-mcp](https://smithery.ai/server/boostedtravel-mcp) | One-click MCP install | No (local search). Yes (cloud search) |
+| **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install | No (local search). Yes (cloud search) |
 
 ## Python SDK
 
-[![PyPI](https://img.shields.io/pypi/v/boostedtravel)](https://pypi.org/project/boostedtravel/)
+[![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
 
 ```bash
-pip install boostedtravel
+pip install letsfg
 ```
 
 Provides:
 
-- `BoostedTravel` client class with `search()`, `unlock()`, `book()`, `me()`, `resolve_location()`, `setup_payment()`
+- `LetsFG` client class with `search()`, `unlock()`, `book()`, `me()`, `resolve_location()`, `setup_payment()`
 - **75 local airline connectors** — run directly on your machine (Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, and 69 more)
 - `search_local()` — free local-only search, no API key needed
 - `get_system_profile()` — detect system RAM/CPU and recommended concurrency
 - `configure_max_browsers(n)` — set max concurrent browser instances (1–32)
-- CLI command `boostedtravel` with all operations
+- CLI command `letsfg` with all operations
 - Virtual interlining engine — cross-airline round-trips from one-way fares
 - Shared browser infrastructure — stealth Chrome launcher, CDP sessions, anti-bot handling
 - Typed response models: `FlightSearchResponse`, `UnlockResponse`, `BookingResponse`, `AgentProfile`
 - Exception classes: `AuthenticationError`, `PaymentRequiredError`, `OfferExpiredError`
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 flights = bt.search("LHR", "JFK", "2026-04-15")
 ```
 
 ### Local Search (No API Key)
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 
 # Free, runs all relevant LCC connectors on your machine
 result = await search_local("GDN", "BCN", "2026-06-15")
 ```
 
-[Full Python SDK docs →](https://github.com/Boosted-Chat/LetsFG/tree/main/sdk/python)
+[Full Python SDK docs →](https://github.com/LetsFG/LetsFG/tree/main/sdk/python)
 
 ## JavaScript / TypeScript SDK
 
-[![npm](https://img.shields.io/npm/v/boostedtravel)](https://www.npmjs.com/package/boostedtravel)
+[![npm](https://img.shields.io/npm/v/letsfg)](https://www.npmjs.com/package/letsfg)
 
 ```bash
-npm install -g boostedtravel
+npm install -g letsfg
 ```
 
 Provides:
 
-- `BoostedTravel` client class with `search()`, `unlock()`, `book()`, `me()`
-- CLI command `boostedtravel` (same interface as Python)
+- `LetsFG` client class with `search()`, `unlock()`, `book()`, `me()`
+- CLI command `letsfg` (same interface as Python)
 - TypeScript types for all responses
 
 ```typescript
-import { BoostedTravel } from 'boostedtravel';
+import { LetsFG } from 'letsfg';
 
-const bt = new BoostedTravel({ apiKey: 'trav_...' });
+const bt = new LetsFG({ apiKey: 'trav_...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 ```
 
-[Full JS SDK docs →](https://github.com/Boosted-Chat/LetsFG/tree/main/sdk/js)
+[Full JS SDK docs →](https://github.com/LetsFG/LetsFG/tree/main/sdk/js)
 
 ## MCP Server
 
-[![npm](https://img.shields.io/npm/v/boostedtravel-mcp)](https://www.npmjs.com/package/boostedtravel-mcp)
+[![npm](https://img.shields.io/npm/v/letsfg-mcp)](https://www.npmjs.com/package/letsfg-mcp)
 
 Model Context Protocol server for AI assistants like Claude Desktop, Cursor, and Windsurf.
 
 ### Quick Setup
 
 ```bash
-npx boostedtravel-mcp
+npx letsfg-mcp
 ```
 
 ### Configuration
@@ -93,11 +93,11 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -124,7 +124,7 @@ https://api.letsfg.co/mcp
 | `unlock_flight_offer` | Confirm price and reserve ($1) |
 | `book_flight` | Create airline booking (PNR) |
 
-[npm page →](https://www.npmjs.com/package/boostedtravel-mcp)
+[npm page →](https://www.npmjs.com/package/letsfg-mcp)
 
 ## API Endpoints
 

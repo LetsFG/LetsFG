@@ -1,34 +1,34 @@
 # CLI Reference
 
-The `boostedtravel` CLI is available via both Python and JavaScript. Same commands, same interface.
+The `letsfg` CLI is available via both Python and JavaScript. Same commands, same interface.
 
 ## Install
 
 === "Python (recommended)"
 
     ```bash
-    pip install boostedtravel
+    pip install letsfg
     ```
 
 === "JavaScript / TypeScript"
 
     ```bash
-    npm install -g boostedtravel
+    npm install -g letsfg
     ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `boostedtravel register` | Create account and get API key |
-| `boostedtravel search <origin> <dest> <date>` | Search flights (free, requires API key) |
-| `boostedtravel search-local <origin> <dest> <date>` | Search flights locally (free, **no API key**) |
-| `boostedtravel system-info` | Show system resources & concurrency tier |
-| `boostedtravel locations <query>` | Resolve city/airport to IATA codes |
-| `boostedtravel unlock <offer_id>` | Unlock offer details ($1) |
-| `boostedtravel book <offer_id>` | Book the flight (free after unlock) |
-| `boostedtravel setup-payment` | Set up Stripe payment method |
-| `boostedtravel me` | View profile & usage stats |
+| `letsfg register` | Create account and get API key |
+| `letsfg search <origin> <dest> <date>` | Search flights (free, requires API key) |
+| `letsfg search-local <origin> <dest> <date>` | Search flights locally (free, **no API key**) |
+| `letsfg system-info` | Show system resources & concurrency tier |
+| `letsfg locations <query>` | Resolve city/airport to IATA codes |
+| `letsfg unlock <offer_id>` | Unlock offer details ($1) |
+| `letsfg book <offer_id>` | Book the flight (free after unlock) |
+| `letsfg setup-payment` | Set up Stripe payment method |
+| `letsfg me` | View profile & usage stats |
 
 All commands accept `--json` for structured output and `--api-key` to override the environment variable.
 
@@ -64,13 +64,13 @@ If omitted, the search returns all cabin classes.
 
 ```bash
 # Search 73 local airline connectors — completely free, no registration
-boostedtravel search-local LHR JFK 2026-04-15
+letsfg search-local LHR JFK 2026-04-15
 
 # With cabin class and JSON output
-boostedtravel search-local LON BCN 2026-04-01 --cabin M --json
+letsfg search-local LON BCN 2026-04-01 --cabin M --json
 
 # Limit browser concurrency for constrained environments
-boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+letsfg search-local LHR BCN 2026-04-15 --max-browsers 4
 ```
 
 Local search queries 75 airline websites directly. No API key needed — install and search immediately.
@@ -79,23 +79,23 @@ Local search queries 75 airline websites directly. No API key needed — install
 
 ```bash
 # One-way London to New York
-boostedtravel search LHR JFK 2026-04-15
+letsfg search LHR JFK 2026-04-15
 
 # Round-trip with cabin class
-boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
+letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
 ```
 
 ### Multi-Passenger
 
 ```bash
 # Family: 2 adults + 2 children, economy
-boostedtravel search LHR BCN 2026-07-15 --return 2026-07-22 --adults 2 --children 2 --cabin M
+letsfg search LHR BCN 2026-07-15 --return 2026-07-22 --adults 2 --children 2 --cabin M
 
 # Business trip: 3 adults, business class, direct only
-boostedtravel search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
+letsfg search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
 
 # Solo first class, sorted by duration
-boostedtravel search LAX NRT 2026-08-10 --return 2026-08-24 --cabin F --sort duration
+letsfg search LAX NRT 2026-08-10 --return 2026-08-24 --cabin F --sort duration
 ```
 
 !!! info "Passenger IDs"
@@ -105,16 +105,16 @@ boostedtravel search LAX NRT 2026-08-10 --return 2026-08-24 --cabin F --sort dur
 
 ```bash
 # Pipe to jq for filtering
-boostedtravel search LON BCN 2026-04-01 --json | jq '[.offers[] | select(.stopovers == 0)]'
+letsfg search LON BCN 2026-04-01 --json | jq '[.offers[] | select(.stopovers == 0)]'
 
 # Shortest flight
-boostedtravel search LON BCN 2026-04-01 --json | jq '.offers | sort_by(.duration_seconds) | .[0]'
+letsfg search LON BCN 2026-04-01 --json | jq '.offers | sort_by(.duration_seconds) | .[0]'
 ```
 
 ### Location Resolution
 
 ```bash
-boostedtravel locations "New York"
+letsfg locations "New York"
 # JFK  John F. Kennedy International Airport
 # LGA  LaGuardia Airport
 # EWR  Newark Liberty International Airport
@@ -126,22 +126,22 @@ boostedtravel locations "New York"
 ```bash
 #!/bin/bash
 set -euo pipefail
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
 # Resolve locations
-ORIGIN=$(boostedtravel locations "London" --json | jq -r '.[0].iata_code')
-DEST=$(boostedtravel locations "Barcelona" --json | jq -r '.[0].iata_code')
+ORIGIN=$(letsfg locations "London" --json | jq -r '.[0].iata_code')
+DEST=$(letsfg locations "Barcelona" --json | jq -r '.[0].iata_code')
 
 # Search
-RESULTS=$(boostedtravel search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
+RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
 OFFER_ID=$(echo "$RESULTS" | jq -r '.offers[0].id')
 echo "Best offer: $OFFER_ID"
 
 # Unlock ($1)
-boostedtravel unlock "$OFFER_ID"
+letsfg unlock "$OFFER_ID"
 
 # Book
-boostedtravel book "$OFFER_ID" \
+letsfg book "$OFFER_ID" \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
   --email john.doe@example.com
@@ -154,10 +154,10 @@ boostedtravel book "$OFFER_ID" \
 
 ```bash
 # Show system resources and concurrency tier
-boostedtravel system-info
+letsfg system-info
 
 # Machine-readable output
-boostedtravel system-info --json
+letsfg system-info --json
 ```
 
 Output includes platform, CPU cores, total/available RAM, tier name, recommended max browsers, and current setting.
@@ -166,7 +166,7 @@ Output includes platform, CPU cores, total/available RAM, tier name, recommended
 
 | Variable | Description |
 |----------|-------------|
-| `BOOSTEDTRAVEL_API_KEY` | Your agent API key (for cloud search, unlock, book) |
-| `BOOSTEDTRAVEL_BASE_URL` | API URL override (default: `https://api.letsfg.co`) |
-| `BOOSTEDTRAVEL_MAX_BROWSERS` | Max concurrent browser instances for local search (1–32). Auto-detected from RAM if not set. |
-| `BOOSTED_BROWSER_VISIBLE` | Set to `1` to show browser windows for debugging |
+| `LETSFG_API_KEY` | Your agent API key (for cloud search, unlock, book) |
+| `LETSFG_BASE_URL` | API URL override (default: `https://api.letsfg.co`) |
+| `LETSFG_MAX_BROWSERS` | Max concurrent browser instances for local search (1–32). Auto-detected from RAM if not set. |
+| `LETSFG_BROWSER_VISIBLE` | Set to `1` to show browser windows for debugging |
