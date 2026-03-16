@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import random
 import re
 import time
@@ -70,6 +71,10 @@ class AirlineCheckoutConfig:
 
     # Navigation
     goto_timeout: int = 30000          # ms — initial page.goto() timeout
+
+    # Proxy (residential proxy for anti-bot bypass)
+    use_proxy: bool = False            # Enable residential proxy for this airline
+    use_chrome_channel: bool = False   # Use installed Chrome instead of Playwright Chromium
 
     # Anti-bot
     service_workers: str = ""          # "block" | "" — block SW for cleaner interception
@@ -358,6 +363,8 @@ _register(_base_cfg("Ryanair", "ryanair_direct",
 
 _register(_base_cfg("Wizz Air", "wizzair_api",
     goto_timeout=60000,
+    use_proxy=True,
+    use_chrome_channel=True,
     homepage_url="https://wizzair.com/en-gb",
     homepage_wait_ms=5000,
     clear_storage_keep=["kpsdk", "_kas"],
@@ -704,6 +711,8 @@ _register(_base_cfg("Alaska Airlines", "alaska_direct",
 
 _register(_base_cfg("Avelo", "avelo_direct",
     goto_timeout=60000,
+    use_proxy=True,
+    use_chrome_channel=True,
     homepage_url="https://www.aveloair.com",
     homepage_wait_ms=3000,
     flight_cards_selector="[class*='flight'], [class*='result']",
@@ -1362,7 +1371,24 @@ class GenericCheckoutEngine:
             "--window-position=-2400,-2400",
             "--window-size=1440,900",
         ]
-        browser = await pw.chromium.launch(headless=headless, args=launch_args)
+
+        # Proxy support (Decodo / residential proxy for anti-bot bypass)
+        launch_kwargs: dict = {"headless": headless, "args": launch_args}
+        if config.use_chrome_channel:
+            launch_kwargs["channel"] = "chrome"
+        if config.use_proxy:
+            proxy_server = os.environ.get("DECODO_PROXY_SERVER", "")
+            proxy_user = os.environ.get("DECODO_PROXY_USER", "")
+            proxy_pass = os.environ.get("DECODO_PROXY_PASS", "")
+            if proxy_server:
+                launch_kwargs["proxy"] = {
+                    "server": proxy_server,
+                    "username": proxy_user,
+                    "password": proxy_pass,
+                }
+                logger.info("%s checkout: using proxy %s", config.airline_name, proxy_server)
+
+        browser = await pw.chromium.launch(**launch_kwargs)
 
         # Track browser PID for guaranteed cleanup on cancellation
         _browser_pid = None
@@ -1435,14 +1461,21 @@ class GenericCheckoutEngine:
 
             # ── Step 1: Navigate to booking page ─────────────────────
             logger.info("%s checkout: navigating to %s", config.airline_name, booking_url)
-            await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+            try:
+                await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+            except Exception as nav_err:
+                # Some SPAs return HTTP errors but still render via JS — continue if page loaded
+                logger.warning("%s checkout: goto error (%s) — continuing", config.airline_name, str(nav_err)[:100])
             await page.wait_for_timeout(2000 if not config.homepage_url else 3000)
             await self._dismiss_cookies(page, config)
 
             # Guard against SPA redirects (e.g. Ryanair → check-in page)
             if booking_url.split("?")[0] not in page.url:
                 logger.warning("%s checkout: page redirected to %s — retrying", config.airline_name, page.url[:120])
-                await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+                try:
+                    await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+                except Exception:
+                    pass
                 await page.wait_for_timeout(3000)
                 await self._dismiss_cookies(page, config)
 
