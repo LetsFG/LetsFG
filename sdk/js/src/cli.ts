@@ -325,7 +325,7 @@ Commands:
 Options:
   --json, -j       Output raw JSON
   --api-key, -k    API key (or set BOOSTEDTRAVEL_API_KEY)
-  --base-url       API URL (default: https://api.boostedchat.com)
+  --base-url       API URL (default: https://api.letsfg.co)
 
 Examples:
   boostedtravel search GDN BER 2026-03-03 --sort price

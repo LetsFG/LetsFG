@@ -46,7 +46,7 @@ from boostedtravel.models import (
     UnlockResult,
 )
 
-DEFAULT_BASE_URL = "https://api.boostedchat.com"
+DEFAULT_BASE_URL = "https://api.letsfg.co"
 
 # ── Bookable connector registry ────────────────────────────────────────────
 # Maps source tags to their BookableConnector subclass.

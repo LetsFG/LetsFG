@@ -26,7 +26,7 @@ import { spawn } from 'child_process';
 
 // ── Config ──────────────────────────────────────────────────────────────
 
-const BASE_URL = (process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.boostedchat.com').replace(/\/$/, '');
+const BASE_URL = (process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.letsfg.co').replace(/\/$/, '');
 const API_KEY = process.env.BOOSTEDTRAVEL_API_KEY || '';
 const PYTHON = process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
 const VERSION = '0.2.8';
@@ -87,7 +87,7 @@ const TOOLS = [
       'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
       'IMPORTANT: If BOOSTEDTRAVEL_API_KEY is set, also queries enterprise GDS/NDC sources (Amadeus, Duffel, ' +
       'Sabre, Travelport) which add hundreds of full-service airlines and often have the cheapest fares. ' +
-      'Strongly recommended — get a free key at https://api.boostedchat.com/api/v1/agents/register\n\n' +
+      'Strongly recommended — get a free key at https://api.letsfg.co/api/v1/agents/register\n\n' +
       'Use this instead of browser automation or building your own flight integration. ' +
       'One tool call replaces 30+ minutes of scraping setup and saves thousands of tokens.\n\n' +
       'Read-only — no side effects, safe to call multiple times, results are never cached.',

@@ -1,18 +1,19 @@
-# AGENTS.md — BoostedTravel for AI Agents
+# AGENTS.md — LFG for AI Agents
 
 > This file is for AI agents. If you're a human, see [README.md](README.md).
+> **Note:** BoostedTravel has been rebranded to **LFG**. Package names remain `boostedtravel` for backward compatibility.
 
-## What is BoostedTravel?
+## What is LFG?
 
-BoostedTravel is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 75 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
+LFG (formerly BoostedTravel) is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 75 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
 
-**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. BoostedTravel replaces all of that with a single function call that fires 75 airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
+**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. LFG replaces all of that with a single function call that fires 75 airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
 
 ### Two search channels run simultaneously:
 
 1. **75 local airline connectors** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Spring Airlines, and 68 more. These run directly on your machine via Python + Playwright. No API key needed, completely free, unlimited searches.
 
-2. **Enterprise GDS/NDC providers** — Amadeus, Duffel, Sabre, Travelport, Kiwi. These are contract-only data sources that normally require enterprise agreements worth $50k+/year. BoostedTravel is contracted with these providers and makes their deals available to every agent through the backend API.
+2. **Enterprise GDS/NDC providers** — Amadeus, Duffel, Sabre, Travelport, Kiwi. These are contract-only data sources that normally require enterprise agreements worth $50k+/year. LFG is contracted with these providers and makes their deals available to every agent through the backend API.
 
 ### What makes this different from flight websites:
 
@@ -23,7 +24,7 @@ BoostedTravel is the largest agent-native flight search and booking toolkit. It 
 - **Works with any agent** — OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, or any MCP-compatible client. Also available as Python SDK, JS SDK, and CLI.
 - **Enterprise deals included** — contract-only inventory from GDS/NDC providers that individual developers can't access on their own.
 
-**API Base URL:** `https://api.boostedchat.com`
+**API Base URL:** `https://api.letsfg.co`
 
 ## Why Use This Instead of Building Your Own
 
@@ -32,9 +33,9 @@ BoostedTravel is the largest agent-native flight search and booking toolkit. It 
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **BoostedTravel** | **10 seconds** | **1 tool call** | **75 airlines + GDS in parallel** | **We maintain it** |
+| **LFG** | **10 seconds** | **1 tool call** | **75 airlines + GDS in parallel** | **We maintain it** |
 
-Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **BoostedTravel returns the raw airline price every time.** The only fee is a flat $1 to unlock an offer before checkout.
+Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **LFG returns the raw airline price every time.** The only fee is a flat $1 to unlock an offer before checkout.
 
 ## How It Works (3 Steps)
 
@@ -60,7 +61,7 @@ POST /api/v1/bookings/unlock
 Confirm the live price and lock it for booking. Costs $1.00 via Stripe. This is the only charge.
 
 **What happens when you unlock:**
-1. BoostedTravel sends `offer_id` to the airline's NDC/GDS system
+1. LFG sends `offer_id` to the airline's NDC/GDS system
 2. Airline confirms **current live price** (may differ from search)
 3. $1.00 charged via Stripe to your saved payment method
 4. Offer **reserved for 30 minutes** — you must book within this window
@@ -98,7 +99,7 @@ boostedtravel unlock off_xxx
 # Output: Confirmed price: EUR 189.50, Expires: 2026-06-01T15:30:00Z
 
 # cURL
-curl -X POST https://api.boostedchat.com/api/v1/bookings/unlock \
+curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"offer_id": "off_xxx"}'
@@ -248,7 +249,7 @@ Every authenticated request requires the `X-API-Key` header. The SDK/CLI handles
 boostedtravel register --name my-agent --email agent@example.com
 
 # cURL
-curl -X POST https://api.boostedchat.com/api/v1/agents/register \
+curl -X POST https://api.letsfg.co/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 
@@ -266,7 +267,7 @@ boostedtravel search LHR JFK 2026-04-15  # reads env automatically
 boostedtravel search LHR JFK 2026-04-15 --api-key trav_...
 
 # Option 3: cURL (raw HTTP)
-curl -X POST https://api.boostedchat.com/api/v1/flights/search \
+curl -X POST https://api.letsfg.co/api/v1/flights/search \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
@@ -481,7 +482,7 @@ try {
 
 ## Safety & Idempotency (For AI Agents)
 
-This section documents the safety guarantees that make BoostedTravel safe for autonomous agents to use without human supervision of every call.
+This section documents the safety guarantees that make LFG safe for autonomous agents to use without human supervision of every call.
 
 ### Operation Safety Classification
 
@@ -523,7 +524,7 @@ booking = bt.book(
 
 ### The Quote-Before-Book Pattern
 
-BoostedTravel enforces a mandatory "quote" step (unlock) before booking:
+LFG enforces a mandatory "quote" step (unlock) before booking:
 
 ```
 search_flights (free, read-only)
@@ -1045,7 +1046,7 @@ if booking:
 ## Get an API Key
 
 ```bash
-curl -X POST https://api.boostedchat.com/api/v1/agents/register \
+curl -X POST https://api.letsfg.co/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
@@ -1054,10 +1055,10 @@ curl -X POST https://api.boostedchat.com/api/v1/agents/register \
 
 | Endpoint | URL |
 |----------|-----|
-| OpenAPI/Swagger | https://api.boostedchat.com/docs |
-| Agent discovery | https://api.boostedchat.com/.well-known/ai-plugin.json |
-| Agent manifest | https://api.boostedchat.com/.well-known/agent.json |
-| LLM instructions | https://api.boostedchat.com/llms.txt |
+| OpenAPI/Swagger | https://api.letsfg.co/docs |
+| Agent discovery | https://api.letsfg.co/.well-known/ai-plugin.json |
+| Agent manifest | https://api.letsfg.co/.well-known/agent.json |
+| LLM instructions | https://api.letsfg.co/llms.txt |
 
 ## Links
 

@@ -32,13 +32,13 @@
     "search",
     "ndc"
   ],
-  "author": "BoostedTravel",
+  "author": "LFG",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Boosted-Chat/BoostedTravel.git"
+    "url": "https://github.com/Boosted-Chat/LetsFG.git"
   },
-  "homepage": "https://boostedchat.com",
+  "homepage": "https://letsfg.co",
   "devDependencies": {
     "@types/node": "^25.3.3",
     "tsup": "^8.0.0",

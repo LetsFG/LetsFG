@@ -1,4 +1,4 @@
-# Smithery configuration for BoostedTravel MCP Server
+# Smithery configuration for LFG MCP Server (formerly BoostedTravel)
 # https://smithery.ai/docs/publishing
 
 startCommand:
@@ -8,7 +8,7 @@ startCommand:
     properties:
       BOOSTEDTRAVEL_API_KEY:
         type: string
-        description: "BoostedTravel API key (optional — local search works without it). Get one free: boostedtravel register --email you@example.com"
+        description: "LFG API key (optional — local search works without it). Get one free: boostedtravel register --email you@example.com | letsfg.co"
       BOOSTEDTRAVEL_MAX_BROWSERS:
         type: string
         description: "Max concurrent browser instances for local search (1–32). Auto-detected from system RAM if not set."

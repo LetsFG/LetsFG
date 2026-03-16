@@ -4,7 +4,7 @@
 
 Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. 75 direct airline connectors run locally, plus GDS/NDC providers via cloud API. Built for autonomous AI agents — works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible client.
 
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/BoostedTravel#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
+> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
 
 ## Install
 
@@ -359,7 +359,7 @@ Every command supports `--json` for machine-readable output.
 | Variable | Description |
 |----------|-------------|
 | `BOOSTEDTRAVEL_API_KEY` | Your agent API key |
-| `BOOSTEDTRAVEL_BASE_URL` | API URL (default: `https://api.boostedchat.com`) |
+| `BOOSTEDTRAVEL_BASE_URL` | API URL (default: `https://api.letsfg.co`) |
 | `BOOSTEDTRAVEL_MAX_BROWSERS` | Max concurrent browser instances (1–32). Auto-detected from RAM if not set. |
 
 ## Performance Tuning

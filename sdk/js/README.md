@@ -2,7 +2,7 @@
 
 Search 400+ airlines at raw airline prices — **$20-50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for autonomous AI agents — works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible client.
 
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/BoostedTravel#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
+> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-boostedtravel-vs-default-agent-search)** — side-by-side comparison of default agent search vs BoostedTravel CLI.
 
 ## Install
 

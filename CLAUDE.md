@@ -1,17 +1,18 @@
-# CLAUDE.md — BoostedTravel Codebase Context
+# CLAUDE.md — LFG Codebase Context
 
 > Instructions for Claude and other AI coding agents working on this repository.
+> **Note:** BoostedTravel has been rebranded to **LFG**. Package names remain `boostedtravel` for backward compatibility.
 
 ## Project Overview
 
-BoostedTravel is an agent-native flight search & booking platform. This public repository contains the SDKs, 75 local LCC airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
+LFG (formerly BoostedTravel) is an agent-native flight search & booking platform. This public repository contains the SDKs, 75 local LCC airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
 
-**API Base URL:** `https://api.boostedchat.com`
+**API Base URL:** `https://api.letsfg.co`
 
 ## Repository Structure
 
 ```
-BoostedTravel/
+LFG/
 ├── sdk/
 │   ├── python/                  # Python SDK → PyPI: boostedtravel
 │   │   ├── boostedtravel/
@@ -190,8 +191,8 @@ npm publish
 
 ## Links
 
-- **API Docs:** https://api.boostedchat.com/docs
+- **API Docs:** https://api.letsfg.co/docs
 - **PyPI:** https://pypi.org/project/boostedtravel/
 - **npm SDK:** https://www.npmjs.com/package/boostedtravel
 - **npm MCP:** https://www.npmjs.com/package/boostedtravel-mcp
-- **GitHub:** https://github.com/Boosted-Chat/BoostedTravel
+- **GitHub:** https://github.com/Boosted-Chat/LetsFG

@@ -28,7 +28,7 @@ jobs:
         run: mkdocs build
 
       - name: Add CNAME
-        run: echo "docs.boostedchat.com" > site/CNAME
+        run: echo "docs.letsfg.co" > site/CNAME
 
       - name: Deploy to GitHub Pages
         run: |

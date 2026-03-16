@@ -1,6 +1,6 @@
 # Getting Started
 
-> 🎥 **[Watch the demo](https://github.com/Boosted-Chat/BoostedTravel#demo-boostedtravel-vs-default-agent-search)** — see BoostedTravel in action vs default agent search (OpenClaw, Perplexity Computer).
+> 🎬 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-lfg-vs-default-agent-search)** — see LFG in action vs default agent search (OpenClaw, Perplexity Computer).
 
 ## One-Click Install (No API Key Needed)
 
@@ -29,7 +29,7 @@ for offer in result.offers[:5]:
 
 ## Unlock Full Power with an API Key (Recommended)
 
-Adding an API key connects you to BoostedTravel's enterprise backend — GDS/NDC providers (Amadeus, Duffel, Sabre, Travelport, Kiwi) with 400+ premium carriers like Lufthansa, British Airways, Emirates, and Singapore Airlines. Both local connectors and cloud sources run simultaneously, giving you the best price from across the entire internet.
+Adding an API key connects you to LFG's enterprise backend — GDS/NDC providers (Amadeus, Duffel, Sabre, Travelport, Kiwi) with 400+ premium carriers like Lufthansa, British Airways, Emirates, and Singapore Airlines. Both local connectors and cloud sources run simultaneously, giving you the best price from across the entire internet.
 
 ### 1. Register (one command, free, instant)
 
@@ -38,7 +38,7 @@ Adding an API key connects you to BoostedTravel's enterprise backend — GDS/NDC
 boostedtravel register --name my-agent --email you@example.com
 
 # cURL
-curl -X POST https://api.boostedchat.com/api/v1/agents/register \
+curl -X POST https://api.letsfg.co/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 
@@ -61,7 +61,7 @@ boostedtravel search LHR JFK 2026-04-15
 boostedtravel search LHR JFK 2026-04-15 --api-key trav_...
 
 # cURL
-curl -X POST https://api.boostedchat.com/api/v1/flights/search \
+curl -X POST https://api.letsfg.co/api/v1/flights/search \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
@@ -107,7 +107,7 @@ bt.setup_payment(card_number="4242424242424242", exp_month=12, exp_year=2027, cv
 
 ```bash
 # cURL
-curl -X POST https://api.boostedchat.com/api/v1/agents/setup-payment \
+curl -X POST https://api.letsfg.co/api/v1/agents/setup-payment \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"token": "tok_visa"}'
@@ -198,7 +198,7 @@ If omitted, the search returns all cabin classes. Specify a cabin code to filter
 
 ## Performance Tuning
 
-BoostedTravel auto-detects system RAM and scales browser concurrency. This prevents Chrome from overwhelming low-end machines while maximizing throughput on powerful ones.
+LFG auto-detects system RAM and scales browser concurrency. This prevents Chrome from overwhelming low-end machines while maximizing throughput on powerful ones.
 
 | Available RAM | Tier | Max Browsers |
 |-------------|------|-------------|

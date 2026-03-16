@@ -1,6 +1,6 @@
 # Packages
 
-BoostedTravel is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP endpoint. Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible agent.
+LFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP endpoint. Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible agent.
 
 ## Overview
 
@@ -9,7 +9,7 @@ BoostedTravel is available as a Python SDK, JavaScript SDK, MCP server, and remo
 | **Python SDK + CLI** | `pip install boostedtravel` | SDK + CLI + 75 local airline connectors | No (local search). Yes (cloud search, unlock, book) |
 | **JS/TS SDK + CLI** | `npm install -g boostedtravel` | SDK + `boostedtravel` CLI command | Yes |
 | **MCP Server** | `npx boostedtravel-mcp` | Model Context Protocol for AI agents | No (local search). Yes (cloud search, unlock, book) |
-| **Remote MCP** | `https://api.boostedchat.com/mcp` | Streamable HTTP — no install needed | Yes |
+| **Remote MCP** | `https://api.letsfg.co/mcp` | Streamable HTTP — no install needed | Yes |
 | **Smithery** | [smithery.ai/server/boostedtravel-mcp](https://smithery.ai/server/boostedtravel-mcp) | One-click MCP install | No (local search). Yes (cloud search) |
 
 ## Python SDK
@@ -49,7 +49,7 @@ from boostedtravel.local import search_local
 result = await search_local("GDN", "BCN", "2026-06-15")
 ```
 
-[Full Python SDK docs →](https://github.com/Boosted-Chat/BoostedTravel/tree/main/sdk/python)
+[Full Python SDK docs →](https://github.com/Boosted-Chat/LetsFG/tree/main/sdk/python)
 
 ## JavaScript / TypeScript SDK
 
@@ -72,7 +72,7 @@ const bt = new BoostedTravel({ apiKey: 'trav_...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 ```
 
-[Full JS SDK docs →](https://github.com/Boosted-Chat/BoostedTravel/tree/main/sdk/js)
+[Full JS SDK docs →](https://github.com/Boosted-Chat/LetsFG/tree/main/sdk/js)
 
 ## MCP Server
 
@@ -109,7 +109,7 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
 If your client supports remote MCP servers, connect directly without installing anything:
 
 ```
-https://api.boostedchat.com/mcp
+https://api.letsfg.co/mcp
 ```
 
 ### Available Tools
@@ -140,6 +140,6 @@ All packages connect to the same API:
 | `/api/v1/agents/setup-payment` | POST | Setup Stripe payment |
 | `/api/v1/agents/me` | GET | Agent profile |
 
-**Base URL:** `https://api.boostedchat.com`
+**Base URL:** `https://api.letsfg.co`
 
-**Interactive docs:** [api.boostedchat.com/docs](https://api.boostedchat.com/docs)
+**Interactive docs:** [api.letsfg.co/docs](https://api.letsfg.co/docs)

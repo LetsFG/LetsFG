@@ -167,6 +167,6 @@ Output includes platform, CPU cores, total/available RAM, tier name, recommended
 | Variable | Description |
 |----------|-------------|
 | `BOOSTEDTRAVEL_API_KEY` | Your agent API key (for cloud search, unlock, book) |
-| `BOOSTEDTRAVEL_BASE_URL` | API URL override (default: `https://api.boostedchat.com`) |
+| `BOOSTEDTRAVEL_BASE_URL` | API URL override (default: `https://api.letsfg.co`) |
 | `BOOSTEDTRAVEL_MAX_BROWSERS` | Max concurrent browser instances for local search (1–32). Auto-detected from RAM if not set. |
 | `BOOSTED_BROWSER_VISIBLE` | Set to `1` to show browser windows for debugging |
