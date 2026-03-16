@@ -17,7 +17,7 @@ LetsFG finds the cheapest flights across the entire internet — 75 airline conn
 
 Native to **OpenClaw**, **Perplexity Computer**, **Manus**, **Claude Code**, **Codex**, **Cursor**, **Windsurf** — any AI agent that supports CLI, MCP, or packages.
 
-> ⭐ **Free forever for the first 1,000 stargazers.** Star this repo → register → get unlimited access. No credit card, no trial, no catch. Once 1,000 people have starred, this offer closes permanently.
+> ⭐ **100% free. Just star this repo.** Star → register → get unlimited access forever. No credit card, no trial, no catch — the entire platform is free for the first 1,000 stargazers. Once 1,000 people have starred, this offer closes.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -126,7 +126,7 @@ letsfg search LHR JFK 2026-04-15
 
 **Registration is instant, free, and handled by CLI** — an AI agent can do it in one command. The API key connects you to our closed-source backend service which maintains enterprise contracts with GDS/NDC providers and premium carriers.
 
-> ⭐ **Star this repo and register to get unlimited access for free — forever.** First 1,000 stars only.
+> ⭐ **Star this repo and register — that's it. Unlimited access, completely free, forever.** First 1,000 stars only.
 
 ```python
 from letsfg import LetsFG
