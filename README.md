@@ -1,12 +1,12 @@
-# LetsFG🔥🚀✈️
+# LetsFG🔥🚀✈️ — agent-native travel search.
 
-### Save $20–$50 on every flight. Search 400+ airlines in 10 seconds. Native to AI agents.
+### Flights & hotels $50 cheaper in 5 seconds. Native to AI agents.
 
-LetsFG finds the cheapest flights across the entire internet — 75 airline connectors firing in parallel + enterprise GDS sources (Amadeus, Duffel, Sabre, Travelport) — and returns results in ~10 seconds. No web scraping wait times, no browser tabs, no inflated prices. Just raw airline prices, zero markup.
+LetsFG finds the cheapest flights across the entire internet — 75 airline connectors firing in parallel + enterprise GDS sources (Amadeus, Duffel, Sabre, Travelport) — and returns results in ~5 seconds. No web scraping wait times, no browser tabs, no inflated prices. Just raw airline prices, zero markup.
 
 Native to **OpenClaw**, **Perplexity Computer**, **Manus**, **Claude Code**, **Codex**, **Cursor**, **Windsurf** — any AI agent that supports CLI, MCP, or packages.
 
-> ⭐ **Free forever for the first 1,000 GitHub stars.** Star this repo → register → get unlimited access. No credit card, no trial, no catch. Once we hit 1,000 stars, this offer closes permanently.
+> ⭐ **Free forever for the first 1,000 stargazers.** Star this repo → register → get unlimited access. No credit card, no trial, no catch. Once 1,000 people have starred, this offer closes permanently.
 
 [![GitHub stars](https://img.shields.io/github/stars/Boosted-Chat/LetsFG?style=social)](https://github.com/Boosted-Chat/LetsFG)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -402,6 +402,16 @@ configure_max_browsers(4)  # explicit override
 - **PyPI:** https://pypi.org/project/boostedtravel/
 - **npm (JS SDK):** https://www.npmjs.com/package/boostedtravel
 - **npm (MCP):** https://www.npmjs.com/package/boostedtravel-mcp
+
+## Star History
+
+<a href="https://star-history.com/#Boosted-Chat/LetsFG&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Boosted-Chat/LetsFG&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Boosted-Chat/LetsFG&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Boosted-Chat/LetsFG&type=Date" />
+  </picture>
+</a>
 
 ## Contributing
 
