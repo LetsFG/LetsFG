@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: LFG API (formerly BoostedTravel)
+  title: LetsFG API
   version: 0.2.16
   description: |
     Agent-native flight search & booking API. 400+ airlines, 75 direct airline connectors,
@@ -13,13 +13,13 @@ info:
 
     ## Local Search
     The Python SDK runs 75 airline connectors locally with adaptive browser concurrency
-    that auto-scales based on system RAM. Override with `BOOSTEDTRAVEL_MAX_BROWSERS` env var.
+    that auto-scales based on system RAM. Override with `LETSFG_MAX_BROWSERS` env var.
 
     ## Authentication
     Pass your API key via the `X-API-Key` header. Get one free:
     ```
-    pip install boostedtravel
-    boostedtravel register --name my-agent --email you@example.com
+    pip install letsfg
+    letsfg register --name my-agent --email you@example.com
     ```
   contact:
     name: LFG Support

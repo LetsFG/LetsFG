@@ -1,23 +1,23 @@
 # Getting Started
 
-> 🎬 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-lfg-vs-default-agent-search)** — see LFG in action vs default agent search (OpenClaw, Perplexity Computer).
+> 🎬 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-lfg-vs-default-agent-search)** — see LFG in action vs default agent search (OpenClaw, Perplexity Computer).
 
 ## One-Click Install (No API Key Needed)
 
 ```bash
-pip install boostedtravel
+pip install letsfg
 ```
 
 That's it. Search flights immediately:
 
 ```bash
-boostedtravel search-local LHR BCN 2026-04-15
+letsfg search-local LHR BCN 2026-04-15
 ```
 
 This runs 75 airline connectors locally on your machine — Ryanair, Wizz Air, EasyJet, Southwest, AirAsia, Norwegian, and 69 more. Completely free, unlimited, zero configuration.
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 
 # Free, runs all relevant connectors on your machine
 result = await search_local("GDN", "BCN", "2026-06-15")
@@ -35,7 +35,7 @@ Adding an API key connects you to LFG's enterprise backend — GDS/NDC providers
 
 ```bash
 # CLI
-boostedtravel register --name my-agent --email you@example.com
+letsfg register --name my-agent --email you@example.com
 
 # cURL
 curl -X POST https://api.letsfg.co/api/v1/agents/register \
@@ -52,13 +52,13 @@ Every authenticated request requires the `X-API-Key` header:
 
 ```bash
 # Set as environment variable (recommended)
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
 # CLI reads it automatically
-boostedtravel search LHR JFK 2026-04-15
+letsfg search LHR JFK 2026-04-15
 
 # Or pass explicitly
-boostedtravel search LHR JFK 2026-04-15 --api-key trav_...
+letsfg search LHR JFK 2026-04-15 --api-key trav_...
 
 # cURL
 curl -X POST https://api.letsfg.co/api/v1/flights/search \
@@ -70,17 +70,17 @@ curl -X POST https://api.letsfg.co/api/v1/flights/search \
 ### 3. Python SDK
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
 # Option A: Pass directly
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
-# Option B: Read from environment (BOOSTEDTRAVEL_API_KEY)
-bt = BoostedTravel()
+# Option B: Read from environment (LETSFG_API_KEY)
+bt = LetsFG()
 
 # Option C: Register inline
-creds = BoostedTravel.register("my-agent", "agent@example.com")
-bt = BoostedTravel(api_key=creds["api_key"])
+creds = LetsFG.register("my-agent", "agent@example.com")
+bt = LetsFG(api_key=creds["api_key"])
 ```
 
 ### 4. Setup Payment (required before unlock)
@@ -89,7 +89,7 @@ You must attach a payment method before you can unlock offers or book flights. T
 
 ```bash
 # CLI — opens Stripe to attach a card
-boostedtravel setup-payment
+letsfg setup-payment
 ```
 
 ```python
@@ -127,7 +127,7 @@ print(f"Bookings: {profile.booking_count}")
 ```
 
 ```bash
-boostedtravel me
+letsfg me
 # Agent: my-agent
 # Payment: active
 # Searches: 42
@@ -137,16 +137,16 @@ boostedtravel me
 ### Authentication Failure Handling
 
 ```python
-from boostedtravel import BoostedTravel, AuthenticationError
+from letsfg import LetsFG, AuthenticationError
 
 try:
-    bt = BoostedTravel(api_key="trav_invalid_key")
+    bt = LetsFG(api_key="trav_invalid_key")
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except AuthenticationError:
     # HTTP 401 — key is missing, invalid, or expired
     print("Invalid API key. Register a new one:")
-    creds = BoostedTravel.register("my-agent", "agent@example.com")
-    bt = BoostedTravel(api_key=creds["api_key"])
+    creds = LetsFG.register("my-agent", "agent@example.com")
+    bt = LetsFG(api_key=creds["api_key"])
     # Don't forget to set up payment after re-registering
     bt.setup_payment(token="tok_visa")
 ```
@@ -172,13 +172,13 @@ except AuthenticationError:
 
 ```bash
 # Family trip: 2 adults + 2 children, economy
-boostedtravel search LHR BCN 2026-07-15 --return 2026-07-22 --adults 2 --children 2 --cabin M
+letsfg search LHR BCN 2026-07-15 --return 2026-07-22 --adults 2 --children 2 --cabin M
 
 # Business trip: 3 adults, business class, direct flights only
-boostedtravel search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
+letsfg search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
 
 # Solo round-trip, first class, sorted by duration
-boostedtravel search LAX NRT 2026-08-10 --return 2026-08-24 --cabin F --sort duration
+letsfg search LAX NRT 2026-08-10 --return 2026-08-24 --cabin F --sort duration
 ```
 
 When you search with multiple passengers, the response includes `passenger_ids` (e.g., `["pas_0", "pas_1", "pas_2"]`). You must provide passenger details for **each** ID when booking.
@@ -212,21 +212,21 @@ LFG auto-detects system RAM and scales browser concurrency. This prevents Chrome
 ### Check Your System
 
 ```bash
-boostedtravel system-info
+letsfg system-info
 ```
 
 ### Override Auto-Detection
 
 ```bash
 # Environment variable (highest priority)
-export BOOSTEDTRAVEL_MAX_BROWSERS=4
+export LETSFG_MAX_BROWSERS=4
 
 # CLI flag (per-search)
-boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+letsfg search-local LHR BCN 2026-04-15 --max-browsers 4
 ```
 
 ```python
-from boostedtravel import configure_max_browsers, get_system_profile
+from letsfg import configure_max_browsers, get_system_profile
 
 profile = get_system_profile()
 print(f"Tier: {profile['tier']}, recommended: {profile['recommended_max_browsers']}")
@@ -235,4 +235,4 @@ print(f"Tier: {profile['tier']}, recommended: {profile['recommended_max_browsers
 configure_max_browsers(4)
 ```
 
-Priority order: `BOOSTEDTRAVEL_MAX_BROWSERS` env var > explicit config > auto-detect from RAM.
+Priority order: `LETSFG_MAX_BROWSERS` env var > explicit config > auto-detect from RAM.

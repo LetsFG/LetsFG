@@ -1,22 +1,20 @@
 ---
-name: boostedtravel
-description: "LFG (formerly BoostedTravel) — Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
+name: letsfg
+description: "LetsFG — Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
 ---
 
 # SKILL.md — LFG Capabilities
 
 > Machine-readable skill manifest for AI agents and documentation indexers.
-> **Note:** BoostedTravel has been rebranded to LFG. Package names remain `boostedtravel` for backward compatibility.
-
 ## Identity
 
-- **Name:** LFG (formerly BoostedTravel)
+- **Name:** LetsFG
 - **Type:** API + SDK + MCP Server + CLI
 - **Purpose:** Agent-native flight search, hotel search, and booking
 - **Compatible agents:** OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client
 - **API Base URL:** `https://api.letsfg.co`
 - **MCP Endpoint:** `https://api.letsfg.co/mcp` (Streamable HTTP)
-- **Packages:** PyPI `boostedtravel` · npm `boostedtravel` · npm `boostedtravel-mcp`
+- **Packages:** PyPI `letsfg` · npm `letsfg` · npm `letsfg-mcp`
 - **License:** MIT
 
 ## Skills
@@ -58,18 +56,18 @@ Get system resource profile and recommended browser concurrency for local search
 - **Input:** (none)
 - **Output:** ram_total_gb, ram_available_gb, cpu_cores, recommended_max_browsers, tier (minimal/low/moderate/standard/high/maximum), platform
 - **Tiers:** minimal (<2GB, 2 browsers), low (2-4GB, 3), moderate (4-8GB, 5), standard (8-16GB, 8), high (16-32GB, 12), maximum (32+GB, 16)
-- **Python:** `from boostedtravel import get_system_profile; profile = get_system_profile()`
-- **CLI:** `boostedtravel system-info` or `boostedtravel system-info --json`
+- **Python:** `from letsfg import get_system_profile; profile = get_system_profile()`
+- **CLI:** `letsfg system-info` or `letsfg system-info --json`
 - **MCP:** `system_info` tool
-- **JS:** `import { systemInfo } from 'boostedtravel'; const info = await systemInfo();`
+- **JS:** `import { systemInfo } from 'letsfg'; const info = await systemInfo();`
 
 ### configure_max_browsers
 Override auto-detected browser concurrency limit for local search.
 - **Cost:** FREE
 - **Input:** max_browsers (integer, 1–32)
-- **Priority:** env var `BOOSTEDTRAVEL_MAX_BROWSERS` > explicit config > auto-detect from RAM
-- **Python:** `from boostedtravel import configure_max_browsers; configure_max_browsers(4)`
-- **CLI:** `boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4`
+- **Priority:** env var `LETSFG_MAX_BROWSERS` > explicit config > auto-detect from RAM
+- **Python:** `from letsfg import configure_max_browsers; configure_max_browsers(4)`
+- **CLI:** `letsfg search-local LHR BCN 2026-04-15 --max-browsers 4`
 - **MCP:** `search_flights` tool with `max_browsers` parameter
 - **JS:** `await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 })`
 
@@ -84,7 +82,7 @@ Confirm live price with airline and reserve offer for 30 minutes. This is the on
 - **HTTP 410:** Offer expired — airline sold the seats, search again (OfferExpiredError)
 - **Note:** confirmed_price may differ from search price (airline prices change in real-time). After unlock, you have 30 minutes to call book. If the window expires, search again (free) and unlock again ($1).
 - **Python:** `unlocked = bt.unlock(offer_id)` → returns UnlockResult
-- **CLI:** `boostedtravel unlock off_xxx`
+- **CLI:** `letsfg unlock off_xxx`
 - **JS/TS:** `const unlocked = await bt.unlock(offerId)`
 
 ### book_flight
@@ -173,35 +171,35 @@ After registration, attach a payment card via `POST /api/v1/agents/setup-payment
 ## CLI Usage
 
 ```bash
-pip install boostedtravel
+pip install letsfg
 
-boostedtravel register --name my-agent --email me@example.com
-export BOOSTEDTRAVEL_API_KEY=trav_...
+letsfg register --name my-agent --email me@example.com
+export LETSFG_API_KEY=trav_...
 
 # Search flights
-boostedtravel search LHR JFK 2026-04-15
-boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --cabin C --sort price
-boostedtravel search GDN BER 2026-05-10 --adults 2 --children 1
+letsfg search LHR JFK 2026-04-15
+letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin C --sort price
+letsfg search GDN BER 2026-05-10 --adults 2 --children 1
 
 # Resolve locations
-boostedtravel locations "New York"
+letsfg locations "New York"
 
 # Unlock and book
-boostedtravel unlock off_xxx
-boostedtravel book off_xxx \
+letsfg unlock off_xxx
+letsfg book off_xxx \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --email john.doe@example.com
 
 # Machine-readable output
-boostedtravel search GDN BER 2026-03-03 --json
+letsfg search GDN BER 2026-03-03 --json
 ```
 
 ## Python SDK Usage
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
 # Search
 results = bt.search("LHR", "JFK", "2026-04-15")
@@ -235,7 +233,7 @@ print(f"PNR: {booking.booking_reference}")
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "url": "https://api.letsfg.co/mcp",
       "headers": {
         "X-API-Key": "trav_..."
@@ -248,8 +246,8 @@ print(f"PNR: {booking.booking_reference}")
 Or run locally:
 
 ```bash
-npm install -g boostedtravel-mcp
-BOOSTEDTRAVEL_API_KEY=trav_... boostedtravel-mcp
+npm install -g letsfg-mcp
+LETSFG_API_KEY=trav_... letsfg-mcp
 ```
 
 ## MCP Tools
@@ -294,22 +292,22 @@ BOOSTEDTRAVEL_API_KEY=trav_... boostedtravel-mcp
 | `AuthenticationError` | 401 | Invalid or missing API key |
 | `PaymentRequiredError` | 402 | No payment method attached |
 | `OfferExpiredError` | 410 | Offer no longer available |
-| `BoostedTravelError` | 422 | Invalid request parameters |
-| `BoostedTravelError` | 429 | Too many requests (retry with backoff) |
-| `BoostedTravelError` | 502 | Upstream airline/hotel API error |
+| `LetsFGError` | 422 | Invalid request parameters |
+| `LetsFGError` | 429 | Too many requests (retry with backoff) |
+| `LetsFGError` | 502 | Upstream airline/hotel API error |
 
 ### Authentication Failure Recovery
 
 ```python
-from boostedtravel import BoostedTravel, AuthenticationError
+from letsfg import LetsFG, AuthenticationError
 
 try:
-    bt = BoostedTravel(api_key="trav_...")
+    bt = LetsFG(api_key="trav_...")
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except AuthenticationError:
     # API key invalid or expired — re-register
-    creds = BoostedTravel.register("my-agent", "agent@example.com")
-    bt = BoostedTravel(api_key=creds["api_key"])
+    creds = LetsFG.register("my-agent", "agent@example.com")
+    bt = LetsFG(api_key=creds["api_key"])
     # Don't forget to re-setup payment
     bt.setup_payment(token="tok_visa")
 ```
@@ -318,20 +316,20 @@ except AuthenticationError:
 
 ```python
 import time
-from boostedtravel import BoostedTravel, BoostedTravelError
+from letsfg import LetsFG, LetsFGError
 
 def search_with_retry(bt, origin, dest, date, max_retries=3):
     for attempt in range(max_retries):
         try:
             return bt.search(origin, dest, date)
-        except BoostedTravelError as e:
+        except LetsFGError as e:
             if "429" in str(e) or "rate limit" in str(e).lower():
                 time.sleep(2 ** attempt)  # exponential backoff
             elif "timeout" in str(e).lower() or "504" in str(e):
                 time.sleep(1)
             else:
                 raise
-    raise BoostedTravelError("Max retries exceeded")
+    raise LetsFGError("Max retries exceeded")
 ```
 
 ## Rate Limits

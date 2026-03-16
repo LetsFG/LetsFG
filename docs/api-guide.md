@@ -14,7 +14,7 @@ LFG offers two search modes:
 Search 75 airline websites directly — completely free, no registration required:
 
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 
 # Async — queries airline sites directly
 result = await search_local("LHR", "BCN", "2026-04-15")
@@ -27,10 +27,10 @@ result = await search_local("LHR", "BCN", "2026-04-15", max_browsers=4)
 
 ```bash
 # CLI — works immediately after pip install
-boostedtravel search-local LHR BCN 2026-04-15
+letsfg search-local LHR BCN 2026-04-15
 
 # Limit browsers
-boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
+letsfg search-local LHR BCN 2026-04-15 --max-browsers 4
 ```
 
 ### Full Search (API Key)
@@ -38,8 +38,8 @@ boostedtravel search-local LHR BCN 2026-04-15 --max-browsers 4
 Search 400+ airlines via GDS and NDC connections:
 
 ```python
-from boostedtravel import BoostedTravel
-bt = BoostedTravel(api_key="trav_...")
+from letsfg import LetsFG
+bt = LetsFG(api_key="trav_...")
 flights = bt.search("LHR", "BCN", "2026-04-15")
 ```
 
@@ -54,22 +54,22 @@ The SDK raises specific exceptions for each failure mode:
 | `AuthenticationError` | 401 | Missing or invalid API key |
 | `PaymentRequiredError` | 402 | No payment method set up (call `setup-payment` first) |
 | `OfferExpiredError` | 410 | Offer no longer available (search again) |
-| `BoostedTravelError` | any | Base class — catches all API errors |
+| `LetsFGError` | any | Base class — catches all API errors |
 
 ### Python Error Handling
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     AuthenticationError, PaymentRequiredError, OfferExpiredError,
 )
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
 # Search — handle invalid locations
 try:
     flights = bt.search("INVALID", "JFK", "2026-04-15")
-except BoostedTravelError as e:
+except LetsFGError as e:
     if e.status_code == 422:
         print(f"Invalid location: {e.message}")
         # Resolve the location first
@@ -104,7 +104,7 @@ try:
     print(f"Booked! PNR: {booking.booking_reference}")
 except OfferExpiredError:
     print("Offer expired after unlock — search again (30min window may have passed)")
-except BoostedTravelError as e:
+except LetsFGError as e:
     print(f"Booking failed ({e.status_code}): {e.message}")
 ```
 
@@ -114,7 +114,7 @@ The CLI exits with code 1 on errors and prints the message to stderr. Use `--jso
 
 ```bash
 # Check exit code in scripts
-if ! boostedtravel search INVALID JFK 2026-04-15 --json 2>/dev/null; then
+if ! letsfg search INVALID JFK 2026-04-15 --json 2>/dev/null; then
   echo "Search failed — check location codes"
 fi
 ```
@@ -160,11 +160,11 @@ print(f"Best price: {cheapest.price} {cheapest.currency} on {cheapest.owner_airl
 
 ```bash
 # Get structured JSON output
-boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --json
+letsfg search LON BCN 2026-04-01 --return 2026-04-08 --json
 
 # Pipe to jq for filtering
-boostedtravel search LON BCN 2026-04-01 --json | jq '[.offers[] | select(.stopovers == 0)]'
-boostedtravel search LON BCN 2026-04-01 --json | jq '.offers | sort_by(.duration_seconds) | .[0]'
+letsfg search LON BCN 2026-04-01 --json | jq '[.offers[] | select(.stopovers == 0)]'
+letsfg search LON BCN 2026-04-01 --json | jq '.offers | sort_by(.duration_seconds) | .[0]'
 ```
 
 ### JSON Response Structure
@@ -210,7 +210,7 @@ flights = bt.search(locations[0]["iata_code"], "LAX", "2026-04-15")
 
 ```bash
 # CLI
-boostedtravel locations "New York"
+letsfg locations "New York"
 # Output:
 #   JFK  John F. Kennedy International Airport
 #   LGA  LaGuardia Airport
@@ -249,13 +249,13 @@ for loc in locations:
 ### Python — Full Workflow
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     AuthenticationError, PaymentRequiredError, OfferExpiredError,
 )
 
 def search_and_book(origin_city, dest_city, date, passenger_info, email):
-    bt = BoostedTravel()  # reads BOOSTEDTRAVEL_API_KEY from env
+    bt = LetsFG()  # reads LETSFG_API_KEY from env
 
     # Step 1: Resolve locations
     origins = bt.resolve_location(origin_city)
@@ -280,7 +280,7 @@ def search_and_book(origin_city, dest_city, date, passenger_info, email):
         unlocked = bt.unlock(flights.cheapest.id)
         print(f"Confirmed price: {unlocked.confirmed_currency} {unlocked.confirmed_price}")
     except PaymentRequiredError:
-        print("Setup payment first: boostedtravel setup-payment")
+        print("Setup payment first: letsfg setup-payment")
         return None
     except OfferExpiredError:
         print("Offer expired — search again")
@@ -304,7 +304,7 @@ def search_and_book(origin_city, dest_city, date, passenger_info, email):
     except OfferExpiredError:
         print("Offer expired — 30min window may have passed, search again")
         return None
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         print(f"Booking failed: {e.message}")
         return None
 
@@ -327,11 +327,11 @@ search_and_book(
 ```bash
 #!/bin/bash
 set -euo pipefail
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
 # Step 1: Resolve locations
-ORIGIN=$(boostedtravel locations "London" --json | jq -r '.[0].iata_code')
-DEST=$(boostedtravel locations "Barcelona" --json | jq -r '.[0].iata_code')
+ORIGIN=$(letsfg locations "London" --json | jq -r '.[0].iata_code')
+DEST=$(letsfg locations "Barcelona" --json | jq -r '.[0].iata_code')
 
 if [ -z "$ORIGIN" ] || [ -z "$DEST" ]; then
   echo "Error: Could not resolve locations" >&2
@@ -339,7 +339,7 @@ if [ -z "$ORIGIN" ] || [ -z "$DEST" ]; then
 fi
 
 # Step 2: Search
-RESULTS=$(boostedtravel search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
+RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
 OFFER_ID=$(echo "$RESULTS" | jq -r '.offers[0].id')
 TOTAL=$(echo "$RESULTS" | jq '.total_results')
 
@@ -351,13 +351,13 @@ fi
 echo "Found $TOTAL offers, best: $OFFER_ID"
 
 # Step 3: Unlock
-if ! boostedtravel unlock "$OFFER_ID" --json > /dev/null 2>&1; then
+if ! letsfg unlock "$OFFER_ID" --json > /dev/null 2>&1; then
   echo "Unlock failed — check payment setup" >&2
   exit 1
 fi
 
 # Step 4: Book (one --passenger per passenger_id)
-boostedtravel book "$OFFER_ID" \
+letsfg book "$OFFER_ID" \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
   --email john.doe@example.com
@@ -386,9 +386,9 @@ POST /api/v1/bookings/unlock
 ### Python Example
 
 ```python
-from boostedtravel import BoostedTravel, PaymentRequiredError, OfferExpiredError
+from letsfg import LetsFG, PaymentRequiredError, OfferExpiredError
 
-bt = BoostedTravel()  # reads BOOSTEDTRAVEL_API_KEY
+bt = LetsFG()  # reads LETSFG_API_KEY
 
 # Search first (free)
 flights = bt.search("LHR", "JFK", "2026-06-01")
@@ -401,7 +401,7 @@ try:
     print(f"Expires at: {unlocked.offer_expires_at}")
     # Price may differ from search — airline prices change in real-time
 except PaymentRequiredError:
-    print("No payment method — run: boostedtravel setup-payment")
+    print("No payment method — run: letsfg setup-payment")
 except OfferExpiredError:
     print("Offer no longer available — search again for fresh results")
 ```
@@ -410,7 +410,7 @@ except OfferExpiredError:
 
 ```bash
 # Unlock an offer
-boostedtravel unlock off_xxx
+letsfg unlock off_xxx
 
 # Output:
 # Confirmed price: EUR 189.50

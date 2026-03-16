@@ -2,7 +2,7 @@
 
 Guidelines for building autonomous AI agents that search, evaluate, and book flights. Works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent framework.
 
-> 🎬 **[Watch the demo](https://github.com/Boosted-Chat/LetsFG#demo-lfg-vs-default-agent-search)** — side-by-side comparison of default agent search vs LFG.
+> 🎬 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-lfg-vs-default-agent-search)** — side-by-side comparison of default agent search vs LFG.
 
 ## Two Search Modes
 
@@ -10,15 +10,15 @@ Agents can use **local search** (free, no API key) for quick lookups, or **full 
 
 ```python
 # Local search — no API key, 75 airline connectors
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 result = await search_local("LHR", "JFK", "2026-06-01")
 
 # With concurrency limit for constrained environments
 result = await search_local("LHR", "JFK", "2026-06-01", max_browsers=4)
 
 # Full search — API key required, 400+ airlines via GDS/NDC
-from boostedtravel import BoostedTravel
-bt = BoostedTravel(api_key="trav_...")
+from letsfg import LetsFG
+bt = LetsFG(api_key="trav_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
@@ -50,7 +50,7 @@ User request → Agent parses intent → Resolve locations → Search (free)
 7. **Be aware of system resources.** Local search fires up to 73 browser-based connectors in parallel. LFG auto-scales concurrency based on available RAM, but agents can check resources and override:
 
 ```python
-from boostedtravel import get_system_profile, configure_max_browsers
+from letsfg import get_system_profile, configure_max_browsers
 
 profile = get_system_profile()
 if profile['tier'] in ('minimal', 'low'):
@@ -62,8 +62,8 @@ Or use the MCP `system_info` tool before `search_flights` to decide concurrency.
 ## Handling Edge Cases
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     PaymentRequiredError, OfferExpiredError,
     ErrorCode, ErrorCategory,
 )
@@ -92,7 +92,7 @@ def resilient_book(bt, origin, dest, date, passengers, email, max_retries=2):
                 print(f"Offer expired, retrying ({attempt + 1}/{max_retries})...")
                 continue
             raise
-        except BoostedTravelError as e:
+        except LetsFGError as e:
             if e.is_retryable and attempt < max_retries:
                 import time; time.sleep(2 ** attempt)
                 continue
@@ -110,7 +110,7 @@ def find_cheapest_date(bt, origin, dest, dates):
             result = bt.search(origin, dest, date)
             if result.offers and (best is None or result.cheapest.price < best[1].price):
                 best = (date, result.cheapest, result.passenger_ids)
-        except BoostedTravelError:
+        except LetsFGError:
             continue  # Skip dates with no routes
     return best  # (date, offer, passenger_ids) or None
 ```
@@ -130,16 +130,16 @@ Handle rate limits and timeouts in production:
 
 ```python
 import time
-from boostedtravel import BoostedTravel, BoostedTravelError
+from letsfg import LetsFG, LetsFGError
 
-bt = BoostedTravel()
+bt = LetsFG()
 
 def search_with_retry(origin, dest, date, max_retries=3):
     """Retry with exponential backoff on rate limit or timeout."""
     for attempt in range(max_retries):
         try:
             return bt.search(origin, dest, date)
-        except BoostedTravelError as e:
+        except LetsFGError as e:
             if "rate limit" in str(e).lower() or "429" in str(e):
                 wait = 2 ** attempt  # 1s, 2s, 4s
                 print(f"Rate limited, waiting {wait}s...")
@@ -149,7 +149,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
                 time.sleep(1)
             else:
                 raise
-    raise BoostedTravelError("Max retries exceeded")
+    raise LetsFGError("Max retries exceeded")
 ```
 
 ## Advanced Preference Evaluation

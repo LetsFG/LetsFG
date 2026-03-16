@@ -1,11 +1,10 @@
 # AGENTS.md — LFG for AI Agents
 
 > This file is for AI agents. If you're a human, see [README.md](README.md).
-> **Note:** BoostedTravel has been rebranded to **LFG**. Package names remain `boostedtravel` for backward compatibility.
 
 ## What is LFG?
 
-LFG (formerly BoostedTravel) is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 75 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
+LetsFG is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 75 airlines and 400+ GDS/NDC sources** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
 
 **Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. LFG replaces all of that with a single function call that fires 75 airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
 
@@ -47,7 +46,7 @@ Search 400+ airlines across multiple providers + 75 local LCC connectors. Return
 
 **Local-only search** (no API key, no backend):
 ```python
-from boostedtravel.local import search_local
+from letsfg.local import search_local
 result = await search_local("GDN", "BCN", "2026-06-15")
 
 # Limit concurrency on constrained machines
@@ -67,7 +66,7 @@ Confirm the live price and lock it for booking. Costs $1.00 via Stripe. This is 
 4. Offer **reserved for 30 minutes** — you must book within this window
 5. Returns `confirmed_price`, `confirmed_currency`, `offer_expires_at`
 
-**Requirements:** Payment method must be set up first (`boostedtravel setup-payment` or `bt.setup_payment()`). Without payment, unlock returns HTTP 402 (`PaymentRequiredError`).
+**Requirements:** Payment method must be set up first (`letsfg setup-payment` or `bt.setup_payment()`). Without payment, unlock returns HTTP 402 (`PaymentRequiredError`).
 
 **Key unlock details:**
 - Input: `offer_id` (from search results) — this is the only required parameter
@@ -77,9 +76,9 @@ Confirm the live price and lock it for booking. Costs $1.00 via Stripe. This is 
 - If 30-minute window expires without booking, the $1 is not refunded
 
 ```python
-from boostedtravel import BoostedTravel, PaymentRequiredError, OfferExpiredError
+from letsfg import LetsFG, PaymentRequiredError, OfferExpiredError
 
-bt = BoostedTravel()  # reads BOOSTEDTRAVEL_API_KEY
+bt = LetsFG()  # reads LETSFG_API_KEY
 
 flights = bt.search("LHR", "JFK", "2026-06-01")
 
@@ -88,14 +87,14 @@ try:
     print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
     print(f"Expires: {unlocked.offer_expires_at}")
 except PaymentRequiredError:
-    print("Run: boostedtravel setup-payment")
+    print("Run: letsfg setup-payment")
 except OfferExpiredError:
     print("Offer expired — search again")
 ```
 
 ```bash
 # CLI
-boostedtravel unlock off_xxx
+letsfg unlock off_xxx
 # Output: Confirmed price: EUR 189.50, Expires: 2026-06-01T15:30:00Z
 
 # cURL
@@ -124,48 +123,48 @@ Do NOT use placeholder emails, agent emails, or fake names. The booking will fai
 
 ### Install (Python — recommended for agents)
 ```bash
-pip install boostedtravel
+pip install letsfg
 ```
 
-This gives you the `boostedtravel` CLI command:
+This gives you the `letsfg` CLI command:
 
 ```bash
 # Register and get your API key
-boostedtravel register --name my-agent --email you@example.com
+letsfg register --name my-agent --email you@example.com
 
 # Save your key
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
 # Search flights
-boostedtravel search LHR JFK 2026-04-15
+letsfg search LHR JFK 2026-04-15
 
 # Round trip
-boostedtravel search LON BCN 2026-04-01 --return 2026-04-08 --sort price
+letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
 
 # Multi-passenger: 2 adults + 1 child, business class
-boostedtravel search LHR SIN 2026-06-01 --adults 2 --children 1 --cabin C
+letsfg search LHR SIN 2026-06-01 --adults 2 --children 1 --cabin C
 
 # Direct flights only
-boostedtravel search JFK LHR 2026-05-01 --max-stops 0
+letsfg search JFK LHR 2026-05-01 --max-stops 0
 
 # Resolve city to IATA codes
-boostedtravel locations "New York"
+letsfg locations "New York"
 
 # Unlock an offer ($1)
-boostedtravel unlock off_xxx
+letsfg unlock off_xxx
 
 # Book the flight (free after unlock)
-boostedtravel book off_xxx \
+letsfg book off_xxx \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --email john.doe@example.com
 
 # Check profile & usage
-boostedtravel me
+letsfg me
 ```
 
 All commands support `--json` for structured output:
 ```bash
-boostedtravel search GDN BER 2026-03-03 --json
+letsfg search GDN BER 2026-03-03 --json
 ```
 
 ### Search Flags Reference
@@ -185,41 +184,41 @@ boostedtravel search GDN BER 2026-03-03 --json
 
 ### Python SDK
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 flights = bt.search("LHR", "JFK", "2026-04-15")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 ```
 
 ### JavaScript/TypeScript SDK + CLI
 ```bash
-npm install -g boostedtravel
+npm install -g letsfg
 ```
 
 Same CLI commands available, plus SDK usage:
 ```typescript
-import { BoostedTravel } from 'boostedtravel';
+import { LetsFG } from 'letsfg';
 
-const bt = new BoostedTravel({ apiKey: 'trav_...' });
+const bt = new LetsFG({ apiKey: 'trav_...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 console.log(`${flights.totalResults} offers`);
 ```
 
 ### MCP Server (Claude Desktop / Cursor / Windsurf)
 ```bash
-npx boostedtravel-mcp
+npx letsfg-mcp
 ```
 
 Add to your MCP config:
 ```json
 {
   "mcpServers": {
-    "boostedtravel": {
+    "letsfg": {
       "command": "npx",
-      "args": ["-y", "boostedtravel-mcp"],
+      "args": ["-y", "letsfg-mcp"],
       "env": {
-        "BOOSTEDTRAVEL_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "trav_your_api_key"
       }
     }
   }
@@ -230,13 +229,13 @@ Add to your MCP config:
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `boostedtravel register` | Get your API key | Free |
-| `boostedtravel search <origin> <dest> <date>` | Search flights | Free |
-| `boostedtravel locations <query>` | Resolve city/airport to IATA | Free |
-| `boostedtravel unlock <offer_id>` | Unlock offer details | $1 |
-| `boostedtravel book <offer_id>` | Book the flight | Free (after unlock) |
-| `boostedtravel setup-payment` | Set up payment method | Free |
-| `boostedtravel me` | View profile & usage | Free |
+| `letsfg register` | Get your API key | Free |
+| `letsfg search <origin> <dest> <date>` | Search flights | Free |
+| `letsfg locations <query>` | Resolve city/airport to IATA | Free |
+| `letsfg unlock <offer_id>` | Unlock offer details | $1 |
+| `letsfg book <offer_id>` | Book the flight | Free (after unlock) |
+| `letsfg setup-payment` | Set up payment method | Free |
+| `letsfg me` | View profile & usage | Free |
 
 ## Authentication — How to Use Your API Key
 
@@ -246,7 +245,7 @@ Every authenticated request requires the `X-API-Key` header. The SDK/CLI handles
 
 ```bash
 # CLI
-boostedtravel register --name my-agent --email agent@example.com
+letsfg register --name my-agent --email agent@example.com
 
 # cURL
 curl -X POST https://api.letsfg.co/api/v1/agents/register \
@@ -260,11 +259,11 @@ curl -X POST https://api.letsfg.co/api/v1/agents/register \
 
 ```bash
 # Option 1: Environment variable (recommended)
-export BOOSTEDTRAVEL_API_KEY=trav_...
-boostedtravel search LHR JFK 2026-04-15  # reads env automatically
+export LETSFG_API_KEY=trav_...
+letsfg search LHR JFK 2026-04-15  # reads env automatically
 
 # Option 2: Pass directly
-boostedtravel search LHR JFK 2026-04-15 --api-key trav_...
+letsfg search LHR JFK 2026-04-15 --api-key trav_...
 
 # Option 3: cURL (raw HTTP)
 curl -X POST https://api.letsfg.co/api/v1/flights/search \
@@ -276,23 +275,23 @@ curl -X POST https://api.letsfg.co/api/v1/flights/search \
 ### Python SDK
 
 ```python
-from boostedtravel import BoostedTravel
+from letsfg import LetsFG
 
 # Pass directly
-bt = BoostedTravel(api_key="trav_...")
+bt = LetsFG(api_key="trav_...")
 
 # Or from env
-bt = BoostedTravel()  # reads BOOSTEDTRAVEL_API_KEY
+bt = LetsFG()  # reads LETSFG_API_KEY
 
 # Register inline
-creds = BoostedTravel.register("my-agent", "agent@example.com")
-bt = BoostedTravel(api_key=creds["api_key"])
+creds = LetsFG.register("my-agent", "agent@example.com")
+bt = LetsFG(api_key=creds["api_key"])
 ```
 
 ### Setup Payment (Required Before Unlock)
 
 ```bash
-boostedtravel setup-payment  # opens Stripe to attach payment method
+letsfg setup-payment  # opens Stripe to attach payment method
 ```
 
 ```python
@@ -318,7 +317,7 @@ flights = bt.search("LHR", "BCN", "2026-04-01")  # Heathrow only
 ```
 
 ```bash
-boostedtravel locations "New York"
+letsfg locations "New York"
 # JFK  John F. Kennedy International Airport
 # LGA  LaGuardia Airport
 # EWR  Newark Liberty International Airport
@@ -359,7 +358,7 @@ print(f"Best: {flights.cheapest.price} {flights.cheapest.currency} on {flights.c
 ### JSON Output Structure (CLI)
 
 ```bash
-boostedtravel search LON BCN 2026-04-01 --adults 2 --json
+letsfg search LON BCN 2026-04-01 --adults 2 --json
 ```
 
 ```json
@@ -429,18 +428,18 @@ The SDK raises specific exceptions for each failure mode. All errors include mac
 | `PaymentRequiredError` | 402 | No payment method or payment declined |
 | `OfferExpiredError` | 410 | Offer no longer available (search again) |
 | `ValidationError` | 422 | Bad input parameters |
-| `BoostedTravelError` | any | Base class — catches all API errors |
+| `LetsFGError` | any | Base class — catches all API errors |
 
 ### Using Error Codes in Agent Logic
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     AuthenticationError, PaymentRequiredError, OfferExpiredError, ValidationError,
     ErrorCode, ErrorCategory,
 )
 
-bt = BoostedTravel()
+bt = LetsFG()
 
 try:
     flights = bt.search("LHR", "JFK", "2026-04-15")
@@ -453,7 +452,7 @@ try:
         contact_email="john@example.com",
         idempotency_key="booking-attempt-abc123",  # prevents double-booking on retry
     )
-except BoostedTravelError as e:
+except LetsFGError as e:
     if e.is_retryable:
         # Transient error — safe to retry after delay
         print(f"Temporary error ({e.error_code}), retrying...")
@@ -467,12 +466,12 @@ except BoostedTravelError as e:
 
 ```typescript
 // JavaScript/TypeScript
-import { BoostedTravel, BoostedTravelError, ErrorCode, ErrorCategory } from 'boostedtravel';
+import { LetsFG, LetsFGError, ErrorCode, ErrorCategory } from 'letsfg';
 
 try {
   const booking = await bt.book(offerId, passengers, email, '', 'booking-attempt-abc123');
 } catch (e) {
-  if (e instanceof BoostedTravelError) {
+  if (e instanceof LetsFGError) {
     if (e.isRetryable) { /* retry after delay */ }
     else if (e.errorCategory === ErrorCategory.VALIDATION) { /* fix input */ }
     else { /* escalate to human */ }
@@ -569,7 +568,7 @@ def safe_book(bt, origin, dest, date, passengers, email, max_retries=2):
             if attempt < max_retries:
                 continue  # Search again, fresh offers
             raise
-        except BoostedTravelError as e:
+        except LetsFGError as e:
             if e.is_retryable and attempt < max_retries:
                 import time
                 time.sleep(2 ** attempt)  # exponential backoff
@@ -582,13 +581,13 @@ def safe_book(bt, origin, dest, date, passengers, email, max_retries=2):
 ### Python — Full Workflow with Error Handling
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     PaymentRequiredError, OfferExpiredError,
 )
 
 def search_and_book(origin_city, dest_city, date, passenger_info, email):
-    bt = BoostedTravel()  # reads BOOSTEDTRAVEL_API_KEY
+    bt = LetsFG()  # reads LETSFG_API_KEY
 
     # Step 1: Resolve locations
     origins = bt.resolve_location(origin_city)
@@ -611,7 +610,7 @@ def search_and_book(origin_city, dest_city, date, passenger_info, email):
         unlocked = bt.unlock(flights.cheapest.id)
         print(f"Confirmed: {unlocked.confirmed_currency} {unlocked.confirmed_price}")
     except PaymentRequiredError:
-        print("Setup payment first: boostedtravel setup-payment")
+        print("Setup payment first: letsfg setup-payment")
         return None
     except OfferExpiredError:
         print("Offer expired — search again")
@@ -627,7 +626,7 @@ def search_and_book(origin_city, dest_city, date, passenger_info, email):
     except OfferExpiredError:
         print("30-minute window expired — search and unlock again")
         return None
-    except BoostedTravelError as e:
+    except LetsFGError as e:
         print(f"Booking failed: {e.message}")
         return None
 
@@ -647,11 +646,11 @@ search_and_book(
 ```bash
 #!/bin/bash
 set -euo pipefail
-export BOOSTEDTRAVEL_API_KEY=trav_...
+export LETSFG_API_KEY=trav_...
 
 # Step 1: Resolve locations (with validation)
-ORIGIN=$(boostedtravel locations "London" --json | jq -r '.[0].iata_code')
-DEST=$(boostedtravel locations "Barcelona" --json | jq -r '.[0].iata_code')
+ORIGIN=$(letsfg locations "London" --json | jq -r '.[0].iata_code')
+DEST=$(letsfg locations "Barcelona" --json | jq -r '.[0].iata_code')
 
 if [ -z "$ORIGIN" ] || [ -z "$DEST" ]; then
   echo "Error: Could not resolve locations" >&2
@@ -659,7 +658,7 @@ if [ -z "$ORIGIN" ] || [ -z "$DEST" ]; then
 fi
 
 # Step 2: Search
-RESULTS=$(boostedtravel search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
+RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
 OFFER=$(echo "$RESULTS" | jq -r '.offers[0].id')
 TOTAL=$(echo "$RESULTS" | jq '.total_results')
 
@@ -670,13 +669,13 @@ fi
 echo "Found $TOTAL offers, best: $OFFER"
 
 # Step 3: Unlock ($1) — with error check
-if ! boostedtravel unlock "$OFFER" --json > /dev/null 2>&1; then
-  echo "Unlock failed — check payment setup (boostedtravel setup-payment)" >&2
+if ! letsfg unlock "$OFFER" --json > /dev/null 2>&1; then
+  echo "Unlock failed — check payment setup (letsfg setup-payment)" >&2
   exit 1
 fi
 
 # Step 4: Book (free after unlock)
-boostedtravel book "$OFFER" \
+letsfg book "$OFFER" \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
   --email john.doe@example.com
@@ -748,14 +747,14 @@ The API has generous limits. Search is completely free and unlimited.
 
 ```python
 import time
-from boostedtravel import BoostedTravel, BoostedTravelError
+from letsfg import LetsFG, LetsFGError
 
 def search_with_retry(bt, origin, dest, date, max_retries=3):
     """Retry with exponential backoff on rate limit or timeout."""
     for attempt in range(max_retries):
         try:
             return bt.search(origin, dest, date)
-        except BoostedTravelError as e:
+        except LetsFGError as e:
             if "rate limit" in str(e).lower() or "429" in str(e):
                 wait = 2 ** attempt  # 1s, 2s, 4s
                 time.sleep(wait)
@@ -763,7 +762,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
                 time.sleep(1)  # brief pause then retry
             else:
                 raise
-    raise BoostedTravelError("Max retries exceeded")
+    raise LetsFGError("Max retries exceeded")
 ```
 
 ## Building an Autonomous AI Agent
@@ -788,8 +787,8 @@ User request → Parse intent → Resolve locations → Search (free)
 ### Retry Logic for Expired Offers
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     PaymentRequiredError, OfferExpiredError,
 )
 
@@ -821,7 +820,7 @@ def find_cheapest_date(bt, origin, dest, dates):
             result = bt.search(origin, dest, date)
             if result.offers and (best is None or result.cheapest.price < best[1].price):
                 best = (date, result.cheapest, result.passenger_ids)
-        except BoostedTravelError:
+        except LetsFGError:
             continue
     return best
 ```
@@ -915,8 +914,8 @@ def monitor_prices(bt, route_configs, interval_minutes=60, max_checks=24):
 End-to-end implementation of an AI agent that autonomously searches, evaluates, and books flights based on user preferences while managing costs and edge cases:
 
 ```python
-from boostedtravel import (
-    BoostedTravel, BoostedTravelError,
+from letsfg import (
+    LetsFG, LetsFGError,
     AuthenticationError, PaymentRequiredError, OfferExpiredError,
 )
 import time
@@ -925,7 +924,7 @@ class FlightAgent:
     """Autonomous flight booking agent with preference evaluation and cost management."""
     
     def __init__(self, api_key=None):
-        self.bt = BoostedTravel(api_key=api_key)
+        self.bt = LetsFG(api_key=api_key)
     
     def resolve_city(self, city_name):
         """Resolve city name to IATA code, handling ambiguity."""
@@ -1062,6 +1061,6 @@ curl -X POST https://api.letsfg.co/api/v1/agents/register \
 
 ## Links
 
-- **PyPI:** https://pypi.org/project/boostedtravel/
-- **npm (JS SDK):** https://www.npmjs.com/package/boostedtravel
-- **npm (MCP):** https://www.npmjs.com/package/boostedtravel-mcp
+- **PyPI:** https://pypi.org/project/letsfg/
+- **npm (JS SDK):** https://www.npmjs.com/package/letsfg
+- **npm (MCP):** https://www.npmjs.com/package/letsfg-mcp
