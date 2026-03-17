@@ -1,15 +1,17 @@
 """
-Ethiopian Airlines connector — Africa's largest carrier.
+Ethiopian Airlines connector — EveryMundo airTRFX fare pages.
 
 Ethiopian Airlines (IATA: ET) is Africa's largest and most profitable airline.
 Star Alliance member. ADD (Addis Ababa) hub — Africa's busiest transit hub.
 130+ destinations across Africa, Europe, Middle East, Asia, Americas.
 
-Strategy:
-  Ethiopian uses Amadeus Altéa IBE. Try multiple API approaches:
-  1. Calendar lowfare API at ethiopianairlines.com
-  2. Offer search API
-  3. EveryMundo fare pages as fallback
+Strategy (httpx, no browser):
+  Ethiopian uses EveryMundo airTRFX at ethiopianairlines.com.
+  1. Fetch route page: ethiopianairlines.com/en-et/flights-from-{o}-to-{d}
+  2. Extract __NEXT_DATA__ JSON from <script> tag
+  3. Parse StandardFareModule fares from Apollo GraphQL state
+  4. Filter by origin/destination airport codes and departure date
+  Note: Ethiopian uses /en-et/ locale prefix (not /en/).
 """
 
 from __future__ import annotations
@@ -40,13 +42,75 @@ _HEADERS = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     ),
-    "Accept": "application/json, text/html, */*",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+}
+
+_IATA_TO_SLUG: dict[str, str] = {
+    # Ethiopia domestic
+    "ADD": "addis-ababa", "AWA": "hawassa", "LLI": "lalibela",
+    "MQX": "mekelle", "AMH": "arba-minch", "ASO": "asosa",
+    "BJR": "bahir-dar", "AXU": "axum", "DIR": "dire-dawa",
+    "GDQ": "gondar", "JIM": "jimma",
+    # East Africa
+    "NBO": "nairobi", "MBA": "mombasa",
+    "DAR": "dar-es-salaam", "JRO": "kilimanjaro",
+    "EBB": "entebbe", "KGL": "kigali",
+    "BJM": "bujumbura", "SEZ": "mahe",
+    # Southern Africa
+    "JNB": "johannesburg", "CPT": "cape-town",
+    "LUN": "lusaka", "HRE": "harare",
+    "WDH": "windhoek", "MPM": "maputo",
+    "LLW": "lilongwe", "MRU": "mauritius",
+    # West Africa
+    "LOS": "lagos", "ABV": "abuja",
+    "ACC": "accra", "ABJ": "abidjan",
+    "DSS": "dakar", "BKO": "bamako",
+    "OUA": "ouagadougou", "CKY": "conakry",
+    "FNA": "freetown", "LFW": "lome",
+    "COO": "cotonou", "NIM": "niamey",
+    # Central Africa
+    "DLA": "douala", "NDJ": "ndjamena",
+    "LBV": "libreville", "FIH": "kinshasa",
+    "BZV": "brazzaville", "BGF": "bangui",
+    # North Africa
+    "CAI": "cairo", "ALG": "algiers",
+    "CMN": "casablanca", "TUN": "tunis",
+    "KRT": "khartoum",
+    # Horn of Africa
+    "HGA": "hargeisa", "JIB": "djibouti",
+    "MGQ": "mogadishu",
+    # Europe
+    "LHR": "london", "CDG": "paris", "FRA": "frankfurt",
+    "FCO": "rome", "MAD": "madrid", "BRU": "brussels",
+    "VIE": "vienna", "IST": "istanbul", "ATH": "athens",
+    "MXP": "milan", "ARN": "stockholm", "GVA": "geneva",
+    "DUB": "dublin", "MAN": "manchester",
+    # Middle East
+    "DXB": "dubai-dxb", "DOH": "doha",
+    "JED": "jeddah", "RUH": "riyadh",
+    "TLV": "tel-aviv", "AMM": "amman",
+    "BAH": "bahrain", "MCT": "muscat",
+    "KWI": "kuwait",
+    # Asia
+    "PEK": "beijing", "PVG": "shanghai",
+    "CAN": "guangzhou", "HKG": "hong-kong",
+    "ICN": "seoul", "NRT": "tokyo",
+    "BOM": "mumbai", "DEL": "delhi",
+    "BLR": "bangalore", "BKK": "bangkok",
+    "KUL": "kuala-lumpur", "SIN": "singapore",
+    "MNL": "manila",
+    # Americas
+    "IAD": "washington-dc", "EWR": "newark",
+    "ORD": "chicago", "IAH": "houston",
+    "LAX": "los-angeles",
+    "YYZ": "toronto", "YTO": "toronto",
+    "GRU": "sao-paulo",
 }
 
 
 class EthiopianConnectorClient:
-    """Ethiopian Airlines — calendar API + EveryMundo fare pages."""
+    """Ethiopian Airlines — EveryMundo airTRFX fare pages."""
 
     def __init__(self, timeout: float = 25.0):
         self.timeout = timeout
@@ -66,130 +130,159 @@ class EthiopianConnectorClient:
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
         client = await self._client()
-        date_str = req.date_from.strftime("%Y-%m-%d")
 
-        offers = []
-        for endpoint in [
-            f"{_BASE}/api/offers/calendar-fares",
-            f"{_BASE}/api/v1/lowfares",
-        ]:
-            params = {
-                "origin": req.origin,
-                "destination": req.destination,
-                "departureDate": date_str,
-                "adults": str(req.adults or 1),
-                "tripType": "ONE_WAY",
-                "cabin": "ECONOMY",
-            }
-            try:
-                resp = await client.get(endpoint, params=params)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    offers = self._parse(data, req, date_str)
-                    if offers:
-                        break
-            except Exception as e:
-                logger.debug("Ethiopian endpoint %s error: %s", endpoint, e)
+        origin_slug = _IATA_TO_SLUG.get(req.origin)
+        dest_slug = _IATA_TO_SLUG.get(req.destination)
+        if not origin_slug or not dest_slug:
+            logger.warning("Ethiopian: unmapped IATA %s or %s", req.origin, req.destination)
+            return self._empty(req)
 
-        # Try EveryMundo page fallback
-        if not offers:
-            offers = await self._everymundo_search(client, req)
+        url = f"{_BASE}/en-et/flights-from-{origin_slug}-to-{dest_slug}"
+        logger.info("Ethiopian: fetching %s", url)
 
-        offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
-        elapsed = time.monotonic() - t0
-        logger.info("Ethiopian %s→%s: %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
-
-        sh = hashlib.md5(f"ethiopian{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
-        return FlightSearchResponse(
-            search_id=f"fs_{sh}", origin=req.origin, destination=req.destination,
-            currency=offers[0].currency if offers else "USD",
-            offers=offers, total_results=len(offers),
-        )
-
-    async def _everymundo_search(self, client: httpx.AsyncClient, req: FlightSearchRequest) -> list[FlightOffer]:
-        """Fallback: fetch EveryMundo fare page and extract __NEXT_DATA__."""
-        slug_map = {
-            "ADD": "addis-ababa", "NBO": "nairobi", "DAR": "dar-es-salaam",
-            "LOS": "lagos", "ACC": "accra", "JNB": "johannesburg",
-            "LHR": "london", "CDG": "paris", "FRA": "frankfurt",
-            "DXB": "dubai", "JED": "jeddah", "PEK": "beijing",
-            "BOM": "mumbai", "IAD": "washington-dc", "ORD": "chicago",
-            "GRU": "sao-paulo", "EBB": "entebbe", "KGL": "kigali",
-            "MPM": "maputo", "LUN": "lusaka", "HRE": "harare",
-        }
-        o_slug = slug_map.get(req.origin)
-        d_slug = slug_map.get(req.destination)
-        if not o_slug or not d_slug:
-            return []
-        url = f"{_BASE}/flights/en-us/flights-from-{o_slug}-to-{d_slug}"
         try:
             resp = await client.get(url)
             if resp.status_code != 200:
-                return []
-        except Exception:
-            return []
-        m = re.search(r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>', resp.text, re.S)
+                logger.warning("Ethiopian: %s returned %d", url, resp.status_code)
+                return self._empty(req)
+        except Exception as e:
+            logger.error("Ethiopian fetch error: %s", e)
+            return self._empty(req)
+
+        fares = self._extract_fares(resp.text)
+        if not fares:
+            logger.info("Ethiopian: no fares on page %s", url)
+            return self._empty(req)
+
+        offers = self._build_offers(fares, req)
+        offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+
+        elapsed = time.monotonic() - t0
+        logger.info("Ethiopian %s→%s: %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
+
+        h = hashlib.md5(f"ethiopian{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
+        return FlightSearchResponse(
+            search_id=f"fs_{h}",
+            origin=req.origin,
+            destination=req.destination,
+            currency=offers[0].currency if offers else "USD",
+            offers=offers,
+            total_results=len(offers),
+        )
+
+    @staticmethod
+    def _extract_fares(html: str) -> list[dict]:
+        m = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+            html,
+            re.S,
+        )
         if not m:
             return []
         try:
             nd = json.loads(m.group(1))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
             return []
-        offers = []
+
+        apollo = (
+            nd.get("props", {})
+            .get("pageProps", {})
+            .get("apolloState", {})
+            .get("data", {})
+        )
+        if not apollo:
+            return []
+
+        all_fares: list[dict] = []
+        for v in apollo.values():
+            if not isinstance(v, dict) or v.get("__typename") != "StandardFareModule":
+                continue
+            for f in v.get("fares", []):
+                if isinstance(f, dict) and "__ref" in f:
+                    ref_data = apollo.get(f["__ref"])
+                    if ref_data and isinstance(ref_data, dict):
+                        all_fares.append(ref_data)
+                elif isinstance(f, dict):
+                    all_fares.append(f)
+        return all_fares
+
+    def _build_offers(self, fares: list[dict], req: FlightSearchRequest) -> list[FlightOffer]:
         target_date = req.date_from.strftime("%Y-%m-%d")
-        props = nd.get("props", {}).get("pageProps", {})
-        for module in props.get("modules", []):
-            if module.get("type") != "StandardFareModule":
-                continue
-            for fare in module.get("fares", []):
-                dep = (fare.get("departureDate") or "")[:10]
-                if dep != target_date:
-                    continue
-                price = fare.get("price", {}).get("amount") or fare.get("amount") or 0
-                currency = fare.get("price", {}).get("currencyCode") or "USD"
-                if float(price) <= 0:
-                    continue
-                offer = self._build_offer(req, float(price), currency)
-                if offer:
-                    offers.append(offer)
-        return offers
+        offers: list[FlightOffer] = []
 
-    def _parse(self, data: dict, req: FlightSearchRequest, target_date: str) -> list[FlightOffer]:
-        offers = []
-        fares = data.get("fares") or data.get("calendarFares") or data.get("dates") or []
         for fare in fares:
-            dep = (fare.get("departureDate") or fare.get("date") or "")[:10]
-            if dep != target_date:
+            orig = fare.get("originAirportCode", "")
+            dest = fare.get("destinationAirportCode", "")
+            if orig != req.origin or dest != req.destination:
                 continue
-            price = fare.get("price") or fare.get("amount") or fare.get("lowestPrice") or 0
-            currency = fare.get("currency") or "USD"
-            if float(price) <= 0:
+
+            dep_date = fare.get("departureDate", "")
+            if dep_date[:10] != target_date:
                 continue
-            offer = self._build_offer(req, float(price), currency)
-            if offer:
-                offers.append(offer)
+
+            price = fare.get("totalPrice")
+            if not price or float(price) <= 0:
+                continue
+
+            currency = fare.get("currencyCode") or "USD"
+            price_f = round(float(price), 2)
+
+            dep_dt = datetime(2000, 1, 1)
+            if dep_date:
+                try:
+                    dep_dt = datetime.strptime(dep_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    pass
+
+            cabin = (fare.get("formattedTravelClass") or "Economy").lower()
+            seg = FlightSegment(
+                airline="ET",
+                airline_name="Ethiopian Airlines",
+                flight_no="",
+                origin=req.origin,
+                destination=req.destination,
+                origin_city=fare.get("originCity", ""),
+                destination_city=fare.get("destinationCity", ""),
+                departure=dep_dt,
+                arrival=dep_dt,
+                duration_seconds=0,
+                cabin_class=cabin,
+            )
+            route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
+
+            fid = hashlib.md5(
+                f"et_{orig}{dest}{dep_date}{price_f}{cabin}".encode()
+            ).hexdigest()[:12]
+
+            offers.append(FlightOffer(
+                id=f"et_{fid}",
+                price=price_f,
+                currency=currency,
+                price_formatted=fare.get("formattedTotalPrice") or f"{price_f:.2f} {currency}",
+                outbound=route,
+                inbound=None,
+                airlines=["Ethiopian Airlines"],
+                owner_airline="ET",
+                booking_url=(
+                    f"https://www.ethiopianairlines.com/book/"
+                    f"?origin={req.origin}&destination={req.destination}"
+                    f"&date={target_date}"
+                    f"&adults={req.adults or 1}&tripType=O"
+                ),
+                is_locked=False,
+                source="ethiopian_direct",
+                source_tier="free",
+            ))
+
         return offers
 
-    def _build_offer(self, req: FlightSearchRequest, price: float, currency: str) -> Optional[FlightOffer]:
-        price = round(price, 2)
-        dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-        seg = FlightSegment(
-            airline="Ethiopian Airlines", flight_no="ET", origin=req.origin,
-            destination=req.destination, departure=dep_dt, arrival=dep_dt, duration_seconds=0,
-        )
-        route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
-        oid = hashlib.md5(f"et_{req.origin}{req.destination}{req.date_from}{price}".encode()).hexdigest()[:12]
-        return FlightOffer(
-            id=f"et_{oid}", price=price, currency=currency,
-            price_formatted=f"{price:.2f} {currency}",
-            outbound=route, inbound=None, airlines=["Ethiopian Airlines"], owner_airline="ET",
-            booking_url=f"https://www.ethiopianairlines.com/book?origin={req.origin}&destination={req.destination}&date={req.date_from.strftime('%Y-%m-%d')}&adults={req.adults or 1}",
-            is_locked=False, source="ethiopian_direct", source_tier="free",
-        )
-
-    @staticmethod
-    def _empty(req: FlightSearchRequest) -> FlightSearchResponse:
+    def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        h = hashlib.md5(f"ethiopian{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
         return FlightSearchResponse(
-            search_id="fs_empty", origin=req.origin, destination=req.destination,
-            currency="USD", offers=[], total_results=0,
+            search_id=f"fs_{h}",
+            origin=req.origin,
+            destination=req.destination,
+            currency="USD",
+            offers=[],
+            total_results=0,
         )
