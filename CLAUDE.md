@@ -1,11 +1,10 @@
 # CLAUDE.md — LFG Codebase Context
 
 > Instructions for Claude and other AI coding agents working on this repository.
-> **Note:** BoostedTravel has been rebranded to **LFG**. Package names remain `boostedtravel` for backward compatibility.
 
 ## Project Overview
 
-LFG (formerly BoostedTravel) is an agent-native flight search & booking platform. This public repository contains the SDKs, 75 local LCC airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
+LFG is an agent-native flight search & booking platform. This public repository contains the SDKs, 75 local LCC airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
 
 **API Base URL:** `https://api.letsfg.co`
 
@@ -14,10 +13,10 @@ LFG (formerly BoostedTravel) is an agent-native flight search & booking platform
 ```
 LFG/
 ├── sdk/
-│   ├── python/                  # Python SDK → PyPI: boostedtravel
-│   │   ├── boostedtravel/
+│   ├── python/                  # Python SDK → PyPI: letsfg
+│   │   ├── letsfg/
 │   │   │   ├── __init__.py          # Public exports, version
-│   │   │   ├── client.py            # BoostedTravel main client class (urllib-based)
+│   │   │   ├── client.py            # LetsFG main client class (urllib-based)
 │   │   │   ├── cli.py               # CLI entry point (typer)
 │   │   │   ├── local.py             # Local LCC search runner (no API key needed)
 │   │   │   ├── system_info.py       # System resource detection (RAM, CPU, tier)
@@ -40,13 +39,13 @@ LFG/
 │   │   │       └── [50 more airline connectors]
 │   │   ├── pyproject.toml
 │   │   └── README.md
-│   ├── js/                      # JS/TS SDK → npm: boostedtravel
+│   ├── js/                      # JS/TS SDK → npm: letsfg
 │   │   ├── src/
 │   │   │   ├── index.ts             # Main client class
 │   │   │   └── cli.ts               # CLI entry point
 │   │   ├── package.json
 │   │   └── README.md
-│   └── mcp/                     # MCP Server → npm: boostedtravel-mcp
+│   └── mcp/                     # MCP Server → npm: letsfg-mcp
 │       ├── src/
 │       │   └── index.ts             # MCP tool definitions
 │       ├── package.json
@@ -96,7 +95,7 @@ Key infrastructure files in `connectors/`:
 
 ### Browser Concurrency Management
 `browser.py` throttles concurrent Chrome instances with an `asyncio.Semaphore`. The limit is resolved in priority order:
-1. `BOOSTEDTRAVEL_MAX_BROWSERS` env var (highest priority)
+1. `LETSFG_MAX_BROWSERS` env var (highest priority)
 2. Explicit call to `configure_max_browsers(n)` or `--max-browsers` CLI flag
 3. Auto-detect from available RAM via `system_info.py` (default)
 
@@ -193,7 +192,7 @@ npm publish
 ## Links
 
 - **API Docs:** https://api.letsfg.co/docs
-- **PyPI:** https://pypi.org/project/boostedtravel/
-- **npm SDK:** https://www.npmjs.com/package/boostedtravel
-- **npm MCP:** https://www.npmjs.com/package/boostedtravel-mcp
-- **GitHub:** https://github.com/Boosted-Chat/LetsFG
+- **PyPI:** https://pypi.org/project/letsfg/
+- **npm SDK:** https://www.npmjs.com/package/letsfg
+- **npm MCP:** https://www.npmjs.com/package/letsfg-mcp
+- **GitHub:** https://github.com/LetsFG/LetsFG

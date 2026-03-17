@@ -1,24 +1,24 @@
-# Contributing to LFG (formerly BoostedTravel)
+# Contributing to LetsFG
 
 Thanks for your interest in contributing! 🚀
 
 ## Quick Links
 
-- **GitHub:** https://github.com/Boosted-Chat/LetsFG
+- **GitHub:** https://github.com/LetsFG/LetsFG
 - **API Docs:** https://api.letsfg.co/docs
-- **npm (JS SDK):** https://www.npmjs.com/package/boostedtravel
-- **npm (MCP):** https://www.npmjs.com/package/boostedtravel-mcp
-- **PyPI:** https://pypi.org/project/boostedtravel/
+- **npm (JS SDK):** https://www.npmjs.com/package/letsfg
+- **npm (MCP):** https://www.npmjs.com/package/letsfg-mcp
+- **PyPI:** https://pypi.org/project/letsfg/
 
 ## How to Contribute
 
 1. **Bugs & small fixes** → Open a PR directly
-2. **New features / architecture changes** → Open a [GitHub Issue](https://github.com/Boosted-Chat/LetsFG/issues) first to discuss
-3. **Questions** → Open a [GitHub Discussion](https://github.com/Boosted-Chat/LetsFG/discussions)
+2. **New features / architecture changes** → Open a [GitHub Issue](https://github.com/LetsFG/LetsFG/issues) first to discuss
+3. **Questions** → Open a [GitHub Discussion](https://github.com/LetsFG/LetsFG/discussions)
 
 ## Before You PR
 
-- Test locally with your own API key (run `boostedtravel register` — see the [README](README.md#cli) or [API docs](https://api.letsfg.co/docs))
+- Test locally with your own API key (run `letsfg register` — see the [README](README.md#cli) or [API docs](https://api.letsfg.co/docs))
 - Run the relevant SDK tests (see below)
 - Keep PRs focused — one thing per PR
 - Describe **what** you changed and **why**
@@ -54,9 +54,9 @@ npm run build
 
 ```
 sdk/
-├── python/    # Python SDK (PyPI: boostedtravel)
-├── js/        # JavaScript/TypeScript SDK (npm: boostedtravel)
-└── mcp/       # MCP Server (npm: boostedtravel-mcp)
+├── python/    # Python SDK (PyPI: letsfg)
+├── js/        # JavaScript/TypeScript SDK (npm: letsfg)
+└── mcp/       # MCP Server (npm: letsfg-mcp)
 ```
 
 The backend API is in a separate private repository. This repo contains the public SDKs, MCP server, and documentation only.
