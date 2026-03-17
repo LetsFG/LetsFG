@@ -1,0 +1,30 @@
+name: Update Star History Chart
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # daily at 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump cache-bust parameter
+        run: |
+          TODAY=$(date +%Y%m%d)
+          sed -i "s|star-history.com/svg?repos=LetsFG/LetsFG&type=Date&theme=dark&v=[0-9]*|star-history.com/svg?repos=LetsFG/LetsFG\&type=Date\&theme=dark\&v=${TODAY}|g" README.md
+          sed -i "s|star-history.com/svg?repos=LetsFG/LetsFG&type=Date&v=[0-9]*|star-history.com/svg?repos=LetsFG/LetsFG\&type=Date\&v=${TODAY}|g" README.md
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet README.md && exit 0
+          git add README.md
+          git commit -m "chore: refresh star history chart [skip ci]"
+          git push

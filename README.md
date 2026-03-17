@@ -69,13 +69,15 @@ This runs 75 airline connectors locally on your machine and returns real-time pr
 
 ## Star History
 
+<!-- STAR-HISTORY-START -->
 <a href="https://star-history.com/#LetsFG/LetsFG&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=LetsFG/LetsFG&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=LetsFG/LetsFG&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=LetsFG/LetsFG&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=LetsFG/LetsFG&type=Date&theme=dark&v=20260317" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=LetsFG/LetsFG&type=Date&v=20260317" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=LetsFG/LetsFG&type=Date&v=20260317" />
   </picture>
 </a>
+<!-- STAR-HISTORY-END -->
 
 ---
 
