@@ -1,13 +1,26 @@
 """
-SAS Scandinavian Airlines connector — lowfare calendar API.
+SAS Scandinavian Airlines connector — BFF datepicker lowfare API.
 
 SAS (IATA: SK) is the flag carrier of Denmark, Norway, and Sweden.
 SkyTeam member. CPH/OSL/ARN hubs. 180+ destinations.
 
 Strategy:
-  SAS has a public lowfare calendar API:
-  GET https://www.flysas.com/api/offers/calendar
-  Returns daily lowest fares per cabin class.
+  SAS exposes a public BFF datepicker API that returns daily lowest fares
+  for a full month. Works via plain httpx — no browser or cookies needed.
+
+  GET https://www.flysas.com/bff/datepicker/flights/offers/v1
+    ?market=en&origin=CPH&destination=LHR&adult=1
+    &bookingFlow=revenue&departureDate=2026-05-01
+  Response: {
+    "currency": "EUR",
+    "outbound": {
+      "2026-05-01": {"totalPrice": 110, "points": 0},
+      "2026-05-02": {"totalPrice": 78.05, "points": 0},
+      ...
+    }
+  }
+
+  Returns 31 daily prices per request. Works for all routes, not just hubs.
 """
 
 from __future__ import annotations
@@ -30,7 +43,7 @@ from models.flights import (
 
 logger = logging.getLogger(__name__)
 
-_BASE = "https://www.flysas.com"
+_API = "https://www.flysas.com/bff/datepicker/flights/offers/v1"
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -38,13 +51,12 @@ _HEADERS = {
     ),
     "Accept": "application/json",
     "Accept-Language": "en-US,en;q=0.9",
-    "Origin": _BASE,
-    "Referer": f"{_BASE}/",
+    "Referer": "https://www.flysas.com/en/low-fare-calendar",
 }
 
 
 class SASConnectorClient:
-    """SAS Scandinavian Airlines — lowfare calendar API."""
+    """SAS Scandinavian Airlines — BFF datepicker lowfare calendar API."""
 
     def __init__(self, timeout: float = 20.0):
         self.timeout = timeout
@@ -66,73 +78,111 @@ class SASConnectorClient:
         client = await self._client()
         date_str = req.date_from.strftime("%Y-%m-%d")
 
-        offers = []
-        for endpoint in [
-            f"{_BASE}/api/offers/calendar",
-            f"{_BASE}/api/lowfare/calendar",
-            f"{_BASE}/api/v1/offers/lowest-fares",
-        ]:
-            params = {
-                "origin": req.origin,
-                "destination": req.destination,
-                "outDate": date_str,
-                "adults": str(req.adults or 1),
-                "children": str(req.children or 0),
-                "infants": str(req.infants or 0),
-                "tripType": "OW",
-                "cabin": "GO",
-            }
-            try:
-                resp = await client.get(endpoint, params=params)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    offers = self._parse(data, req, date_str)
-                    if offers:
-                        break
-            except Exception as e:
-                logger.debug("SAS endpoint %s error: %s", endpoint, e)
+        params = {
+            "market": "en",
+            "origin": req.origin,
+            "destination": req.destination,
+            "adult": str(req.adults or 1),
+            "bookingFlow": "revenue",
+            "departureDate": date_str,
+        }
 
-        offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+        offers: list[FlightOffer] = []
+        try:
+            resp = await client.get(_API, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                offers = self._parse(data, req)
+        except Exception as e:
+            logger.error("SAS API error: %s", e)
+
+        offers.sort(key=lambda o: o.price)
         elapsed = time.monotonic() - t0
-        logger.info("SAS %s→%s: %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
-
-        sh = hashlib.md5(f"sas{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
-        return FlightSearchResponse(
-            search_id=f"fs_{sh}", origin=req.origin, destination=req.destination,
-            currency=offers[0].currency if offers else "SEK",
-            offers=offers, total_results=len(offers),
+        logger.info(
+            "SAS %s→%s: %d offers in %.1fs",
+            req.origin, req.destination, len(offers), elapsed,
         )
 
-    def _parse(self, data: dict, req: FlightSearchRequest, target_date: str) -> list[FlightOffer]:
-        offers = []
-        fares = data.get("fares") or data.get("outbound") or data.get("dates") or data.get("calendarFares") or []
-        for fare in fares:
-            dep = (fare.get("departureDate") or fare.get("date") or fare.get("outDate") or "")[:10]
-            if dep != target_date:
+        sh = hashlib.md5(
+            f"sas{req.origin}{req.destination}{req.date_from}".encode()
+        ).hexdigest()[:12]
+        return FlightSearchResponse(
+            search_id=f"fs_{sh}",
+            origin=req.origin,
+            destination=req.destination,
+            currency=offers[0].currency if offers else "EUR",
+            offers=offers,
+            total_results=len(offers),
+        )
+
+    def _parse(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
+        offers: list[FlightOffer] = []
+        currency = data.get("currency", "EUR")
+        outbound = data.get("outbound", {})
+        target_date = req.date_from.strftime("%Y-%m-%d")
+
+        for date_str, info in outbound.items():
+            price = info.get("totalPrice", 0)
+            if price <= 0:
                 continue
-            price = fare.get("price") or fare.get("lowestPrice") or fare.get("amount") or 0
-            currency = fare.get("currency") or fare.get("currencyCode") or "SEK"
-            if float(price) <= 0:
+
+            # Filter to requested date only
+            if date_str != target_date:
                 continue
-            dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
+
+            dep_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=8)
             seg = FlightSegment(
-                airline="SAS", flight_no="SK", origin=req.origin,
-                destination=req.destination, departure=dep_dt, arrival=dep_dt, duration_seconds=0,
+                airline="SK",
+                airline_name="SAS",
+                flight_no="SK",
+                origin=req.origin,
+                destination=req.destination,
+                departure=dep_dt,
+                arrival=dep_dt,
             )
-            route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
-            oid = hashlib.md5(f"sk_{req.origin}{req.destination}{dep}{price}".encode()).hexdigest()[:12]
-            offers.append(FlightOffer(
-                id=f"sk_{oid}", price=round(float(price), 2), currency=currency,
-                price_formatted=f"{float(price):.2f} {currency}",
-                outbound=route, inbound=None, airlines=["SAS"], owner_airline="SK",
-                booking_url=f"https://www.flysas.com/en/book/flights?origin={req.origin}&destination={req.destination}&outDate={target_date}&adults={req.adults or 1}&tripType=OW",
-                is_locked=False, source="sas_direct", source_tier="free",
-            ))
+            route = FlightRoute(
+                segments=[seg], total_duration_seconds=0, stopovers=0
+            )
+
+            key = f"sk_{req.origin}{req.destination}{date_str}{price}"
+            oid = hashlib.md5(key.encode()).hexdigest()[:12]
+
+            booking_url = (
+                f"https://www.flysas.com/en/book/flights?"
+                f"origin={req.origin}&destination={req.destination}"
+                f"&outboundDate={date_str.replace('-', '')}"
+                f"&adults={req.adults or 1}&trip=OW"
+            )
+
+            offers.append(
+                FlightOffer(
+                    id=f"sk_{oid}",
+                    price=round(float(price), 2),
+                    currency=currency,
+                    price_formatted=f"{price:.2f} {currency}",
+                    outbound=route,
+                    inbound=None,
+                    airlines=["SAS"],
+                    owner_airline="SK",
+                    conditions={"price_type": "lowest_fare"},
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="sas_direct",
+                    source_tier="free",
+                )
+            )
+
         return offers
 
-    @staticmethod
-    def _empty(req: FlightSearchRequest) -> FlightSearchResponse:
+    def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        sh = hashlib.md5(
+            f"sas{req.origin}{req.destination}{req.date_from}".encode()
+        ).hexdigest()[:12]
         return FlightSearchResponse(
-            search_id="fs_empty", origin=req.origin, destination=req.destination,
-            currency="SEK", offers=[], total_results=0,
+            search_id=f"fs_{sh}",
+            origin=req.origin,
+            destination=req.destination,
+            currency="EUR",
+            offers=[],
+            total_results=0,
         )
