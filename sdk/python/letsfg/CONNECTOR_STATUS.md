@@ -177,17 +177,17 @@
 | 83 | kenyaairways | KQ | API | `done` | Kenya Airways. NBO hub → East Africa. Calendar API. |
 | 84 | royalairmaroc | AT | API | `done` | Royal Air Maroc. CMN hub → Africa gateway. Calendar API. |
 | 85 | philippineairlines | PR | API | `done` | Philippine Airlines. MNL hub → Asia/ME/US. Calendar API. |
-| 86 | airindia | AI | API | `done` | Air India (Tata). DEL/BOM hubs → India flag carrier. Calendar API. |
-| 87 | qantas | QF | API | `done` | Qantas. SYD/MEL hubs → Australia's flag carrier. Calendar API. |
-| 88 | egyptair | MS | API | `done` | EgyptAir. CAI hub → Africa/EU/ME/Asia. Calendar API. |
+| 86 | airindia | AI | API | `blocked` | Air India (Tata). HTTP/2 stream resets on all endpoints, shadow DOM, no visible form inputs. |
+| 87 | qantas | QF | API | `blocked` | Qantas. No accessible pricing API — market-pricing 403 via httpx/curl_cffi, CORS blocks page.evaluate. Route search only. |
+| 88 | egyptair | MS | API | `blocked` | EgyptAir. Booking URL returns "Page Not Found", SharePoint-based site. |
 | 89 | virginaustralia | VA | API | `done` | Virgin Australia. SYD/MEL/BNE → 110+ domestic + NZ/FJ/ID. Calendar API. |
 | 90 | airnewzealand | NZ | API | `done` | Air New Zealand. AKL hub → NZ/Pacific/AU/Asia/US. Calendar API. |
-| 91 | jal | JL | API | `done` | Japan Airlines. NRT/HND hubs → OneWorld. Calendar API. |
-| 92 | garuda | GA | API | `done` | Garuda Indonesia. CGK/DPS hubs → SkyTeam. Calendar API. |
-| 93 | bangkokairways | PG | API | `done` | Bangkok Airways. BKK/USM hubs → Koh Samui monopoly routes. Calendar API. |
+| 91 | jal | JL | API | `blocked` | Japan Airlines. Traditional form POST to book-i.jal.co.jp, no JSON API. |
+| 92 | garuda | GA | API | `blocked` | Garuda Indonesia. React SPA, no accessible flight search API. CORS blocks all booking endpoints. |
+| 93 | bangkokairways | PG | API | `blocked` | Bangkok Airways. WAF protection (403), no visible form inputs. |
 | 94 | saa | SA | API | `done` | South African Airways. JNB hub → Africa/EU/US. Calendar API. |
 | 95 | aerlingus | EI | API | `done` | Aer Lingus. DUB hub → EU + transatlantic. Calendar API. |
-| 96 | itaairways | AZ | API | `done` | ITA Airways (ex-Alitalia). FCO/MXP hubs → EU/Americas/Asia. Calendar API. |
+| 96 | itaairways | AZ | API | `blocked` | ITA Airways. Fare teaser requires DecisionId session token, Cloudflare on all fare endpoints. |
 
 ### New Coverage Expansion Connectors — OTAs / Aggregators (5)
 
