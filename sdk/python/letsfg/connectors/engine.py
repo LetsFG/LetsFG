@@ -148,7 +148,7 @@ _CONNECTOR_DEFS: list[tuple[str, str, str, float]] = [
     ("airnewzealand_direct", "connectors.airnewzealand", "AirNewZealandConnectorClient", 25.0),
     ("jal_direct", "connectors.jal", "JapanAirlinesConnectorClient", 25.0),
     ("garuda_direct", "connectors.garuda", "GarudaConnectorClient", 25.0),
-    ("bangkokairways_direct", "connectors.bangkokairways", "BangkokAirwaysConnectorClient", 25.0),
+    ("bangkokairways_direct", "connectors.bangkokairways", "BangkokAirwaysConnectorClient", 45.0),
     ("saa_direct", "connectors.saa", "SouthAfricanAirwaysConnectorClient", 25.0),
     ("aerlingus_direct", "connectors.aerlingus", "AerLingusConnectorClient", 25.0),
     ("itaairways_direct", "connectors.itaairways", "ITAAirwaysConnectorClient", 25.0),

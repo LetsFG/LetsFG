@@ -27,6 +27,7 @@ import httpx
 from connectors.combo_engine import build_combos
 from connectors.currency import fetch_rates, _fallback_convert
 from connectors.airline_routes import get_country, get_relevant_connectors, AIRLINE_COUNTRIES
+from connectors.browser import is_browser_available
 from connectors.ryanair import RyanairConnectorClient
 from connectors.wizzair import WizzairConnectorClient
 from connectors.kiwi import KiwiConnectorClient
@@ -100,6 +101,9 @@ from connectors.cathay import CathayConnectorClient
 from connectors.singapore import SingaporeConnectorClient
 from connectors.korean import KoreanConnectorClient
 from connectors.nh import ANAConnectorClient
+from connectors.qantas import QantasConnectorClient
+from connectors.virginaustralia import VirginAustraliaConnectorClient
+from connectors.bangkokairways import BangkokAirwaysConnectorClient
 
 from models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -107,6 +111,7 @@ logger = logging.getLogger(__name__)
 
 # Connectors that launch Chrome/Playwright browsers.
 # These are throttled by a semaphore to prevent 20+ Chrome processes at once.
+# In cloud/headless environments without Chrome, these are skipped entirely.
 _BROWSER_SOURCES: set[str] = {
     "airasia_direct", "allegiant_direct", "azul_direct", "batikair_direct",
     "cebupacific_direct", "condor_direct", "easyjet_direct", "eurowings_direct",
@@ -133,7 +138,44 @@ _BROWSER_SOURCES: set[str] = {
     "singapore_direct",
     "korean_direct",
     "nh_direct",
+    "bangkokairways_direct",
 }
+
+
+def _should_use_browsers() -> bool:
+    """Decide whether browser-based connectors should run.
+
+    Checks (in order):
+    1. LETSFG_BROWSERS env var — explicit override ("0" to disable, "1" to force)
+    2. LETSFG_BROWSER_WS env var — remote browser configured = browsers available
+    3. Whether a Chrome/Chromium binary is available on the system
+       (includes auto-discovery of Playwright's bundled Chromium)
+
+    In cloud/agent environments, Chrome is typically available via Playwright or
+    the agent platform. Xvfb is auto-started if needed (see browser.py).
+    """
+    override = os.environ.get("LETSFG_BROWSERS", "").strip().lower()
+    if override in ("0", "false", "no", "off"):
+        return False
+    if override in ("1", "true", "yes", "on"):
+        return True
+    # Remote browser configured → all browser connectors can run through it
+    if os.environ.get("LETSFG_BROWSER_WS", "").strip():
+        return True
+    return is_browser_available()
+
+
+# Cached at module load — checked once, not per-search
+_BROWSERS_AVAILABLE: bool = _should_use_browsers()
+
+if _BROWSERS_AVAILABLE:
+    _mode_detail = "remote browser (LETSFG_BROWSER_WS)" if os.environ.get("LETSFG_BROWSER_WS", "").strip() else "local Chrome/Chromium"
+    logger.info("Browser mode: %s — all connectors active", _mode_detail)
+else:
+    logger.info("API-only mode: no browser available — %d browser connectors skipped. "
+                "Using Kiwi aggregator + API-only direct connectors. "
+                "Install Chrome, set LETSFG_BROWSER_WS, or LETSFG_BROWSERS=1 to enable all.",
+                len(_BROWSER_SOURCES))
 
 # Registry of direct airline connectors: (source_name, connector_class, timeout)
 # All are zero-auth, always available, "free" tier.
@@ -204,6 +246,9 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("thai_direct", ThaiConnectorClient, 25.0),
     ("korean_direct", KoreanConnectorClient, 45.0),
     ("nh_direct", ANAConnectorClient, 60.0),
+    ("qantas_direct", QantasConnectorClient, 25.0),
+    ("virginaustralia_direct", VirginAustraliaConnectorClient, 25.0),
+    ("bangkokairways_direct", BangkokAirwaysConnectorClient, 45.0),
 ]
 
 
@@ -353,8 +398,10 @@ class MultiProvider:
             tasks.append(self._search_ryanair_direct(ryanair_connector, req))
             providers_used.append("ryanair_direct")
 
+        # Wizzair requires Chrome (CDP) — skip when browsers unavailable
         wizz_countries = AIRLINE_COUNTRIES.get("wizz")
-        if wizzair_connector and (not origin_country or not dest_country or not wizz_countries
+        if _BROWSERS_AVAILABLE and wizzair_connector and (
+                not origin_country or not dest_country or not wizz_countries
                 or origin_country in wizz_countries or dest_country in wizz_countries):
             tasks.append(self._search_wizzair_direct(wizzair_connector, req))
             providers_used.append("wizzair_direct")
@@ -366,10 +413,39 @@ class MultiProvider:
 
         # ── Direct airline website connectors (46 LCCs) — route-filtered ──
         filtered_connectors = get_relevant_connectors(req.origin, req.destination, _DIRECT_AIRLINE_connectorS)
+
+        # Skip browser-based connectors when Chrome is not available
+        # (cloud/agent environments). API-only connectors still run.
+        browser_skipped = 0
+        if not _BROWSERS_AVAILABLE:
+            before = len(filtered_connectors)
+            filtered_connectors = [
+                (src, cls, t) for src, cls, t in filtered_connectors
+                if src not in _BROWSER_SOURCES
+            ]
+            browser_skipped = before - len(filtered_connectors)
+            if browser_skipped:
+                logger.info("No browser available — skipped %d browser-based connectors "
+                            "(API-only connectors + Kiwi aggregator still active)",
+                            browser_skipped)
+
         skipped = len(_DIRECT_AIRLINE_connectorS) - len(filtered_connectors)
-        if skipped:
+        if skipped - browser_skipped > 0:
             logger.info("Route filter: %s->%s -- skipped %d/%d irrelevant connectors",
-                        req.origin, req.destination, skipped, len(_DIRECT_AIRLINE_connectorS))
+                        req.origin, req.destination, skipped - browser_skipped,
+                        len(_DIRECT_AIRLINE_connectorS))
+
+        # Smart ordering: API-only connectors first (instant, no Chrome needed),
+        # then browser connectors sorted by timeout ascending (fast scrapers get
+        # semaphore slots before slow ones). On weak VMs this means results start
+        # flowing while heavy browser connectors queue behind the semaphore.
+        api_connectors = [(s, c, t) for s, c, t in filtered_connectors if s not in _BROWSER_SOURCES]
+        browser_connectors = sorted(
+            ((s, c, t) for s, c, t in filtered_connectors if s in _BROWSER_SOURCES),
+            key=lambda x: x[2],  # sort by timeout (fastest first)
+        )
+        filtered_connectors = api_connectors + browser_connectors
+
         for source, connector_cls, timeout in filtered_connectors:
             connector = connector_cls(timeout=timeout)
             tasks.append(self._search_connector_generic(connector, req, source))

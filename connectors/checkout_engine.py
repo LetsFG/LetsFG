@@ -1421,6 +1421,19 @@ _register(_base_cfg("Sky Airline", "skyairline_direct",
     ],
 ))
 
+_register(_base_cfg("PLAY", "play_direct",
+    flight_cards_selector="[class*='flight'], [class*='result'], [class*='bound']",
+    fare_selectors=[
+        "button:has-text('Play Light')",
+        "button:has-text('Play')",
+        "button:has-text('Select')",
+    ],
+    cookie_selectors=[
+        "#onetrust-accept-btn-handler",
+        "button:has-text('Accept')",
+    ],
+))
+
 _register(_base_cfg("Arajet", "arajet_direct",
     flight_cards_selector="[class*='flight'], [class*='result']",
     fare_selectors=[

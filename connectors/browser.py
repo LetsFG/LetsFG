@@ -6,25 +6,121 @@ and Playwright helpers. All CDP Chrome connectors should use these
 instead of rolling their own launch logic.
 
 Environment variables:
-    CHROME_PATH         — Override Chrome executable path.
+    CHROME_PATH             — Override Chrome executable path.
     BOOSTED_BROWSER_VISIBLE — Set to "1" to show browser windows (debugging).
+    LETSFG_BROWSER_WS      — WebSocket URL for remote browser (Browserbase, etc.).
+                              When set, connectors connect to this instead of local Chrome.
 """
 
 from __future__ import annotations
 
 import asyncio
+import glob
 import logging
 import os
 import platform
 import shutil
 import subprocess
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # ── Concurrency gate — limits how many browsers can run at once ──────────────
-# Without this, 20+ Chrome processes spawn simultaneously and crash the machine.
-_MAX_CONCURRENT_BROWSERS = 8
+# Dynamically tuned based on system resources. On weak cloud VMs (2 vCPU, 4GB),
+# running 8 Chrome instances simultaneously will OOM-kill everything.
+
+def _detect_max_browsers() -> int:
+    """Detect optimal browser concurrency based on system resources.
+
+    Chrome ~300-500MB RAM per instance + ~0.5 CPU. Tuning:
+      - 16GB+ RAM, 8+ cores  → 8 browsers (desktop/workstation)
+      - 8GB RAM, 4 cores     → 4 browsers (standard laptop)
+      - 4GB RAM, 2 cores     → 2 browsers (cloud VM, Mac Mini base)
+      - 2GB RAM, 1 core      → 1 browser  (minimal container)
+
+    Override with LETSFG_MAX_BROWSERS env var.
+    """
+    override = os.environ.get("LETSFG_MAX_BROWSERS", "").strip()
+    if override.isdigit() and int(override) > 0:
+        return int(override)
+
+    try:
+        cpu_count = os.cpu_count() or 2
+    except Exception:
+        cpu_count = 2
+
+    # Get available memory in GB
+    mem_gb = _get_available_memory_gb()
+
+    # Each Chrome needs ~400MB RAM and benefits from ~0.5 CPU
+    by_cpu = max(1, cpu_count // 2)
+    by_mem = max(1, int(mem_gb / 0.5)) if mem_gb > 0 else 4  # 500MB reserved per browser
+
+    limit = min(by_cpu, by_mem, 8)  # Cap at 8 regardless
+    logger.info("Browser concurrency: %d (cpus=%d, mem=%.1fGB, by_cpu=%d, by_mem=%d)",
+                limit, cpu_count, mem_gb, by_cpu, by_mem)
+    return limit
+
+
+def _get_available_memory_gb() -> float:
+    """Get available system memory in GB. Returns 0 if unknown."""
+    # Try psutil first (most reliable)
+    try:
+        import psutil
+        return psutil.virtual_memory().available / (1024 ** 3)
+    except ImportError:
+        pass
+
+    system = platform.system()
+
+    if system == "Linux":
+        try:
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    if line.startswith("MemAvailable:"):
+                        return int(line.split()[1]) / (1024 * 1024)  # kB → GB
+        except Exception:
+            pass
+
+    if system == "Darwin":
+        try:
+            # macOS: vm_stat gives free + inactive pages
+            result = subprocess.run(
+                ["vm_stat"], capture_output=True, text=True, timeout=5,
+            )
+            pages_free = 0
+            page_size = 16384  # default on Apple Silicon
+            for line in result.stdout.splitlines():
+                if "page size" in line.lower():
+                    nums = [int(s) for s in line.split() if s.isdigit()]
+                    if nums:
+                        page_size = nums[0]
+                if "Pages free:" in line or "Pages inactive:" in line:
+                    nums = [int(s.rstrip(".")) for s in line.split() if s.rstrip(".").isdigit()]
+                    if nums:
+                        pages_free += nums[0]
+            return (pages_free * page_size) / (1024 ** 3)
+        except Exception:
+            pass
+
+    if system == "Windows":
+        try:
+            result = subprocess.run(
+                ["wmic", "OS", "get", "FreePhysicalMemory", "/value"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for line in result.stdout.splitlines():
+                if "FreePhysicalMemory" in line:
+                    val = line.split("=")[1].strip()
+                    return int(val) / (1024 * 1024)  # kB → GB
+        except Exception:
+            pass
+
+    return 0.0
+
+
+_MAX_CONCURRENT_BROWSERS: int = _detect_max_browsers()
 _browser_semaphore: Optional[asyncio.Semaphore] = None
 
 
@@ -69,7 +165,92 @@ _LINUX_CANDIDATES = [
 
 _MAC_CANDIDATES = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    # Homebrew Chromium (common on Mac Mini / developer setups)
+    "/opt/homebrew/bin/chromium",
+    "/usr/local/bin/chromium",
+    # Brave (Chromium-based, supports CDP)
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    # Arc (Chromium-based)
+    "/Applications/Arc.app/Contents/MacOS/Arc",
+    # Microsoft Edge (Chromium-based)
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    # Chromium.app (standalone or Homebrew cask)
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ]
+
+
+def _playwright_chromium_candidates() -> list[str]:
+    """Find Playwright's bundled Chromium (works even when Chrome isn't installed).
+
+    Checks standard Playwright cache dirs on all platforms including Apple Silicon Macs.
+    On macOS, also attempts to remove Gatekeeper quarantine attribute from Chromium
+    (Playwright's unsigned binary gets blocked by Gatekeeper on first run).
+    """
+    candidates = []
+    home = os.path.expanduser("~")
+    cache_dirs = [
+        os.path.join(home, ".cache", "ms-playwright"),           # Linux default
+        os.path.join(home, "AppData", "Local", "ms-playwright"), # Windows
+        os.path.join(home, "Library", "Caches", "ms-playwright"),# macOS
+    ]
+    for cache_dir in cache_dirs:
+        if not os.path.isdir(cache_dir):
+            continue
+        # Chromium dirs are like chromium-1208/
+        for chrome_dir in sorted(glob.glob(os.path.join(cache_dir, "chromium-*")), reverse=True):
+            for subpath in [
+                # Linux
+                os.path.join(chrome_dir, "chrome-linux64", "chrome"),
+                os.path.join(chrome_dir, "chrome-linux", "chrome"),
+                # Windows
+                os.path.join(chrome_dir, "chrome-win", "chrome.exe"),
+                # macOS Intel
+                os.path.join(chrome_dir, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"),
+                # macOS Apple Silicon (arm64)
+                os.path.join(chrome_dir, "chrome-mac-arm64", "Chromium.app", "Contents", "MacOS", "Chromium"),
+            ]:
+                if os.path.isfile(subpath):
+                    # On macOS, remove Gatekeeper quarantine (Playwright's Chromium is unsigned)
+                    if platform.system() == "Darwin" and "Chromium" in subpath:
+                        _remove_macos_quarantine(subpath)
+                    candidates.append(subpath)
+    return candidates
+
+
+def _remove_macos_quarantine(binary_path: str) -> None:
+    """Remove macOS Gatekeeper quarantine attribute from a binary.
+
+    Playwright's bundled Chromium is unsigned, so macOS Gatekeeper blocks it
+    on first run with "Chromium.app is damaged and can't be opened". Removing
+    the com.apple.quarantine xattr fixes this. This is the same as running:
+        xattr -cr /path/to/Chromium.app
+
+    Only runs if the quarantine attribute is actually present.
+    """
+    try:
+        # Find the .app bundle (go up from the binary)
+        app_path = binary_path
+        while app_path and not app_path.endswith(".app"):
+            app_path = os.path.dirname(app_path)
+        if not app_path:
+            return
+
+        # Check if quarantine attribute exists
+        result = subprocess.run(
+            ["xattr", "-l", app_path],
+            capture_output=True, text=True, timeout=5,
+        )
+        if "com.apple.quarantine" not in result.stdout:
+            return
+
+        # Remove it recursively
+        subprocess.run(
+            ["xattr", "-cr", app_path],
+            capture_output=True, timeout=10,
+        )
+        logger.info("Removed macOS Gatekeeper quarantine from %s", app_path)
+    except Exception as e:
+        logger.debug("Could not remove quarantine from %s: %s", binary_path, e)
 
 
 def find_chrome() -> str:
@@ -88,8 +269,14 @@ def find_chrome() -> str:
 
     # Also try PATH
     which = shutil.which("google-chrome") or shutil.which("chrome") or shutil.which("chromium")
+    if system == "Darwin":
+        # Homebrew on Mac often puts chromium in a non-standard location
+        which = which or shutil.which("chromium", path="/opt/homebrew/bin:/usr/local/bin")
     if which:
         candidates = [which] + candidates
+
+    # Fallback: Playwright's bundled Chromium
+    candidates.extend(_playwright_chromium_candidates())
 
     for c in candidates:
         if c and os.path.isfile(c):
@@ -98,6 +285,130 @@ def find_chrome() -> str:
     raise RuntimeError(
         "Chrome not found. Install Google Chrome or set CHROME_PATH env var."
     )
+
+
+def is_browser_available() -> bool:
+    """Check if a Chrome/Chromium binary can be found. Non-throwing."""
+    try:
+        find_chrome()
+        return True
+    except RuntimeError:
+        return False
+
+
+# ── Virtual display (Xvfb) auto-start for headless Linux ────────────────────
+
+_xvfb_proc: Optional[subprocess.Popen] = None
+
+
+def _ensure_display() -> bool:
+    """Ensure a display server is available on Linux.
+
+    On Windows/macOS, always returns True (no X server needed).
+    On Linux with DISPLAY already set, returns True.
+    On Linux without DISPLAY, tries to auto-start Xvfb if installed.
+
+    This solves the cloud agent scenario (Perplexity Computer, Replit, etc.)
+    where Xvfb is installed but no display is active.
+    """
+    global _xvfb_proc
+
+    if platform.system() != "Linux":
+        return True
+
+    if os.environ.get("DISPLAY"):
+        return True
+
+    # Already started by us
+    if _xvfb_proc and _xvfb_proc.poll() is None:
+        return True
+
+    xvfb = shutil.which("Xvfb")
+    if not xvfb:
+        logger.debug("No Xvfb found — headless Chrome should still work with --headless=new")
+        return True  # --headless=new doesn't strictly need X, but some ops may
+
+    # Find a free display number
+    for display_num in range(99, 110):
+        lock_file = f"/tmp/.X{display_num}-lock"
+        socket_file = f"/tmp/.X11-unix/X{display_num}"
+        if os.path.exists(lock_file) or os.path.exists(socket_file):
+            continue
+        try:
+            _xvfb_proc = subprocess.Popen(
+                [xvfb, f":{display_num}", "-screen", "0", "1280x720x16",
+                 "-ac", "-nolisten", "tcp"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            time.sleep(1)
+            if _xvfb_proc.poll() is None:
+                os.environ["DISPLAY"] = f":{display_num}"
+                logger.info("Auto-started Xvfb on display :%d (pid %d)",
+                            display_num, _xvfb_proc.pid)
+                return True
+        except Exception as e:
+            logger.debug("Failed to start Xvfb on :%d: %s", display_num, e)
+
+    logger.debug("Could not start Xvfb — continuing without display")
+    return True  # --headless=new may still work
+
+
+def cleanup_xvfb():
+    """Stop the auto-started Xvfb process."""
+    global _xvfb_proc
+    if _xvfb_proc and _xvfb_proc.poll() is None:
+        _xvfb_proc.terminate()
+        try:
+            _xvfb_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _xvfb_proc.kill()
+        logger.info("Stopped auto-started Xvfb (pid %d)", _xvfb_proc.pid)
+    _xvfb_proc = None
+
+
+# ── Remote browser support (LETSFG_BROWSER_WS) ──────────────────────────────
+
+def get_remote_browser_ws() -> str:
+    """Get remote browser WebSocket URL if configured.
+
+    Supports:
+    - Browserbase: wss://connect.browserbase.com/?apiKey=...
+    - Apify: wss://...
+    - Any CDP-compatible WebSocket endpoint
+
+    Returns empty string if not configured.
+    """
+    return os.environ.get("LETSFG_BROWSER_WS", "").strip()
+
+
+async def connect_remote_browser():
+    """Connect to a remote browser via WebSocket (Browserbase, Apify, etc.).
+
+    Returns (browser, pw_instance) or raises if connection fails.
+    The caller is responsible for cleanup.
+    """
+    ws_url = get_remote_browser_ws()
+    if not ws_url:
+        raise RuntimeError("LETSFG_BROWSER_WS not set")
+
+    from playwright.async_api import async_playwright
+    pw = await async_playwright().start()
+    _launched_pw_instances.append(pw)
+    try:
+        browser = await pw.chromium.connect_over_cdp(ws_url)
+        logger.info("Connected to remote browser: %s...", ws_url[:50])
+        return browser, pw
+    except Exception:
+        try:
+            await pw.stop()
+        except Exception:
+            pass
+        _launched_pw_instances.remove(pw)
+        raise
+
+
+# Auto-start display early so Chrome discovery + launch works
+_ensure_display()
 
 
 # ── Stealth window args ────────────────────────────────────────────────────────
@@ -234,7 +545,10 @@ async def get_or_launch_cdp(
     startup_wait: float = 2.0,
 ):
     """
-    Try connecting to existing Chrome on port, or launch a new one.
+    Try connecting to a browser, in order:
+    1. Remote browser (LETSFG_BROWSER_WS) — cloud/agent environments
+    2. Existing local Chrome on the given port
+    3. Launch new local Chrome
 
     Returns (browser, proc_or_None).  Playwright instances are tracked
     in ``_launched_pw_instances`` so ``cleanup_all_browsers()`` can stop
@@ -242,7 +556,16 @@ async def get_or_launch_cdp(
     """
     from playwright.async_api import async_playwright
 
-    # Try connecting to already-running Chrome
+    # 1. Try remote browser (Browserbase, Apify, etc.)
+    ws_url = get_remote_browser_ws()
+    if ws_url:
+        try:
+            browser, _pw = await connect_remote_browser()
+            return browser, None
+        except Exception as e:
+            logger.warning("Remote browser connection failed: %s — falling back to local", e)
+
+    # 2. Try connecting to already-running Chrome
     pw = None
     try:
         pw = await async_playwright().start()
@@ -257,7 +580,7 @@ async def get_or_launch_cdp(
             except Exception:
                 pass
 
-    # Launch new Chrome
+    # 3. Launch new Chrome
     proc = await launch_cdp_chrome(
         port, user_data_dir,
         extra_args=extra_args,
@@ -278,7 +601,11 @@ async def launch_headed_browser(
     extra_args: Optional[list[str]] = None,
 ):
     """
-    Launch a headed Playwright browser with stealth window positioning.
+    Launch a Playwright browser, preferring remote if available.
+
+    Order:
+    1. Remote browser (LETSFG_BROWSER_WS) — cloud/agent environments
+    2. Local Playwright launch with stealth window positioning
 
     Used by connectors that need Playwright.launch(headless=False) instead of CDP.
     Window is pushed off-screen unless BOOSTED_BROWSER_VISIBLE=1.
@@ -286,6 +613,15 @@ async def launch_headed_browser(
     Returns the Playwright Browser object.
     """
     from playwright.async_api import async_playwright
+
+    # Try remote browser first
+    ws_url = get_remote_browser_ws()
+    if ws_url:
+        try:
+            browser, _pw = await connect_remote_browser()
+            return browser
+        except Exception as e:
+            logger.warning("Remote browser failed: %s — launching local", e)
 
     args = [*stealth_args(), *(extra_args or [])]
 
@@ -426,6 +762,9 @@ async def cleanup_all_browsers():
     # Reset the semaphore so it's fresh for next search
     global _browser_semaphore
     _browser_semaphore = None
+
+    # Stop auto-started Xvfb (will be re-created on next search if needed)
+    cleanup_xvfb()
 
     if closed:
         logger.info("browser.py cleanup: terminated %d browser resources", closed)
