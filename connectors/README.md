@@ -1,8 +1,8 @@
 # Airline Connectors
 
-Direct airline integrations for BoostedTravel. Each connector lets agents natively interact with an airline's website or API to search flights in real time.
+Direct airline integrations for LetsFG. Each connector lets agents natively interact with an airline's website or API to search flights in real time.
 
-These run on the user's machine as part of the BoostedTravel CLI/SDK — no server needed.
+These run on the user's machine as part of the LetsFG CLI/SDK — no server needed.
 
 ## How It Works
 

@@ -1,5 +1,5 @@
 """
-Shared browser launcher for BoostedTravel connectors.
+Shared browser launcher for LetsFG connectors.
 
 Provides Chrome discovery, stealth CDP launch (off-screen, no-focus),
 and Playwright helpers. All CDP Chrome connectors should use these

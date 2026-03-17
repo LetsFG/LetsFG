@@ -9,8 +9,8 @@ HTTP POST to the Cloud Run API which internally parallelizes all paid providers.
 Results from both are merged, deduplicated, and sorted.
 
 Environment variables:
-  BOOSTEDTRAVEL_API_KEY  — API key for the Cloud Run backend
-  BOOSTEDTRAVEL_BASE_URL — Backend URL (default: https://api.letsfg.co)
+  LETSFG_API_KEY  — API key for the Cloud Run backend
+  LETSFG_BASE_URL — Backend URL (default: https://api.letsfg.co)
 """
 
 from __future__ import annotations
@@ -277,8 +277,8 @@ def _extract_legs_from_roundtrip(
 class MultiProvider:
     """Searches ALL flight sources in parallel — local connectors + Cloud Run backend."""
 
-    _BACKEND_URL = os.environ.get("BOOSTEDTRAVEL_BASE_URL", "https://api.letsfg.co").rstrip("/")
-    _BACKEND_KEY = os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
+    _BACKEND_URL = (os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or "https://api.letsfg.co").rstrip("/")
+    _BACKEND_KEY = os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
     _BACKEND_TIMEOUT = 30.0  # Backend queries paid APIs in parallel; 30s covers slowest GDS
 
     # ── Backend availability ─────────────────────────────────────────────
@@ -337,7 +337,7 @@ class MultiProvider:
             tasks.append(self._search_backend(req))
             providers_used.append("backend")
         else:
-            logger.warning("No BOOSTEDTRAVEL_API_KEY — skipping Cloud Run backend (paid APIs)")
+            logger.warning("No LETSFG_API_KEY — skipping Cloud Run backend (paid APIs)")
 
         # ── Local connectors: Ryanair, Wizzair, Kiwi (special handling) ──
         origin_country = get_country(req.origin)
@@ -617,7 +617,7 @@ class MultiProvider:
         headers = {
             "Content-Type": "application/json",
             "X-API-Key": self._BACKEND_KEY,
-            "User-Agent": "boostedtravel-engine/1.0",
+            "User-Agent": "letsfg-engine/1.0",
         }
 
         async with httpx.AsyncClient(timeout=self._BACKEND_TIMEOUT) as client:
@@ -893,12 +893,12 @@ class MultiProvider:
     async def resolve_location(self, query: str) -> dict:
         """Resolve location via the Cloud Run backend."""
         if not self.backend_available:
-            return {"locations": [], "error": "No BOOSTEDTRAVEL_API_KEY configured"}
+            return {"locations": [], "error": "No LETSFG_API_KEY configured"}
 
         url = f"{self._BACKEND_URL}/api/v1/flights/locations/{query}"
         headers = {
             "X-API-Key": self._BACKEND_KEY,
-            "User-Agent": "boostedtravel-engine/1.0",
+            "User-Agent": "letsfg-engine/1.0",
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(url, headers=headers)

@@ -1,6 +1,6 @@
 # Security Policy
 
-If you believe you've found a security vulnerability in LFG (formerly BoostedTravel), please report it responsibly.
+If you believe you've found a security vulnerability in LetsFG, please report it responsibly.
 
 ## Reporting a Vulnerability
 
@@ -20,9 +20,9 @@ We aim to acknowledge reports within 48 hours and provide a fix or mitigation wi
 
 | Package | Version | Supported |
 |---------|---------|-----------|
-| boostedtravel (Python) | 0.2.x | ✅ |
-| boostedtravel (npm) | 0.2.x | ✅ |
-| boostedtravel-mcp (npm) | 0.2.x | ✅ |
+| letsfg (Python) | 1.0.x | ✅ |
+| letsfg (npm) | 1.0.x | ✅ |
+| letsfg-mcp (npm) | 1.0.x | ✅ |
 
 ## Scope
 
@@ -58,4 +58,4 @@ We aim to acknowledge reports within 48 hours and provide a fix or mitigation wi
 ## Contact
 
 - **Security issues:** security@letsfg.co
-- **General questions:** Open a [GitHub Issue](https://github.com/Boosted-Chat/LetsFG/issues)
+- **General questions:** Open a [GitHub Issue](https://github.com/LetsFG/LetsFG/issues)
