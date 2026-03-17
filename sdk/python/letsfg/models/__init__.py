@@ -154,7 +154,7 @@ class FlightSearchResult:
 
 @dataclass
 class UnlockResult:
-    """Result of unlocking a flight offer ($1 fee)."""
+    """Result of unlocking a flight offer."""
     offer_id: str
     unlock_status: str
     payment_charged: bool

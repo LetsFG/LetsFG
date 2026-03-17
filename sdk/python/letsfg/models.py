@@ -105,7 +105,7 @@ class FlightOffer:
             bags_price=d.get("bags_price", {}),
             availability_seats=d.get("availability_seats"),
             conditions=d.get("conditions", {}),
-            is_locked=d.get("is_locked", True),
+            is_locked=d.get("is_locked", False),
             fetched_at=d.get("fetched_at", ""),
             booking_url=d.get("booking_url", ""),
         )
@@ -158,7 +158,7 @@ class FlightSearchResult:
 
 @dataclass
 class UnlockResult:
-    """Result of unlocking a flight offer ($1 fee)."""
+    """Result of unlocking a flight offer."""
     offer_id: str
     unlock_status: str  # "unlocked", "payment_failed"
     payment_charged: bool

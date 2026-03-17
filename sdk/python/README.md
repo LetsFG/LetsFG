@@ -81,7 +81,7 @@ bt = LetsFG(api_key="trav_...")
 flights = bt.search("GDN", "BER", "2026-03-03")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 
-# Unlock — $1
+# Unlock — FREE
 unlock = bt.unlock(flights.cheapest.id)
 print(f"Confirmed price: {unlock.confirmed_currency} {unlock.confirmed_price}")
 
@@ -256,7 +256,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Minimizing Unlock Costs
 
-Searching is **free and unlimited**. Only unlock ($1) costs money. Strategy:
+Searching is **free and unlimited**. Unlock is also free. Strategy:
 
 ```python
 # Search multiple dates (free) — compare before unlocking
@@ -267,7 +267,7 @@ for date in dates:
     if result.offers and (best is None or result.cheapest.price < best[1].price):
         best = (date, result.cheapest)
 
-# Unlock only the winner ($1)
+# Unlock only the winner (free)
 if best:
     unlocked = bt.unlock(best[1].id)
     # Book within 30 minutes (free)
@@ -344,7 +344,7 @@ letsfg locations "Berlin"
 |---------|-------------|------|
 | `search` | Search flights between any two airports | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
-| `unlock` | Unlock offer (confirms price, reserves 30min) | $1 |
+| `unlock` | Unlock offer (confirms price, reserves 30min) | FREE |
 | `book` | Book flight (creates real airline PNR) | FREE |
 | `search-local` | Search 73 local airline connectors | FREE |
 | `system-info` | Show system resources & concurrency tier | FREE |
@@ -405,7 +405,7 @@ Priority: env var > explicit config/flag > auto-detect.
 ## How It Works
 
 1. **Search** — Free, unlimited. Returns real-time offers from 400+ airlines via NDC/GDS.
-2. **Unlock** — $1 proof-of-intent. Confirms latest price with airline, reserves offer for 30 minutes.
+2. **Unlock** — Confirms latest price with airline, reserves offer for 30 minutes.
 3. **Book** — FREE after unlock. Creates real airline reservation with PNR code.
 
 Prices are cheaper because we connect directly to airlines — no OTA markup.

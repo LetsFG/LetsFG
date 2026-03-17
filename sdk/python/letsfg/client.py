@@ -274,7 +274,7 @@ class LetsFG:
 
     Pricing:
       - Search: FREE (unlimited)
-      - Unlock: $1 per offer (confirms price, reserves 30min)
+      - Unlock: FREE (confirms price, reserves 30min)
       - Book: FREE after unlock (creates real airline reservation)
     """
 

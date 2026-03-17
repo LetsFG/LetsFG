@@ -88,11 +88,7 @@ class FlightRoute(BaseModel):
 
 
 class FlightOffer(BaseModel):
-    """
-    A single flight offer.
-
-    A single flight offer with full itinerary, pricing, and booking details.
-    """
+    """A single flight offer with full itinerary, pricing, and booking details."""
 
     id: str = Field(..., description="Unique offer ID")
     price: float
@@ -105,20 +101,20 @@ class FlightOffer(BaseModel):
     bags_price: dict[str, Any] = Field(default_factory=dict, description="Baggage pricing")
     availability_seats: Optional[int] = None
     conditions: dict[str, str] = Field(default_factory=dict, description="Refund/change policies")
-    source: str = Field("", description="Provider source tag (e.g. 'duffel', 'amadeus', 'kiwi', 'travelpayouts')")
+    source: str = Field("", description="Provider source tag")
     source_tier: str = Field(
         "paid",
         description=(
             "Data source cost tier: "
-            "'free' = cached/aggregated data (Travelpayouts), "
-            "'low' = affordable API (Kiwi Tequila), "
-            "'paid' = GDS/NDC providers (Duffel, Amadeus), "
-            "'protocol' = LCC direct via Agent Interaction Protocol (Ryanair, Wizzair)"
+            "'free' = community/cached data, "
+            "'low' = lightweight API, "
+            "'paid' = GDS/NDC providers (Duffel), "
+            "'protocol' = LCC direct via connectors (Ryanair, Wizzair)"
         ),
     )
     is_locked: bool = Field(False, description="Whether booking details require unlock")
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
-    booking_url: str = Field("", description="Only available after unlock")
+    booking_url: str = Field("", description="Direct booking link when available")
     price_normalized: Optional[float] = Field(None, description="Price converted to the search currency for sorting")
 
 
@@ -156,11 +152,7 @@ class FlightSearchResponse(BaseModel):
     search_params: dict = Field(default_factory=dict)
     source_tiers: dict[str, str] = Field(
         default_factory=dict,
-        description=(
-            "Breakdown of which source tiers were used in this search. "
-            "Keys are tier names, values describe the data source. "
-            "Example: {'paid': 'Duffel (NDC), Amadeus (GDS)', 'low': 'Kiwi Tequila', 'free': 'Travelpayouts'}"
-        ),
+        description="Breakdown of which source tiers were used in this search.",
     )
     pricing_note: str = Field(
         default="Search is free. Booking is free. No hidden fees.",
