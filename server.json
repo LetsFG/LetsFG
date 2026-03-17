@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Efistoffeles/letsfg",
   "title": "LetsFG",
-  "description": "Flight search & booking for AI agents. 400+ airlines, 75 free local connectors. letsfg.co",
+  "description": "Flight search & booking for AI agents. 400+ airlines, 102 free local connectors. letsfg.co",
   "repository": {
     "url": "https://github.com/LetsFG/LetsFG",
     "source": "github"
@@ -18,7 +18,7 @@
       },
       "environmentVariables": [
         {
-          "description": "Your LetsFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
+          "description": "Your LetsFG API key (optional — 102 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
           "isRequired": false,
           "format": "string",
           "isSecret": true,
@@ -35,7 +35,7 @@
       },
       "environmentVariables": [
         {
-          "description": "Your LetsFG API key (optional — 75 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
+          "description": "Your LetsFG API key (optional — 102 local airline connectors work without it, API key adds 400+ GDS/NDC airlines). letsfg.co",
           "isRequired": false,
           "format": "string",
           "isSecret": true,

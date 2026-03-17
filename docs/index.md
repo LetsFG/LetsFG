@@ -6,7 +6,7 @@ hide:
 # LFG
 
 **Flight search & booking for AI agents and developers.**
-400+ airlines, 73 direct airline connectors, virtual interlining — straight from the terminal.
+400+ airlines, 102 direct airline connectors, virtual interlining — straight from the terminal.
 
 <div class="install-cmd"><span class="prompt">$</span> pip install letsfg</div>
 
@@ -79,7 +79,7 @@ hide:
 |---|---|---|
 | Install | `pip install letsfg` | `pip install letsfg` |
 | Setup | Nothing | `letsfg register --email you@example.com` |
-| Airlines | 73 via local connectors | 73 local + 400+ via GDS/NDC |
+| Airlines | 102 via local connectors | 102 local + 400+ via GDS/NDC |
 | Price | Free | Free — star GitHub repo for access |
 | Coverage | LCCs + major carriers with public APIs | Full global coverage including premium carriers |
 

@@ -53,7 +53,7 @@ LFG supports standard agent discovery protocols:
 
 ## Local Search (No API Key)
 
-The 73 local airline connectors do not use the REST API — they run directly on your machine. No API key is needed:
+The 102 local airline connectors do not use the REST API — they run directly on your machine. No API key is needed:
 
 ```bash
 pip install letsfg
