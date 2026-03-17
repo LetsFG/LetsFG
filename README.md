@@ -405,6 +405,8 @@ configure_max_browsers(4)  # explicit override
 | [Getting Started](docs/getting-started.md) | Authentication, payment setup, search flags, cabin classes |
 | [API Guide](docs/api-guide.md) | Error handling, search results, workflows, unlock details, location resolution |
 | [Agent Guide](docs/agent-guide.md) | AI agent architecture, preference scoring, price tracking, rate limits |
+| [Architecture Guide](docs/architecture-guide.md) | Parallel execution, failure handling, caching, browser concurrency, performance tuning |
+| [Tutorials](docs/tutorials.md) | Python & JS integration tutorials, concurrent search, travel assistant patterns |
 | [Packages & SDKs](docs/packages.md) | Python SDK, JavaScript SDK, MCP Server, local connectors |
 | [CLI Reference](docs/cli-reference.md) | Commands, flags, examples |
 | [AGENTS.md](AGENTS.md) | Agent-specific instructions (for LLMs) |

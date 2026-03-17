@@ -44,6 +44,9 @@ nav:
   - Getting started:
     - Quickstart: getting-started.md
     - API Guide: api-guide.md
+    - Tutorials: tutorials.md
+  - Architecture:
+    - Architecture & Resilience: architecture-guide.md
   - Integrations:
     - AI Agent Guide: agent-guide.md
     - Packages & SDKs: packages.md
