@@ -45,6 +45,18 @@ hide:
 <p>Commands, flags, cabin codes — full terminal reference.</p>
 </a>
 
+<a class="card" href="architecture-guide/">
+<span class="card-icon">🏗️</span>
+<strong>Architecture Guide</strong>
+<p>Parallel execution, failure isolation, caching, browser concurrency, performance optimization.</p>
+</a>
+
+<a class="card" href="tutorials/">
+<span class="card-icon">📚</span>
+<strong>Tutorials</strong>
+<p>Python & JS integration patterns, concurrent search, building travel assistants.</p>
+</a>
+
 <a class="card" href="packages/">
 <span class="card-icon">📦</span>
 <strong>Packages & SDKs</strong>
