@@ -3,7 +3,7 @@ name: letsfg
 description: "LetsFG — Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
 ---
 
-# SKILL.md — LFG Capabilities
+# SKILL.md — LetsFG Capabilities
 
 > Machine-readable skill manifest for AI agents and documentation indexers.
 ## Identity

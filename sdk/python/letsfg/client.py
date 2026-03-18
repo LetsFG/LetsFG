@@ -765,6 +765,6 @@ class LetsFG:
         return f"LetsFG(base_url={self.base_url!r}, api_key={masked!r})"
 
 
-# Backward-compat aliases
+# Backward-compat aliases (deprecated — use LetsFG / LetsFGError directly)
 BoostedTravel = LetsFG
 BoostedTravelError = LetsFGError

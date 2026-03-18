@@ -712,7 +712,7 @@ export async function systemInfo(): Promise<Record<string, unknown>> {
 export default LetsFG;
 export { searchLocal as localSearch, systemInfo as getSystemInfo };
 
-// Backward-compat aliases
+// Backward-compat aliases (deprecated — use LetsFG / LetsFGError directly)
 export const BoostedTravel = LetsFG;
 export const BoostedTravelError = LetsFGError;
 export type BoostedTravelConfig = LetsFGConfig;

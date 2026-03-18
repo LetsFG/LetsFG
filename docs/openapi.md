@@ -1,6 +1,6 @@
 # OpenAPI Reference
 
-LFG provides a full OpenAPI 3.1 specification for the REST API.
+LetsFG provides a full OpenAPI 3.1 specification for the REST API.
 
 ## Interactive Documentation
 
@@ -42,7 +42,7 @@ curl -X POST https://api.letsfg.co/api/v1/flights/search \
 
 ## Agent Discovery
 
-LFG supports standard agent discovery protocols:
+LetsFG supports standard agent discovery protocols:
 
 | URL | Description |
 |-----|-------------|

@@ -38,7 +38,7 @@ Native to **OpenClaw**, **Perplexity Computer**, **Manus**, **Claude Code**, **C
 
 Flight websites inflate prices with demand tracking, cookie-based pricing, and surge markup. The same flight is often **$20–$50 cheaper** through LetsFG — raw airline price, zero markup.
 
-LetsFG works by finding the best price across the entire internet. It fires 102 airline connectors in parallel, scanning carriers across Europe, Asia, Americas, Middle East, and Africa — then merges results with enterprise GDS/NDC sources (Amadeus, Duffel, Sabre, Travelport) that provide competitive pricing from 400+ carriers including premium airlines like Lufthansa, British Airways, and Emirates. The best price wins.
+LetsFG works by finding the best price across the entire internet. It fires 102 airline connectors in parallel, scanning carriers across Europe, Asia, Americas, Middle East, Africa, and Oceania — then merges results with enterprise GDS/NDC sources (Amadeus, Duffel, Sabre, Travelport) that provide competitive pricing from 400+ carriers including premium airlines like Lufthansa, British Airways, and Emirates. The best price wins.
 
 | | Google Flights / Booking.com / Expedia | **LetsFG** |
 |---|---|---|

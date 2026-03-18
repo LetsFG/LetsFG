@@ -83,7 +83,7 @@ const TOOLS = [
       'Multi-airport city expansion: automatically searches sibling airports (e.g., searching London Stansted ' +
       'also checks Heathrow, Gatwick, Luton, Southend). Works for 25+ major cities worldwide.\n\n' +
       'Returns structured flight offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
-      'Covers airlines across Europe, Asia, Americas, Middle East, and Africa — including carriers the user ' +
+      'Covers airlines across Europe, Asia, Americas, Middle East, Africa, and Oceania — including carriers the user ' +
       'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
       'IMPORTANT: If LETSFG_API_KEY is set, also queries enterprise GDS/NDC sources (Amadeus, Duffel, ' +
       'Sabre, Travelport) which add hundreds of full-service airlines and often have the cheapest fares. ' +
