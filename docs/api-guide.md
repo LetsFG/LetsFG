@@ -2,7 +2,7 @@
 
 ## Two Ways to Search Flights
 
-LFG offers two search modes:
+LetsFG offers two search modes:
 
 | Mode | Command / Method | API Key | Coverage | Cost |
 |------|-----------------|---------|----------|------|
@@ -377,7 +377,7 @@ POST /api/v1/bookings/unlock
 
 ### What Happens When You Unlock
 
-1. LFG sends the `offer_id` to the airline's NDC/GDS system
+1. LetsFG sends the `offer_id` to the airline's NDC/GDS system
 2. The airline confirms the **current live price** (may differ slightly from search)
 3. The offer is **reserved for 30 minutes** — no one else can book it
 4. You receive `confirmed_price`, `confirmed_currency`, and `offer_expires_at`

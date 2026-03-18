@@ -1,17 +1,17 @@
-# CLAUDE.md — LFG Codebase Context
+# CLAUDE.md — LetsFG Codebase Context
 
 > Instructions for Claude and other AI coding agents working on this repository.
 
 ## Project Overview
 
-LFG is an agent-native flight search & booking platform. This public repository contains the SDKs, 102 local airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
+LetsFG is an agent-native flight search & booking platform. This public repository contains the SDKs, 102 local airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
 
 **API Base URL:** `https://api.letsfg.co`
 
 ## Repository Structure
 
 ```
-LFG/
+LetsFG/
 ├── sdk/
 │   ├── python/                  # Python SDK → PyPI: letsfg
 │   │   ├── letsfg/
