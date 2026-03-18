@@ -175,13 +175,13 @@ npm publish
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/agents/register` | Register for an API key |
-| `POST` | `/api/v1/agents/setup-payment` | Legacy Stripe payment (optional) |
+| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method (required for booking) |
 | `GET`  | `/api/v1/agents/me` | Agent profile + usage stats |
 | `POST` | `/api/v1/agents/link-github` | Star repo for free access |
 | `POST` | `/api/v1/flights/search` | Search flights (cloud providers) |
 | `GET`  | `/api/v1/flights/locations/{q}` | Resolve city/airport to IATA codes |
 | `POST` | `/api/v1/bookings/unlock` | Unlock an offer (free) |
-| `POST` | `/api/v1/bookings/book` | Book a flight (free) |
+| `POST` | `/api/v1/bookings/book` | Book a flight (ticket price charged via Stripe) |
 | `GET`  | `/api/v1/bookings/booking/{id}` | Get booking details |
 | `GET`  | `/.well-known/ai-plugin.json` | OpenAI Plugin manifest |
 | `GET`  | `/.well-known/agent.json` | Agent Protocol manifest |

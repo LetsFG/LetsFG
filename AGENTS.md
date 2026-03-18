@@ -104,11 +104,17 @@ curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
 # Response: {"offer_id":"off_xxx","confirmed_price":189.50,"confirmed_currency":"EUR","offer_expires_at":"..."}
 ```
 
-### 3. Book (FREE after unlock)
+### 3. Book (ticket price)
 ```
 POST /api/v1/bookings/book
 ```
-Book the flight with real passenger details. **No additional charges** — booking is free after unlock.
+Book the flight with real passenger details. **You are charged the ticket price** (plus Stripe processing fee of 2.9% + 30¢) via the payment method attached with `setup-payment`. LetsFG adds zero markup — you pay only what the airline charges.
+
+**Before your first booking**, attach a payment method:
+```bash
+letsfg setup-payment --token tok_visa  # test mode
+```
+Or via Python: `bt.setup_payment(token="tok_visa")`
 
 ## ⚠️ CRITICAL: Use REAL Passenger Details
 
@@ -232,9 +238,9 @@ Add to your MCP config:
 | `letsfg search <origin> <dest> <date>` | Search flights | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
 | `letsfg unlock <offer_id>` | Unlock offer details | Free |
-| `letsfg book <offer_id>` | Book the flight | Free (after unlock) |
+| `letsfg book <offer_id>` | Book the flight | Ticket price |
 | `letsfg star --github <username>` | Link GitHub for free access | Free |
-| `letsfg setup-payment` | Legacy payment setup | Free |
+| `letsfg setup-payment` | Attach payment card (required for booking) | Free |
 | `letsfg me` | View profile & usage | Free |
 
 ## Authentication — How to Use Your API Key

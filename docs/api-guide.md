@@ -286,7 +286,7 @@ def search_and_book(origin_city, dest_city, date, passenger_info, email):
         print("Offer expired — search again")
         return None
 
-    # Step 4: Book (free after unlock)
+    # Step 4: Book (ticket price charged via Stripe)
     # Map passenger_info to each passenger_id from search
     passengers = []
     for i, pid in enumerate(flights.passenger_ids):
@@ -513,5 +513,5 @@ booking = bt.book(offer_id=unlocked.offer_id, passengers=[...], contact_email=".
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | All details (price, airline, duration, conditions) returned in search |
 | Unlock | FREE | Confirms price, holds for 30 minutes |
-| Book | FREE | After unlock — creates real airline PNR |
+| Book | **Ticket price** | After unlock — charges ticket price via Stripe (zero markup) |
 | Re-search same route | FREE | Prices may change (real-time airline data) |

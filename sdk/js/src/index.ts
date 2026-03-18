@@ -453,7 +453,7 @@ export class LetsFG {
   }
 
   /**
-   * Book a flight — FREE after unlock.
+   * Book a flight — charges ticket price via Stripe.
    * Creates a real airline reservation with PNR.
    *
    * Always provide idempotencyKey to prevent double-bookings on retry.
@@ -478,7 +478,7 @@ export class LetsFG {
   }
 
   /**
-   * Set up payment method (legacy — use linkGithub instead).
+   * Set up payment method (required before booking).
    */
   async setupPayment(token = 'tok_visa'): Promise<Record<string, unknown>> {
     this.requireApiKey();
