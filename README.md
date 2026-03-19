@@ -406,6 +406,7 @@ configure_max_browsers(4)  # explicit override
 | [Architecture Guide](docs/architecture-guide.md) | Parallel execution, failure handling, caching, browser concurrency, performance tuning |
 | [Tutorials](docs/tutorials.md) | Python & JS integration tutorials, concurrent search, travel assistant patterns |
 | [Packages & SDKs](docs/packages.md) | Python SDK, JavaScript SDK, MCP Server, local connectors |
+| [Self-Hosting & HTTP Endpoints](docs/self-hosting.md) | Deploy connectors as local HTTP APIs (FastAPI, Flask, Docker, Dokku) |
 | [CLI Reference](docs/cli-reference.md) | Commands, flags, examples |
 | [AGENTS.md](AGENTS.md) | Agent-specific instructions (for LLMs) |
 | [CLAUDE.md](CLAUDE.md) | Codebase context for Claude |
@@ -438,4 +439,4 @@ See [SECURITY.md](SECURITY.md) for our security policy.
 
 ## License
 
-[MIT](LICENSE)
+Free for personal use. Commercial use requires a 1% booking fee (min $1 USD) via Stripe Connect. See [LICENSE](LICENSE) for details.

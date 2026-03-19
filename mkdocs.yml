@@ -49,6 +49,7 @@ nav:
     - Architecture & Resilience: architecture-guide.md
   - Integrations:
     - AI Agent Guide: agent-guide.md
+    - Self-Hosting & HTTP Endpoints: self-hosting.md
     - Packages & SDKs: packages.md
   - Reference:
     - CLI Reference: cli-reference.md

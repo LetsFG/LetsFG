@@ -1,16 +1,23 @@
-MIT License
+LetsFG License
 
-Copyright (c) 2026 Boosted Chat
+Copyright (c) 2026 LetsFG (MENTAL BALANCE sp. z o.o.)
+
+
+1. PERSONAL USE — MIT LICENSE
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+of this software and associated documentation files (the "Software"), to use
+the Software for personal, non-commercial purposes without restriction,
+including without limitation the rights to use, copy, modify, and merge
+copies of the Software, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+Personal use includes:
+- Searching flights for yourself, your family, or your friends
+- Running the connectors on your own machine via your AI agent on your behalf
+- Learning, experimenting, and building personal projects
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -19,3 +26,33 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+2. COMMERCIAL, BUSINESS & ENTERPRISE USE
+
+Any use of the Software on behalf of a business, organization, or third-party
+users requires a commercial agreement with LetsFG. This includes but is not
+limited to:
+
+- Deploying the connectors to serve your users or customers
+- Using the Software as part of a product or service offered to others
+- Operating the Software on behalf of a business entity
+
+Commercial terms:
+- Search is free. No fees for flight search, regardless of volume.
+- Booking fee: 1% of booking value (minimum $1 USD per booking).
+- Payment is processed through Stripe Connect (other methods available on request).
+
+To set up a commercial agreement, contact us — we typically respond within 1 hour:
+- Email: contact@letsfg.co
+- GitHub: https://github.com/LetsFG/LetsFG/issues
+
+
+3. HOW THE SOFTWARE WORKS
+
+The connectors interact with airline websites through your AI agent, on your
+behalf, when you choose to run them. Each connector automates the process of
+searching a specific airline's public-facing website or API — the same way a
+human would search for flights in a browser. The Software does not access any
+private, restricted, or authenticated airline systems beyond what is publicly
+available to any user.
