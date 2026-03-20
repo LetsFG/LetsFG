@@ -104,6 +104,45 @@ from connectors.nh import ANAConnectorClient
 from connectors.qantas import QantasConnectorClient
 from connectors.virginaustralia import VirginAustraliaConnectorClient
 from connectors.bangkokairways import BangkokAirwaysConnectorClient
+from connectors.aegean import AegeanConnectorClient
+from connectors.aerlingus import AerLingusConnectorClient
+from connectors.airbaltic import AirbalticConnectorClient
+from connectors.aircanada import AirCanadaConnectorClient
+from connectors.airindia import AirIndiaConnectorClient
+from connectors.airnewzealand import AirNewZealandConnectorClient
+from connectors.arajet import ArajetConnectorClient
+from connectors.egyptair import EgyptAirConnectorClient
+from connectors.ethiopian import EthiopianConnectorClient
+from connectors.finnair import FinnairConnectorClient
+from connectors.garuda import GarudaConnectorClient
+from connectors.icelandair import IcelandairConnectorClient
+from connectors.itaairways import ITAAirwaysConnectorClient
+from connectors.jal import JapanAirlinesConnectorClient
+from connectors.jazeera import JazeeraConnectorClient
+from connectors.kenyaairways import KenyaAirwaysConnectorClient
+from connectors.flyarystan import FlyArystanConnectorClient
+from connectors.olympicair_api import OlympicAirConnectorClient
+from connectors.philippineairlines import PhilippineAirlinesConnectorClient
+from connectors.royalairmaroc import RoyalAirMarocConnectorClient
+from connectors.saa import SouthAfricanAirwaysConnectorClient
+from connectors.sas import SASConnectorClient
+from connectors.skyairline import SkyAirlineConnectorClient
+from connectors.tap import TapConnectorClient
+from connectors.wingo import WingoConnectorClient
+from connectors.klm import KlmConnectorClient
+from connectors.airfrance import AirfranceConnectorClient
+from connectors.iberia import IberiaConnectorClient
+from connectors.iberiaexpress import IberiaExpressConnectorClient
+from connectors.virginatlantic import VirginAtlanticConnectorClient
+from connectors.lufthansa import LufthansaConnectorClient
+from connectors.swiss import SwissConnectorClient
+from connectors.austrian import AustrianConnectorClient
+from connectors.brusselsairlines import BrusselsAirlinesConnectorClient
+from connectors.discover import DiscoverConnectorClient
+from connectors.elal import ElAlConnectorClient
+from connectors.saudia import SaudiaConnectorClient
+from connectors.omanair import OmanairConnectorClient
+from connectors.britishairways import BritishAirwaysConnectorClient
 
 from models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -139,6 +178,12 @@ _BROWSER_SOURCES: set[str] = {
     "korean_direct",
     "nh_direct",
     "bangkokairways_direct",
+    "aegean_direct", "aerlingus_direct", "aircanada_direct",
+    "airnewzealand_direct", "ethiopian_direct", "finnair_direct",
+    "kenyaairways_direct", "philippineairlines_direct", "qantas_direct",
+    "royalairmaroc_direct", "saa_direct", "sas_direct",
+    "skyairline_direct", "tap_direct", "wingo_direct", "flyarystan_direct",
+    "elal_direct", "saudia_direct", "omanair_direct",
 }
 
 
@@ -249,6 +294,49 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("qantas_direct", QantasConnectorClient, 25.0),
     ("virginaustralia_direct", VirginAustraliaConnectorClient, 25.0),
     ("bangkokairways_direct", BangkokAirwaysConnectorClient, 45.0),
+    # ── Wired 2026-03-20: existing connectors not previously registered ──
+    ("aegean_direct", AegeanConnectorClient, 45.0),
+    ("aerlingus_direct", AerLingusConnectorClient, 45.0),
+    ("airbaltic_direct", AirbalticConnectorClient, 15.0),
+    ("aircanada_direct", AirCanadaConnectorClient, 45.0),
+    ("airindia_direct", AirIndiaConnectorClient, 25.0),
+    ("airnewzealand_direct", AirNewZealandConnectorClient, 45.0),
+    ("arajet_direct", ArajetConnectorClient, 15.0),
+    ("egyptair_direct", EgyptAirConnectorClient, 20.0),
+    ("ethiopian_direct", EthiopianConnectorClient, 45.0),
+    ("finnair_direct", FinnairConnectorClient, 45.0),
+    ("garuda_direct", GarudaConnectorClient, 20.0),
+    ("icelandair_direct", IcelandairConnectorClient, 25.0),
+    ("itaairways_direct", ITAAirwaysConnectorClient, 20.0),
+    ("jal_direct", JapanAirlinesConnectorClient, 20.0),
+    ("jazeera_direct", JazeeraConnectorClient, 15.0),
+    ("kenyaairways_direct", KenyaAirwaysConnectorClient, 45.0),
+    ("olympicair_direct", OlympicAirConnectorClient, 20.0),
+    ("philippineairlines_direct", PhilippineAirlinesConnectorClient, 45.0),
+    ("royalairmaroc_direct", RoyalAirMarocConnectorClient, 45.0),
+    ("saa_direct", SouthAfricanAirwaysConnectorClient, 45.0),
+    ("sas_direct", SASConnectorClient, 25.0),
+    ("skyairline_direct", SkyAirlineConnectorClient, 45.0),
+    ("tap_direct", TapConnectorClient, 45.0),
+    ("flyarystan_direct", FlyArystanConnectorClient, 45.0),
+    ("wingo_direct", WingoConnectorClient, 45.0),
+    ("klm_direct", KlmConnectorClient, 25.0),
+    ("airfrance_direct", AirfranceConnectorClient, 25.0),
+    ("iberia_direct", IberiaConnectorClient, 25.0),
+    ("iberiaexpress_direct", IberiaExpressConnectorClient, 25.0),
+    ("virginatlantic_direct", VirginAtlanticConnectorClient, 25.0),
+    # ── Lufthansa Group (curl_cffi JSON-LD extraction) ──
+    ("lufthansa_direct", LufthansaConnectorClient, 20.0),
+    ("swiss_direct", SwissConnectorClient, 20.0),
+    ("austrian_direct", AustrianConnectorClient, 20.0),
+    ("brusselsairlines_direct", BrusselsAirlinesConnectorClient, 20.0),
+    ("discover_direct", DiscoverConnectorClient, 20.0),
+    # ── Middle East Playwright connectors (CDP Chrome + form fill) ──
+    ("elal_direct", ElAlConnectorClient, 55.0),
+    ("saudia_direct", SaudiaConnectorClient, 55.0),
+    ("omanair_direct", OmanairConnectorClient, 55.0),
+    # ── British Airways (SOLR pricing feed via curl_cffi) ──
+    ("britishairways_direct", BritishAirwaysConnectorClient, 25.0),
 ]
 
 

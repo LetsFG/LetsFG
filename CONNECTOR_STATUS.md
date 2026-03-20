@@ -199,6 +199,25 @@
 | 100 | despegar | OTA | `done` | Despegar/Decolar. Latin America's #1 OTA. All LATAM airlines. |
 | 101 | wego | OTA | `done` | Wego. Middle East/Asia metasearch. 700+ airlines, GCC focus. |
 
+### New Duffel Bypass Connectors — AF-KLM + IAG + VS (6)
+
+| # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
+|---|-----------|------|------|--------|------------|-----------|-------|
+| 102 | klm | KL | klm.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | EveryMundo airTRFX __NEXT_DATA__ DpaHeadline. curl_cffi. 170+ dest from AMS. |
+| 103 | airfrance | AF | airfrance.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | EveryMundo airTRFX __NEXT_DATA__. Multi-market fallback (.nl → .us). curl_cffi. |
+| 104 | britishairways | BA | britishairways.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | SOLR /solr/lpbd/safe pricing feed via curl_cffi. LON departures. £66 AMS, £360 JFK, £74 BCN, £68 CDG. |
+| 105 | iberia | IB | iberia.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | LD+JSON schema.org Flight data from /cheap-flights/. Multi-market (gb/es/us). 126+ dest. curl_cffi. |
+| 106 | iberiaexpress | I2 | iberiaexpress.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | Reuses Iberia LD+JSON cache. MAD hub domestic Spain + short-haul EU. €51 BCN, €79 TFS, €69 DUB. |
+| 107 | virginatlantic | VS | virginatlantic.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | EveryMundo airTRFX at flights.virginatlantic.com. __NEXT_DATA__ DpaHeadline. LHR hub. curl_cffi. |
+| 108 | lufthansa | LH | lufthansa.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | JSON-LD Flight+Product extraction from lufthansa.com/xx/en/flights/. Shared lhgroup_base.py. curl_cffi. FRA/MUC hubs. 28 flights FRA→LHR. |
+| 109 | swiss | LX | swiss.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. JSON-LD from LH pages for ZRH/GVA routes. CHF currency. curl_cffi. |
+| 110 | austrian | OS | austrian.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. JSON-LD from LH pages for VIE routes. EUR currency. curl_cffi. |
+| 111 | brusselsairlines | SN | brusselsairlines.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. JSON-LD from LH pages for BRU routes. Strong Africa network. curl_cffi. |
+| 112 | discover | 4Y | discover.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. LH pages show 4Y flights on leisure routes (FRA→TFS, HER, CUN). curl_cffi. |
+| 113 | elal | LY | elal.py | `done` | claude-connector-builder-3 | 2026-03-22T12:00Z | CDP Chrome + Angular 18 form fill + API interception. elal.com → /eng/<geo>. reCAPTCHA v3 present. TLV hub + EU/US/Asia routes. |
+| 114 | saudia | SV | saudia.py | `done` | claude-connector-builder-3 | 2026-03-22T12:00Z | CDP Chrome + Angular Material form fill + API interception. saudia.com Imperva WAF. JED/RUH hubs + global network. |
+| 115 | omanair | WY | omanair.py | `done` | claude-connector-builder-3 | 2026-03-22T12:00Z | CDP Chrome + Triplake booking engine. omanair.com custom widgets + Incapsula. MCT hub + ME/EU/Asia routes. |
+
 ---
 
 ## How to Claim a Connector
