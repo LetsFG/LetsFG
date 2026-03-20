@@ -429,6 +429,15 @@ configure_max_browsers(4)  # explicit override
 - **npm (JS SDK):** https://www.npmjs.com/package/letsfg
 - **npm (MCP):** https://www.npmjs.com/package/letsfg-mcp
 
+## Contact & Partnerships
+
+Interested in B2B integration, partnership, or bulk/enterprise access? Reach out:
+
+- **General:** contact@letsfg.co
+- **Founder:** adam@letsfg.co
+
+We're actively looking for partners — airlines, travel platforms, AI agent builders, and anyone building on top of flight data. Don't hesitate to reach out.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
