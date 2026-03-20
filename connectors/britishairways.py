@@ -242,10 +242,10 @@ class BritishAirwaysConnectorClient:
                 airlines=["British Airways"],
                 owner_airline="BA",
                 booking_url=(
-                    f"https://www.britishairways.com/travel/book/public/en_gb"
-                    f"?origin={dep_airport}&destination={arr_airport}"
-                    f"&outboundDate={outbound_date_str}"
-                    f"&adultCount={req.adults or 1}&tripType=ONE_WAY"
+                    f"https://www.britishairways.com/travel/fx/public/en_gb"
+                    f"?from={dep_airport}&to={arr_airport}"
+                    f"&depDate={outbound_date_str[:7].replace('-', '')}"
+                    f"&cabin=M&oneWay=true&ad={req.adults or 1}"
                 ),
                 is_locked=False,
                 source="britishairways_direct",
