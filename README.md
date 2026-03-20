@@ -448,4 +448,4 @@ See [SECURITY.md](SECURITY.md) for our security policy.
 
 ## License
 
-Free for personal use. Commercial use requires a 1% booking fee (min $1 USD) via Stripe Connect. See [LICENSE](LICENSE) for details.
+Free for personal use. Search is free for everyone — no agreement needed. Commercial booking requires a 1% fee (min $1 USD) via Stripe Connect. By using the Software you agree to the [LICENSE](LICENSE). To set up a commercial agreement, email contact@letsfg.co or adam@letsfg.co.

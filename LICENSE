@@ -2,6 +2,9 @@ LetsFG License
 
 Copyright (c) 2026 LetsFG (MENTAL BALANCE sp. z o.o.)
 
+By using, downloading, installing, or running the Software, you agree to be
+bound by the terms of this license. If you do not agree, do not use the Software.
+
 
 1. PERSONAL USE — MIT LICENSE
 
@@ -39,12 +42,18 @@ limited to:
 - Operating the Software on behalf of a business entity
 
 Commercial terms:
-- Search is free. No fees for flight search, regardless of volume.
+- Search is free. No fees for flight search, regardless of volume. Just use it.
 - Booking fee: 1% of booking value (minimum $1 USD per booking).
 - Payment is processed through Stripe Connect (other methods available on request).
 
-To set up a commercial agreement, contact us — we typically respond within 1 hour:
+In short: if you only need search, go ahead and use it — no agreement needed.
+If you want to integrate booking into your product, contact us to set up a
+commercial license between LetsFG and you (or your organization). It's quick
+and painless — we typically respond within 1 hour.
+
+Contact:
 - Email: contact@letsfg.co
+- Founder: adam@letsfg.co
 - GitHub: https://github.com/LetsFG/LetsFG/issues
 
 
