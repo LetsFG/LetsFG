@@ -206,6 +206,8 @@ Add to your MCP config:
 
 > **Note:** `LETSFG_API_KEY` is required. Get one by running `letsfg register`. Star this repo and call `link_github` to verify — all tools unlock forever. First 1,000 stars only.
 
+**5-minute quickstarts:** [Claude Desktop](docs/quickstart-claude.md) · [Cursor](docs/quickstart-cursor.md) · [Windsurf](docs/quickstart-windsurf.md)
+
 ### Python SDK
 
 ```python

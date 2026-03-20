@@ -43,6 +43,9 @@ nav:
   - Home: index.md
   - Getting started:
     - Quickstart: getting-started.md
+    - Claude Desktop (5 min): quickstart-claude.md
+    - Cursor (5 min): quickstart-cursor.md
+    - Windsurf (5 min): quickstart-windsurf.md
     - API Guide: api-guide.md
     - Tutorials: tutorials.md
   - Architecture:

@@ -213,6 +213,28 @@ The `system_info` tool returns your system profile (RAM, CPU, tier, recommended 
 
 The agent has native tools — no API docs needed, no URL building, no token-burning browser automation.
 
+### Response Mode (Remote MCP only)
+
+`search_flights` and `search_hotels` accept an optional `response_mode` parameter:
+
+| Mode | Default | What's returned | Best for |
+|------|---------|----------------|----------|
+| `"summary"` | ✅ | Price, airlines, route, departure, stops | Chat, quick comparisons |
+| `"full"` | | Everything: segments, durations, conditions, bags, booking URLs | Deep analysis, programmatic use |
+
+**Summary mode** saves tokens by stripping per-segment details, baggage policies, and booking conditions. It includes a `hint` field telling the agent to call `unlock_flight_offer` for full details on a specific offer.
+
+```jsonc
+// summary response (search_flights)
+{
+  "total_offers": 42,
+  "offers": [
+    { "id": "off_abc", "price": "€29", "airlines": ["FR"], "route": "STN→BCN", "departure": "06:15", "stops": 0 }
+  ],
+  "hint": "Use unlock_flight_offer with the offer id for full pricing and booking."
+}
+```
+
 ---
 
 ## Get an API Key
