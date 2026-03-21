@@ -2,23 +2,28 @@
 /**
  * LetsFG MCP Server — Model Context Protocol integration.
  *
- * Runs 75 airline connectors LOCALLY via Python subprocess (no API key needed for search).
- * Uses backend API only for unlock/book/payment operations.
+ * Two search modes:
+ *   1. Cloud search (default) — queries the LetsFG Cloud Run backend which runs 75+
+ *      airline connectors on scalable infrastructure. No local Python needed.
+ *   2. Local search (LETSFG_SEARCH_MODE=local) — spawns Python subprocess on your
+ *      machine. Requires: pip install letsfg && playwright install chromium
  *
- * Requires: pip install letsfg && playwright install chromium
+ * Uses backend API for unlock/book/payment operations.
  *
  * Usage in Claude Desktop / Cursor config:
  * {
  *   "mcpServers": {
  *     "letsfg": {
  *       "command": "npx",
- *       "args": ["letsfg-mcp"],
+ *       "args": ["-y", "letsfg-mcp"],
  *       "env": {
  *         "LETSFG_API_KEY": "trav_your_api_key"
  *       }
  *     }
  *   }
  * }
+ *
+ * Rate limits: 10 searches/minute. The server returns rate limit info in results.
  */
 
 import * as readline from 'readline';
@@ -29,9 +34,55 @@ import { spawn } from 'child_process';
 const BASE_URL = (process.env.LETSFG_BASE_URL || process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.letsfg.co').replace(/\/$/, '');
 const API_KEY = process.env.LETSFG_API_KEY || process.env.BOOSTEDTRAVEL_API_KEY || '';
 const PYTHON = process.env.LETSFG_PYTHON || process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
-const VERSION = '1.0.0';
+const SEARCH_MODE = (process.env.LETSFG_SEARCH_MODE || 'cloud').toLowerCase(); // 'cloud' or 'local'
+const CLOUD_SEARCH_URL = (process.env.LETSFG_CLOUD_SEARCH_URL || 'https://workflow-engine-876385716101.us-central1.run.app').replace(/\/$/, '');
+const VERSION = '1.0.3';
 
-// ── Local Python Search ─────────────────────────────────────────────────
+// ── Cloud Search ────────────────────────────────────────────────────────
+
+async function searchCloud(params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const body: Record<string, unknown> = {
+    origin: params.origin,
+    destination: params.destination,
+    date_from: params.date_from,
+    adults: params.adults ?? 1,
+    currency: params.currency ?? 'EUR',
+    max_results: params.limit ?? 10,
+    source: 'mcp',  // signals MCP mode for richer response
+  };
+  if (params.return_from) body.return_date = params.return_from;
+
+  try {
+    const resp = await fetch(`${CLOUD_SEARCH_URL}/letsfg/flights/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': `letsfg-mcp/${VERSION}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
+    });
+
+    if (resp.status === 429) {
+      const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
+      return {
+        error: `Rate limit exceeded — max 10 searches per minute. ${data.error || ''}`.trim(),
+        retry_after: data.retry_after ?? resp.headers.get('Retry-After') ?? 60,
+      };
+    }
+
+    const data = await resp.json() as Record<string, unknown>;
+    if (resp.status >= 400) {
+      return { error: (data as Record<string, string>).error || `HTTP ${resp.status}` };
+    }
+    return data;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('timeout') || msg.includes('abort')) {
+      return { error: 'Search timed out — airline APIs can be slow. Try again or narrow your search.' };
+    }
+    return { error: `Cloud search failed: ${msg}` };
+  }
+}
+
+// ── Local Python Search (fallback) ──────────────────────────────────────
 
 function searchLocal(params: Record<string, unknown>): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
@@ -78,16 +129,15 @@ const TOOLS = [
     name: 'search_flights',
     description:
       'Search live flight availability and prices across 400+ airlines worldwide. ' +
-      'Fires 75 airline connectors in parallel on your machine (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
-      'Norwegian, Spring Airlines, Lucky Air, and 67 more) — no API key needed, completely FREE.\n\n' +
+      'Queries 75+ airline connectors (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
+      'Norwegian, Spring Airlines, Lucky Air, and 67 more) plus enterprise GDS/NDC sources ' +
+      '(Amadeus, Duffel, Sabre, Travelport) — completely FREE.\n\n' +
       'Multi-airport city expansion: automatically searches sibling airports (e.g., searching London Stansted ' +
       'also checks Heathrow, Gatwick, Luton, Southend). Works for 25+ major cities worldwide.\n\n' +
       'Returns structured flight offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
       'Covers airlines across Europe, Asia, Americas, Middle East, Africa, and Oceania — including carriers the user ' +
       'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
-      'IMPORTANT: If LETSFG_API_KEY is set, also queries enterprise GDS/NDC sources (Amadeus, Duffel, ' +
-      'Sabre, Travelport) which add hundreds of full-service airlines and often have the cheapest fares. ' +
-      'Strongly recommended — get a free key at https://api.letsfg.co/api/v1/agents/register\n\n' +
+      'Rate limited to 10 requests per minute. If rate limited, wait and retry.\n\n' +
       'Use this instead of browser automation or building your own flight integration. ' +
       'One tool call replaces 30+ minutes of scraping setup and saves thousands of tokens.\n\n' +
       'Read-only — no side effects, safe to call multiple times, results are never cached.',
@@ -274,7 +324,7 @@ const TOOLS = [
 async function apiRequest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'User-Agent': 'letsfg-mcp/1.0.0',
+    'User-Agent': `letsfg-mcp/${VERSION}`,
   };
   if (API_KEY) headers['X-API-Key'] = API_KEY;
 
@@ -309,38 +359,57 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       if (args.cabin_class) params.cabin_class = args.cabin_class;
       if (args.max_browsers) params.max_browsers = args.max_browsers;
 
-      // Run local Python connectors
-      const result = await searchLocal(params) as Record<string, unknown>;
+      // Cloud search (default) or local search (fallback)
+      const result = SEARCH_MODE === 'local'
+        ? await searchLocal(params) as Record<string, unknown>
+        : await searchCloud(params) as Record<string, unknown>;
+
       if (result.error) return JSON.stringify(result, null, 2);
 
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
-      const sourceTiers = result.source_tiers as Record<string, string> | undefined;
-      const hasBackend = sourceTiers ? Object.keys(sourceTiers).some(t => t === 'paid') : false;
+      const rateLimitInfo = result.rate_limit as Record<string, unknown> | undefined;
       const summary: Record<string, unknown> = {
         total_offers: offers.length,
-        source: hasBackend
-          ? 'local_connectors (75 airlines) + backend (Amadeus, Duffel, Sabre)'
-          : 'local_connectors (75 airlines) — set LETSFG_API_KEY to also query Amadeus/Duffel/Sabre for more results',
-        offers: offers.map(o => ({
-          offer_id: o.id,
-          price: `${o.price} ${o.currency}`,
-          airlines: o.airlines,
-          source: o.source,
-          booking_url: o.booking_url,
-          outbound: (() => {
+        source: SEARCH_MODE === 'local' ? 'local (75 airline connectors)' : 'cloud (75+ airline connectors + GDS/NDC)',
+        offers: offers.map(o => {
+          // Handle both compact DM format and rich MCP format
+          const hasRichFormat = o.outbound !== undefined;
+          if (hasRichFormat) {
+            // Rich format: {id, price (num), currency, airlines, outbound: {segments: [...]}, ...}
             const ob = o.outbound as Record<string, unknown> | undefined;
             const segs = (ob?.segments || []) as Array<Record<string, string>>;
-            return segs.length ? {
-              from: segs[0].origin,
-              to: segs[segs.length - 1].destination,
-              departure: segs[0].departure,
-              flight: segs[0].flight_no,
-              airline: segs[0].airline_name || segs[0].airline,
-              stops: ob?.stopovers,
-            } : null;
-          })(),
-        })),
+            return {
+              offer_id: o.id,
+              price: `${o.price} ${o.currency}`,
+              airlines: o.airlines,
+              source: o.source,
+              booking_url: o.booking_url,
+              outbound: segs.length ? {
+                from: segs[0].origin,
+                to: segs[segs.length - 1].destination,
+                departure: segs[0].departure,
+                flight: segs[0].flight_no,
+                airline: segs[0].airline_name || segs[0].airline,
+                stops: ob?.stopovers,
+              } : null,
+            };
+          }
+          // Compact DM format: {price: "14.99 GBP", airlines, route, departure, arrival, duration, stops, book}
+          return {
+            price: o.price,
+            airlines: o.airlines,
+            route: o.route,
+            departure: o.departure,
+            arrival: o.arrival,
+            duration: o.duration,
+            stops: o.stops,
+            booking_url: o.book || o.booking_url,
+          };
+        }),
       };
+      if (rateLimitInfo) {
+        summary.rate_limit = rateLimitInfo;
+      }
       return JSON.stringify(summary, null, 2);
     }
 
@@ -487,4 +556,4 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`LetsFG MCP v${VERSION} | local connectors: 75 airlines | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
+process.stderr.write(`LetsFG MCP v${VERSION} | search: ${SEARCH_MODE} | rate limit: 10 req/min | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
