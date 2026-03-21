@@ -49,23 +49,38 @@ In Cursor chat:
 
 ---
 
-## Option B: Local (npm)
+## Option B: Local npm (easiest — zero setup)
 
-### 1. Prerequisites
+No API key needed for search. Works immediately.
 
-```bash
-npm install -g letsfg-mcp
-pip install letsfg
-playwright install chromium
+### 1. Add to `.cursor/mcp.json`
+
+Create `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "letsfg": {
+      "command": "npx",
+      "args": ["-y", "letsfg-mcp"]
+    }
+  }
+}
 ```
 
-### 2. Get an API key
+> **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-```bash
-letsfg register --name cursor --email you@example.com
-```
+### 2. Reload Cursor
 
-### 3. Add to `.cursor/mcp.json`
+`Ctrl+Shift+P` → `Developer: Reload Window`
+
+### 3. Search — that's it
+
+> Find cheap flights from London to NYC next month.
+
+No API key needed. Searches 75+ airline connectors via cloud backend. Rate limited to 10 searches/min.
+
+### 4. (Optional) Add API key for unlock/book
 
 ```json
 {
@@ -81,15 +96,7 @@ letsfg register --name cursor --email you@example.com
 }
 ```
 
-> **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
-
-### 4. Reload Cursor
-
-`Ctrl+Shift+P` → `Developer: Reload Window`
-
-### 5. Star + verify + search
-
-> Link my GitHub: `your-username`. Then find cheap flights from London to NYC next month.
+Get a key: `pip install letsfg && letsfg register --name cursor --email you@example.com`
 
 ---
 

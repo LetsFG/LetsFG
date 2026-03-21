@@ -188,7 +188,22 @@ npm install -g letsfg
 npx letsfg-mcp
 ```
 
-Add to your MCP config:
+Add to your MCP config (Claude Desktop, Cursor, Windsurf, etc.):
+
+```json
+{
+  "mcpServers": {
+    "letsfg": {
+      "command": "npx",
+      "args": ["-y", "letsfg-mcp"]
+    }
+  }
+}
+```
+
+**That's it — search works immediately, no API key needed.** The MCP server queries our cloud backend (75+ airline connectors + GDS/NDC sources) and returns real-time prices. Rate limited to **10 searches per minute**.
+
+For unlock/book functionality, add an API key:
 
 ```json
 {
@@ -204,7 +219,7 @@ Add to your MCP config:
 }
 ```
 
-> **Note:** `LETSFG_API_KEY` is required. Get one by running `letsfg register`. Star this repo and call `link_github` to verify — all tools unlock forever. First 1,000 stars only.
+Get a key: `letsfg register --name my-agent --email you@example.com`. Star this repo and call `link_github` to verify — all tools unlock forever.
 
 **5-minute quickstarts:** [Claude Desktop](docs/quickstart-claude.md) · [Cursor](docs/quickstart-cursor.md) · [Windsurf](docs/quickstart-windsurf.md)
 
@@ -256,14 +271,15 @@ All commands accept `--json` for structured output and `--api-key` to override t
 2. **Unlock** — confirms live price with the airline, reserves for 30 minutes
 3. **Book** — creates real airline PNR, e-ticket sent to passenger email
 
-### Two Search Modes
+### Three Search Modes
 
 | Mode | What it does | Speed | Auth |
 |------|-------------|-------|------|
+| **MCP cloud** | MCP server queries 75+ airline connectors + GDS/NDC via cloud backend | 5-15s | None (10 req/min rate limit) |
 | **Cloud search** | Queries GDS/NDC providers (Duffel, Amadeus, Sabre, Travelport, Kiwi) via backend API | 2-15s | API key |
 | **Local search** | Fires 102 airline connectors on your machine via Playwright + httpx | 5-25s | None |
 
-Both modes run simultaneously by default. Results are merged, deduplicated, currency-normalized, and sorted.
+MCP cloud is the default for `npx letsfg-mcp` — zero setup, no API key. Cloud search + local search run simultaneously in the Python SDK. Results are merged, deduplicated, currency-normalized, and sorted.
 
 ### Virtual Interlining
 
@@ -395,8 +411,8 @@ configure_max_browsers(4)  # explicit override
 |---------|---------|------------|
 | **Python SDK + CLI** | `pip install letsfg` | SDK + `letsfg` CLI + 102 local airline connectors |
 | **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command |
-| **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for Claude, Cursor, Windsurf |
-| **Remote MCP** | `https://api.letsfg.co/mcp` | Streamable HTTP — no install needed |
+| **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for Claude, Cursor, Windsurf — **no API key needed** for search |
+| **Remote MCP** | `https://api.letsfg.co/mcp` | Streamable HTTP — no install needed (API key required) |
 | **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install via Smithery |
 
 ## Documentation

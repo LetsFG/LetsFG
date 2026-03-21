@@ -60,25 +60,38 @@ Done. Claude fires 400+ airline connectors and returns real prices.
 
 ---
 
-## Option B: Local (npm — runs connectors on your machine)
+## Option B: Local npm (easiest — zero setup)
 
-Runs 102 local airline connectors via Python + Playwright on your machine. More airlines, slightly faster for repeat searches.
+Runs via cloud backend — no Python, no Playwright, no API key needed for search.
 
-### 1. Prerequisites
+### 1. Add to Claude Desktop config
 
-```bash
-npm install -g letsfg-mcp
-pip install letsfg
-playwright install chromium
+Open `Settings → Developer → Edit Config`:
+
+```json
+{
+  "mcpServers": {
+    "letsfg": {
+      "command": "npx",
+      "args": ["-y", "letsfg-mcp"]
+    }
+  }
+}
 ```
 
-### 2. Get an API key
+> **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-```bash
-letsfg register --name claude-desktop --email you@example.com
-```
+### 2. Restart Claude Desktop
 
-### 3. Add to Claude Desktop config
+### 3. Search — that's it
+
+> Find flights from London to Barcelona next Friday
+
+No API key needed. Searches 75+ airline connectors via cloud backend. Rate limited to 10 searches/min.
+
+### 4. (Optional) Add API key for unlock/book
+
+To book flights, add your API key:
 
 ```json
 {
@@ -94,17 +107,11 @@ letsfg register --name claude-desktop --email you@example.com
 }
 ```
 
-> **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
+Get a key: `pip install letsfg && letsfg register --name claude-desktop --email you@example.com`
 
-### 4. Restart Claude Desktop
-
-### 5. Star + verify
+### 5. Star + verify (unlocks all tools forever)
 
 > Star https://github.com/LetsFG/LetsFG then link my GitHub: `your-username`
-
-### 6. Search
-
-> Find flights from New York to Tokyo in June, sort by price
 
 ---
 

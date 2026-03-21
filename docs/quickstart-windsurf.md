@@ -49,23 +49,34 @@ In Cascade chat:
 
 ---
 
-## Option B: Local (npm)
+## Option B: Local npm (easiest — zero setup)
 
-### 1. Prerequisites
+No API key needed for search. Works immediately.
 
-```bash
-npm install -g letsfg-mcp
-pip install letsfg
-playwright install chromium
+### 1. Edit `~/.codeium/windsurf/mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "letsfg": {
+      "command": "npx",
+      "args": ["-y", "letsfg-mcp"]
+    }
+  }
+}
 ```
 
-### 2. Get an API key
+> **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-```bash
-letsfg register --name windsurf --email you@example.com
-```
+### 2. Restart Windsurf
 
-### 3. Edit `~/.codeium/windsurf/mcp_config.json`
+### 3. Search — that's it
+
+> Find flights from Paris to Barcelona for Easter.
+
+No API key needed. Searches 75+ airline connectors via cloud backend. Rate limited to 10 searches/min.
+
+### 4. (Optional) Add API key for unlock/book
 
 ```json
 {
@@ -81,13 +92,7 @@ letsfg register --name windsurf --email you@example.com
 }
 ```
 
-> **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
-
-### 4. Restart Windsurf
-
-### 5. Star + verify + search
-
-> Link my GitHub: `your-username`. Then find flights from Paris to Barcelona for Easter.
+Get a key: `pip install letsfg && letsfg register --name windsurf --email you@example.com`
 
 ---
 
