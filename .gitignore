@@ -12,6 +12,13 @@ Thumbs.db
 .idea/
 site/
 
+# Diagnostic probe directories (debug artifacts)
+.*_diag*/
+.*_probe*/
+.*_deepprobe/
+.*_dateprobe/
+.*_aptprobe/
+
 # Chrome profile directories (probe/test artifacts)
 *_chrome_data/
 *_chrome_probe*/
