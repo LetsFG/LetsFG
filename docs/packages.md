@@ -86,6 +86,8 @@ Model Context Protocol server for AI assistants like Claude Desktop, Cursor, and
 npx letsfg-mcp
 ```
 
+By default, search runs via **cloud backend** (75+ airline connectors on scalable infrastructure — no local Python/Playwright needed). Set `LETSFG_SEARCH_MODE=local` to run connectors on your machine instead.
+
 ### Configuration
 
 Add to your MCP config (Claude Desktop, Cursor, etc.):
@@ -103,6 +105,19 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
   }
 }
 ```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LETSFG_API_KEY` | (none) | API key for unlock/book/payment operations |
+| `LETSFG_SEARCH_MODE` | `cloud` | `cloud` (default, recommended) or `local` (requires Python + Playwright) |
+| `LETSFG_CLOUD_SEARCH_URL` | (production URL) | Override cloud search endpoint (for testing) |
+| `LETSFG_BASE_URL` | `https://api.letsfg.co` | Override API base URL |
+
+### Rate Limits
+
+Cloud search is rate limited to **10 requests per minute** per IP address. The server returns rate limit info in every response. If you exceed the limit, you'll receive a 429 error with a `retry_after` value.
 
 ### Remote MCP (Streamable HTTP)
 

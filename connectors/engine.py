@@ -147,6 +147,8 @@ from connectors.saudia import SaudiaConnectorClient
 from connectors.omanair import OmanairConnectorClient
 from connectors.britishairways import BritishAirwaysConnectorClient
 from connectors.evaair import EvaAirConnectorClient
+from connectors.rex import RexConnectorClient
+from connectors.fijiairways import FijiAirwaysConnectorClient
 from connectors.airchina import AirChinaConnectorClient
 from connectors.chinaeastern import ChinaEasternConnectorClient
 from connectors.chinasouthern import ChinaSouthernConnectorClient
@@ -366,6 +368,10 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("britishairways_direct", BritishAirwaysConnectorClient, 25.0),
     # ── EVA Air (EveryMundo __NEXT_DATA__ via curl_cffi) ──
     ("evaair_direct", EvaAirConnectorClient, 25.0),
+    # ── Rex Airlines (EveryMundo __NEXT_DATA__ via curl_cffi) ──
+    ("rex_direct", RexConnectorClient, 25.0),
+    # ── Fiji Airways (EveryMundo __NEXT_DATA__ via curl_cffi) ──
+    ("fijiairways_direct", FijiAirwaysConnectorClient, 25.0),
     # ── CDP Chrome browser connectors (Batch 5/6/7 — form fill + API intercept) ──
     ("airchina_direct", AirChinaConnectorClient, 55.0),
     ("chinaeastern_direct", ChinaEasternConnectorClient, 55.0),

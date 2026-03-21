@@ -1,13 +1,13 @@
 """
-Rex Airlines connector — EveryMundo airTRFX fare pages via curl_cffi.
+Fiji Airways connector — EveryMundo airTRFX fare pages via curl_cffi.
 
-Rex Airlines (IATA: ZL) is an Australian regional airline, the largest
-independent regional carrier in Australia. Hub at Sydney (SYD) with 60+
-domestic destinations including Adelaide, Brisbane, Cairns, Melbourne, etc.
+Fiji Airways (IATA: FJ) is the flag carrier of Fiji. Hub at Nadi (NAN)
+with routes to Australia, New Zealand, USA, Japan, Singapore, and
+Pacific island nations (Tonga, Samoa, Vanuatu, Solomon Islands, etc.).
 
 Strategy (curl_cffi required — WAF protections):
   1. Resolve IATA codes to city slugs via static mapping
-  2. Fetch route page: flights.rex.com.au/en-us/flights-from-{origin}-to-{dest}
+  2. Fetch route page: www.fijiairways.com/en-us/flights-from-{origin}-to-{dest}
   3. Extract __NEXT_DATA__ JSON from <script> tag
   4. Parse DpaHeadline + StandardFareModule → fares for route pricing data
 """
@@ -34,38 +34,36 @@ from models.flights import (
 
 logger = logging.getLogger(__name__)
 
-_BASE = "https://flights.rex.com.au"
+_BASE = "https://www.fijiairways.com"
 _SITE_EDITION = "en-us"
 _HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-# Static slug mapping for Rex Airlines domestic Australian destinations
+# Static slug mapping for Fiji Airways destinations
 _IATA_TO_SLUG: dict[str, str] = {
+    # Fiji
+    "NAN": "nadi", "SUV": "suva",
+    # Australia
     "SYD": "sydney", "MEL": "melbourne", "BNE": "brisbane",
-    "ADL": "adelaide", "CBR": "canberra", "PER": "perth",
-    "OOL": "gold-coast", "CNS": "cairns", "TSV": "townsville",
-    "ABX": "albury", "ARM": "armidale", "BHQ": "broken-hill",
-    "CED": "ceduna", "CFS": "coffs-harbour", "COJ": "coonabarabran",
-    "DBO": "dubbo", "GFF": "griffith", "KGC": "kingscote",
-    "LSY": "lismore", "MIM": "merimbula", "MOV": "moranbah",
-    "MRZ": "moree", "NAA": "narrabri", "NRA": "narrandera",
-    "OAG": "orange", "PQQ": "port-macquarie", "TAM": "tamworth",
-    "TRO": "taree", "WGA": "wagga-wagga", "BWT": "burnie",
-    "DPO": "devonport", "HBA": "hobart", "LST": "launceston",
-    "MQL": "mildura", "MYA": "moruya", "ALH": "albany",
-    "EPR": "esperance", "CVQ": "carnarvon", "KTA": "karratha",
-    "LEA": "learmonth", "GET": "geraldton", "BME": "broome",
-    "PHE": "paraburdoo", "NTL": "newcastle", "MCY": "sunshine-coast",
-    "ABM": "bamaga", "BEU": "bedourie", "BVI": "birdsville",
-    "BQL": "boulia", "BUC": "burketown", "ISA": "mount-isa",
-    "IRG": "lockhart-river", "WEI": "weipa",
+    "ADL": "adelaide",
+    # New Zealand
+    "AKL": "auckland", "CHC": "christchurch", "WLG": "wellington",
+    # USA
+    "LAX": "los-angeles", "SFO": "san-francisco", "HNL": "honolulu",
+    # Asia
+    "SIN": "singapore", "HKG": "hong-kong",
+    "NRT": "tokyo", "KIX": "osaka",
+    # Pacific Islands
+    "TBU": "tongatapu", "APW": "apia", "VLI": "port-vila",
+    "HIR": "honiara", "TRW": "tarawa", "FUN": "funafuti",
+    "INU": "nauru",
 }
 
 
-class RexConnectorClient:
-    """Rex Airlines (ZL) — EveryMundo airTRFX route pages via curl_cffi."""
+class FijiAirwaysConnectorClient:
+    """Fiji Airways (FJ) — EveryMundo airTRFX route pages via curl_cffi."""
 
     def __init__(self, timeout: float = 25.0):
         self.timeout = timeout
@@ -79,18 +77,18 @@ class RexConnectorClient:
         origin_slug = _IATA_TO_SLUG.get(req.origin)
         dest_slug = _IATA_TO_SLUG.get(req.destination)
         if not origin_slug or not dest_slug:
-            logger.warning("Rex: unmapped IATA %s or %s", req.origin, req.destination)
+            logger.warning("Fiji Airways: unmapped IATA %s or %s", req.origin, req.destination)
             return self._empty(req)
 
         url = f"{_BASE}/{_SITE_EDITION}/flights-from-{origin_slug}-to-{dest_slug}"
-        logger.info("Rex: fetching %s", url)
+        logger.info("Fiji Airways: fetching %s", url)
 
         try:
             html = await asyncio.get_event_loop().run_in_executor(
                 None, self._fetch_sync, url
             )
         except Exception as e:
-            logger.error("Rex fetch error: %s", e)
+            logger.error("Fiji Airways fetch error: %s", e)
             return self._empty(req)
 
         if not html:
@@ -101,18 +99,18 @@ class RexConnectorClient:
 
         elapsed = time.monotonic() - t0
         logger.info(
-            "Rex %s→%s: %d offers in %.1fs",
+            "Fiji Airways %s→%s: %d offers in %.1fs",
             req.origin, req.destination, len(offers), elapsed,
         )
 
         h = hashlib.md5(
-            f"rex{req.origin}{req.destination}{req.date_from}".encode()
+            f"fijiairways{req.origin}{req.destination}{req.date_from}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",
             origin=req.origin,
             destination=req.destination,
-            currency=offers[0].currency if offers else "AUD",
+            currency=offers[0].currency if offers else "USD",
             offers=offers,
             total_results=len(offers),
         )
@@ -122,11 +120,11 @@ class RexConnectorClient:
         try:
             r = sess.get(url, headers=_HEADERS, timeout=int(self.timeout))
             if r.status_code != 200:
-                logger.warning("Rex: %s returned %d", url, r.status_code)
+                logger.warning("Fiji Airways: %s returned %d", url, r.status_code)
                 return None
             return r.text
         except Exception as e:
-            logger.warning("Rex curl_cffi error: %s", e)
+            logger.warning("Fiji Airways curl_cffi error: %s", e)
             return None
 
     def _extract_offers(
@@ -138,13 +136,13 @@ class RexConnectorClient:
             re.S,
         )
         if not m:
-            logger.info("Rex: no __NEXT_DATA__ found")
+            logger.info("Fiji Airways: no __NEXT_DATA__ found")
             return []
 
         try:
             nd = json.loads(m.group(1))
         except (json.JSONDecodeError, ValueError):
-            logger.warning("Rex: __NEXT_DATA__ JSON parse failed")
+            logger.warning("Fiji Airways: __NEXT_DATA__ JSON parse failed")
             return []
 
         props = nd.get("props", {}).get("pageProps", {})
@@ -210,7 +208,7 @@ class RexConnectorClient:
         if fare.get("usdTotalPrice"):
             currency = "USD"
         else:
-            currency = fare.get("currencyCode") or "AUD"
+            currency = fare.get("currencyCode") or "USD"
 
         origin_code = fare.get("originAirportCode") or req.origin
         dest_code = fare.get("destinationAirportCode") or req.destination
@@ -227,8 +225,8 @@ class RexConnectorClient:
             dep_dt = datetime(2000, 1, 1)
 
         seg = FlightSegment(
-            airline="ZL",
-            airline_name="Rex Airlines",
+            airline="FJ",
+            airline_name="Fiji Airways",
             flight_no="",
             origin=origin_code,
             destination=dest_code,
@@ -242,39 +240,39 @@ class RexConnectorClient:
         route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
 
         fid = hashlib.md5(
-            f"zl_{origin_code}{dest_code}{dep_date_str}{price_f}{cabin}".encode()
+            f"fj_{origin_code}{dest_code}{dep_date_str}{price_f}{cabin}".encode()
         ).hexdigest()[:12]
 
         return FlightOffer(
-            id=f"zl_{fid}",
+            id=f"fj_{fid}",
             price=price_f,
             currency=currency,
             price_formatted=f"{price_f:.2f} {currency}",
             outbound=route,
             inbound=None,
-            airlines=["Rex Airlines"],
-            owner_airline="ZL",
+            airlines=["Fiji Airways"],
+            owner_airline="FJ",
             booking_url=(
-                f"https://www.rex.com.au/Book/FlightSearch"
+                f"https://www.fijiairways.com/en-us/book-a-trip/"
                 f"?from={req.origin}&to={req.destination}"
                 f"&outboundDate={dep_date_str}"
                 f"&adultCount={req.adults or 1}&tripType=ONE_WAY"
             ),
             is_locked=False,
-            source="rex_direct",
+            source="fijiairways_direct",
             source_tier="free",
         )
 
     @staticmethod
     def _empty(req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(
-            f"rex{req.origin}{req.destination}{req.date_from}".encode()
+            f"fijiairways{req.origin}{req.destination}{req.date_from}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",
             origin=req.origin,
             destination=req.destination,
-            currency="AUD",
+            currency="USD",
             offers=[],
             total_results=0,
         )

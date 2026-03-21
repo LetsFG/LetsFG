@@ -717,6 +717,16 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "AU", "NZ",
         "AE",
     },
+    # ── Rex Airlines (EveryMundo __NEXT_DATA__ — Australian domestic regional) ──
+    "rex": {
+        "AU",
+    },
+    # ── Fiji Airways (EveryMundo __NEXT_DATA__ — Pacific hub at NAN) ──
+    "fijiairways": {
+        "FJ", "AU", "NZ", "US",
+        "SG", "HK", "JP",
+        "TO", "WS", "VU", "SB", "KI", "TV", "NR",
+    },
     # ── CDP Chrome browser connectors (Batch 5/6/7) ──
     "airchina": {
         "CN", "HK", "MO", "TW",

@@ -117,14 +117,17 @@ def find_cheapest_date(bt, origin, dest, dates):
 
 ## Rate Limits and Timeouts
 
-The API has generous rate limits. Search is unlimited and free, so you can make many requests without cost.
+The API has rate limits to ensure fair usage and protect airline endpoints.
 
 | Endpoint | Rate Limit | Timeout |
-|----------|-----------|---------|
-| Search | 60 req/min per agent | 30s (airline APIs can be slow) |
+|----------|-----------|--------|
+| Search (MCP) | **10 req/min** per IP | 180s (airline APIs can be slow) |
+| Search (API) | 60 req/min per agent | 30s |
 | Resolve location | 120 req/min per agent | 5s |
 | Unlock | 20 req/min per agent | 15s |
 | Book | 10 req/min per agent | 30s |
+
+> **MCP search rate limit:** The MCP server uses cloud-based search which is rate limited to **10 requests per minute** per IP address. The server returns `rate_limit` info in every search response so you can track remaining quota. If you hit the limit, you'll get a 429 response with a `retry_after` value.
 
 Handle rate limits and timeouts in production:
 
