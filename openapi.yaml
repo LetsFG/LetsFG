@@ -12,7 +12,7 @@ info:
     3. **Book** (free) — create real airline PNR
 
     ## Local Search
-    The Python SDK runs 102 airline connectors locally with adaptive browser concurrency
+    The Python SDK runs 140 airline connectors locally with adaptive browser concurrency
     that auto-scales based on system RAM. Override with `LETSFG_MAX_BROWSERS` env var.
 
     ## Authentication

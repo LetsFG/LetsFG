@@ -1,7 +1,7 @@
 """
 LetsFG — Agent-native flight search & booking SDK.
 
-75 airline connectors run locally + enterprise GDS/NDC APIs via backend.
+140 airline connectors run locally + enterprise GDS/NDC APIs via backend.
 
 Local search (FREE, no API key):
     from letsfg.local import search_local
@@ -38,7 +38,7 @@ from letsfg.models import (
     AgentProfile,
 )
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 __all__ = [
     "LetsFG",
     "LetsFGError",
