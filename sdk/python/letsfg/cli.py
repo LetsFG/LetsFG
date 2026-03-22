@@ -1,12 +1,11 @@
 """
 LetsFG CLI — Agent-native flight search & booking from terminal.
 
-Usage (local — free, no API key):
-    letsfg search-local GDN BER 2026-03-03
-    letsfg search-local LON BCN 2026-04-01 --return 2026-04-08 --sort price
-
-Usage (API — requires key):
+Usage (search — free, no API key):
     letsfg search GDN BER 2026-03-03
+    letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
+
+Usage (booking — requires API key):
     letsfg unlock off_xxx
     letsfg book off_xxx --passenger '{"id":"pas_xxx","given_name":"John",...}'
     letsfg register --name my-agent --email agent@example.com
@@ -36,11 +35,10 @@ app = typer.Typer(
     name="letsfg",
     help=(
         "LetsFG — Agent-native flight search & booking.\n\n"
-        "Search 400+ airlines at raw airline prices — $20-50 cheaper than OTAs.\n"
-        "Search is free. Booking charges the ticket price only (zero markup).\n\n"
-        "Quick start: letsfg register → letsfg star --github <username> → letsfg search\n"
-        "Local search (no API key): letsfg search-local GDN BCN 2026-06-15\n"
-        "Full search (API key):     letsfg search GDN BCN 2026-06-15"
+        "Search 102 airlines at raw airline prices — $20-50 cheaper than OTAs.\n"
+        "Search runs locally on your machine — FREE, no API key needed.\n\n"
+        "Quick start: letsfg search GDN BCN 2026-06-15\n"
+        "Round trip:  letsfg search LON BCN 2026-04-01 --return 2026-04-08"
     ),
     no_args_is_help=True,
 )
@@ -80,18 +78,43 @@ def search(
     adults: int = typer.Option(1, "--adults", "-a", help="Number of adults"),
     children: int = typer.Option(0, "--children", help="Number of children"),
     cabin: Optional[str] = typer.Option(None, "--cabin", "-c", help="M=economy W=premium C=business F=first"),
-    stops: int = typer.Option(2, "--max-stops", "-s", help="Max stopovers"),
     currency: str = typer.Option("EUR", "--currency", help="Currency code"),
     limit: int = typer.Option(20, "--limit", "-l", help="Max results"),
     sort: str = typer.Option("price", "--sort", help="Sort: price or duration"),
+    max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Search for flights — FREE, unlimited."""
-    bt = _get_client(api_key, base_url)
-    try:
-        result = bt.search(
+    """Search for flights — FREE, no API key required. Runs 102 airline connectors on your machine."""
+    import asyncio
+    import logging
+    import warnings
+    from letsfg.local import search_local
+
+    # Only show errors in CLI mode — suppress connector warning noise
+    logging.basicConfig(level=logging.ERROR, stream=sys.stderr, format="%(message)s")
+
+    # Suppress asyncio transport warnings from Playwright subprocess cleanup
+    warnings.filterwarnings("ignore", category=ResourceWarning, message=".*unclosed transport.*")
+
+    # Suppress asyncio __del__ "Exception ignored" noise on Python 3.13+
+    _orig_unraisable = sys.unraisablehook
+    def _quiet_unraisable(hook_args):
+        try:
+            if hook_args.exc_type is ValueError and "pipe" in str(hook_args.exc_value).lower():
+                return
+            if "transport" in str(getattr(hook_args, "object", "")):
+                return
+        except Exception:
+            return
+        _orig_unraisable(hook_args)
+    sys.unraisablehook = _quiet_unraisable
+
+    # Suppress Node.js DEP0169 deprecation warnings from Playwright subprocesses
+    os.environ.setdefault("NODE_OPTIONS", "--no-deprecation")
+
+    async def _run():
+        asyncio.get_event_loop().set_exception_handler(lambda loop, ctx: None)
+        return await search_local(
             origin=origin,
             destination=destination,
             date_from=date,
@@ -99,44 +122,36 @@ def search(
             adults=adults,
             children=children,
             cabin_class=cabin,
-            max_stopovers=stops,
             currency=currency,
             limit=limit,
-            sort=sort,
+            max_browsers=max_browsers,
         )
-    except LetsFGError as e:
-        _err(f"{e.message}")
+
+    try:
+        result = asyncio.run(_run())
+    except Exception as e:
+        _err(f"Search failed: {e}")
+
+    offers = result.get("offers", [])
+    total = result.get("total_results", len(offers))
+
+    # Sort
+    if sort == "price":
+        offers.sort(key=lambda o: o.get("price", float("inf")))
+    elif sort == "duration":
+        offers.sort(key=lambda o: (o.get("outbound", {}).get("total_duration_seconds") or float("inf")))
+
+    offers = offers[:limit]
 
     if output_json:
-        # Machine-readable output for agents
-        _json_out({
-            "passenger_ids": result.passenger_ids,
-            "total_results": result.total_results,
-            "offers": [
-                {
-                    "id": o.id,
-                    "price": o.price,
-                    "currency": o.currency,
-                    "airlines": o.airlines,
-                    "owner_airline": o.owner_airline,
-                    "route": o.outbound.route_str,
-                    "duration_seconds": o.outbound.total_duration_seconds,
-                    "stopovers": o.outbound.stopovers,
-                    "conditions": o.conditions,
-                    "is_locked": o.is_locked,
-                }
-                for o in result.offers
-            ],
-        })
+        _json_out({"total_results": total, "offers": offers})
         return
 
-    # Human-readable output
-    if not result.offers:
+    if not offers:
         print(f"No flights found for {origin} → {destination} on {date}")
         return
 
-    print(f"\n  {result.total_results} offers  |  {origin} → {destination}  |  {date}")
-    print(f"  Passenger IDs: {result.passenger_ids}\n")
+    print(f"\n  {total} offers  |  {origin} → {destination}  |  {date}")
 
     if HAS_RICH:
         table = Table(show_header=True, header_style="bold")
@@ -146,31 +161,46 @@ def search(
         table.add_column("Route")
         table.add_column("Duration", justify="right")
         table.add_column("Stops", justify="center")
-        table.add_column("Conditions")
-        table.add_column("Offer ID", style="dim")
 
-        for i, o in enumerate(result.offers, 1):
-            refund = o.conditions.get("refund_before_departure", "?")
-            change = o.conditions.get("change_before_departure", "?")
-            conds = f"R:{refund[:3]} C:{change[:3]}"
-            table.add_row(
-                str(i),
-                f"{o.currency} {o.price:.2f}",
-                o.owner_airline or ",".join(o.airlines),
-                o.outbound.route_str,
-                o.outbound.duration_human,
-                str(o.outbound.stopovers),
-                conds,
-                o.id[:20] + "...",
-            )
+        for i, o in enumerate(offers, 1):
+            ob = o.get("outbound", {})
+            route = ob.get("route_str", "")
+            if not route:
+                segs = ob.get("segments", [])
+                if segs:
+                    codes = [segs[0].get("origin", "")]
+                    for s in segs:
+                        codes.append(s.get("destination", ""))
+                    route = "→".join(c for c in codes if c)
+            airlines = o.get("owner_airline") or ",".join(o.get("airlines", []))
+            dur_s = ob.get("total_duration_seconds")
+            if dur_s:
+                h, m = divmod(dur_s // 60, 60)
+                dur = f"{h}h {m:02d}m"
+            else:
+                dur = "-"
+            stops = str(ob.get("stopovers", 0))
+            price = o.get("price", 0)
+            cur = o.get("currency", currency)
+            table.add_row(str(i), f"{cur} {price:.2f}", airlines, route, dur, stops)
         console.print(table)
     else:
-        for i, o in enumerate(result.offers, 1):
-            print(f"  {i:3d}. {o.summary()}")
-            print(f"       ID: {o.id}")
+        for i, o in enumerate(offers, 1):
+            price = o.get("price", 0)
+            cur = o.get("currency", currency)
+            airlines = o.get("owner_airline") or ",".join(o.get("airlines", []))
+            ob = o.get("outbound", {})
+            route = ob.get("route_str", "")
+            if not route:
+                segs = ob.get("segments", [])
+                if segs:
+                    codes = [segs[0].get("origin", "")]
+                    for s in segs:
+                        codes.append(s.get("destination", ""))
+                    route = "→".join(c for c in codes if c)
+            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}")
 
-    print(f"\n  To unlock: letsfg unlock <offer_id>")
-    print(f"  Passenger IDs needed for booking: {result.passenger_ids}\n")
+    print()
 
 
 # ── Search Local ───────────────────────────────────────────────────────────
@@ -190,9 +220,7 @@ def search_local_cmd(
     max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ):
-    """Search flights locally — FREE, no API key required. Runs 75 airline connectors on your machine.
-
-    Set LETSFG_API_KEY to also query Amadeus, Duffel, Sabre and Travelport for full-service airline fares.
+    """Alias for 'search'. Runs 102 airline connectors locally — FREE, no API key.
 
     Use --max-browsers to tune performance: lower values (2-4) for low-RAM machines, higher (12-16) for powerful ones.
     Default: auto-detected from your system RAM. Run 'letsfg system-info' to see your profile.

@@ -42,7 +42,6 @@ import os
 from typing import Any, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 
 from letsfg.models import (
     AgentProfile,
@@ -373,9 +372,13 @@ class LetsFG:
         currency: str = "EUR",
         limit: int = 20,
         sort: str = "price",
+        max_browsers: int | None = None,
     ) -> FlightSearchResult:
         """
-        Search for flights — completely FREE.
+        Search for flights — completely FREE, runs locally on your machine.
+
+        Fires 102 airline connectors (Ryanair, EasyJet, Wizz Air, etc.)
+        directly on your machine via Playwright + httpx. No API key needed.
 
         Args:
             origin: IATA code (e.g., "LON", "GDN", "JFK")
@@ -390,30 +393,24 @@ class LetsFG:
             currency: 3-letter currency code
             limit: Max results (1-100)
             sort: "price" or "duration"
+            max_browsers: Max concurrent browser processes (1-32, default: auto-detect).
 
         Returns:
             FlightSearchResult with offers, passenger_ids, and metadata.
         """
-        self._require_api_key()
-        body: dict[str, Any] = {
-            "origin": origin.upper(),
-            "destination": destination.upper(),
-            "date_from": date_from,
-            "adults": adults,
-            "children": children,
-            "infants": infants,
-            "max_stopovers": max_stopovers,
-            "currency": currency,
-            "limit": limit,
-            "sort": sort,
-        }
-        if return_date:
-            body["return_from"] = return_date
-        if cabin_class:
-            body["cabin_class"] = cabin_class.upper()
-
-        data = self._post("/api/v1/flights/search", body)
-        return FlightSearchResult.from_dict(data)
+        return self.search_local(
+            origin=origin,
+            destination=destination,
+            date_from=date_from,
+            return_date=return_date,
+            adults=adults,
+            children=children,
+            infants=infants,
+            cabin_class=cabin_class,
+            currency=currency,
+            limit=limit,
+            max_browsers=max_browsers,
+        )
 
     def resolve_location(self, query: str) -> list[dict]:
         """
@@ -448,8 +445,7 @@ class LetsFG:
             Dict with verification status and message.
         """
         self._require_api_key()
-        qs = urlencode({"github_username": github_username})
-        return self._post(f"/api/v1/agents/link-github?{qs}", {})
+        return self._post("/api/v1/agents/link-github", {"github_username": github_username})
 
     def unlock(self, offer_id: str) -> UnlockResult:
         """
