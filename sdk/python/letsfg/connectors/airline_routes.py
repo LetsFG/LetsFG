@@ -268,6 +268,7 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
     "avelo": {"US"},
     "breeze": {"US"},
     "alaska": {"US", "MX", "CA", "CR", "BZ", "GT"},
+    "suncountry": {"US", "MX", "JM", "DO", "BZ", "CR"},
     "hawaiian": {"US", "JP", "KR", "AU", "NZ", "AS", "WS"},
     "american": {
         "US", "CA", "MX", "GB", "IE", "FR", "DE", "ES", "IT", "NL",
@@ -870,6 +871,84 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "ID", "SG", "TH", "MY", "VN", "PH", "AU",
         "JP", "KR", "IN", "HK", "TW", "CN",
     },
+    "tripcom": {
+        "US", "GB", "DE", "FR", "ES", "IT", "NL", "BE", "PT", "AT", "CH", "IE",
+        "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
+        "CN", "HK", "TW", "JP", "KR", "SG", "TH", "MY", "VN", "PH", "ID",
+        "IN", "LK", "BD", "PK", "NP", "MM", "KH", "LA", "BN",
+        "AU", "NZ", "AE", "SA", "QA", "KW", "BH", "OM",
+        "EG", "TR", "IL", "JO", "LB",
+        "ZA", "KE", "NG", "ET", "MA", "TN",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
+        "RU",
+    },
+    "cleartrip": {
+        "IN", "AE", "SA", "QA", "KW", "BH", "OM",
+        "SG", "TH", "MY", "ID", "LK", "BD", "NP", "PK",
+        "GB", "US", "AU", "JP", "KR", "HK", "CN",
+        "KE", "ET", "EG", "ZA",
+    },
+    "edreams": {
+        "GB", "IE", "DE", "FR", "ES", "IT", "PT", "NL", "BE", "AT", "CH",
+        "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
+        "IN", "JP", "KR", "CN", "HK", "TW", "SG", "TH", "MY", "PH", "ID",
+        "AU", "NZ", "AE", "SA", "QA", "EG", "TR", "IL", "ZA", "KE",
+    },
+    "opodo": {
+        "GB", "IE", "DE", "FR", "ES", "IT", "PT", "NL", "BE", "AT", "CH",
+        "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
+        "IN", "JP", "KR", "CN", "HK", "TW", "SG", "TH", "MY", "PH", "ID",
+        "AU", "NZ", "AE", "SA", "QA", "EG", "TR", "IL", "ZA", "KE",
+    },
+    "momondo": {
+        "GB", "IE", "DE", "FR", "ES", "IT", "PT", "NL", "BE", "AT", "CH",
+        "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
+        "IN", "JP", "KR", "CN", "HK", "TW", "SG", "TH", "MY", "PH", "ID",
+        "AU", "NZ", "AE", "SA", "QA", "EG", "TR", "IL", "ZA", "KE",
+    },
+    "kayak": {
+        "GB", "IE", "DE", "FR", "ES", "IT", "PT", "NL", "BE", "AT", "CH",
+        "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
+        "IN", "JP", "KR", "CN", "HK", "TW", "SG", "TH", "MY", "PH", "ID",
+        "AU", "NZ", "AE", "SA", "QA", "EG", "TR", "IL", "ZA", "KE",
+    },
+    "cheapflights": {
+        "GB", "IE", "DE", "FR", "ES", "IT", "PT", "NL", "BE", "AT", "CH",
+        "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
+        "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
+        "IN", "JP", "KR", "CN", "HK", "TW", "SG", "TH", "MY", "PH", "ID",
+        "AU", "NZ", "AE", "SA", "QA", "EG", "TR", "IL", "ZA", "KE",
+    },
+    "avianca": {
+        "CO", "EC", "PE", "CL", "BR", "MX", "US", "CR", "GT", "SV", "HN",
+        "PA", "NI", "CU", "DO", "JM", "TT", "CW", "AW", "ES",
+    },
+    "copa": {
+        "PA", "CO", "EC", "PE", "CL", "BR", "MX", "US", "CR", "GT", "SV",
+        "HN", "NI", "CU", "DO", "JM", "TT", "CW", "AW", "VE", "AR", "UY",
+        "PY", "BO", "GY", "BZ", "HT", "BS",
+    },
+    "latam": {
+        "CL", "BR", "PE", "CO", "EC", "AR", "UY", "PY", "BO", "MX",
+        "US", "ES", "FR", "DE", "IT", "GB", "PT", "NL",
+        "AU", "NZ", "IL",
+    },
+    "lot": {
+        "PL", "DE", "GB", "FR", "IT", "ES", "NL", "BE", "AT", "CH",
+        "CZ", "HU", "HR", "RO", "BG", "UA", "LT", "LV", "EE",
+        "NO", "SE", "DK", "FI", "IE",
+        "US", "CA", "KR", "JP", "CN", "IN", "LK",
+        "IL", "TR", "EG", "JO", "AE", "SA",
+    },
+    "westjet": {
+        "CA", "US", "MX", "GB", "IE", "FR", "ES", "IT", "DE", "NL",
+        "JM", "DO", "CU", "BB", "BS", "LC", "AG", "GD", "TC", "BZ",
+        "CR", "JP",
+    },
 }
 
 
@@ -880,9 +959,16 @@ def get_relevant_connectors(
 ) -> list[tuple[str, type, float]]:
     """Filter connectors to only those that could serve the given route.
 
-    Returns the subset of connectors whose airlines operate in at least one
-    of the origin or destination countries. If country lookup fails for
-    either airport, all connectors are returned (safe fallback).
+    For aggregators/OTAs (kiwi, traveloka, wego, webjet, tiket), include if
+    EITHER origin or destination country is in their network (they search
+    across many airlines).
+
+    For individual airlines, include only if BOTH origin and destination
+    countries are in their network.  This prevents firing e.g. EasyJet for
+    LHR→DEL just because EasyJet operates in GB.
+
+    If country lookup fails for either airport, all connectors are returned
+    (safe fallback).
 
     Args:
         origin: IATA airport/city code (e.g. "CDG", "LON")
@@ -899,10 +985,16 @@ def get_relevant_connectors(
     if not origin_country or not dest_country:
         return connectors
 
+    # Aggregators/OTAs search many airlines — use lenient OR filter
+    _AGGREGATOR_KEYS = {
+        "kiwi", "traveloka", "wego", "webjet", "tiket", "tripcom", "cleartrip", "edreams",
+        "opodo", "momondo", "kayak", "cheapflights",
+    }
+
     relevant = []
     for source, cls, timeout in connectors:
         # Extract airline key from source name (e.g. "easyjet_direct" → "easyjet")
-        airline_key = source.replace("_direct", "").replace("_connector", "")
+        airline_key = source.replace("_direct", "").replace("_connector", "").replace("_ota", "").replace("_meta", "")
 
         # Special: Wizzair is registered as "wizzair" but keyed as "wizz"
         if airline_key == "wizzair":
@@ -913,8 +1005,13 @@ def get_relevant_connectors(
         if countries is None:
             # Unknown airline — always include (safe default)
             relevant.append((source, cls, timeout))
-        elif origin_country in countries or dest_country in countries:
-            relevant.append((source, cls, timeout))
-        # else: skip — neither endpoint is in this airline's network
+        elif airline_key in _AGGREGATOR_KEYS:
+            # Aggregators: include if either country matches
+            if origin_country in countries or dest_country in countries:
+                relevant.append((source, cls, timeout))
+        else:
+            # Individual airlines: must serve both endpoints
+            if origin_country in countries and dest_country in countries:
+                relevant.append((source, cls, timeout))
 
     return relevant
