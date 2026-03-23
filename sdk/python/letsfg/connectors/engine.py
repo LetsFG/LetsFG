@@ -176,6 +176,13 @@ from .serpapi_google import SerpApiGoogleConnectorClient
 from .despegar import DespegarConnectorClient
 from .opodo import OpodoConnectorClient
 from .momondo import MomondoConnectorClient
+from .kayak import KayakConnectorClient
+from .cheapflights import CheapflightsConnectorClient
+from .avianca import AviancaConnectorClient
+from .copa import CopaConnectorClient
+from .latam import LatamConnectorClient
+from .lot import LotConnectorClient
+from .westjet import WestjetConnectorClient
 from .iwantthatflight import IWantThatFlightConnectorClient
 from .airniugini import AirNiuginiConnectorClient
 from .linkairways import LinkAirwaysConnectorClient
@@ -228,6 +235,7 @@ _BROWSER_SOURCES: set[str] = {
     "hainan_direct", "royaljordanian_direct", "kuwaitairways_direct",
     "level_direct",
     "qatar_direct",
+    "avianca_direct", "copa_direct", "latam_direct", "lot_direct", "westjet_direct",
     "traveloka_ota",
     "wego_meta",
     "webjet_ota",
@@ -236,6 +244,8 @@ _BROWSER_SOURCES: set[str] = {
     "tripcom_ota",
     "opodo_ota",
     "momondo_meta",
+    "kayak_meta",
+    "cheapflights_meta",
 }
 
 
@@ -435,7 +445,14 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("despegar_ota", DespegarConnectorClient, 25.0),
     ("opodo_ota", OpodoConnectorClient, 55.0),
     ("momondo_meta", MomondoConnectorClient, 55.0),
+    ("kayak_meta", KayakConnectorClient, 55.0),
+    ("cheapflights_meta", CheapflightsConnectorClient, 55.0),
     ("serpapi_google", SerpApiGoogleConnectorClient, 30.0),
+    ("avianca_direct", AviancaConnectorClient, 45.0),
+    ("copa_direct", CopaConnectorClient, 45.0),
+    ("latam_direct", LatamConnectorClient, 50.0),
+    ("lot_direct", LotConnectorClient, 55.0),
+    ("westjet_direct", WestjetConnectorClient, 45.0),
 ]
 
 

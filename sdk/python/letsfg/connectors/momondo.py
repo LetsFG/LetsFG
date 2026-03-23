@@ -165,7 +165,7 @@ class MomondoConnectorClient:
             return None
 
         # Merge all poll responses (later ones may have more results)
-        return _parse_momondo(api_responses, req)
+        return _parse_booking_holdings_poll(api_responses, req)
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         return FlightSearchResponse(
@@ -178,10 +178,16 @@ class MomondoConnectorClient:
         )
 
 
-def _parse_momondo(responses: list[dict], req: FlightSearchRequest) -> list[FlightOffer]:
-    """Parse Momondo poll responses into FlightOffer list.
+def _parse_booking_holdings_poll(
+    responses: list[dict],
+    req: FlightSearchRequest,
+    source: str = "momondo_meta",
+    id_prefix: str = "mm",
+    booking_base_url: str = "https://www.momondo.com/flight-search",
+) -> list[FlightOffer]:
+    """Parse Kayak/Momondo/Cheapflights poll responses into FlightOffer list.
 
-    Momondo returns:
+    All three sites (Booking Holdings) share the same /flights/poll API:
       results[] — each has bookingOptions[] with legFarings[].legId
       legs{}    — dict keyed by composite leg ID, each has segments[].id
       segments{}— dict keyed by composite segment ID with flight details
@@ -238,10 +244,10 @@ def _parse_momondo(responses: list[dict], req: FlightSearchRequest) -> list[Flig
                 s.airline for s in outbound.segments if s.airline
             ))
 
-            h = hashlib.md5(f"mm_{rid}_{price}".encode()).hexdigest()[:10]
+            h = hashlib.md5(f"{id_prefix}_{rid}_{price}".encode()).hexdigest()[:10]
 
             offers.append(FlightOffer(
-                id=f"mm_{h}",
+                id=f"{id_prefix}_{h}",
                 price=price,
                 currency=currency,
                 price_formatted=f"{currency} {price:.2f}",
@@ -249,11 +255,11 @@ def _parse_momondo(responses: list[dict], req: FlightSearchRequest) -> list[Flig
                 inbound=inbound,
                 airlines=all_airlines,
                 owner_airline=all_airlines[0] if all_airlines else "",
-                source="momondo_meta",
+                source=source,
                 source_tier="free",
                 is_locked=False,
                 booking_url=(
-                    f"https://www.momondo.com/flight-search/"
+                    f"{booking_base_url}/"
                     f"{req.origin}-{req.destination}/{req.date_from.isoformat()}"
                 ),
             ))
