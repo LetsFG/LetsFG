@@ -949,6 +949,27 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "JM", "DO", "CU", "BB", "BS", "LC", "AG", "GD", "TC", "BZ",
         "CR", "JP",
     },
+    "airtahitinui": {
+        "PF", "US", "NZ", "JP", "FR",
+    },
+    "airvanuatu": {
+        "VU", "AU", "NZ", "FJ", "NC",
+    },
+    "citilink": {
+        "ID", "MY", "SG", "TH", "AU",
+    },
+    "samoaairways": {
+        "WS", "AS",
+    },
+    "solomonairlines": {
+        "SB", "AU", "FJ", "VU", "PG",
+    },
+    "superairjet": {
+        "ID",
+    },
+    "transnusa": {
+        "ID", "MY", "CN",
+    },
 }
 
 

@@ -187,6 +187,13 @@ from .iwantthatflight import IWantThatFlightConnectorClient
 from .airniugini import AirNiuginiConnectorClient
 from .linkairways import LinkAirwaysConnectorClient
 from .pngair import PNGAirConnectorClient
+from .airtahitinui import AirTahitiNuiConnectorClient
+from .airvanuatu import AirVanuatuConnectorClient
+from .citilink import CitilinkConnectorClient
+from .samoaairways import SamoaAirwaysConnectorClient
+from .solomonairlines import SolomonAirlinesConnectorClient
+from .superairjet import SuperAirJetConnectorClient
+from .transnusa import TransNusaConnectorClient
 
 from ..models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -236,6 +243,7 @@ _BROWSER_SOURCES: set[str] = {
     "level_direct",
     "qatar_direct",
     "avianca_direct", "copa_direct", "latam_direct", "lot_direct", "westjet_direct",
+    "citilink_direct", "samoaairways_direct", "superairjet_direct", "transnusa_direct",
     "traveloka_ota",
     "wego_meta",
     "webjet_ota",
@@ -453,6 +461,13 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("latam_direct", LatamConnectorClient, 50.0),
     ("lot_direct", LotConnectorClient, 55.0),
     ("westjet_direct", WestjetConnectorClient, 45.0),
+    ("airtahitinui_direct", AirTahitiNuiConnectorClient, 25.0),
+    ("airvanuatu_direct", AirVanuatuConnectorClient, 25.0),
+    ("citilink_direct", CitilinkConnectorClient, 45.0),
+    ("samoaairways_direct", SamoaAirwaysConnectorClient, 45.0),
+    ("solomonairlines_direct", SolomonAirlinesConnectorClient, 25.0),
+    ("superairjet_direct", SuperAirJetConnectorClient, 45.0),
+    ("transnusa_direct", TransNusaConnectorClient, 45.0),
 ]
 
 
