@@ -987,6 +987,15 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
     "airgreenland": {
         "GL", "DK", "IS",
     },
+    "starlux": {
+        "TW", "JP", "KR", "SG", "TH", "MY", "VN", "PH", "HK", "MO", "US",
+    },
+    "azoresairlines": {
+        "PT", "GB", "FR", "NL", "DE", "ES", "IT", "US", "CA",
+    },
+    "cyprusairways": {
+        "CY", "GR", "AE", "IL", "LB", "FR", "IT", "ES",
+    },
 }
 
 

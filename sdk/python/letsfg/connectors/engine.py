@@ -198,6 +198,9 @@ from .caribbeanairlines import CaribbeanAirlinesConnectorClient
 from .rwandair import RwandAirConnectorClient
 from .airseychelles import AirSeychellesConnectorClient
 from .airgreenland import AirGreenlandConnectorClient
+from .starlux import StarluxConnectorClient
+from .azoresairlines import AzoresAirlinesConnectorClient
+from .cyprusairways import CyprusAirwaysConnectorClient
 
 from ..models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -480,6 +483,12 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("airseychelles_direct", AirSeychellesConnectorClient, 25.0),
     # ── Air Greenland (EveryMundo __NEXT_DATA__ via curl_cffi) ──
     ("airgreenland_direct", AirGreenlandConnectorClient, 25.0),
+    # ── Starlux (EveryMundo __NEXT_DATA__ via curl_cffi) ──
+    ("starlux_direct", StarluxConnectorClient, 25.0),
+    # ── Azores Airlines / SATA (EveryMundo __NEXT_DATA__ via curl_cffi) ──
+    ("azoresairlines_direct", AzoresAirlinesConnectorClient, 25.0),
+    # ── Cyprus Airways (EveryMundo __NEXT_DATA__ via curl_cffi) ──
+    ("cyprusairways_direct", CyprusAirwaysConnectorClient, 25.0),
 ]
 
 
