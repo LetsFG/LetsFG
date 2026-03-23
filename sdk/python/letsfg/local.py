@@ -37,6 +37,7 @@ async def search_local(
     currency: str = "EUR",
     limit: int = 50,
     max_browsers: int | None = None,
+    max_stopovers: int | None = None,
 ) -> dict:
     """
     Run all 73 local airline connectors and return results as a dict.
@@ -68,6 +69,7 @@ async def search_local(
         cabin_class=cabin_class.upper() if cabin_class else None,
         currency=currency,
         limit=limit,
+        max_stopovers=max_stopovers if max_stopovers is not None else 2,
     )
 
     resp = await multi_provider.search_flights(req)

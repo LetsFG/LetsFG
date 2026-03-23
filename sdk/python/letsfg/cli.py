@@ -81,6 +81,8 @@ def search(
     currency: str = typer.Option("EUR", "--currency", help="Currency code"),
     limit: int = typer.Option(20, "--limit", "-l", help="Max results"),
     sort: str = typer.Option("price", "--sort", help="Sort: price or duration"),
+    max_stops: Optional[int] = typer.Option(None, "--max-stops", "-s", help="Max stopovers (0=direct only, 1, 2). Default: no filter"),
+    direct: bool = typer.Option(False, "--direct", "-d", help="Direct flights only (shortcut for --max-stops 0)"),
     max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ):
@@ -112,6 +114,9 @@ def search(
     # Suppress Node.js DEP0169 deprecation warnings from Playwright subprocesses
     os.environ.setdefault("NODE_OPTIONS", "--no-deprecation")
 
+    # --direct is a shortcut for --max-stops 0
+    effective_max_stops = 0 if direct else max_stops
+
     async def _run():
         asyncio.get_event_loop().set_exception_handler(lambda loop, ctx: None)
         return await search_local(
@@ -125,6 +130,7 @@ def search(
             currency=currency,
             limit=limit,
             max_browsers=max_browsers,
+            max_stopovers=effective_max_stops,
         )
 
     try:
@@ -151,54 +157,97 @@ def search(
         print(f"No flights found for {origin} → {destination} on {date}")
         return
 
-    print(f"\n  {total} offers  |  {origin} → {destination}  |  {date}")
+    has_return = any(o.get("inbound") for o in offers)
+    trip_label = f"{origin} ↔ {destination}" if return_date else f"{origin} → {destination}"
+    date_label = f"{date} → {return_date}" if return_date else date
+    print(f"\n  {total} offers  |  {trip_label}  |  {date_label}")
+
+    def _route_str(leg):
+        if not leg:
+            return "-"
+        route = leg.get("route_str", "")
+        if not route:
+            segs = leg.get("segments", [])
+            if segs:
+                codes = [segs[0].get("origin", "")]
+                for s in segs:
+                    codes.append(s.get("destination", ""))
+                route = "→".join(c for c in codes if c)
+        return route or "-"
+
+    def _dur_str(leg):
+        if not leg:
+            return "-"
+        dur_s = leg.get("total_duration_seconds")
+        if dur_s:
+            h, m = divmod(dur_s // 60, 60)
+            return f"{h}h {m:02d}m"
+        return "-"
 
     if HAS_RICH:
         table = Table(show_header=True, header_style="bold")
         table.add_column("#", style="dim", width=4)
         table.add_column("Price", justify="right", style="green")
         table.add_column("Airline")
-        table.add_column("Route")
-        table.add_column("Duration", justify="right")
+        table.add_column("Outbound")
+        table.add_column("Dur", justify="right")
         table.add_column("Stops", justify="center")
+        if has_return:
+            table.add_column("Return")
+            table.add_column("Dur", justify="right")
 
         for i, o in enumerate(offers, 1):
             ob = o.get("outbound", {})
-            route = ob.get("route_str", "")
-            if not route:
-                segs = ob.get("segments", [])
-                if segs:
-                    codes = [segs[0].get("origin", "")]
-                    for s in segs:
-                        codes.append(s.get("destination", ""))
-                    route = "→".join(c for c in codes if c)
+            ib = o.get("inbound")
             airlines = o.get("owner_airline") or ",".join(o.get("airlines", []))
-            dur_s = ob.get("total_duration_seconds")
-            if dur_s:
-                h, m = divmod(dur_s // 60, 60)
-                dur = f"{h}h {m:02d}m"
-            else:
-                dur = "-"
             stops = str(ob.get("stopovers", 0))
             price = o.get("price", 0)
             cur = o.get("currency", currency)
-            table.add_row(str(i), f"{cur} {price:.2f}", airlines, route, dur, stops)
+            row = [str(i), f"{cur} {price:.2f}", airlines, _route_str(ob), _dur_str(ob), stops]
+            if has_return:
+                row.append(_route_str(ib))
+                row.append(_dur_str(ib))
+            table.add_row(*row)
         console.print(table)
+
+        # Print booking URLs below the table
+        print("\n  Booking URLs:")
+        for i, o in enumerate(offers, 1):
+            url = o.get("booking_url") or ""
+            cond = o.get("conditions") or {}
+            ob_url = cond.get("outbound_booking_url", "")
+            ib_url = cond.get("inbound_booking_url", "")
+            airlines = o.get("owner_airline") or ",".join(o.get("airlines", []))
+            price = o.get("price", 0)
+            cur = o.get("currency", currency)
+            if ob_url and ib_url:
+                # Combo offer with separate leg URLs
+                print(f"  {i:3d}. {cur} {price:.2f} {airlines}")
+                print(f"       Outbound: {ob_url}")
+                print(f"       Return:   {ib_url}")
+            elif url:
+                print(f"  {i:3d}. {cur} {price:.2f} {airlines}")
+                print(f"       {url}")
+            else:
+                print(f"  {i:3d}. {cur} {price:.2f} {airlines} — no booking URL")
     else:
         for i, o in enumerate(offers, 1):
             price = o.get("price", 0)
             cur = o.get("currency", currency)
             airlines = o.get("owner_airline") or ",".join(o.get("airlines", []))
             ob = o.get("outbound", {})
-            route = ob.get("route_str", "")
-            if not route:
-                segs = ob.get("segments", [])
-                if segs:
-                    codes = [segs[0].get("origin", "")]
-                    for s in segs:
-                        codes.append(s.get("destination", ""))
-                    route = "→".join(c for c in codes if c)
-            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}")
+            ib = o.get("inbound")
+            ret = f"  ret: {_route_str(ib)}" if ib else ""
+            url = o.get("booking_url") or ""
+            cond = o.get("conditions") or {}
+            ob_url = cond.get("outbound_booking_url", "")
+            ib_url = cond.get("inbound_booking_url", "")
+            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {_route_str(ob)}{ret}")
+            if ob_url and ib_url:
+                print(f"       Outbound: {ob_url}")
+                print(f"       Return:   {ib_url}")
+            elif url:
+                print(f"       {url}")
 
     print()
 
