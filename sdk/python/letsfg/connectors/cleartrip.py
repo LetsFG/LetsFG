@@ -1,12 +1,12 @@
 """
-Cleartrip connector — India's leading OTA.
+Cleartrip connector — India's leading OTA (Flipkart/Walmart-owned).
 
-Cleartrip (Flipkart/Walmart-owned) covers all Indian domestic + international airlines.
+Covers all Indian domestic + international airlines. 261+ results per search.
 Often has OTA-exclusive fares cheaper than airline websites.
-Covers IndiGo, Air India, SpiceJet, Vistara, GoFirst, AirAsia India, etc.
 
 Strategy:
-  Cleartrip has a JSON API behind their React SPA.
+  GET /flight/search/v2 — public JSON endpoint, just needs a cookie init
+  from the homepage first (Akamai bot-manager cookies).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import hashlib
 import logging
 import time
 from datetime import datetime
-from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -35,121 +35,256 @@ _HEADERS = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     ),
-    "Accept": "application/json",
-    "Accept-Language": "en-IN,en;q=0.9",
-    "Origin": "https://www.cleartrip.com",
-    "Referer": "https://www.cleartrip.com/flights",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-GB,en;q=0.9",
 }
+
+# Indian airport codes (domestic detection heuristic)
+_INDIAN_CODES = {
+    "DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "COK", "GOI", "AMD", "PNQ",
+    "JAI", "LKO", "PAT", "GAU", "IXC", "SXR", "ATQ", "VNS", "NAG", "IDR",
+    "BBI", "IXR", "IXB", "IXA", "DED", "VTZ", "TRZ", "CJB", "IXM", "IXJ",
+    "RPR", "GAY", "IMF", "JLR", "KLH", "HBX", "HSR", "NMI",
+}
+
+
+def _same_country(origin: str, dest: str) -> bool:
+    return origin in _INDIAN_CODES and dest in _INDIAN_CODES
+
+
+def _parse_ct_time(time_str: str, fallback_date) -> datetime:
+    """Parse Cleartrip time like '2026-04-01T19:55:00.000+05:30'."""
+    if not time_str:
+        return datetime(fallback_date.year, fallback_date.month, fallback_date.day)
+    try:
+        clean = time_str.split(".")[0] if "." in time_str else time_str.split("+")[0]
+        return datetime.fromisoformat(clean)
+    except (ValueError, IndexError):
+        return datetime(fallback_date.year, fallback_date.month, fallback_date.day)
 
 
 class CleartripConnectorClient:
     """Cleartrip — India's leading OTA flight search."""
 
-    def __init__(self, timeout: float = 25.0):
+    def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
-        self._http: Optional[httpx.AsyncClient] = None
-
-    async def _client(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
-            self._http = httpx.AsyncClient(
-                timeout=self.timeout, headers=_HEADERS, follow_redirects=True
-            )
-        return self._http
-
-    async def close(self):
-        if self._http and not self._http.is_closed:
-            await self._http.aclose()
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
-        client = await self._client()
-        date_str = req.date_from.strftime("%d/%m/%Y")
-        date_iso = req.date_from.strftime("%Y-%m-%d")
-
         offers: list[FlightOffer] = []
-        endpoints = [
-            f"{_BASE}/api/air/search",
-            f"{_BASE}/api/v2/flights/search",
-        ]
 
-        payload = {
-            "origin": req.origin,
-            "destination": req.destination,
-            "departDate": date_str,
-            "adults": req.adults or 1,
-            "children": req.children or 0,
-            "infants": req.infants or 0,
-            "class": "Economy",
-            "tripType": "O",
-        }
+        try:
+            async with httpx.AsyncClient(
+                headers=_HEADERS, follow_redirects=True, timeout=self.timeout
+            ) as client:
+                # Step 1: Cookie init — hit homepage for Akamai cookies
+                await client.get(f"{_BASE}/flights")
 
-        for endpoint in endpoints:
-            try:
-                resp = await client.post(endpoint, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    offers = self._parse(data, req, date_iso)
-                    if offers:
-                        break
-            except Exception as e:
-                logger.debug("Cleartrip endpoint %s error: %s", endpoint, e)
+                # Step 2: Search via v2 GET endpoint
+                is_intl = not _same_country(req.origin, req.destination)
+                date_str = req.date_from.strftime("%d/%m/%Y")
+                date_encoded = quote(date_str, safe="")
+
+                search_url = (
+                    f"{_BASE}/flight/search/v2"
+                    f"?from={req.origin}&source_header={req.origin}"
+                    f"&to={req.destination}&destination_header={req.destination}"
+                    f"&depart_date={date_encoded}"
+                    f"&class=Economy"
+                    f"&adults={req.adults or 1}"
+                    f"&childs={req.children or 0}"
+                    f"&infants={req.infants or 0}"
+                    f"&mobileApp=true"
+                    f"&intl={'y' if is_intl else 'n'}"
+                    f"&responseType=json"
+                )
+
+                resp = await client.get(
+                    search_url,
+                    headers={
+                        "Accept": "application/json",
+                        "Referer": f"{_BASE}/flights",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                offers = _parse_response(data, req)
+        except Exception as e:
+            logger.error("Cleartrip %s→%s failed: %s", req.origin, req.destination, e)
 
         offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+
         elapsed = time.monotonic() - t0
-        logger.info("Cleartrip %s→%s: %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
+        logger.info(
+            "Cleartrip %s→%s: %d offers in %.1fs",
+            req.origin, req.destination, len(offers), elapsed,
+        )
 
-        sh = hashlib.md5(f"cleartrip{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
+        h = hashlib.md5(
+            f"cleartrip{req.origin}{req.destination}{req.date_from}".encode()
+        ).hexdigest()[:12]
+
         return FlightSearchResponse(
-            search_id=f"fs_{sh}", origin=req.origin, destination=req.destination,
+            search_id=f"fs_ct_{h}",
+            origin=req.origin,
+            destination=req.destination,
             currency=offers[0].currency if offers else "INR",
-            offers=offers, total_results=len(offers),
+            offers=offers,
+            total_results=len(offers),
         )
 
-    def _parse(self, data: dict, req: FlightSearchRequest, target_date: str) -> list[FlightOffer]:
-        offers = []
-        results = (
-            data.get("flights") or data.get("data", {}).get("flights")
-            or data.get("results") or data.get("itineraries") or []
-        )
-        for flight in results:
-            price = (
-                flight.get("price") or flight.get("fare", {}).get("total")
-                or flight.get("totalFare") or 0
+
+def _parse_response(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
+    """Parse Cleartrip search v2 response.
+
+    Structure:
+      cards.J1[]  — flight cards with travelOptionId, summary (dep/arr/duration)
+      fares{}     — keyed by fareId → pricing.totalPricing.totalPrice
+      flights{}   — keyed by flight ID → detailed flight info
+      subTravelOptions{} — maps travel option → fareIds
+    """
+    offers: list[FlightOffer] = []
+    cards = data.get("cards", {}).get("J1", [])
+    fares_map = data.get("fares", {})
+    flights_map = data.get("flights", {})
+    sub_options = data.get("subTravelOptions", {})
+
+    for card in cards:
+        try:
+            travel_id = card.get("travelOptionId", "")
+            summary = card.get("summary", {})
+
+            first_dep = summary.get("firstDeparture", {})
+            last_arr = summary.get("lastArrival", {})
+
+            dep_airport = first_dep.get("airport", {})
+            arr_airport = last_arr.get("airport", {})
+
+            dep_code = dep_airport.get("code", req.origin)
+            arr_code = arr_airport.get("code", req.destination)
+            dep_time_str = dep_airport.get("time", "")
+            arr_time_str = arr_airport.get("time", "")
+            dep_airline = first_dep.get("airlineCode", "")
+
+            dep_dt = _parse_ct_time(dep_time_str, req.date_from)
+            arr_dt = _parse_ct_time(arr_time_str, req.date_from)
+
+            duration = summary.get("totalDuration", {})
+            dur_secs = (duration.get("hh", 0) * 3600) + (duration.get("mm", 0) * 60)
+            stops = summary.get("stops", 0)
+
+            # Build segments from flight info
+            flight_infos = summary.get("flights", [])
+            segments = []
+            for fi in flight_infos:
+                ac = fi.get("airlineCode", "")
+                fn = fi.get("flightNumber", "")
+                detail = None
+                for fk, fv in flights_map.items():
+                    if fk.startswith(f"{ac}-{fn}-"):
+                        detail = fv
+                        break
+
+                if detail:
+                    seg_dep = detail.get("departure", {}).get("airport", {})
+                    seg_arr = detail.get("arrival", {}).get("airport", {})
+                    seg_dep_dt = _parse_ct_time(seg_dep.get("time", ""), req.date_from)
+                    seg_arr_dt = _parse_ct_time(seg_arr.get("time", ""), req.date_from)
+                    seg_dur = detail.get("duration", {})
+                    seg_dur_secs = (seg_dur.get("hh", 0) * 3600) + (seg_dur.get("mm", 0) * 60)
+                    segments.append(FlightSegment(
+                        airline=ac,
+                        airline_name=ac,
+                        flight_no=f"{ac}{fn}",
+                        origin=seg_dep.get("code", dep_code),
+                        destination=seg_arr.get("code", arr_code),
+                        departure=seg_dep_dt,
+                        arrival=seg_arr_dt,
+                        duration_seconds=seg_dur_secs,
+                    ))
+                else:
+                    segments.append(FlightSegment(
+                        airline=ac,
+                        airline_name=ac,
+                        flight_no=f"{ac}{fn}",
+                        origin=dep_code,
+                        destination=arr_code,
+                        departure=dep_dt,
+                        arrival=arr_dt,
+                    ))
+
+            if not segments:
+                parts = travel_id.split("-")
+                code = parts[0] + parts[1] if len(parts) >= 2 else ""
+                segments = [FlightSegment(
+                    airline=dep_airline,
+                    airline_name=dep_airline,
+                    flight_no=code,
+                    origin=dep_code,
+                    destination=arr_code,
+                    departure=dep_dt,
+                    arrival=arr_dt,
+                )]
+
+            route = FlightRoute(
+                segments=segments,
+                total_duration_seconds=dur_secs,
+                stopovers=stops,
             )
-            currency = flight.get("currency") or "INR"
-            if float(price) <= 0:
+
+            # Get cheapest fare for this card via subTravelOptions
+            price = 0.0
+            currency = "INR"
+            sto_ids = card.get("subTravelOptionIds", [])
+            for sto_id in sto_ids:
+                sto = sub_options.get(sto_id, {})
+                cheapest_fid = sto.get("cheapestFareId", "")
+                if cheapest_fid and cheapest_fid in fares_map:
+                    fare = fares_map[cheapest_fid]
+                    tp = fare.get("pricing", {}).get("totalPricing", {})
+                    price = tp.get("totalPrice", 0)
+                    break
+                fare_ids = sto.get("fareIds", [])
+                if fare_ids and fare_ids[0] in fares_map:
+                    fare = fares_map[fare_ids[0]]
+                    tp = fare.get("pricing", {}).get("totalPricing", {})
+                    price = tp.get("totalPrice", 0)
+                    break
+
+            if price <= 0:
                 continue
 
-            airline_name = flight.get("airline") or flight.get("carrierName") or "Unknown"
-            airline_code = flight.get("airlineCode") or flight.get("carrierCode") or ""
-            flight_no = flight.get("flightNumber") or flight.get("flightNo") or airline_code
+            airline_codes = list({fi.get("airlineCode", "") for fi in flight_infos if fi.get("airlineCode")})
+            if not airline_codes:
+                airline_codes = [dep_airline] if dep_airline else ["??"]
 
-            dep_str = flight.get("departureTime") or flight.get("departure") or ""
-            arr_str = flight.get("arrivalTime") or flight.get("arrival") or ""
+            h = hashlib.md5(f"ct_{travel_id}_{price}".encode()).hexdigest()[:10]
+            is_intl = not _same_country(req.origin, req.destination)
 
-            try:
-                dep_dt = datetime.fromisoformat(dep_str.replace("Z", "+00:00")) if dep_str else datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                arr_dt = datetime.fromisoformat(arr_str.replace("Z", "+00:00")) if arr_str else dep_dt
-            except (ValueError, TypeError):
-                dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                arr_dt = dep_dt
-
-            duration = flight.get("duration") or flight.get("durationMinutes") or 0
-            duration_secs = int(duration) * 60 if duration else 0
-
-            seg = FlightSegment(
-                airline=airline_name, flight_no=flight_no,
-                origin=req.origin, destination=req.destination,
-                departure=dep_dt, arrival=arr_dt, duration_seconds=duration_secs,
-            )
-            route = FlightRoute(segments=[seg], total_duration_seconds=duration_secs, stopovers=0)
-            oid = hashlib.md5(f"ct_{req.origin}{req.destination}{target_date}{price}{flight_no}".encode()).hexdigest()[:12]
             offers.append(FlightOffer(
-                id=f"ct_{oid}", price=round(float(price), 2), currency=currency,
-                price_formatted=f"{float(price):.2f} {currency}",
-                outbound=route, inbound=None,
-                airlines=[airline_name], owner_airline=airline_code,
-                booking_url=f"https://www.cleartrip.com/flights/results?adults={req.adults or 1}&childs=0&infants=0&class=Economy&depart_date={target_date}&from={req.origin}&to={req.destination}&intl=n&origin=search",
-                is_locked=False, source="cleartrip_ota", source_tier="free",
+                id=f"ct_{h}",
+                price=round(price, 2),
+                currency=currency,
+                price_formatted=f"INR {price:,.0f}",
+                outbound=route,
+                inbound=None,
+                airlines=airline_codes,
+                owner_airline=airline_codes[0],
+                source="cleartrip_ota",
+                source_tier="free",
+                is_locked=False,
+                booking_url=(
+                    f"https://www.cleartrip.com/flights/results"
+                    f"?adults={req.adults or 1}&childs={req.children or 0}"
+                    f"&infants={req.infants or 0}&class=Economy"
+                    f"&depart_date={req.date_from.strftime('%Y-%m-%d')}"
+                    f"&from={req.origin}&to={req.destination}"
+                    f"&intl={'y' if is_intl else 'n'}"
+                ),
             ))
-        return offers
+
+        except Exception as e:
+            logger.debug("Cleartrip parse card failed: %s", e)
+            continue
+
+    return offers

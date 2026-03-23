@@ -169,6 +169,9 @@ from .traveloka import TravelokaConnectorClient
 from .wego import WegoConnectorClient
 from .webjet import WebjetConnectorClient
 from .tiket import TiketConnectorClient
+from .tripcom import TripcomConnectorClient
+from .cleartrip import CleartripConnectorClient
+from .edreams import EdreamsConnectorClient
 from .iwantthatflight import IWantThatFlightConnectorClient
 from .airniugini import AirNiuginiConnectorClient
 from .linkairways import LinkAirwaysConnectorClient
@@ -225,6 +228,8 @@ _BROWSER_SOURCES: set[str] = {
     "wego_meta",
     "webjet_ota",
     "tiket_ota",
+    "edreams_ota",
+    "tripcom_ota",
 }
 
 
@@ -418,6 +423,9 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("wego_meta", WegoConnectorClient, 55.0),
     ("webjet_ota", WebjetConnectorClient, 55.0),
     ("tiket_ota", TiketConnectorClient, 55.0),
+    ("tripcom_ota", TripcomConnectorClient, 55.0),
+    ("cleartrip_ota", CleartripConnectorClient, 55.0),
+    ("edreams_ota", EdreamsConnectorClient, 55.0),
 ]
 
 
@@ -563,7 +571,7 @@ class MultiProvider:
 
         ryanair_countries = AIRLINE_COUNTRIES.get("ryanair")
         if ryanair_connector and (not origin_country or not dest_country or not ryanair_countries
-                or origin_country in ryanair_countries or dest_country in ryanair_countries):
+                or (origin_country in ryanair_countries and dest_country in ryanair_countries)):
             tasks.append(self._search_ryanair_direct(ryanair_connector, req))
             providers_used.append("ryanair_direct")
 
@@ -571,7 +579,7 @@ class MultiProvider:
         wizz_countries = AIRLINE_COUNTRIES.get("wizz")
         if _BROWSERS_AVAILABLE and wizzair_connector and (
                 not origin_country or not dest_country or not wizz_countries
-                or origin_country in wizz_countries or dest_country in wizz_countries):
+                or (origin_country in wizz_countries and dest_country in wizz_countries)):
             tasks.append(self._search_wizzair_direct(wizzair_connector, req))
             providers_used.append("wizzair_direct")
 
@@ -617,7 +625,17 @@ class MultiProvider:
 
         for source, connector_cls, timeout in filtered_connectors:
             connector = connector_cls(timeout=timeout)
-            tasks.append(self._search_connector_generic(connector, req, source))
+            # Resolve city codes to primary airport for connectors that need it
+            connector_req = req
+            if source not in self._CITY_CODE_AWARE:
+                resolved_origin = self._resolve_primary(req.origin)
+                resolved_dest = self._resolve_primary(req.destination)
+                if resolved_origin != req.origin or resolved_dest != req.destination:
+                    connector_req = req.model_copy(update={
+                        "origin": resolved_origin,
+                        "destination": resolved_dest,
+                    })
+            tasks.append(self._search_connector_generic(connector, connector_req, source))
             providers_used.append(source)
 
         # ── Combo engine: one-way legs for cross-airline virtual interlining ──
@@ -655,6 +673,37 @@ class MultiProvider:
                     combo_labels.append(f"{label}_out")
                     combo_tasks.append(search_fn(client_ret, return_req))
                     combo_labels.append(f"{label}_ret")
+
+            # ── Round-trip return leg search (API-only connectors) ──
+            # Most airline connectors ignore return_date and only return outbound.
+            # Fire a reverse one-way search so the combo engine can build proper
+            # round-trip offers (e.g. VS outbound + AI return).
+            # IMPORTANT: Only fire API-only connectors for the return direction.
+            # Browser connectors already ran for outbound; running them again
+            # doubles Chrome usage (80+ tasks on 4 slots).  Kiwi + backend +
+            # API connectors provide sufficient return-leg coverage.
+            return_filtered = get_relevant_connectors(
+                req.destination, req.origin, _DIRECT_AIRLINE_connectorS
+            )
+            return_filtered = [
+                (s, c, t) for s, c, t in return_filtered
+                if s not in _BROWSER_SOURCES
+            ]
+            for source, connector_cls, timeout in return_filtered:
+                connector = connector_cls(timeout=timeout)
+                # Resolve city codes for non-city-code-aware connectors
+                combo_req = return_req
+                if source not in self._CITY_CODE_AWARE:
+                    r_origin = self._resolve_primary(return_req.origin)
+                    r_dest = self._resolve_primary(return_req.destination)
+                    if r_origin != return_req.origin or r_dest != return_req.destination:
+                        combo_req = return_req.model_copy(update={
+                            "origin": r_origin, "destination": r_dest,
+                        })
+                combo_tasks.append(
+                    self._search_connector_generic(connector, combo_req, source)
+                )
+                combo_labels.append(f"{source}_ret")
 
         if not tasks:
             logger.error("No flight providers configured!")
@@ -697,6 +746,21 @@ class MultiProvider:
             outbound_legs: list[FlightOffer] = []
             return_legs: list[FlightOffer] = []
 
+            # ── Harvest outbound legs from normal provider results ──
+            # Direct airline connectors only return one-way outbound offers
+            # even for round-trip requests.  Re-use those as outbound combo
+            # legs so the combo engine can pair them with return legs from
+            # other airlines (e.g. VS outbound + AI return).
+            _SKIP_FOR_COMBO = {"backend", "kiwi_connector", "ryanair_direct", "wizzair_direct"}
+            for i, result in enumerate(normal_results):
+                provider = providers_used[i]
+                if provider in _SKIP_FOR_COMBO:
+                    continue  # already in combo pipeline or handled separately
+                if isinstance(result, FlightSearchResponse):
+                    for offer in result.offers:
+                        if offer.outbound and not offer.inbound:
+                            outbound_legs.append(offer)
+
             for i, result in enumerate(combo_results):
                 if isinstance(result, Exception):
                     logger.debug("Combo leg %s failed: %s", combo_labels[i], result)
@@ -709,20 +773,31 @@ class MultiProvider:
                         else:
                             return_legs.append(offer)
 
-            # Extract Wizzair one-way legs from round-trip results (avoids extra API calls)
-            w6_idx = None
-            for i, p in enumerate(providers_used):
-                if p == "wizzair_direct":
-                    w6_idx = i
-                    break
-            if w6_idx is not None:
-                w6_result = normal_results[w6_idx]
-                if isinstance(w6_result, FlightSearchResponse):
-                    _extract_legs_from_roundtrip(w6_result.offers, outbound_legs, return_legs)
+            # Extract one-way legs from round-trip results (Wizzair & Kiwi).
+            # Avoids extra API calls — their RT offers already contain both
+            # outbound + inbound legs that the combo engine can mix with
+            # legs from other airlines.
+            for rt_provider in ("wizzair_direct", "kiwi_connector"):
+                rt_idx = None
+                for i, p in enumerate(providers_used):
+                    if p == rt_provider:
+                        rt_idx = i
+                        break
+                if rt_idx is not None:
+                    rt_result = normal_results[rt_idx]
+                    if isinstance(rt_result, FlightSearchResponse):
+                        _extract_legs_from_roundtrip(rt_result.offers, outbound_legs, return_legs)
 
             # Normalize one-way leg prices before combining
             await self._normalize_prices(outbound_legs, req.currency)
             await self._normalize_prices(return_legs, req.currency)
+
+            # Filter legs to correct dates — some connectors (e.g. OmanAir sputnik)
+            # return fares across a wide date range. Only keep legs matching the
+            # requested outbound/return dates (±1 day tolerance).
+            outbound_legs = self._filter_legs_by_date(outbound_legs, req.date_from)
+            if req.return_from:
+                return_legs = self._filter_legs_by_date(return_legs, req.return_from)
 
             # Build cross-airlines combos
             combos = build_combos(outbound_legs, return_legs, req.currency)
@@ -737,6 +812,26 @@ class MultiProvider:
 
         # Deduplicate similar offers (same route, similar time, similar price)
         deduped = self._deduplicate(all_offers)
+
+        # ── Filter by max_stopovers ────────────────────────────────────────
+        # Applied post-aggregate so ALL sources (local + backend) respect it.
+        if req.max_stopovers is not None:
+            before_count = len(deduped)
+            deduped = [
+                o for o in deduped
+                if (o.outbound is None or o.outbound.stopovers <= req.max_stopovers)
+                and (o.inbound is None or o.inbound.stopovers <= req.max_stopovers)
+            ]
+            filtered_count = before_count - len(deduped)
+            if filtered_count:
+                logger.info("max_stopovers=%d filter removed %d offers (%d remain)",
+                            req.max_stopovers, filtered_count, len(deduped))
+
+        # ── Route validation ───────────────────────────────────────────────
+        # Reject offers where outbound origin/destination don't match the
+        # requested route.  Catches connectors that return wrong routes
+        # (e.g. Singapore connector returning SIN→LHR for a LON→DEL search).
+        deduped = self._filter_wrong_routes(deduped, req)
 
         # --- Airline-diverse selection ---
         # Ensure at least the cheapest offer per airline is included,
@@ -894,14 +989,34 @@ class MultiProvider:
         self, client: WizzairConnectorClient, req: FlightSearchRequest
     ) -> FlightSearchResponse:
         """Search Wizzair's website API directly — definitive LCC pricing."""
+        from connectors.browser import acquire_browser_slot, release_browser_slot
+        await acquire_browser_slot()
         try:
-            result = await client.search_flights(req)
+            result = await asyncio.wait_for(
+                client.search_flights(req), timeout=90,
+            )
             for offer in result.offers:
                 offer.source = "wizzair_direct"
                 offer.source_tier = "free"
             return result
+        except asyncio.TimeoutError:
+            logger.warning("wizzair_direct timed out after 90s")
+            return FlightSearchResponse(
+                search_id="", origin=req.origin, destination=req.destination,
+                currency=req.currency, offers=[], total_results=0,
+            )
+        except BaseException as exc:
+            logger.warning("wizzair_direct crashed: %s", type(exc).__name__)
+            return FlightSearchResponse(
+                search_id="", origin=req.origin, destination=req.destination,
+                currency=req.currency, offers=[], total_results=0,
+            )
         finally:
-            await client.close()
+            try:
+                await client.close()
+            except Exception:
+                pass
+            release_browser_slot()
 
     async def _search_kiwi_connector(
         self, client: KiwiConnectorClient, req: FlightSearchRequest
@@ -923,23 +1038,52 @@ class MultiProvider:
 
         Browser-based connectors are throttled by a semaphore so at most 4
         Chrome processes run simultaneously (prevents resource exhaustion).
+
+        Catches ALL exceptions (including CancelledError) so no single
+        connector can crash the entire search.
         """
         uses_browser = source in _BROWSER_SOURCES
         if uses_browser:
             from connectors.browser import acquire_browser_slot
             await acquire_browser_slot()
+        _empty = FlightSearchResponse(
+            search_id="", origin=req.origin, destination=req.destination,
+            currency=req.currency, offers=[], total_results=0,
+        )
+        # Hard timeout per connector — prevents hangs (e.g. Playwright evaluate
+        # that blocks forever) from stalling the entire search.
+        _timeout = 90 if uses_browser else 45
         try:
-            result = await client.search_flights(req)
+            result = await asyncio.wait_for(
+                client.search_flights(req), timeout=_timeout,
+            )
             for offer in result.offers:
                 offer.source = source
                 offer.source_tier = "free"
             return result
+        except asyncio.TimeoutError:
+            logger.warning("%s timed out after %ds", source, _timeout)
+            return _empty
+        except BaseException as exc:
+            # Catch CancelledError / KeyboardInterrupt / any crash —
+            # never let one connector take down the whole search.
+            logger.warning("%s crashed: %s", source, type(exc).__name__)
+            return FlightSearchResponse(
+                search_id="", origin=req.origin, destination=req.destination,
+                currency=req.currency, offers=[], total_results=0,
+            )
         finally:
-            await client.close()
+            try:
+                await client.close()
+            except Exception:
+                pass
             if uses_browser:
                 # Close module-level browser globals immediately so Chrome
                 # doesn't linger until the full search completes.
-                await self._cleanup_single_connector(client)
+                try:
+                    await self._cleanup_single_connector(client)
+                except Exception:
+                    pass
                 from connectors.browser import release_browser_slot
                 release_browser_slot()
 
@@ -951,6 +1095,125 @@ class MultiProvider:
             "kiwi_connector": self._search_kiwi_connector,
         }
         return mapping[label]
+
+    # City code → constituent airport codes (multi-airport cities)
+    _CITY_AIRPORTS: dict[str, set[str]] = {
+        "LON": {"LHR", "LGW", "STN", "LCY", "LTN", "SEN"},
+        "NYC": {"JFK", "LGA", "EWR"},
+        "PAR": {"CDG", "ORY"},
+        "MIL": {"MXP", "LIN", "BGY"},
+        "TYO": {"NRT", "HND"},
+        "OSA": {"KIX", "ITM"},
+        "MOW": {"SVO", "DME", "VKO"},
+        "BUE": {"EZE", "AEP"},
+        "SAO": {"GRU", "CGH", "VCP"},
+        "WAS": {"IAD", "DCA", "BWI"},
+        "CHI": {"ORD", "MDW"},
+        "SEL": {"ICN", "GMP"},
+        "BJS": {"PEK", "PKX"},
+        "SHA": {"PVG", "SHA"},
+        "STO": {"ARN", "BMA", "NYO"},
+        "ROM": {"FCO", "CIA"},
+        "DXB": {"DXB", "DWC"},
+        "IST": {"IST", "SAW"},
+        "BKK": {"BKK", "DMK"},
+        "JKT": {"CGK", "HLP"},
+        "KUL": {"KUL", "SZB"},
+        "MEX": {"MEX", "NLU"},
+        "YTO": {"YYZ", "YTZ", "YHM"},
+        "YMQ": {"YUL", "YMX"},
+    }
+
+    # City code → primary (largest) airport for connectors that don't handle city codes
+    _PRIMARY_AIRPORT: dict[str, str] = {
+        "LON": "LHR", "NYC": "JFK", "PAR": "CDG", "MIL": "MXP",
+        "TYO": "NRT", "OSA": "KIX", "MOW": "SVO", "BUE": "EZE",
+        "SAO": "GRU", "WAS": "IAD", "CHI": "ORD", "SEL": "ICN",
+        "BJS": "PEK", "SHA": "PVG", "STO": "ARN", "ROM": "FCO",
+        "DXB": "DXB", "IST": "IST", "BKK": "BKK", "JKT": "CGK",
+        "KUL": "KUL", "MEX": "MEX", "YTO": "YYZ", "YMQ": "YUL",
+    }
+
+    # Connectors that natively handle city codes — do NOT rewrite for these
+    _CITY_CODE_AWARE: set[str] = {
+        "kiwi_connector",
+        "britishairways_direct",
+        "virginatlantic_direct",  # we added LON→london
+        "omanair_direct",
+    }
+
+    @classmethod
+    def _resolve_primary(cls, code: str) -> str:
+        """Resolve a city IATA code to its primary airport code.
+
+        Returns the code unchanged if it's already an airport code.
+        """
+        return cls._PRIMARY_AIRPORT.get(code.upper(), code)
+
+    def _expand_iata(self, code: str) -> set[str]:
+        """Expand a city IATA code to its airports; single airports return themselves."""
+        code = code.strip().upper()
+        if code in self._CITY_AIRPORTS:
+            return self._CITY_AIRPORTS[code]
+        return {code}
+
+    def _filter_wrong_routes(self, offers: list[FlightOffer], req: FlightSearchRequest) -> list[FlightOffer]:
+        """Remove offers whose actual route doesn't match the requested origin → destination."""
+        valid_origins = self._expand_iata(req.origin)
+        valid_dests = self._expand_iata(req.destination)
+
+        kept = []
+        removed = 0
+        for o in offers:
+            if o.outbound and o.outbound.segments:
+                first_seg = o.outbound.segments[0]
+                last_seg = o.outbound.segments[-1]
+                if first_seg.origin not in valid_origins or last_seg.destination not in valid_dests:
+                    removed += 1
+                    logger.debug("Route filter: dropped %s %s→%s (expected %s→%s)",
+                                 o.owner_airline, first_seg.origin, last_seg.destination,
+                                 req.origin, req.destination)
+                    continue
+            kept.append(o)
+
+        if removed:
+            logger.info("Route validation removed %d offers with wrong origin/destination (%d remain)",
+                        removed, len(kept))
+        return kept
+
+    @staticmethod
+    def _filter_legs_by_date(legs: list[FlightOffer], target_date) -> list[FlightOffer]:
+        """Keep only legs whose departure date matches `target_date` (±1 day tolerance)."""
+        from datetime import date, datetime, timedelta
+
+        if target_date is None:
+            return legs
+        if isinstance(target_date, str):
+            try:
+                target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            except ValueError:
+                return legs
+        if isinstance(target_date, datetime):
+            target_date = target_date.date()
+
+        kept = []
+        removed = 0
+        for leg in legs:
+            if not leg.outbound or not leg.outbound.segments:
+                kept.append(leg)
+                continue
+            dep = leg.outbound.segments[0].departure
+            if dep is None:
+                kept.append(leg)
+                continue
+            dep_date = dep.date() if isinstance(dep, datetime) else dep
+            if abs((dep_date - target_date).days) <= 1:
+                kept.append(leg)
+            else:
+                removed += 1
+        if removed:
+            logger.info("Date filter: removed %d legs not on %s", removed, target_date)
+        return kept
 
     def _deduplicate(self, offers: list[FlightOffer]) -> list[FlightOffer]:
         """
