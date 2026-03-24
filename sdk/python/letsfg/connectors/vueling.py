@@ -219,6 +219,7 @@ class VuelingConnectorClient:
 
     def __init__(self, timeout: float = 60.0):
         self.timeout = timeout
+        self._route_rejected = False
 
     async def close(self):
         pass  # Browser is shared singleton
@@ -229,6 +230,11 @@ class VuelingConnectorClient:
         result = await self._search_via_api(req)
         if result and result.total_results > 0:
             return result
+        # If API explicitly said "no valid markets", the route doesn't exist —
+        # no point launching browser fallback.
+        if self._route_rejected:
+            logger.info("Vueling: route %s->%s not in network, skipping browser", req.origin, req.destination)
+            return result or self._empty(req)
         logger.info("Vueling: API path returned 0 results, trying Playwright fallback")
         return await self._search_via_browser(req)
 
@@ -292,7 +298,11 @@ class VuelingConnectorClient:
 
             data = r.json()
             if "errors" in data:
+                errors_str = str(data["errors"])
                 logger.warning("Vueling GQL errors: %s", data["errors"])
+                # "No valid markets" = route doesn't exist, skip browser fallback
+                if "no valid markets" in errors_str.lower():
+                    self._route_rejected = True
                 return None
 
             elapsed = time.monotonic() - t0

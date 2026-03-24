@@ -1,34 +1,25 @@
 """
-Wizzair scraper — CDP Chrome + persistent page + page.evaluate(fetch) hybrid.
+Wizzair scraper — curl_cffi direct API (no browser, no KPSDK).
 
-Kasada (KPSDK) protects all Wizzair API endpoints. Playwright's bundled
-Chromium gets fingerprinted → 429 on the KPSDK /fp endpoint. SPA hash
-navigation is unreliable (Usercentrics overlay, Vue router lazy-loading).
+Strategy:
+1. Fetch API version from /buildnumber (plain text, unprotected).
+2. POST to /Api/search/timetableV2 — returns prices + departure times.
+   This endpoint is NOT behind KPSDK (unlike /Api/search/search).
+3. Parse response into FlightOffer objects.
 
-Strategy (CDP Chrome + in-browser fetch):
-1. Launch REAL system Chrome (--remote-debugging-port, --user-data-dir).
-2. Connect via Playwright CDP.  Keep ONE persistent page on wizzair.com.
-3. On first load KPSDK JS solves the challenge; cookies persist across runs.
-4. Discover API version from intercepted /Api/asset/* calls (e.g. "28.1.0").
-5. For each search: page.evaluate(fetch) POSTs to /Api/search/search.
-   KPSDK JS hooks the fetch and injects x-kpsdk-h / x-kpsdk-ct headers.
-6. Parse JSON response directly — no SPA navigation per search.
-
-Result: First search ~8-12s (KPSDK challenge), subsequent ~1-3s (cookies cached).
+Result: ~1-3s per search, works in Cloud Run containers, zero browser overhead.
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
-import json
 import logging
-import os
-import random
-import subprocess
+import re
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from ..models.flights import (
     FlightOffer,
@@ -37,267 +28,151 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import find_chrome, stealth_popen_kwargs
 
 logger = logging.getLogger(__name__)
 
-# ── Anti-fingerprint pools ─────────────────────────────────────────────────
-_VIEWPORTS = [
-    {"width": 1366, "height": 768},
-    {"width": 1440, "height": 900},
-    {"width": 1536, "height": 864},
-    {"width": 1920, "height": 1080},
-    {"width": 1280, "height": 720},
-    {"width": 1600, "height": 900},
-]
-_LOCALES = ["en-GB", "en-US", "en-IE", "en-AU", "en-CA"]
-_TIMEZONES = [
-    "Europe/Warsaw", "Europe/London", "Europe/Berlin",
-    "Europe/Paris", "Europe/Rome", "Europe/Madrid",
-]
-
-_MAX_ATTEMPTS = 2
-_DEBUG_PORT = 9446
-_USER_DATA_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".wizzair_chrome_data"
+_IMPERSONATE = "chrome131"
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
-
-# ── Shared state ──────────────────────────────────────────────────────────
-_browser_lock: Optional[asyncio.Lock] = None
-_pw_instance = None
-_browser = None
-_chrome_proc = None
-_persistent_page = None          # stays on wizzair.com — KPSDK JS active
-_api_version: Optional[str] = None  # e.g. "28.1.0"
-_page_ready = False              # True once KPSDK is loaded
+_FALLBACK_VERSION = "28.3.0"
+_MAX_ATTEMPTS = 2
 
 
-def _get_lock() -> asyncio.Lock:
-    global _browser_lock
-    if _browser_lock is None:
-        _browser_lock = asyncio.Lock()
-    return _browser_lock
+def _api_headers() -> dict[str, str]:
+    return {
+        "User-Agent": _UA,
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://wizzair.com",
+        "Referer": "https://wizzair.com/",
+    }
 
 
-async def _get_browser():
-    """Launch real Chrome via CDP (headed — KPSDK detects --headless=new)."""
-    global _pw_instance, _browser, _chrome_proc
-    lock = _get_lock()
-    async with lock:
-        if _browser:
-            try:
-                if _browser.is_connected():
-                    return _browser
-            except Exception:
-                pass
+def _get_version_sync() -> str:
+    """Fetch API version from /buildnumber (sync, run in executor)."""
+    from curl_cffi import requests as cffi_requests
 
-        from playwright.async_api import async_playwright
-
-        if _pw_instance:
-            try:
-                await _pw_instance.stop()
-            except Exception:
-                pass
-        _pw_instance = await async_playwright().start()
-
-        # Try connecting to already-running Chrome on the debug port
-        try:
-            _browser = await _pw_instance.chromium.connect_over_cdp(
-                f"http://localhost:{_DEBUG_PORT}"
-            )
-            logger.info("Wizzair: connected to existing Chrome via CDP")
-            return _browser
-        except Exception:
-            pass
-
-        # Launch real Chrome WITHOUT --headless=new (Kasada fingerprints it)
-        chrome_path = find_chrome()
-        if chrome_path:
-            os.makedirs(_USER_DATA_DIR, exist_ok=True)
-            vp = random.choice(_VIEWPORTS)
-            _chrome_proc = subprocess.Popen(
-                [
-                    chrome_path,
-                    f"--remote-debugging-port={_DEBUG_PORT}",
-                    f"--user-data-dir={_USER_DATA_DIR}",
-                    f"--window-size={vp['width']},{vp['height']}",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    "--disable-background-networking",
-                    "--window-position=-2400,-2400",
-                    "about:blank",
-                ],
-                **stealth_popen_kwargs(),
-            )
-            await asyncio.sleep(2.5)
-            try:
-                _browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://localhost:{_DEBUG_PORT}"
-                )
-                logger.info("Wizzair: CDP Chrome connected (port %d)", _DEBUG_PORT)
-                return _browser
-            except Exception as e:
-                logger.warning("Wizzair: CDP connect failed: %s, falling back", e)
-                if _chrome_proc:
-                    _chrome_proc.terminate()
-                    _chrome_proc = None
-
-        # Fallback: Playwright headed (no headless — KPSDK needs it)
-        try:
-            _browser = await _pw_instance.chromium.launch(
-                headless=False,
-                channel="chrome",
-                args=["--disable-blink-features=AutomationControlled",
-                      "--window-position=-2400,-2400"],
-            )
-        except Exception:
-            _browser = await _pw_instance.chromium.launch(
-                headless=False,
-                args=["--disable-blink-features=AutomationControlled",
-                      "--no-sandbox",
-                      "--window-position=-2400,-2400"],
-            )
-        logger.info("Wizzair: Playwright browser launched (headed fallback)")
-        return _browser
-
-
-async def _ensure_persistent_page():
-    """Return a persistent page sitting on wizzair.com with KPSDK loaded.
-
-    On first call: navigates to homepage, waits for KPSDK JS to solve the
-    challenge, and intercepts asset API calls to discover the version.
-    On subsequent calls: returns the cached page if still alive.
-    """
-    global _persistent_page, _api_version, _page_ready
-
-    # Reuse existing page if alive (no lock needed for read check)
-    if _persistent_page and _page_ready:
-        try:
-            await _persistent_page.evaluate("1")
-            return _persistent_page, _api_version
-        except Exception:
-            _persistent_page = None
-            _page_ready = False
-
-    # Get browser first (acquires lock internally)
-    browser = await _get_browser()
-
-    is_cdp = hasattr(browser, "contexts") and browser.contexts
-    if is_cdp:
-        context = browser.contexts[0]
-        page = await context.new_page()
-    else:
-        context = await browser.new_context(
-            viewport=random.choice(_VIEWPORTS),
-            locale=random.choice(_LOCALES),
-            timezone_id=random.choice(_TIMEZONES),
-        )
-        page = await context.new_page()
-        try:
-            from playwright_stealth import stealth_async
-            await stealth_async(page)
-        except ImportError:
-            pass
-
-    # Intercept asset API calls to discover the version
-    version_found = asyncio.Event()
-
-    async def on_response(response):
-        global _api_version
-        try:
-            url = response.url
-            if "/Api/asset/" in url and response.status == 200:
-                # Extract version from URL: be.wizzair.com/28.1.0/Api/...
-                import re
-                m = re.search(r"be\.wizzair\.com/(\d+\.\d+\.\d+)/Api/", url)
-                if m and not _api_version:
-                    _api_version = m.group(1)
-                    logger.info("Wizzair: API version discovered: %s", _api_version)
-                    version_found.set()
-        except Exception:
-            pass
-
-    page.on("response", on_response)
-
-    logger.info("Wizzair: loading homepage (KPSDK init)...")
     try:
-        await page.goto(
-            "https://wizzair.com/en-gb",
-            wait_until="domcontentloaded",
-            timeout=30000,
+        sess = cffi_requests.Session(impersonate=_IMPERSONATE)
+        r = sess.get(
+            "https://wizzair.com/buildnumber",
+            headers={"User-Agent": _UA},
+            timeout=10,
         )
-    except Exception as e:
-        logger.debug("Wizzair: homepage goto: %s", e)
+        m = re.search(r"(\d+\.\d+\.\d+)", r.text)
+        return m.group(1) if m else _FALLBACK_VERSION
+    except Exception as exc:
+        logger.warning("Wizzair: buildnumber fetch failed: %s", exc)
+        return _FALLBACK_VERSION
 
-    # Wait for KPSDK to solve challenge (Kasada page disappears)
-    for _ in range(20):
-        title = await page.title()
-        if title and "verification" not in title.lower():
-            break
-        await asyncio.sleep(1)
 
-    # Dismiss Usercentrics cookie consent
-    await page.evaluate("""
-        () => {
-            if (window.__ucCmp) __ucCmp.acceptAllConsents();
-            else if (window.UC_UI) UC_UI.acceptAllConsents();
+def _search_timetable_sync(
+    version: str,
+    origin: str,
+    destination: str,
+    date_from: str,
+    date_to: str | None,
+    adults: int,
+    children: int,
+    infants: int,
+) -> dict | None:
+    """POST to timetableV2 (sync, run in executor). Returns parsed JSON."""
+    from curl_cffi import requests as cffi_requests
+
+    sess = cffi_requests.Session(impersonate=_IMPERSONATE)
+    base = f"https://be.wizzair.com/{version}/Api"
+
+    flight_list = [
+        {
+            "departureStation": origin,
+            "arrivalStation": destination,
+            "from": date_from,
+            "to": date_from,  # single-day query
         }
-    """)
+    ]
+    if date_to:
+        flight_list.append(
+            {
+                "departureStation": destination,
+                "arrivalStation": origin,
+                "from": date_to,
+                "to": date_to,
+            }
+        )
 
-    # Wait for version discovery from asset API calls
-    try:
-        await asyncio.wait_for(version_found.wait(), timeout=15)
-    except asyncio.TimeoutError:
-        if not _api_version:
-            # Fallback: try /buildnumber
-            try:
-                resp = await page.evaluate("""
-                    async () => {
-                        const r = await fetch('https://wizzair.com/buildnumber');
-                        return await r.text();
-                    }
-                """)
-                if resp and "." in resp:
-                    _api_version = resp.strip()
-                    logger.info("Wizzair: version from buildnumber: %s", _api_version)
-            except Exception:
-                _api_version = "28.1.0"  # known-good fallback
-                logger.warning("Wizzair: using fallback API version %s", _api_version)
+    body = {
+        "flightList": flight_list,
+        "adultCount": adults,
+        "childCount": children,
+        "infantCount": infants,
+        "wdc": True,
+        "priceType": "regular",
+    }
 
-    _persistent_page = page
-    _page_ready = True
-    # Give KPSDK JS time to complete its challenge-response cycle.
-    # Without this delay, the first fetch gets 429'd.
-    await asyncio.sleep(5)
-    logger.info("Wizzair: persistent page ready (version %s)", _api_version)
-    return page, _api_version
+    r = sess.post(
+        f"{base}/search/timetableV2",
+        json=body,
+        headers=_api_headers(),
+        timeout=15,
+    )
+    if r.status_code == 200:
+        return r.json()
+    logger.warning("Wizzair timetableV2: %d %s", r.status_code, r.text[:200])
+    return None
 
 
 class WizzairConnectorClient:
-    """Wizzair scraper — CDP Chrome + SPA navigation + API interception."""
+    """Wizzair search via curl_cffi + timetableV2 (no browser needed)."""
 
-    def __init__(self, timeout: float = 45.0):
+    def __init__(self, timeout: float = 25.0):
         self.timeout = timeout
 
     async def close(self):
-        pass  # Browser is shared singleton
-
-    # ------------------------------------------------------------------
-    # Search
-    # ------------------------------------------------------------------
+        pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
-        search_url = self._build_booking_url(req)
+        loop = asyncio.get_running_loop()
 
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
-                data = await self._attempt_search(search_url, req)
+                version = await loop.run_in_executor(None, _get_version_sync)
+                logger.info(
+                    "Wizzair: v%s, searching %s→%s on %s",
+                    version, req.origin, req.destination, req.date_from,
+                )
+
+                date_from = req.date_from.strftime("%Y-%m-%d")
+                date_to = (
+                    req.return_from.strftime("%Y-%m-%d") if req.return_from else None
+                )
+
+                data = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        _search_timetable_sync,
+                        version,
+                        req.origin,
+                        req.destination,
+                        date_from,
+                        date_to,
+                        req.adults,
+                        req.children,
+                        req.infants,
+                    ),
+                )
                 if data is not None:
-                    elapsed = time.monotonic() - t0
-                    outbound = self._parse_flights(data.get("outboundFlights") or [])
-                    inbound = self._parse_flights(data.get("returnFlights") or [])
+                    outbound = self._parse_timetable(
+                        data.get("outboundFlights") or [], req.date_from
+                    )
+                    inbound = self._parse_timetable(
+                        data.get("returnFlights") or [],
+                        req.return_from if req.return_from else req.date_from,
+                    )
                     offers = self._build_offers(req, outbound, inbound)
+                    elapsed = time.monotonic() - t0
                     logger.info(
                         "Wizzair %s→%s returned %d offers in %.1fs",
                         req.origin, req.destination, len(offers), elapsed,
@@ -313,121 +188,81 @@ class WizzairConnectorClient:
                         offers=offers,
                         total_results=len(offers),
                     )
-                logger.warning(
-                    "Wizzair: attempt %d/%d got no results",
-                    attempt, _MAX_ATTEMPTS,
-                )
+                logger.warning("Wizzair: attempt %d/%d empty", attempt, _MAX_ATTEMPTS)
             except Exception as e:
-                logger.warning(
-                    "Wizzair: attempt %d/%d error: %s",
-                    attempt, _MAX_ATTEMPTS, e,
-                )
+                logger.warning("Wizzair: attempt %d/%d error: %s", attempt, _MAX_ATTEMPTS, e)
 
         return self._empty(req)
 
-    async def _attempt_search(
-        self, url: str, req: FlightSearchRequest
-    ) -> Optional[dict]:
-        """Use persistent page + page.evaluate(fetch) to call the search API.
+    # ------------------------------------------------------------------
+    # Parsing (timetableV2 response)
+    # ------------------------------------------------------------------
 
-        KPSDK JS running in the page hooks the fetch and automatically
-        injects x-kpsdk-h, x-kpsdk-ct, x-kpsdk-v headers.
+    def _parse_timetable(
+        self, flights: list[dict], target_date: datetime | object
+    ) -> list[dict]:
+        """Parse timetableV2 flight entries into intermediate format.
+
+        Each entry represents one day and contains:
+          - departureStation, arrivalStation
+          - price.amount, price.currencyCode
+          - departureDates: [{date: ..., isCheapestOfTheDay: bool}, ...]
+        We create one parsed record per departure time slot.
         """
-        global _persistent_page, _page_ready
-
-        page, version = await _ensure_persistent_page()
-
-        # Build the API request body (protocol: wizzair.json)
-        flight_list = [
-            {
-                "departureStation": req.origin,
-                "arrivalStation": req.destination,
-                "departureDate": req.date_from.isoformat(),
-            }
-        ]
-        if req.return_from:
-            flight_list.append({
-                "departureStation": req.destination,
-                "arrivalStation": req.origin,
-                "departureDate": req.return_from.isoformat(),
-            })
-
-        body = {
-            "flightList": flight_list,
-            "adultCount": req.adults,
-            "childCount": req.children,
-            "infantCount": req.infants,
-            "wdc": True,
-            "isFlightChange": False,
-            "isSeniorOrStudent": False,
-            "rescueFareCode": "",
-            "priceType": "regular",
-        }
-
-        api_url = f"https://be.wizzair.com/{version}/Api/search/search"
-        body_json = json.dumps(body)
-
-        logger.info(
-            "Wizzair: fetch %s→%s via page.evaluate (v%s)",
-            req.origin, req.destination, version,
+        results: list[dict] = []
+        target_ymd = (
+            target_date.strftime("%Y-%m-%d")
+            if hasattr(target_date, "strftime")
+            else str(target_date)[:10]
         )
 
-        try:
-            result = await page.evaluate("""
-                async ([url, bodyJson]) => {
-                    try {
-                        // Read RequestVerificationToken from cookies
-                        const rvt = document.cookie.split('; ')
-                            .find(c => c.startsWith('RequestVerificationToken='));
-                        const rvtVal = rvt ? rvt.split('=').slice(1).join('=') : '';
+        for flight in flights:
+            price_obj = flight.get("price") or {}
+            amount = price_obj.get("amount", 0)
+            currency = price_obj.get("currencyCode", "EUR")
+            if not amount or amount <= 0:
+                continue
 
-                        const resp = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json;charset=UTF-8',
-                                'Accept': 'application/json, text/plain, */*',
-                                'X-RequestVerificationToken': rvtVal,
-                            },
-                            body: bodyJson,
-                            credentials: 'include',
-                        });
-                        const status = resp.status;
-                        if (status === 200) {
-                            const data = await resp.json();
-                            return {ok: true, status, data};
-                        }
-                        const text = await resp.text().catch(() => '');
-                        return {ok: false, status, error: text.slice(0, 500)};
-                    } catch (e) {
-                        return {ok: false, status: 0, error: e.message};
+            dep_station = flight.get("departureStation", "")
+            arr_station = flight.get("arrivalStation", "")
+            dep_dates = flight.get("departureDates") or []
+
+            # Filter departure times to the target date
+            for slot in dep_dates:
+                slot_dt_str = slot.get("date", "")
+                if not slot_dt_str.startswith(target_ymd):
+                    continue
+
+                dep_dt = self._parse_dt(slot_dt_str)
+                key = f"W6_{dep_station}{arr_station}_{slot_dt_str}"
+
+                route = FlightRoute(
+                    segments=[
+                        FlightSegment(
+                            airline="W6",
+                            airline_name="Wizz Air",
+                            flight_no="W6",
+                            origin=dep_station,
+                            destination=arr_station,
+                            departure=dep_dt,
+                            arrival=dep_dt,  # timetableV2 has no arrival time
+                            cabin_class="M",
+                        )
+                    ],
+                    total_duration_seconds=0,
+                    stopovers=0,
+                )
+                results.append(
+                    {
+                        "price": float(amount),
+                        "currency": currency,
+                        "key": key,
+                        "route": route,
+                        "cheapest": slot.get("isCheapestOfTheDay", False),
                     }
-                }
-            """, [api_url, body_json])
+                )
 
-            if result and result.get("ok"):
-                return result["data"]
-
-            status = result.get("status", 0) if result else 0
-            error = result.get("error", "") if result else ""
-            logger.warning("Wizzair: API returned %d: %s", status, error[:200])
-
-            # 429 = KPSDK challenge expired → reset page, re-farm
-            if status == 429:
-                logger.info("Wizzair: 429 — KPSDK expired, re-farming...")
-                _persistent_page = None
-                _page_ready = False
-                try:
-                    await page.close()
-                except Exception:
-                    pass
-
-            return None
-
-        except Exception as e:
-            logger.error("Wizzair: page.evaluate failed: %s", e)
-            _persistent_page = None
-            _page_ready = False
-            return None
+        return results
 
     def _build_offers(
         self,
@@ -435,8 +270,7 @@ class WizzairConnectorClient:
         outbound_parsed: list[dict],
         return_parsed: list[dict],
     ) -> list[FlightOffer]:
-        """Build FlightOffer objects from parsed flight data."""
-        offers = []
+        offers: list[FlightOffer] = []
 
         if req.return_from and return_parsed:
             outbound_parsed.sort(key=lambda x: x["price"])
@@ -480,71 +314,6 @@ class WizzairConnectorClient:
 
         offers.sort(key=lambda o: o.price)
         return offers
-
-    def _parse_flights(self, flights: list[dict]) -> list[dict]:
-        """Parse Wizzair flight entries into intermediate format."""
-        results = []
-        for flight in flights:
-            fares = flight.get("fares", [])
-            if not fares:
-                continue
-
-            # Get the basic fare (cheapest bundle)
-            best_price = float("inf")
-            best_currency = "EUR"
-            for fare in fares:
-                bundle = fare.get("bundle", "")
-                base = fare.get("basePrice", {})
-                amount = float(base.get("amount", 0))
-                currency = base.get("currencyCode", "EUR")
-
-                # Also check discounted price (WDC price)
-                disc = fare.get("discountedPrice", {})
-                disc_amount = float(disc.get("amount", 0)) if disc else 0
-
-                effective = disc_amount if disc_amount > 0 else amount
-                if 0 < effective < best_price:
-                    best_price = effective
-                    best_currency = currency
-
-            if best_price == float("inf") or best_price <= 0:
-                continue
-
-            # Build segments
-            dep_str = flight.get("departureDateTime", "")
-            arr_str = flight.get("arrivalDateTime", "")
-            flight_num = flight.get("flightNumber", "").replace(" ", "")
-
-            dep_dt = self._parse_dt(dep_str)
-            arr_dt = self._parse_dt(arr_str)
-
-            dur = int((arr_dt - dep_dt).total_seconds()) if arr_dt > dep_dt else 0
-
-            route = FlightRoute(
-                segments=[FlightSegment(
-                    airline="W6",
-                    airline_name="Wizz Air",
-                    flight_no=flight_num,
-                    origin=flight.get("departureStation", ""),
-                    destination=flight.get("arrivalStation", ""),
-                    departure=dep_dt,
-                    arrival=arr_dt,
-                    cabin_class="M",
-                )],
-                total_duration_seconds=max(dur, 0),
-                stopovers=0,
-            )
-
-            key = f"{flight_num}_{dep_str}"
-
-            results.append({
-                "price": best_price,
-                "currency": best_currency,
-                "key": key,
-                "route": route,
-            })
-
-        return results
 
     def _parse_dt(self, s: str) -> datetime:
         if not s:
