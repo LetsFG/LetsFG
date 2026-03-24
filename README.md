@@ -5,17 +5,18 @@
 </td>
 <td>
 
-# LetsFG🔥🚀✈️ — agent-native travel search.
+# LetsFG🔥🚀✈️ — agent-native flight search & booking.
 
-### Flights & hotels $50 cheaper in 5 seconds. Native to AI agents.
+### Flights & hotels $50 cheaper in 5 seconds. Not redirects — real booking flows for AI agents.
 
 </td>
 </tr>
 </table>
 
-LetsFG finds the cheapest flights across the entire internet — 140 airline connectors firing in parallel + enterprise GDS sources (Amadeus, Duffel, Sabre, Travelport) — and returns results in ~5 seconds. No web scraping wait times, no browser tabs, no inflated prices. Just raw airline prices, zero markup.
+LetsFG finds the cheapest flights across the entire internet — 140 airline connectors firing in parallel + enterprise GDS sources (Amadeus, Duffel, Sabre, Travelport) — and returns results in ~5 seconds. No web scraping wait times, no browser tabs, no inflated prices, and no redirect maze. Just raw airline prices, zero markup, and booking flows that end in real airline PNRs.
 
 Native to **OpenClaw**, **Perplexity Computer**, **Manus**, **Claude Code**, **Codex**, **Cursor**, **Windsurf** — any AI agent that supports CLI, MCP, or packages.
+Built for developers shipping personal AI assistants, coding agents, and agentic workflows that need to do more than return links.
 
 > ⭐ **Search is free. Booking costs the ticket price only — zero markup.** Star → register → get unlimited search access forever. No trial, no catch. Booking charges the raw airline ticket price via Stripe (we add zero margin).
 
@@ -39,12 +40,17 @@ Native to **OpenClaw**, **Perplexity Computer**, **Manus**, **Claude Code**, **C
 
 Flight websites inflate prices with demand tracking, cookie-based pricing, and surge markup. The same flight is often **$20–$50 cheaper** through LetsFG — raw airline price, zero markup.
 
+But the bigger difference for AI builders is the workflow: most travel products for agents stop at search and send the user away through redirects. LetsFG is built so an agent can search, unlock, and book inside one structured flow — ending in a real airline PNR, not a handoff.
+
 LetsFG works by finding the best price across the entire internet. It fires 140 airline connectors in parallel, scanning carriers across Europe, Asia, Americas, Middle East, Africa, and Oceania — then merges results with enterprise GDS/NDC sources (Amadeus, Duffel, Sabre, Travelport) that provide competitive pricing from 400+ carriers including premium airlines like Lufthansa, British Airways, and Emirates. The best price wins.
+
+That also matters for trust: in an agent-driven world, hidden OTA margin is not just a pricing issue — it's an incentives issue. LetsFG is not in the chain to quietly tax the passenger between the airline and the assistant.
 
 | | Google Flights / Booking.com / Expedia | **LetsFG** |
 |---|---|---|
 | Search speed | 30s+ (loading, ads, redirects) | **~10 seconds** |
 | Search | Free (with tracking/inflation) | **Free** (no tracking, no cookies) |
+| Booking model | Redirects user to OTA/airline checkout | **Structured agent flow ending in a real airline PNR** |
 | Booking | Ticket + hidden markup | **Ticket price only** (raw airline price, zero markup) |
 | Price goes up on repeat search? | Yes (demand tracking) | **Never** |
 | LCC coverage | Missing many low-cost carriers | **140 direct airline connectors** |
@@ -468,3 +474,4 @@ See [SECURITY.md](SECURITY.md) for our security policy.
 ## License
 
 Free for personal use. Search is free for everyone — no agreement needed. Commercial booking requires a 1% fee (min $1 USD) via Stripe Connect. By using the Software you agree to the [LICENSE](LICENSE). To set up a commercial agreement, email contact@letsfg.co or adam@letsfg.co.
+
