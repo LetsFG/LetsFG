@@ -176,6 +176,33 @@ CITY_COUNTRY: dict[str, str] = {
     "REK": "IS", "MOW": "RU", "STO": "SE",
 }
 
+# City code → constituent airport codes (for city expansion in fan-out)
+CITY_AIRPORTS: dict[str, list[str]] = {
+    "LON": ["LHR", "LGW", "STN", "LTN", "LCY", "SEN"],
+    "PAR": ["CDG", "ORY", "BVA"],
+    "ROM": ["FCO", "CIA"],
+    "MIL": ["MXP", "LIN", "BGY"],
+    "NYC": ["JFK", "EWR", "LGA"],
+    "WAS": ["IAD", "DCA", "BWI"],
+    "CHI": ["ORD", "MDW"],
+    "TYO": ["NRT", "HND"],
+    "OSA": ["KIX", "ITM"],
+    "SEL": ["ICN", "GMP"],
+    "BJS": ["PEK", "PKX"],
+    "SHA": ["PVG", "SHA"],
+    "BUE": ["EZE", "AEP"],
+    "BKK": ["BKK", "DMK"],
+    "KUL": ["KUL", "SZB"],
+    "REK": ["KEF", "RKV"],
+    "MOW": ["SVO", "DME", "VKO"],
+    "STO": ["ARN", "BMA", "NYO", "VST"],
+}
+
+
+def get_city_airports(iata: str) -> list[str]:
+    """Return all airport codes for a city code, or [iata] if it's an airport."""
+    return CITY_AIRPORTS.get(iata.upper().strip(), [iata.upper().strip()])
+
 
 def get_country(iata: str) -> str | None:
     """Resolve an IATA airport or city code to its ISO country code."""

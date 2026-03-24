@@ -246,15 +246,36 @@ class TurkishConnectorClient:
             await self._dismiss_cookies(page)
             await asyncio.sleep(1.0)
 
+            # Dismiss any overlays/modals that block form interaction
+            await page.evaluate("""() => {
+                document.querySelectorAll(
+                    '[role="dialog"], .modal-backdrop, .overlay, [class*="popup"]'
+                ).forEach(el => el.remove());
+            }""")
+
             # One-way toggle
             try:
                 ow = page.locator("span:has-text('One way')").first
                 if await ow.count() > 0:
-                    await ow.click(timeout=3000)
+                    await ow.click(timeout=5000)
                     logger.info("TK: One-way selected")
             except Exception:
                 pass
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2.0)
+
+            # Wait for the origin field to be visible & interactive
+            try:
+                await page.locator("#fromPort").wait_for(
+                    state="visible", timeout=10000
+                )
+            except Exception:
+                # Try dismissing overlays again — TK sometimes shows delayed popups
+                await page.evaluate("""() => {
+                    document.querySelectorAll(
+                        '[role="dialog"], .modal-backdrop, .overlay, [class*="popup"], [class*="modal"]'
+                    ).forEach(el => el.remove());
+                }""")
+                await asyncio.sleep(1.0)
 
             # Fill form
             ok = await self._fill_form(page, req)
@@ -365,14 +386,21 @@ class TurkishConnectorClient:
         """Fill an airport typeahead and select first match."""
         try:
             field = page.locator(selector)
-            await field.click(timeout=5000)
+            # Wait for field to be visible before interacting
+            try:
+                await field.wait_for(state="visible", timeout=10000)
+            except Exception:
+                logger.warning("TK: %s not visible after 10s", selector)
+                return False
+            # Force-click bypasses overlay/interceptor issues
+            await field.click(timeout=5000, force=True)
             await asyncio.sleep(0.3)
             await field.click(click_count=3)
             await asyncio.sleep(0.1)
             await field.fill("")
             await asyncio.sleep(0.1)
             await field.type(iata, delay=80)
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(2.5)
 
             # Click first dropdown option
             opt = page.locator("[role='option']").first
@@ -402,7 +430,7 @@ class TurkishConnectorClient:
         """Pick the departure date in the react-calendar widget."""
         dt = _to_datetime(dep_date)
         target_day = str(dt.day)
-        target_month = dt.strftime("%B")  # e.g. "March"
+        target_month = dt.strftime("%B")  # e.g. "April"
         target_year = str(dt.year)
 
         try:
@@ -417,23 +445,39 @@ class TurkishConnectorClient:
                     await asyncio.sleep(1.0)
 
             # Navigate calendar to the correct month
+            navigated = False
             for _ in range(12):
                 nav_label = page.locator(".react-calendar__navigation__label").first
                 if await nav_label.count() > 0:
-                    label_text = await nav_label.text_content()
+                    label_text = await nav_label.text_content() or ""
                     if target_month in label_text and target_year in label_text:
+                        navigated = True
                         break
                     # Click next month arrow
                     next_btn = page.locator(".react-calendar__navigation__next-button").first
                     if await next_btn.count() > 0:
                         await next_btn.click(timeout=2000)
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(0.5)
                 else:
                     break
 
-            # Click the target day — use aria-label or exact text match
-            # react-calendar day buttons have class react-calendar__tile
-            day_tiles = page.locator("button.react-calendar__tile")
+            if not navigated:
+                logger.warning("TK: could not navigate to %s %s", target_month, target_year)
+
+            # Click the target day — only click ENABLED tiles
+            # Use aria-label matching for precision (includes full date)
+            # Format: "April 15, 2026"
+            aria_target = f"{target_month} {target_day}, {target_year}"
+            aria_tile = page.locator(f"button.react-calendar__tile[aria-label*='{aria_target}']")
+            if await aria_tile.count() > 0:
+                tile = aria_tile.first
+                if await tile.is_enabled():
+                    await tile.click(timeout=3000)
+                    logger.info("TK: selected date %s %s %s (aria)", target_day, target_month, target_year)
+                    return True
+
+            # Fallback: iterate tiles, but only click enabled ones with matching text
+            day_tiles = page.locator("button.react-calendar__tile:not([disabled])")
             count = await day_tiles.count()
             for i in range(count):
                 tile = day_tiles.nth(i)
@@ -441,6 +485,7 @@ class TurkishConnectorClient:
                 if text == target_day:
                     await tile.click(timeout=2000)
                     logger.info("TK: selected date %s %s %s", target_day, target_month, target_year)
+                    return True
                     return True
 
             # Fallback: find button with matching text
