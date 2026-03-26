@@ -218,6 +218,16 @@ from .etraveli import EtraveliConnectorClient, TravelgenioConnectorClient
 from .ixigo import IxigoConnectorClient
 from .rehlat import RehlatConnectorClient
 from .travelstart import TravelstartConnectorClient
+from .auntbetty import AuntbettyConnectorClient
+from .flightcatchers import FlightcatchersConnectorClient
+from .traveltrolley import TraveltrolleyConnectorClient
+from .onthebeach import OnthebeachConnectorClient
+from .agoda import AgodaConnectorClient
+from .almosafer import AlmosaferConnectorClient
+from .bookingcom import BookingcomConnectorClient
+from .musafir import MusafirConnectorClient
+from .akbartravels import AkbartravelsConnectorClient
+from .airasiamove import AirasiamoveConnectorClient
 
 from ..models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -286,6 +296,16 @@ _BROWSER_SOURCES: set[str] = {
     "lastminute_ota",
     "byojet_ota",
     "yatra_ota",
+    "auntbetty_ota",
+    "flightcatchers_ota",
+    "traveltrolley_ota",
+    # "onthebeach_ota",  # DEAD: package-only
+    "agoda_meta",
+    "almosafer_ota",
+    "bookingcom_ota",
+    "musafir_ota",
+    "akbartravels_ota",
+    "airasiamove_ota",
 }
 
 
@@ -528,7 +548,8 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("skiplagged_meta", SkiplaggedConnectorClient, 25.0),
     # ── New OTA/meta connectors (Instance A batch — Playwright + API interception) ──
     ("etraveli_ota", EtraveliConnectorClient, 55.0),
-    ("travelgenio_ota", TravelgenioConnectorClient, 55.0),
+    # DEAD: Travelgenio backend APIs all return 404 (site decommissioned as of 2026-03)
+    # ("travelgenio_ota", TravelgenioConnectorClient, 55.0),
     ("ixigo_meta", IxigoConnectorClient, 55.0),
     ("rehlat_ota", RehlatConnectorClient, 55.0),
     ("travelstart_ota", TravelstartConnectorClient, 45.0),
@@ -539,6 +560,19 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("lastminute_ota", LastminuteConnectorClient, 55.0),
     ("byojet_ota", ByojetConnectorClient, 55.0),
     ("yatra_ota", YatraConnectorClient, 55.0),
+    # ── OTA expansion batch (Instance A — CDP Chrome / Playwright) ──
+    ("auntbetty_ota", AuntbettyConnectorClient, 55.0),
+    ("flightcatchers_ota", FlightcatchersConnectorClient, 55.0),
+    ("traveltrolley_ota", TraveltrolleyConnectorClient, 60.0),
+    # DEAD: OnTheBeach is package-holiday only, no flight-only search supported
+    # ("onthebeach_ota", OnthebeachConnectorClient, 60.0),
+    ("agoda_meta", AgodaConnectorClient, 55.0),
+    ("almosafer_ota", AlmosaferConnectorClient, 60.0),
+    ("bookingcom_ota", BookingcomConnectorClient, 65.0),
+    # ── OTA expansion batch (Instance B — Playwright + API interception) ──
+    ("musafir_ota", MusafirConnectorClient, 55.0),
+    ("akbartravels_ota", AkbartravelsConnectorClient, 55.0),
+    ("airasiamove_ota", AirasiamoveConnectorClient, 55.0),
 ]
 
 

@@ -1078,10 +1078,11 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "NL", "BE", "AT", "CH", "PL", "CZ", "GR", "HU", "RO", "HR", "BG",
         "US", "CA", "AE", "TH", "IN", "AU", "NZ", "BR", "TR", "EG",
     },
-    "travelgenio": {
-        "ES", "IT", "FR", "PT", "DE", "GB", "AR", "BR", "MX", "CO", "CL",
-        "PE", "US", "CA", "AE", "IN", "AU",
-    },
+    # DEAD: Travelgenio backend APIs all return 404 (decommissioned 2026-03)
+    # "travelgenio": {
+    #     "ES", "IT", "FR", "PT", "DE", "GB", "AR", "BR", "MX", "CO", "CL",
+    #     "PE", "US", "CA", "AE", "IN", "AU",
+    # },
     "ixigo": {
         "IN", "LK", "NP", "BD", "PK", "MV", "BT",
         "AE", "SA", "QA", "KW", "OM", "BH",
@@ -1129,6 +1130,60 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "SG", "TH", "MY", "LK", "NP", "BD", "PK",
         "US", "CA", "GB", "DE", "FR", "AU", "HK",
     },
+    "auntbetty": {
+        "AU", "NZ", "SG", "TH", "MY", "ID", "PH", "IN", "JP", "KR",
+        "US", "CA", "GB", "AE", "FJ", "HK", "VN", "CN",
+    },
+    "flightcatchers": {
+        "GB", "IE", "ES", "PT", "GR", "CY", "TR", "FR", "IT", "MT",
+        "HR", "ME", "BG", "EG", "TN", "MA", "AE", "US",
+    },
+    "traveltrolley": {
+        "GB", "IN", "PK", "BD", "LK", "NP",
+        "AE", "SA", "QA", "OM", "KW", "BH",
+        "KE", "NG", "GH", "ZA", "TZ", "UG",
+        "US", "CA", "TH",
+    },
+    # DEAD: OnTheBeach is package-holiday only, no flight-only search
+    # "onthebeach": {
+    #     "GB", "IE", "ES", "PT", "GR", "CY", "TR", "FR", "IT", "MT",
+    #     "HR", "ME", "BG", "EG", "TN", "MA",
+    # },
+    "agoda": {
+        "TH", "MY", "SG", "ID", "PH", "VN", "JP", "KR", "CN", "HK",
+        "TW", "IN", "AU", "NZ", "AE", "US", "GB", "FR", "DE", "IT",
+        "ES", "NL", "TR", "SA", "QA", "LK", "MV",
+    },
+    "almosafer": {
+        "SA", "AE", "QA", "KW", "BH", "OM",
+        "EG", "JO", "LB", "MA", "TN", "DZ",
+        "IN", "PK", "BD", "LK", "PH",
+        "GB", "FR", "DE", "ES", "IT", "TR", "TH", "MY", "US",
+    },
+    "bookingcom": {
+        "GB", "IE", "DE", "FR", "ES", "IT", "NL", "BE", "AT", "CH",
+        "PT", "SE", "NO", "DK", "FI", "PL", "CZ", "GR", "HU", "RO",
+        "HR", "BG", "TR", "US", "CA", "AU", "NZ", "AE", "SA", "IN",
+        "TH", "SG", "JP", "KR", "CN", "HK", "BR", "MX", "AR", "CO",
+        "ZA", "EG", "MA", "KE", "NG",
+    },
+    "musafir": {
+        "AE", "SA", "QA", "KW", "BH", "OM",
+        "IN", "PK", "LK", "BD",
+        "EG", "JO", "LB",
+        "GB", "US", "TH", "MY", "SG",
+    },
+    "akbartravels": {
+        "IN", "AE", "SA", "QA", "KW", "BH", "OM",
+        "SG", "MY", "TH", "LK", "NP", "BD",
+        "GB", "US", "CA", "AU",
+        "KE", "ET",
+    },
+    "airasiamove": {
+        "MY", "TH", "ID", "PH", "SG", "VN", "KH", "MM", "LA", "BN",
+        "IN", "LK", "JP", "KR", "CN", "TW", "HK",
+        "AU", "NZ", "AE", "SA", "TR",
+    },
 }
 
 
@@ -1170,9 +1225,13 @@ def get_relevant_connectors(
         "kiwi", "traveloka", "wego", "webjet", "tiket", "tripcom", "cleartrip", "edreams",
         "opodo", "momondo", "kayak", "cheapflights", "skyscanner",
         "skiplagged",
-        "etraveli", "travelgenio", "ixigo", "rehlat",
+        "etraveli", "ixigo", "rehlat",
         "travelstart",
         "aviasales", "travix", "travelup", "lastminute", "byojet", "yatra",
+        "auntbetty", "flightcatchers", "traveltrolley",
+        "agoda", "almosafer", "bookingcom",
+        "musafir",
+        "akbartravels", "airasiamove",
     }
 
     relevant = []
