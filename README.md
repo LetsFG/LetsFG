@@ -70,7 +70,7 @@ We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026
 
 > **$82 saved across 5 flights.** Google Flights inflates further on repeat searches. LetsFG returns the raw airline price every time.
 
-**Why the difference?** Flight websites add demand-tracking markup, cookie-based pricing, and display fees. LetsFG queries the same GDS/NDC providers but returns the raw price — no intermediary markup, no tracking, no inflation.
+**Why the difference?** Google Flights only searches its own limited set of airline partners. LetsFG searches **everywhere** — 200+ website connectors including Google Flights itself, Skyscanner, Kiwi, Kayak, Momondo, plus direct airline websites (Ryanair, United, Southwest, EasyJet, etc.) and enterprise GDS/NDC sources (Amadeus, Sabre, Duffel). More sources = better prices. And unlike travel websites, LetsFG returns the raw price with zero markup, no tracking, no inflation.
 
 ---
 
