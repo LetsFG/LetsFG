@@ -285,10 +285,12 @@ class LetsFG:
         api_key: str | None = None,
         base_url: str | None = None,
         timeout: int = 30,
+        client_type: str | None = None,
     ):
         self.api_key = api_key or os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
         self.base_url = (base_url or os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
+        self._client_type = client_type or "python-sdk"
 
     def _require_api_key(self) -> None:
         if not self.api_key:
@@ -713,6 +715,7 @@ class LetsFG:
             "Content-Type": "application/json",
             "X-API-Key": self.api_key,
             "User-Agent": "LetsFG-Python-SDK/1.0.3",
+            "X-Client-Type": self._client_type,
         }
 
     def _post(self, path: str, body: dict) -> Any:

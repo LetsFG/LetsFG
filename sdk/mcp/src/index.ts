@@ -55,7 +55,7 @@ async function searchCloud(params: Record<string, unknown>): Promise<Record<stri
   try {
     const resp = await fetch(`${CLOUD_SEARCH_URL}/letsfg/flights/search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': `letsfg-mcp/${VERSION}` },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': `letsfg-mcp/${VERSION}`, 'X-Client-Type': 'mcp' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(180_000),
     });
@@ -325,6 +325,7 @@ async function apiRequest(method: string, path: string, body?: Record<string, un
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'User-Agent': `letsfg-mcp/${VERSION}`,
+    'X-Client-Type': 'mcp',
   };
   if (API_KEY) headers['X-API-Key'] = API_KEY;
 
