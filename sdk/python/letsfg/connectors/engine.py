@@ -43,6 +43,7 @@ from .eurowings import EurowingsConnectorClient
 from .transavia import TransaviaConnectorClient
 from .pegasus import PegasusConnectorClient
 from .flydubai import FlydubaiConnectorClient
+# Temporarily disabled due to merge conflicts:
 from .spirit import SpiritConnectorClient
 from .frontier import FrontierConnectorClient
 from .volaris import VolarisConnectorClient
@@ -170,6 +171,7 @@ from .kuwaitairways import KuwaitAirwaysConnectorClient
 from .level import LevelConnectorClient
 from .qatar import QatarConnectorClient
 from .aircalin import AircalinConnectorClient
+# Temporarily disabled due to merge conflicts:
 from .traveloka import TravelokaConnectorClient
 from .wego import WegoConnectorClient
 from .webjet import WebjetConnectorClient
@@ -900,6 +902,11 @@ class MultiProvider:
                     merged_passenger_ids = result.passenger_ids
                     merged_offer_request_id = result.offer_request_id
 
+        # ── Fire-and-forget telemetry: report connector outcomes to backend ──
+        self._send_telemetry(
+            providers_used, normal_results, req,
+        )
+
         # ── Build cross-airline combos from one-way legs ──
         if is_round_trip and (combo_results or True):
             outbound_legs: list[FlightOffer] = []
@@ -1030,6 +1037,71 @@ class MultiProvider:
             search_params={},
             source_tiers=source_tiers,
         )
+
+    # ── Telemetry: report connector health to backend ────────────────────────
+
+    def _send_telemetry(
+        self,
+        providers_used: list[str],
+        results: list,
+        req: FlightSearchRequest,
+    ) -> None:
+        """Fire-and-forget POST to report which connectors worked/failed.
+
+        Runs in a background task so it never blocks the search response.
+        Only reports local connector results (skips 'backend').
+        Silently swallows all errors — telemetry must never break search.
+        """
+        # Collect per-connector outcomes
+        connector_results = []
+        for i, result in enumerate(results):
+            provider = providers_used[i]
+            if provider == "backend":
+                continue  # backend tracks its own connectors server-side
+            if isinstance(result, Exception):
+                connector_results.append({
+                    "connector": provider, "ok": False, "offers": 0, "latency_ms": 0,
+                })
+            elif isinstance(result, FlightSearchResponse):
+                connector_results.append({
+                    "connector": provider,
+                    "ok": result.total_results > 0,
+                    "offers": result.total_results,
+                    "latency_ms": 0,
+                })
+
+        if not connector_results:
+            return
+
+        route = f"{req.origin}-{req.destination}"
+        asyncio.ensure_future(self._post_telemetry(connector_results, route))
+
+    async def _post_telemetry(
+        self, connector_results: list[dict], route: str,
+    ) -> None:
+        """Background POST of connector telemetry to backend API."""
+        try:
+            from letsfg import __version__
+        except Exception:
+            __version__ = "unknown"
+
+        payload = {
+            "route": route,
+            "sdk_version": __version__,
+            "client_type": "local-engine",
+            "results": connector_results,
+        }
+
+        url = f"{self._BACKEND_URL}/api/v1/analytics/telemetry/connector-results"
+        headers = {"Content-Type": "application/json"}
+        if self._BACKEND_KEY:
+            headers["X-API-Key"] = self._BACKEND_KEY
+
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(url, json=payload, headers=headers)
+        except Exception:
+            pass  # telemetry must never break search
 
     # ── Per-connector browser cleanup ──────────────────────────────────────────
 
