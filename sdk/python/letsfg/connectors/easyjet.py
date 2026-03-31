@@ -334,6 +334,7 @@ class EasyjetConnectorClient:
                         logger.warning("easyJet: failed to parse API response: %s", e)
 
         page.on("response", _on_response)
+        results_page = None
 
         try:
             logger.info("easyJet: loading homepage for %s→%s", req.origin, req.destination)
@@ -355,20 +356,43 @@ class EasyjetConnectorClient:
                 logger.warning("easyJet: form fill failed, aborting")
                 return self._empty(req)
 
+            # Listen for new tab BEFORE clicking (easyJet opens results in new tab)
+            new_page_event = asyncio.Event()
+            new_page_ref: list = [None]
+
+            def _on_new_page(p):
+                new_page_ref[0] = p
+                new_page_event.set()
+
+            context.on("page", _on_new_page)
+
             # Click "Show flights"
             try:
                 await page.get_by_role("button", name="Show flights").click(timeout=5000)
-                logger.info("easyJet: clicked 'Show flights', waiting for navigation")
+                logger.info("easyJet: clicked 'Show flights', waiting for results")
             except Exception as e:
                 logger.warning("easyJet: could not click 'Show flights': %s", e)
                 return self._empty(req)
 
-            # Wait for navigation to /buy/flights
+            # Wait for new tab (easyJet opens results in a new tab)
             try:
-                await page.wait_for_url("**/buy/flights**", timeout=15000)
-                logger.info("easyJet: navigated to %s", page.url)
-            except Exception:
-                logger.warning("easyJet: didn't navigate to /buy/flights, URL: %s", page.url)
+                await asyncio.wait_for(new_page_event.wait(), timeout=10.0)
+                results_page = new_page_ref[0]
+                if results_page:
+                    results_page.on("response", _on_response)
+                    await auto_block_if_proxied(results_page)
+                    logger.info("easyJet: results tab opened: %s", results_page.url)
+                    try:
+                        await results_page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    except Exception:
+                        pass
+            except (asyncio.TimeoutError, Exception):
+                # No new tab — page may have navigated in-place (old behavior)
+                logger.info("easyJet: no new tab, checking current page: %s", page.url)
+                try:
+                    await page.wait_for_url("**/buy/flights**", timeout=5000)
+                except Exception:
+                    pass
 
             # Wait for the intercepted API response (up to remaining timeout)
             remaining = max(self.timeout - (time.monotonic() - t0), 10)
@@ -413,10 +437,12 @@ class EasyjetConnectorClient:
             logger.error("easyJet CDP error: %s", e)
             return self._empty(req)
         finally:
-            try:
-                await page.close()
-            except Exception:
-                pass
+            for p in [results_page, page]:
+                try:
+                    if p:
+                        await p.close()
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # Form interaction
@@ -616,6 +642,10 @@ class EasyjetConnectorClient:
     async def _fill_date(self, page, req: FlightSearchRequest) -> bool:
         """Open the date picker and select the outbound date."""
         target = req.date_from
+        target_month_name = target.strftime("%B").upper()  # e.g., "MAY"
+        target_year = target.year
+        target_month_year = f"{target_month_name} {target_year}"  # e.g., "MAY 2026"
+
         try:
             try:
                 date_field = page.get_by_role("textbox", name="Clear selected travel date")
@@ -634,7 +664,7 @@ class EasyjetConnectorClient:
             except Exception:
                 logger.warning("easyJet: calendar grid didn't load in time")
                 return False
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.5)
 
             testid = f"{target.day}-{target.month}-{target.year}"
             day_btn = page.locator(f'[data-testid="{testid}"]')
@@ -642,14 +672,78 @@ class EasyjetConnectorClient:
             aria_label = f"{target.strftime('%B')} {target.day}, {target.year}"
             day_btn_fallback = page.get_by_role("button", name=aria_label)
 
-            for attempt in range(12):
+            import calendar
+            month_order = {m.upper(): i for i, m in enumerate(calendar.month_name) if m}
+
+            def parse_month_year(text: str) -> tuple[int, int]:
+                """Parse 'JUNE 2026' to (year, month_idx)."""
+                parts = text.strip().split()
+                if len(parts) >= 2:
+                    return int(parts[1]), month_order.get(parts[0], 0)
+                return (9999, 99)
+
+            target_key = (target_year, target.month)
+
+            # Navigate until target month is visible
+            for attempt in range(24):  # Allow more attempts for backward navigation
+                # Check if day button is already visible
                 if await day_btn.count() > 0 or await day_btn_fallback.count() > 0:
                     break
+
+                # Check which months are currently visible
                 try:
-                    await page.get_by_role("button", name="Next month").click(timeout=2000)
-                    await asyncio.sleep(0.5)
+                    visible_months = await page.evaluate("""() => {
+                        const titles = document.querySelectorAll('[data-testid="month-title"]');
+                        return Array.from(titles).map(t => t.textContent.trim().toUpperCase());
+                    }""")
+
+                    # If target month is already visible, wait a moment for buttons to render
+                    if any(target_month_year in m for m in visible_months):
+                        await asyncio.sleep(0.5)
+                        if await day_btn.count() > 0 or await day_btn_fallback.count() > 0:
+                            break
+                        # Button still not found despite month being visible - try JS click
+                        logger.info("easyJet: month visible but button not found, trying JS")
+                        break
+
+                    # Determine navigation direction
+                    if visible_months:
+                        first_visible = visible_months[0]
+                        first_key = parse_month_year(first_visible)
+
+                        if first_key > target_key:
+                            # We're past the target - navigate backward
+                            try:
+                                prev_btn = page.get_by_role("button", name="Previous month")
+                                if await prev_btn.count() > 0:
+                                    await prev_btn.click(timeout=2000)
+                                    await asyncio.sleep(0.5)
+                                    continue
+                            except Exception:
+                                pass
+                            logger.warning("easyJet: cannot navigate backward to %s from %s",
+                                           target_month_year, first_visible)
+                            break
+                        else:
+                            # Navigate forward
+                            try:
+                                await page.get_by_role("button", name="Next month").click(timeout=2000)
+                                await asyncio.sleep(0.5)
+                            except Exception:
+                                break
+                    else:
+                        # No visible months - try forward
+                        try:
+                            await page.get_by_role("button", name="Next month").click(timeout=2000)
+                            await asyncio.sleep(0.5)
+                        except Exception:
+                            break
                 except Exception:
-                    break
+                    try:
+                        await page.get_by_role("button", name="Next month").click(timeout=2000)
+                        await asyncio.sleep(0.5)
+                    except Exception:
+                        break
 
             if await day_btn.count() > 0:
                 await day_btn.click(timeout=5000)
