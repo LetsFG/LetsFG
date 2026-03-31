@@ -33,8 +33,10 @@ import os
 import shutil
 import subprocess
 import time
-from datetime import datetime, date as date_type
+from datetime import datetime, date as date_type, date, timedelta
 from typing import Optional
+
+import httpx
 
 from ..models.flights import (
     FlightOffer,
@@ -43,10 +45,23 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied
-from .airline_routes import get_country, CITY_AIRPORTS
+from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied, get_httpx_proxy_url
+from .airline_routes import get_country, CITY_AIRPORTS, city_match_set
 
 logger = logging.getLogger(__name__)
+
+# ── Sputnik API (EveryMundo) — primary fast path ──
+_SPUTNIK_URL = "https://openair-california.airtrfx.com/airfare-sputnik-service/v3/tk/fares/grouped-routes"
+_SPUTNIK_KEY = "HeQpRjsFI5xlAaSx2onkjc1HTK0ukqA1IrVvd5fvaMhNtzLTxInTpeYB1MK93pah"
+_SPUTNIK_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    "Origin": "https://mm-prerendering-static-prod.airtrfx.com",
+    "Referer": "https://mm-prerendering-static-prod.airtrfx.com/",
+    "em-api-key": _SPUTNIK_KEY,
+}
+_SPUTNIK_MARKETS = ["TR", "GB", "US", "DE", "FR", "NL"]
 
 # Reverse lookup: airport code → city code (e.g. LHR → LON)
 _AIRPORT_TO_CITY: dict[str, str] = {}
@@ -201,8 +216,22 @@ class TurkishConnectorClient:
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        # Fast path: Sputnik API (no browser needed, ~1s)
+        sputnik_offers = await self._try_sputnik(req)
+        if sputnik_offers:
+            sputnik_offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+            h = hashlib.md5(f"tk{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
+            return FlightSearchResponse(
+                search_id=f"fs_{h}",
+                origin=req.origin,
+                destination=req.destination,
+                currency=sputnik_offers[0].currency,
+                offers=sputnik_offers,
+                total_results=len(sputnik_offers),
+            )
+
+        # Slow path: CDP Chrome form fill + API interception
         # Retry once: first attempt warms PX cookies; second uses them.
-        # Do NOT reset the profile between attempts — warm cookies are needed.
         for attempt in range(2):
             result = await self._do_search(req)
             if result.offers or attempt == 1:
@@ -210,6 +239,141 @@ class TurkishConnectorClient:
             logger.warning("TK: 0 offers on attempt %d — retrying with warm profile", attempt)
             await asyncio.sleep(2.0)
         return self._empty(req)
+
+    async def _try_sputnik(self, req: FlightSearchRequest) -> list[FlightOffer]:
+        """Fast path: EveryMundo Sputnik grouped-routes API."""
+        try:
+            dt = req.date_from
+            if isinstance(dt, datetime):
+                dt = dt.date()
+            elif not isinstance(dt, date):
+                dt = datetime.strptime(str(dt), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            dt = date.today() + timedelta(days=30)
+
+        start = dt - timedelta(days=3)
+        end = dt + timedelta(days=30)
+
+        payload = {
+            "markets": _SPUTNIK_MARKETS,
+            "languageCode": "en",
+            "dataExpirationWindow": "7d",
+            "datePattern": "dd MMM yy (E)",
+            "outputCurrencies": ["USD", "EUR", "TRY"],
+            "departure": {"start": start.isoformat(), "end": end.isoformat()},
+            "budget": {"maximum": None},
+            "passengers": {"adults": max(1, req.adults or 1)},
+            "travelClasses": ["ECONOMY"],
+            "flightType": "ROUND_TRIP",
+            "flexibleDates": True,
+            "faresPerRoute": "10",
+            "trfxRoutes": True,
+            "routesLimit": 500,
+            "sorting": [{"popularity": "DESC"}],
+            "airlineCode": "tk",
+        }
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=15, headers=_SPUTNIK_HEADERS,
+                proxy=get_httpx_proxy_url(),
+            ) as client:
+                r = await client.post(_SPUTNIK_URL, json=payload)
+                if r.status_code != 200:
+                    logger.info("TK Sputnik: HTTP %d", r.status_code)
+                    return []
+                data = r.json()
+                if not isinstance(data, list):
+                    return []
+        except Exception as e:
+            logger.info("TK Sputnik error: %s", e)
+            return []
+
+        origin_set = city_match_set(req.origin)
+        dest_set = city_match_set(req.destination)
+
+        offers = []
+        for route in data:
+            for fare in route.get("fares") or []:
+                orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
+                dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
+                if dest not in dest_set:
+                    if orig not in origin_set:
+                        continue
+
+                price = fare.get("totalPrice") or fare.get("usdTotalPrice")
+                if not price or float(price) <= 0:
+                    continue
+                if fare.get("redemption"):
+                    continue
+
+                price_f = round(float(price), 2)
+                currency = fare.get("currencyCode") or "USD"
+                dep_str = (fare.get("departureDate") or "")[:10]
+                ret_str = (fare.get("returnDate") or "")[:10]
+                cabin = (fare.get("farenetTravelClass") or "ECONOMY").lower()
+
+                dep_dt = datetime(2000, 1, 1)
+                if dep_str:
+                    try:
+                        dep_dt = datetime.strptime(dep_str, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+
+                seg = FlightSegment(
+                    airline="TK", airline_name="Turkish Airlines", flight_no="",
+                    origin=orig, destination=dest,
+                    origin_city=fare.get("originCity") or "",
+                    destination_city=fare.get("destinationCity") or "",
+                    departure=dep_dt, arrival=dep_dt,
+                    duration_seconds=0, cabin_class=cabin,
+                )
+                outbound = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
+
+                inbound = None
+                if ret_str:
+                    try:
+                        ret_dt = datetime.strptime(ret_str, "%Y-%m-%d")
+                    except ValueError:
+                        ret_dt = dep_dt
+                    ret_seg = FlightSegment(
+                        airline="TK", airline_name="Turkish Airlines", flight_no="",
+                        origin=dest, destination=orig,
+                        origin_city=fare.get("destinationCity") or "",
+                        destination_city=fare.get("originCity") or "",
+                        departure=ret_dt, arrival=ret_dt,
+                        duration_seconds=0, cabin_class=cabin,
+                    )
+                    inbound = FlightRoute(segments=[ret_seg], total_duration_seconds=0, stopovers=0)
+
+                ret_token = f"_{ret_str}" if ret_str else ""
+                fid = hashlib.md5(
+                    f"tk_{orig}_{dest}_{dep_str}{ret_token}_{price_f}".encode()
+                ).hexdigest()[:12]
+
+                target_date = req.date_from.strftime("%Y-%m-%d") if hasattr(req.date_from, "strftime") else str(req.date_from)
+                offers.append(FlightOffer(
+                    id=f"tk_{fid}",
+                    price=price_f,
+                    currency=currency,
+                    price_formatted=fare.get("formattedTotalPrice") or f"{price_f:.2f} {currency}",
+                    outbound=outbound,
+                    inbound=inbound,
+                    airlines=["Turkish Airlines"],
+                    owner_airline="TK",
+                    booking_url=f"https://www.turkishairlines.com/en-int/flights/?origin={req.origin}&destination={req.destination}&date={target_date}",
+                    is_locked=False,
+                    source="turkish_direct",
+                    source_tier="free",
+                    conditions={
+                        "trip_type": (fare.get("flightType") or "ROUND_TRIP").lower().replace("_", "-"),
+                        "cabin": str(fare.get("formattedTravelClass") or cabin),
+                        "fare_note": "Published fare from Turkish Airlines fare module",
+                    },
+                ))
+
+        logger.info("TK Sputnik %s→%s: %d offers", req.origin, req.destination, len(offers))
+        return offers
 
     async def _do_search(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
@@ -364,11 +528,7 @@ class TurkishConnectorClient:
             await self._dismiss_cookies(page)
             await asyncio.sleep(1.0)
 
-<<<<<<< Updated upstream
-            # Dismiss any overlays/modals that block form interaction
-=======
             # Dismiss overlays
->>>>>>> Stashed changes
             await page.evaluate("""() => {
                 document.querySelectorAll(
                     '[role="dialog"], .modal-backdrop, .overlay, [class*="popup"]'
@@ -380,31 +540,10 @@ class TurkishConnectorClient:
                 ow = page.locator("span:has-text('One way')").first
                 if await ow.count() > 0:
                     await ow.click(timeout=5000)
-<<<<<<< Updated upstream
-                    logger.info("TK: One-way selected")
-            except Exception:
-                pass
-            await asyncio.sleep(2.0)
-
-            # Wait for the origin field to be visible & interactive
-            try:
-                await page.locator("#fromPort").wait_for(
-                    state="visible", timeout=10000
-                )
-            except Exception:
-                # Try dismissing overlays again — TK sometimes shows delayed popups
-                await page.evaluate("""() => {
-                    document.querySelectorAll(
-                        '[role="dialog"], .modal-backdrop, .overlay, [class*="popup"], [class*="modal"]'
-                    ).forEach(el => el.remove());
-                }""")
-                await asyncio.sleep(1.0)
-=======
                     logger.warning("TK: One-way selected")
             except Exception:
                 pass
             await asyncio.sleep(1.0)
->>>>>>> Stashed changes
 
             # Diagnostic: check displayed date
             displayed = await page.evaluate("""() => {
@@ -779,11 +918,7 @@ class TurkishConnectorClient:
         """
         dt = _to_datetime(dep_date)
         target_day = str(dt.day)
-<<<<<<< Updated upstream
-        target_month = dt.strftime("%B")  # e.g. "April"
-=======
         target_month = dt.strftime("%B")  # e.g. "June"
->>>>>>> Stashed changes
         target_year = str(dt.year)
         date_iso = dt.strftime("%Y-%m-%d")
         date_ddmmyyyy = dt.strftime("%d-%m-%Y")
@@ -798,51 +933,6 @@ class TurkishConnectorClient:
                 ).forEach(el => el.remove());
             }""")
 
-<<<<<<< Updated upstream
-            # Navigate calendar to the correct month
-            navigated = False
-            for _ in range(12):
-                nav_label = page.locator(".react-calendar__navigation__label").first
-                if await nav_label.count() > 0:
-                    label_text = await nav_label.text_content() or ""
-                    if target_month in label_text and target_year in label_text:
-                        navigated = True
-                        break
-                    # Click next month arrow
-                    next_btn = page.locator(".react-calendar__navigation__next-button").first
-                    if await next_btn.count() > 0:
-                        await next_btn.click(timeout=2000)
-                        await asyncio.sleep(0.5)
-                else:
-                    break
-
-            if not navigated:
-                logger.warning("TK: could not navigate to %s %s", target_month, target_year)
-
-            # Click the target day — only click ENABLED tiles
-            # Use aria-label matching for precision (includes full date)
-            # Format: "April 15, 2026"
-            aria_target = f"{target_month} {target_day}, {target_year}"
-            aria_tile = page.locator(f"button.react-calendar__tile[aria-label*='{aria_target}']")
-            if await aria_tile.count() > 0:
-                tile = aria_tile.first
-                if await tile.is_enabled():
-                    await tile.click(timeout=3000)
-                    logger.info("TK: selected date %s %s %s (aria)", target_day, target_month, target_year)
-                    return True
-
-            # Fallback: iterate tiles, but only click enabled ones with matching text
-            day_tiles = page.locator("button.react-calendar__tile:not([disabled])")
-            count = await day_tiles.count()
-            for i in range(count):
-                tile = day_tiles.nth(i)
-                text = (await tile.text_content() or "").strip()
-                if text == target_day:
-                    await tile.click(timeout=2000)
-                    logger.info("TK: selected date %s %s %s", target_day, target_month, target_year)
-                    return True
-                    return True
-=======
             # ── Step 1: Find and click the date trigger element ──
             # Look for the visible date area in the form (not just #bookerDatepicker)
             trigger_info = await page.evaluate("""() => {
@@ -865,7 +955,6 @@ class TurkishConnectorClient:
                         }
                     }
                 }
->>>>>>> Stashed changes
 
                 // Strategy 2: any element with "Dates" text nearby
                 const allEls = document.querySelectorAll('span, div, label, p, button');

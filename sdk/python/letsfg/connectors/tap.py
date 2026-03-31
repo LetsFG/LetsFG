@@ -1,16 +1,13 @@
 """
-TAP Air Portugal connector — EveryMundo airTRFX fare pages.
+TAP Air Portugal connector — EveryMundo airTRFX Sputnik API + fare pages.
 
 TAP Air Portugal (IATA: TP) is Portugal's flag carrier. Star Alliance member.
 Key hub at LIS connecting Europe, Brazil, Africa, Americas.
 90+ destinations. Strong on CPLP countries (Portuguese-speaking).
 
-Strategy (curl_cffi required — Cloudflare blocks httpx Python TLS fingerprint):
-  TAP uses EveryMundo airTRFX (same platform as Thai Airways, Air Canada).
-  1. Fetch route page: flytap.com/flights/en-pt/flights-from-{origin}-to-{dest}
-  2. Extract __NEXT_DATA__ JSON from <script> tag
-  3. Parse StandardFareModule fares from Apollo GraphQL state
-  4. Filter by matching origin/destination airport codes and departure date
+Strategy:
+  Primary: EveryMundo Sputnik grouped-routes API (httpx)
+  Fallback: curl_cffi route page with __NEXT_DATA__ extraction
 """
 
 from __future__ import annotations
@@ -21,9 +18,10 @@ import json
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
+import httpx
 from curl_cffi import requests as creq
 
 from ..models.flights import (
@@ -33,8 +31,8 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import get_curl_cffi_proxies
-from .airline_routes import get_city_airports, resolve_slug
+from .browser import get_curl_cffi_proxies, get_httpx_proxy_url
+from .airline_routes import get_city_airports, resolve_slug, city_match_set
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +45,23 @@ _HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+_API_URL = "https://openair-california.airtrfx.com/airfare-sputnik-service/v3/tp/fares/grouped-routes"
+_API_KEY = "HeQpRjsFI5xlAaSx2onkjc1HTK0ukqA1IrVvd5fvaMhNtzLTxInTpeYB1MK93pah"
+_SPUTNIK_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Content-Type": "application/json",
+    "Origin": "https://mm-prerendering-static-prod.airtrfx.com",
+    "Referer": "https://mm-prerendering-static-prod.airtrfx.com/",
+    "em-api-key": _API_KEY,
+}
+
+_MARKETS = ["PT", "BR", "US", "GB", "FR", "DE"]
 
 _IATA_TO_SLUG: dict[str, str] = {
     # Portugal
@@ -85,43 +100,51 @@ _IATA_TO_SLUG: dict[str, str] = {
 
 
 class TapConnectorClient:
-    """TAP Air Portugal — EveryMundo airTRFX fare pages."""
+    """TAP Air Portugal — EveryMundo Sputnik API + airTRFX fare pages."""
 
     def __init__(self, timeout: float = 25.0):
         self.timeout = timeout
+        self._http: Optional[httpx.AsyncClient] = None
+
+    async def _client(self):
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(
+                timeout=self.timeout, headers=_SPUTNIK_HEADERS,
+                follow_redirects=True, proxy=get_httpx_proxy_url(),
+            )
+        return self._http
 
     async def close(self):
-        pass
+        if self._http and not self._http.is_closed:
+            await self._http.aclose()
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
 
-        origin_slug = resolve_slug(req.origin, _IATA_TO_SLUG)
-        dest_slug = resolve_slug(req.destination, _IATA_TO_SLUG)
-        if not origin_slug or not dest_slug:
-            logger.warning("TAP: unmapped IATA %s or %s", req.origin, req.destination)
-            return self._empty(req)
+        # Primary: Sputnik grouped-routes API
+        offers = await self._try_sputnik(req)
 
-        url = f"{_BASE}/flights/en-pt/flights-from-{origin_slug}-to-{dest_slug}"
-        logger.info("TAP: fetching %s", url)
+        # Fallback: HTML route page (__NEXT_DATA__)
+        if not offers:
+            origin_slug = resolve_slug(req.origin, _IATA_TO_SLUG)
+            dest_slug = resolve_slug(req.destination, _IATA_TO_SLUG)
+            if origin_slug and dest_slug:
+                url = f"{_BASE}/flights/en-pt/flights-from-{origin_slug}-to-{dest_slug}"
+                logger.info("TAP: Sputnik empty, falling back to HTML %s", url)
+                try:
+                    html = await asyncio.get_event_loop().run_in_executor(
+                        None, self._fetch_sync, url
+                    )
+                except Exception as e:
+                    logger.error("TAP fetch error: %s", e)
+                    html = None
+                if html:
+                    fares = self._extract_fares(html)
+                    if fares:
+                        offers = self._build_offers(fares, req)
 
-        try:
-            html = await asyncio.get_event_loop().run_in_executor(
-                None, self._fetch_sync, url
-            )
-        except Exception as e:
-            logger.error("TAP fetch error: %s", e)
-            return self._empty(req)
-
-        if not html:
-            return self._empty(req)
-
-        fares = self._extract_fares(html)
-        if not fares:
-            logger.info("TAP: no fares on page %s", url)
-            return self._empty(req)
-
-        offers = self._build_offers(fares, req)
+        if not offers:
+            offers = []
         offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
 
         elapsed = time.monotonic() - t0
@@ -136,6 +159,139 @@ class TapConnectorClient:
             offers=offers,
             total_results=len(offers),
         )
+
+    async def _try_sputnik(self, req: FlightSearchRequest) -> list[FlightOffer]:
+        """Try Sputnik grouped-routes API for TAP fares."""
+        try:
+            dt = req.date_from
+            if isinstance(dt, datetime):
+                dt = dt.date()
+            elif not isinstance(dt, date):
+                dt = datetime.strptime(str(dt), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            dt = date.today() + timedelta(days=30)
+
+        start = dt - timedelta(days=3)
+        end = dt + timedelta(days=30)
+
+        payload = {
+            "markets": _MARKETS,
+            "languageCode": "en",
+            "dataExpirationWindow": "7d",
+            "datePattern": "dd MMM yy (E)",
+            "outputCurrencies": ["EUR"],
+            "departure": {"start": start.isoformat(), "end": end.isoformat()},
+            "budget": {"maximum": None},
+            "passengers": {"adults": max(1, req.adults or 1)},
+            "travelClasses": ["ECONOMY"],
+            "flightType": "ROUND_TRIP",
+            "flexibleDates": True,
+            "faresPerRoute": "10",
+            "trfxRoutes": True,
+            "routesLimit": 500,
+            "sorting": [{"popularity": "DESC"}],
+            "airlineCode": "tp",
+        }
+
+        try:
+            client = await self._client()
+            r = await client.post(_API_URL, json=payload)
+            if r.status_code != 200:
+                logger.info("TAP Sputnik: HTTP %d", r.status_code)
+                return []
+            data = r.json()
+            if not isinstance(data, list):
+                return []
+        except Exception as e:
+            logger.info("TAP Sputnik error: %s", e)
+            return []
+
+        origin_set = city_match_set(req.origin)
+        dest_set = city_match_set(req.destination)
+
+        offers = []
+        for route in data:
+            for fare in route.get("fares") or []:
+                orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
+                dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
+                # Match either: strict (orig in origin_set AND dest in dest_set)
+                # or hub-based (dest in dest_set only — TAP is LIS hub)
+                if dest not in dest_set:
+                    if orig not in origin_set:
+                        continue
+
+                price = fare.get("totalPrice") or fare.get("usdTotalPrice")
+                if not price or float(price) <= 0:
+                    continue
+                if fare.get("redemption"):
+                    continue
+
+                price_f = round(float(price), 2)
+                currency = fare.get("currencyCode") or "EUR"
+                dep_str = (fare.get("departureDate") or "")[:10]
+                ret_str = (fare.get("returnDate") or "")[:10]
+                cabin = (fare.get("farenetTravelClass") or "ECONOMY").lower()
+
+                dep_dt = datetime(2000, 1, 1)
+                if dep_str:
+                    try:
+                        dep_dt = datetime.strptime(dep_str, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+
+                seg = FlightSegment(
+                    airline="TP", airline_name="TAP Air Portugal", flight_no="",
+                    origin=orig, destination=dest,
+                    origin_city=fare.get("originCity") or "",
+                    destination_city=fare.get("destinationCity") or "",
+                    departure=dep_dt, arrival=dep_dt,
+                    duration_seconds=0, cabin_class=cabin,
+                )
+                outbound = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
+
+                inbound = None
+                if ret_str:
+                    try:
+                        ret_dt = datetime.strptime(ret_str, "%Y-%m-%d")
+                    except ValueError:
+                        ret_dt = dep_dt
+                    ret_seg = FlightSegment(
+                        airline="TP", airline_name="TAP Air Portugal", flight_no="",
+                        origin=dest, destination=orig,
+                        origin_city=fare.get("destinationCity") or "",
+                        destination_city=fare.get("originCity") or "",
+                        departure=ret_dt, arrival=ret_dt,
+                        duration_seconds=0, cabin_class=cabin,
+                    )
+                    inbound = FlightRoute(segments=[ret_seg], total_duration_seconds=0, stopovers=0)
+
+                ret_token = f"_{ret_str}" if ret_str else ""
+                fid = hashlib.md5(
+                    f"tp_{orig}_{dest}_{dep_str}{ret_token}_{price_f}".encode()
+                ).hexdigest()[:12]
+
+                offers.append(FlightOffer(
+                    id=f"tp_{fid}",
+                    price=price_f,
+                    currency=currency,
+                    price_formatted=fare.get("formattedTotalPrice") or f"{price_f:.2f} {currency}",
+                    outbound=outbound,
+                    inbound=inbound,
+                    airlines=["TAP Air Portugal"],
+                    owner_airline="TP",
+                    booking_url=f"{_BASE}/booking/flights",
+                    is_locked=False,
+                    source="tap_direct",
+                    source_tier="free",
+                    conditions={
+                        "trip_type": (fare.get("flightType") or "ROUND_TRIP").lower().replace("_", "-"),
+                        "cabin": str(fare.get("formattedTravelClass") or cabin),
+                        "fare_note": "Published fare from TAP Air Portugal fare module",
+                    },
+                ))
+
+        logger.info("TAP Sputnik %s→%s: %d offers", req.origin, req.destination, len(offers))
+        return offers
 
     def _fetch_sync(self, url: str) -> str | None:
         sess = creq.Session(impersonate="chrome131", proxies=get_curl_cffi_proxies())

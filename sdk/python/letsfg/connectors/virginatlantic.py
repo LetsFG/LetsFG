@@ -147,8 +147,12 @@ class VirginAtlanticConnectorClient:
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
 
-        # Primary: Sputnik API (date-specific fares)
-        offers = await self._try_sputnik(req)
+        # Primary: Sputnik grouped-routes API (multi-fare, route-specific)
+        offers = await self._try_sputnik_grouped(req)
+
+        # Secondary: Sputnik search API (single cheapest fare)
+        if not offers:
+            offers = await self._try_sputnik(req)
 
         # Fallback: HTML route page (__NEXT_DATA__)
         if not offers:
@@ -166,13 +170,7 @@ class VirginAtlanticConnectorClient:
                     html = None
                 if html:
                     offers = self._extract_offers(html, req)
-        # Filter: only keep offers within ±1 day of the requested date
-        target_dt = req.date_from if isinstance(req.date_from, date) else req.date_from.date() if isinstance(req.date_from, datetime) else date.fromisoformat(str(req.date_from))
-        offers = [
-            o for o in offers
-            if o.outbound and o.outbound.segments
-            and abs((o.outbound.segments[0].departure.date() - target_dt).days) <= 1
-        ]
+
         offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
 
         elapsed = time.monotonic() - t0
@@ -193,8 +191,153 @@ class VirginAtlanticConnectorClient:
             total_results=len(offers),
         )
 
+    async def _try_sputnik_grouped(self, req: FlightSearchRequest) -> list[FlightOffer]:
+        """Try EveryMundo Sputnik grouped-routes API for multi-fare results."""
+        try:
+            dt = req.date_from
+            if isinstance(dt, datetime):
+                dt = dt.date()
+            elif not isinstance(dt, date):
+                dt = datetime.strptime(str(dt), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            dt = date.today() + timedelta(days=30)
+
+        start = dt - timedelta(days=3)
+        end = dt + timedelta(days=30)
+
+        payload = {
+            "markets": ["GB", "US", "IE"],
+            "languageCode": "en",
+            "dataExpirationWindow": "7d",
+            "datePattern": "dd MMM yy (E)",
+            "outputCurrencies": ["GBP", "USD"],
+            "departure": {"start": start.isoformat(), "end": end.isoformat()},
+            "budget": {"maximum": None},
+            "passengers": {"adults": max(1, req.adults or 1)},
+            "travelClasses": ["ECONOMY"],
+            "flightType": "ROUND_TRIP",
+            "flexibleDates": True,
+            "faresPerRoute": "10",
+            "trfxRoutes": True,
+            "routesLimit": 500,
+            "sorting": [{"popularity": "DESC"}],
+            "airlineCode": "vs",
+        }
+
+        grouped_url = _SPUTNIK_URL.replace("/fares/search", "/fares/grouped-routes")
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout, headers=_SPUTNIK_HEADERS,
+                proxy=get_httpx_proxy_url(),
+            ) as client:
+                r = await client.post(grouped_url, json=payload)
+                if r.status_code != 200:
+                    logger.info("VS grouped-routes: HTTP %d", r.status_code)
+                    return []
+                data = r.json()
+                if not isinstance(data, list):
+                    return []
+        except Exception as e:
+            logger.info("VS grouped-routes error: %s", e)
+            return []
+
+        from .airline_routes import city_match_set
+        origin_set = city_match_set(req.origin)
+        dest_set = city_match_set(req.destination)
+
+        offers = []
+        for route in data:
+            for fare in route.get("fares") or []:
+                orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
+                dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
+                if orig not in origin_set and dest not in dest_set:
+                    continue
+                # Accept if destination matches (VS is hub-based, origin may be LHR when user searches LON)
+                if dest not in dest_set and orig not in origin_set:
+                    continue
+
+                price = fare.get("totalPrice") or fare.get("usdTotalPrice")
+                if not price or float(price) <= 0:
+                    continue
+                # Skip redemption/miles fares
+                if fare.get("redemption"):
+                    continue
+
+                price_f = round(float(price), 2)
+                currency = fare.get("currencyCode") or "GBP"
+                dep_str = (fare.get("departureDate") or "")[:10]
+                ret_str = (fare.get("returnDate") or "")[:10]
+                cabin = (fare.get("farenetTravelClass") or "ECONOMY").lower()
+
+                dep_dt = datetime(2000, 1, 1)
+                if dep_str:
+                    try:
+                        dep_dt = datetime.strptime(dep_str, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+
+                seg = FlightSegment(
+                    airline="VS", airline_name="Virgin Atlantic", flight_no="",
+                    origin=orig, destination=dest,
+                    origin_city=fare.get("originCity") or "",
+                    destination_city=fare.get("destinationCity") or "",
+                    departure=dep_dt, arrival=dep_dt,
+                    duration_seconds=0, cabin_class=cabin,
+                )
+                outbound = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
+
+                inbound = None
+                if ret_str:
+                    try:
+                        ret_dt = datetime.strptime(ret_str, "%Y-%m-%d")
+                    except ValueError:
+                        ret_dt = dep_dt
+                    ret_seg = FlightSegment(
+                        airline="VS", airline_name="Virgin Atlantic", flight_no="",
+                        origin=dest, destination=orig,
+                        origin_city=fare.get("destinationCity") or "",
+                        destination_city=fare.get("originCity") or "",
+                        departure=ret_dt, arrival=ret_dt,
+                        duration_seconds=0, cabin_class=cabin,
+                    )
+                    inbound = FlightRoute(segments=[ret_seg], total_duration_seconds=0, stopovers=0)
+
+                ret_token = f"_{ret_str}" if ret_str else ""
+                fid = hashlib.md5(
+                    f"vs_{orig}_{dest}_{dep_str}{ret_token}_{price_f}".encode()
+                ).hexdigest()[:12]
+
+                target_date = req.date_from.strftime("%Y-%m-%d") if hasattr(req.date_from, "strftime") else str(req.date_from)
+                offers.append(FlightOffer(
+                    id=f"vs_{fid}",
+                    price=price_f,
+                    currency=currency,
+                    price_formatted=fare.get("formattedTotalPrice") or f"{price_f:.2f} {currency}",
+                    outbound=outbound,
+                    inbound=inbound,
+                    airlines=["Virgin Atlantic"],
+                    owner_airline="VS",
+                    booking_url=(
+                        f"https://www.virginatlantic.com/book/flights"
+                        f"?origin={req.origin}&destination={req.destination}"
+                        f"&outboundDate={target_date}"
+                        f"&adultCount={req.adults or 1}&tripType=ONE_WAY"
+                    ),
+                    is_locked=False,
+                    source="virginatlantic_direct",
+                    source_tier="free",
+                    conditions={
+                        "trip_type": (fare.get("flightType") or "ROUND_TRIP").lower().replace("_", "-"),
+                        "cabin": str(fare.get("formattedTravelClass") or cabin),
+                        "fare_note": "Published fare from Virgin Atlantic fare module",
+                    },
+                ))
+
+        logger.info("VS grouped-routes %s→%s: %d offers", req.origin, req.destination, len(offers))
+        return offers
+
     async def _try_sputnik(self, req: FlightSearchRequest) -> list[FlightOffer]:
-        """Try EveryMundo Sputnik API for date-specific VS fares."""
+        """Try EveryMundo Sputnik search API for single cheapest fare."""
         try:
             dt = req.date_from
             if isinstance(dt, datetime):
@@ -220,13 +363,8 @@ class VirginAtlanticConnectorClient:
 
         try:
             async with httpx.AsyncClient(
-<<<<<<< Updated upstream
-                timeout=self.timeout, headers=_SPUTNIK_HEADERS
-            ) as client:
-=======
                 timeout=self.timeout, headers=_SPUTNIK_HEADERS,
                 proxy=get_httpx_proxy_url(),) as client:
->>>>>>> Stashed changes
                 r = await client.post(_SPUTNIK_URL, json=payload)
                 if r.status_code != 200:
                     logger.info("VS Sputnik: HTTP %d", r.status_code)

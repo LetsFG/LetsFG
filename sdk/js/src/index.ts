@@ -642,6 +642,7 @@ export class LetsFG {
           'Content-Type': 'application/json',
           'X-API-Key': this.apiKey,
           'User-Agent': 'LetsFG-js/0.1.0',
+          'X-Client-Type': 'js-sdk',
           ...(init.headers || {}),
         },
         signal: controller.signal,

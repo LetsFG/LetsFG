@@ -51,7 +51,7 @@ def _get_client(api_key: str | None = None, base_url: str | None = None) -> Lets
     if not key:
         _err("API key required. Set LETSFG_API_KEY or use --api-key flag.\n"
              "Register: letsfg register --name my-agent --email you@example.com")
-    return LetsFG(api_key=key, base_url=url)
+    return LetsFG(api_key=key, base_url=url, client_type="cli")
 
 
 def _err(msg: str):
