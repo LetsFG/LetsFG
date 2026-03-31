@@ -28,8 +28,10 @@ import re
 import shutil
 import subprocess
 import time
-from datetime import datetime, date as date_type, timedelta
+from datetime import datetime, date as date_type, date, timedelta
 from typing import Optional
+
+import httpx
 
 from ..models.flights import (
     FlightOffer,
@@ -38,9 +40,23 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied
+from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied, get_httpx_proxy_url
+from .airline_routes import city_match_set
 
 logger = logging.getLogger(__name__)
+
+# ── Sputnik API (EveryMundo) — primary fast path ──
+_SPUTNIK_URL = "https://openair-california.airtrfx.com/airfare-sputnik-service/v3/cm/fares/grouped-routes"
+_SPUTNIK_KEY = "HeQpRjsFI5xlAaSx2onkjc1HTK0ukqA1IrVvd5fvaMhNtzLTxInTpeYB1MK93pah"
+_SPUTNIK_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    "Origin": "https://mm-prerendering-static-prod.airtrfx.com",
+    "Referer": "https://mm-prerendering-static-prod.airtrfx.com/",
+    "em-api-key": _SPUTNIK_KEY,
+}
+_SPUTNIK_MARKETS = ["PA", "US", "CO", "BR", "MX"]
 
 _DEBUG_PORT = 9487
 _USER_DATA_DIR = os.path.join(
@@ -196,6 +212,21 @@ class CopaConnectorClient:
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        # Fast path: Sputnik API (~1s, no browser)
+        sputnik_offers = await self._try_sputnik(req)
+        if sputnik_offers:
+            sputnik_offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+            h = hashlib.md5(f"cm{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
+            return FlightSearchResponse(
+                search_id=f"fs_{h}",
+                origin=req.origin,
+                destination=req.destination,
+                currency=sputnik_offers[0].currency,
+                offers=sputnik_offers,
+                total_results=len(sputnik_offers),
+            )
+
+        # Slow path: CDP Chrome
         t0 = time.monotonic()
         context = await _get_context()
         page = await context.new_page()
@@ -604,6 +635,139 @@ class CopaConnectorClient:
             f"&date1={dt.strftime('%Y-%m-%d')}&adults={req.adults or 1}"
             f"&langid=en"
         )
+
+    async def _try_sputnik(self, req: FlightSearchRequest) -> list[FlightOffer]:
+        """Fast path: EveryMundo Sputnik grouped-routes API."""
+        try:
+            dt = req.date_from
+            if isinstance(dt, datetime):
+                dt = dt.date()
+            elif not isinstance(dt, date):
+                dt = datetime.strptime(str(dt), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            dt = date.today() + timedelta(days=30)
+
+        start = dt - timedelta(days=3)
+        end = dt + timedelta(days=30)
+
+        payload = {
+            "markets": _SPUTNIK_MARKETS,
+            "languageCode": "en",
+            "dataExpirationWindow": "7d",
+            "datePattern": "dd MMM yy (E)",
+            "outputCurrencies": ["USD"],
+            "departure": {"start": start.isoformat(), "end": end.isoformat()},
+            "budget": {"maximum": None},
+            "passengers": {"adults": max(1, req.adults or 1)},
+            "travelClasses": ["ECONOMY"],
+            "flightType": "ROUND_TRIP",
+            "flexibleDates": True,
+            "faresPerRoute": "10",
+            "trfxRoutes": True,
+            "routesLimit": 500,
+            "sorting": [{"popularity": "DESC"}],
+            "airlineCode": "cm",
+        }
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=15, headers=_SPUTNIK_HEADERS,
+                proxy=get_httpx_proxy_url(),
+            ) as client:
+                r = await client.post(_SPUTNIK_URL, json=payload)
+                if r.status_code != 200:
+                    logger.info("CM Sputnik: HTTP %d", r.status_code)
+                    return []
+                data = r.json()
+                if not isinstance(data, list):
+                    return []
+        except Exception as e:
+            logger.info("CM Sputnik error: %s", e)
+            return []
+
+        origin_set = city_match_set(req.origin)
+        dest_set = city_match_set(req.destination)
+
+        offers = []
+        for route in data:
+            for fare in route.get("fares") or []:
+                orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
+                dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
+                if dest not in dest_set and orig not in origin_set:
+                    continue
+
+                price = fare.get("totalPrice") or fare.get("usdTotalPrice")
+                if not price or float(price) <= 0:
+                    continue
+                if fare.get("redemption"):
+                    continue
+
+                price_f = round(float(price), 2)
+                currency = fare.get("currencyCode") or "USD"
+                dep_str = (fare.get("departureDate") or "")[:10]
+                ret_str = (fare.get("returnDate") or "")[:10]
+                cabin = (fare.get("farenetTravelClass") or "ECONOMY").lower()
+
+                dep_dt = datetime(2000, 1, 1)
+                if dep_str:
+                    try:
+                        dep_dt = datetime.strptime(dep_str, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+
+                seg = FlightSegment(
+                    airline="CM", airline_name="Copa Airlines", flight_no="",
+                    origin=orig, destination=dest,
+                    origin_city=fare.get("originCity") or "",
+                    destination_city=fare.get("destinationCity") or "",
+                    departure=dep_dt, arrival=dep_dt,
+                    duration_seconds=0, cabin_class=cabin,
+                )
+                outbound = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
+
+                inbound = None
+                if ret_str:
+                    try:
+                        ret_dt = datetime.strptime(ret_str, "%Y-%m-%d")
+                    except ValueError:
+                        ret_dt = dep_dt
+                    ret_seg = FlightSegment(
+                        airline="CM", airline_name="Copa Airlines", flight_no="",
+                        origin=dest, destination=orig,
+                        origin_city=fare.get("destinationCity") or "",
+                        destination_city=fare.get("originCity") or "",
+                        departure=ret_dt, arrival=ret_dt,
+                        duration_seconds=0, cabin_class=cabin,
+                    )
+                    inbound = FlightRoute(segments=[ret_seg], total_duration_seconds=0, stopovers=0)
+
+                ret_token = f"_{ret_str}" if ret_str else ""
+                fid = hashlib.md5(
+                    f"cm_{orig}_{dest}_{dep_str}{ret_token}_{price_f}".encode()
+                ).hexdigest()[:12]
+
+                offers.append(FlightOffer(
+                    id=f"cm_{fid}",
+                    price=price_f,
+                    currency=currency,
+                    price_formatted=fare.get("formattedTotalPrice") or f"{price_f:.2f} {currency}",
+                    outbound=outbound,
+                    inbound=inbound,
+                    airlines=["Copa Airlines"],
+                    owner_airline="CM",
+                    booking_url=f"https://shopping.copaair.com/?roundtrip=false&area1={req.origin}&area2={req.destination}",
+                    is_locked=False,
+                    source="copa_direct",
+                    source_tier="free",
+                    conditions={
+                        "trip_type": (fare.get("flightType") or "ROUND_TRIP").lower().replace("_", "-"),
+                        "cabin": str(fare.get("formattedTravelClass") or cabin),
+                        "fare_note": "Published fare from Copa Airlines fare module",
+                    },
+                ))
+
+        logger.info("CM Sputnik %s→%s: %d offers", req.origin, req.destination, len(offers))
+        return offers
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(f"cm{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
