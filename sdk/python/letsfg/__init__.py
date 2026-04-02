@@ -44,7 +44,7 @@ from letsfg.models import (
     AgentProfile,
 )
 
-__version__ = "1.5.12"
+__version__ = "1.6.0"
 __all__ = [
     "LetsFG",
     "LetsFGError",
