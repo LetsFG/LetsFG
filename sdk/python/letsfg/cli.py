@@ -442,6 +442,136 @@ def search_local_cmd(
     print()
 
 
+# ── Search Cloud ───────────────────────────────────────────────────────────
+
+@app.command("search-cloud")
+def search_cloud_cmd(
+    origin: str = typer.Argument(..., help="Departure IATA code (e.g., GDN, LON, JFK)"),
+    destination: str = typer.Argument(..., help="Arrival IATA code (e.g., BER, BCN, LAX)"),
+    date: str = typer.Argument(..., help="Departure date YYYY-MM-DD"),
+    return_date: Optional[str] = typer.Option(None, "--return", "-r", help="Return date for round-trip"),
+    adults: int = typer.Option(1, "--adults", "-a", help="Number of adults"),
+    children: int = typer.Option(0, "--children", help="Number of children"),
+    infants: int = typer.Option(0, "--infants", help="Number of infants"),
+    cabin: Optional[str] = typer.Option(None, "--cabin", "-c", help="M=economy W=premium C=business F=first"),
+    currency: str = typer.Option("EUR", "--currency", help="Currency code"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Max results"),
+    sort: str = typer.Option("price", "--sort", help="Sort: price or duration"),
+    max_stops: Optional[int] = typer.Option(None, "--max-stops", "-s", help="Max stopovers (0=direct only, 1, 2). Default: backend default"),
+    direct: bool = typer.Option(False, "--direct", "-d", help="Direct flights only (shortcut for --max-stops 0)"),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
+):
+    """Search flights via cloud backend only (Amadeus, Duffel, Sabre, Travelport, etc.)."""
+    bt = _get_client(api_key, base_url)
+
+    # --direct is a shortcut for --max-stops 0
+    effective_max_stops = 0 if direct else max_stops
+
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "date_from": date,
+        "adults": adults,
+        "children": children,
+        "infants": infants,
+        "currency": currency,
+        "limit": limit,
+        "sort": sort,
+    }
+    if return_date:
+        params["date_to"] = return_date
+    if cabin:
+        params["cabin"] = cabin
+    if effective_max_stops is not None:
+        params["max_stops"] = effective_max_stops
+
+    try:
+        data = bt._post("/api/v1/flights/search", params)
+    except LetsFGError as e:
+        _err(f"Cloud search failed: {e.message}")
+
+    offers = data.get("offers", [])
+    total = data.get("total_results", len(offers))
+
+    if output_json:
+        _json_out({"total_results": total, "offers": offers})
+        return
+
+    if not offers:
+        print(f"No cloud flights found for {origin} → {destination} on {date}")
+        return
+
+    print(f"\n  {total} offers  |  {origin} → {destination}  |  {date}  |  CLOUD only")
+
+    def _cloud_route(offer: dict) -> str:
+        route = offer.get("route")
+        if route:
+            return route
+        ob = offer.get("outbound") or {}
+        route = ob.get("route_str")
+        if route:
+            return route
+        segs = ob.get("segments") or []
+        if not segs:
+            return "-"
+        codes = [segs[0].get("origin", "")]
+        for seg in segs:
+            codes.append(seg.get("destination", ""))
+        codes = [c for c in codes if c]
+        return "→".join(codes) if codes else "-"
+
+    def _cloud_duration(offer: dict) -> str:
+        dur_s = offer.get("duration_seconds")
+        if not dur_s:
+            dur_s = (offer.get("outbound") or {}).get("total_duration_seconds")
+        if dur_s:
+            h, m = divmod(int(dur_s) // 60, 60)
+            return f"{h}h {m:02d}m"
+        return "-"
+
+    def _cloud_stops(offer: dict) -> str:
+        stops_val = offer.get("stopovers")
+        if stops_val is None:
+            ob = offer.get("outbound") or {}
+            stops_val = ob.get("stopovers")
+            if stops_val is None:
+                segs = ob.get("segments") or []
+                if segs:
+                    stops_val = max(len(segs) - 1, 0)
+        return str(stops_val) if stops_val is not None else "-"
+
+    if HAS_RICH:
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("#", style="dim", width=4)
+        table.add_column("Price", justify="right", style="green")
+        table.add_column("Airline")
+        table.add_column("Route")
+        table.add_column("Duration", justify="right")
+        table.add_column("Stops", justify="center")
+
+        for i, o in enumerate(offers, 1):
+            price = o.get("price", 0)
+            cur = o.get("currency", currency)
+            airlines = o.get("owner_airline") or ",".join(o.get("airlines", [])) or "-"
+            route = _cloud_route(o)
+            dur = _cloud_duration(o)
+            stops = _cloud_stops(o)
+
+            table.add_row(str(i), f"{cur} {price:.2f}", airlines, route, dur, stops)
+        console.print(table)
+    else:
+        for i, o in enumerate(offers, 1):
+            price = o.get("price", 0)
+            cur = o.get("currency", currency)
+            airlines = o.get("owner_airline") or ",".join(o.get("airlines", [])) or "-"
+            route = _cloud_route(o)
+            dur = _cloud_duration(o)
+            stops = _cloud_stops(o)
+            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}  {dur}  stops:{stops}")
+
+    print()
 # ── Star (Link GitHub) ─────────────────────────────────────────────────────
 
 @app.command()
