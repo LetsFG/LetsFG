@@ -1,17 +1,4 @@
 """
-<<<<<<< Updated upstream
-Wego connector — CDP Chrome + API response interception.
-
-Wego is a major metasearch engine popular in Middle East, South Asia,
-and SE Asia.  Aggregates results from 700+ airlines and OTAs (Almosafer,
-ClearTrip, Traveloka, etc.).
-
-Strategy (CDP Chrome — Cloudflare protection):
-1.  Launch real Chrome via CDP (--remote-debugging-port).
-2.  Navigate to Wego search results page.
-3.  Intercept XHR responses containing aggregated flight results.
-4.  Parse into FlightOffers.
-=======
 Wego connector — patchright CDP browser + RSC parsing.
 
 Wego is a major metasearch engine popular in Middle East, South Asia,
@@ -24,7 +11,6 @@ Strategy (rewritten Jul 2026 — RSC parsing model):
 4. Parse React Server Components (RSC) streaming data from page HTML.
 5. Extract flight segments and itineraries from RSC chunks.
 6. Close browser + cleanup.
->>>>>>> Stashed changes
 """
 
 from __future__ import annotations
@@ -33,12 +19,6 @@ import asyncio
 import hashlib
 import json
 import logging
-<<<<<<< Updated upstream
-import os
-import re
-import shutil
-import subprocess
-=======
 import math
 import os
 import random
@@ -46,7 +26,6 @@ import re
 import shutil
 import sys
 import tempfile
->>>>>>> Stashed changes
 import time
 from datetime import datetime, date as date_type
 from typing import Any, Optional
@@ -58,145 +37,6 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-<<<<<<< Updated upstream
-from .browser import find_chrome, stealth_popen_kwargs, _launched_procs
-
-logger = logging.getLogger(__name__)
-
-_CDP_PORT = 9481
-_USER_DATA = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".wego_chrome_data"
-)
-
-_browser = None
-_context = None
-_pw_instance = None
-_chrome_proc = None
-_lock: Optional[asyncio.Lock] = None
-
-
-def _get_lock() -> asyncio.Lock:
-    global _lock
-    if _lock is None:
-        _lock = asyncio.Lock()
-    return _lock
-
-
-async def _get_context():
-    global _browser, _context, _pw_instance, _chrome_proc
-    lock = _get_lock()
-    async with lock:
-        if _browser:
-            try:
-                if _browser.is_connected():
-                    if _context:
-                        try:
-                            _ = _context.pages
-                            return _context
-                        except Exception:
-                            pass
-                    contexts = _browser.contexts
-                    if contexts:
-                        _context = contexts[0]
-                        return _context
-            except Exception:
-                pass
-
-        from playwright.async_api import async_playwright
-
-        pw = None
-        try:
-            pw = await async_playwright().start()
-            _browser = await pw.chromium.connect_over_cdp(
-                f"http://127.0.0.1:{_CDP_PORT}"
-            )
-            _pw_instance = pw
-            logger.info("WEGO: connected to existing Chrome on port %d", _CDP_PORT)
-        except Exception:
-            if pw:
-                try:
-                    await pw.stop()
-                except Exception:
-                    pass
-
-            chrome = find_chrome()
-            os.makedirs(_USER_DATA, exist_ok=True)
-            args = [
-                chrome,
-                f"--remote-debugging-port={_CDP_PORT}",
-                f"--user-data-dir={_USER_DATA}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-blink-features=AutomationControlled",
-                "--window-position=-2400,-2400",
-                "--window-size=1366,768",
-                "--lang=en-US",
-                "about:blank",
-            ]
-            _chrome_proc = subprocess.Popen(args, **stealth_popen_kwargs())
-            _launched_procs.append(_chrome_proc)
-            await asyncio.sleep(2.5)
-
-            pw = await async_playwright().start()
-            _pw_instance = pw
-            _browser = await pw.chromium.connect_over_cdp(
-                f"http://127.0.0.1:{_CDP_PORT}"
-            )
-            logger.info("WEGO: Chrome launched CDP port %d pid %d", _CDP_PORT, _chrome_proc.pid)
-
-        contexts = _browser.contexts
-        _context = contexts[0] if contexts else await _browser.new_context()
-        return _context
-
-
-async def _reset_profile():
-    global _browser, _context, _pw_instance, _chrome_proc
-    try:
-        if _browser:
-            await _browser.close()
-    except Exception:
-        pass
-    try:
-        if _pw_instance:
-            await _pw_instance.stop()
-    except Exception:
-        pass
-    if _chrome_proc:
-        try:
-            _chrome_proc.terminate()
-        except Exception:
-            pass
-    _browser = _context = _pw_instance = _chrome_proc = None
-    if os.path.isdir(_USER_DATA):
-        try:
-            shutil.rmtree(_USER_DATA)
-        except Exception:
-            pass
-
-
-def _to_datetime(val) -> datetime:
-    if isinstance(val, datetime):
-        return val
-    if isinstance(val, date_type):
-        return datetime(val.year, val.month, val.day)
-    return datetime.strptime(str(val), "%Y-%m-%d")
-
-
-def _parse_dt(s: Any) -> datetime:
-    if not s:
-        return datetime(2000, 1, 1)
-    s = str(s)
-    try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        pass
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S"):
-        try:
-            return datetime.strptime(s[:len(fmt) + 2], fmt)
-        except (ValueError, IndexError):
-            continue
-    return datetime(2000, 1, 1)
-=======
 from .browser import (
     inject_stealth_js,
     get_default_proxy,
@@ -266,7 +106,6 @@ _AIRPORT_TO_CITY: dict[str, str] = {
     "ORD": "CHI", "MDW": "CHI",
     "IAD": "WAS", "DCA": "WAS", "BWI": "WAS",
 }
->>>>>>> Stashed changes
 
 
 # ── Bezier curve helpers for human-like movements ──
@@ -388,31 +227,19 @@ class WegoConnectorClient:
             getattr(req, "cabin_class", "economy") or "economy", "economy",
         )
 
-<<<<<<< Updated upstream
-        # Wego URL format: /flights/{origin}/{dest}/{date}
-        search_url = (
-            f"https://www.wego.com/flights/{req.origin}/{req.destination}"
-=======
         # Wego URL format: /flights/{city-IATA}/{city-IATA}/{date}
         origin_slug = _wego_slug(req.origin)
         dest_slug = _wego_slug(req.destination)
         search_url = (
             f"https://www.wego.com/flights/{origin_slug}/{dest_slug}"
->>>>>>> Stashed changes
             f"/{date_str}"
             f"?adults={adults}&children={children}&infants={infants}"
             f"&cabin={cabin}&sort=price"
         )
 
-<<<<<<< Updated upstream
-        for attempt in range(2):
-            try:
-                offers = await self._do_search(search_url, req, dt)
-=======
         for attempt in range(3):
             try:
                 offers = await self._do_search(search_url, req, dt, attempt)
->>>>>>> Stashed changes
                 if offers is not None:
                     offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
                     elapsed = time.monotonic() - t0
@@ -433,85 +260,10 @@ class WegoConnectorClient:
                     )
             except Exception as e:
                 logger.warning("WEGO attempt %d failed: %s", attempt, e)
-<<<<<<< Updated upstream
-                if attempt == 0:
-                    await _reset_profile()
-=======
->>>>>>> Stashed changes
 
         return self._empty(req)
 
     async def _do_search(
-<<<<<<< Updated upstream
-        self, search_url: str, req: FlightSearchRequest, dt: datetime,
-    ) -> list[FlightOffer] | None:
-        context = await _get_context()
-        page = await context.new_page()
-
-        captured_data: list[dict] = []
-
-        async def on_response(response):
-            url = response.url
-            # Wego makes API calls to srv.wego.com and/or internal APIs
-            interesting = (
-                ("srv.wego.com" in url and ("search" in url or "result" in url or "fares" in url))
-                or ("wego.com/api" in url and "flight" in url)
-                or ("wego.com" in url and "graphql" in url)
-            )
-            if not interesting:
-                return
-            try:
-                ct = response.headers.get("content-type", "")
-                if ("json" in ct or "graphql" in url) and response.status == 200:
-                    body = await response.text()
-                    data = json.loads(body)
-                    if isinstance(data, dict):
-                        captured_data.append(data)
-                        logger.debug("WEGO: captured response from %s (%d bytes)", url, len(body))
-            except Exception:
-                pass
-
-        page.on("response", on_response)
-
-        try:
-            logger.info("WEGO: navigating to %s", search_url)
-            await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-
-            # Wego is a metasearch — results trickle in over time
-            deadline = time.monotonic() + 40
-            last_count = 0
-            stable_ticks = 0
-            while time.monotonic() < deadline:
-                await asyncio.sleep(3)
-                if len(captured_data) > last_count:
-                    last_count = len(captured_data)
-                    stable_ticks = 0
-                else:
-                    stable_ticks += 1
-                    if stable_ticks >= 3 and captured_data:
-                        break  # no new data for ~9s
-
-            if not captured_data:
-                logger.warning("WEGO: no API responses intercepted, trying DOM")
-                return await self._extract_from_dom(page, req, dt)
-
-            offers: list[FlightOffer] = []
-            seen: set[str] = set()
-            for data in captured_data:
-                parsed = self._parse_response(data, req, dt, seen)
-                offers.extend(parsed)
-
-            return offers
-
-        finally:
-            try:
-                await page.close()
-            except Exception:
-                pass
-
-    # ------------------------------------------------------------------
-    # Response parsing
-=======
         self, search_url: str, req: FlightSearchRequest, dt: datetime, attempt: int = 0,
     ) -> list[FlightOffer] | None:
         """Search using patchright with DOM text parsing."""
@@ -1057,7 +809,6 @@ class WegoConnectorClient:
 
     # ------------------------------------------------------------------
     # Legacy Response parsing (kept for backwards compatibility)
->>>>>>> Stashed changes
     # ------------------------------------------------------------------
 
     def _parse_response(

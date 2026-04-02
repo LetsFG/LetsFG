@@ -28,11 +28,8 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-<<<<<<< Updated upstream
-=======
 from .airline_routes import get_city_airports
 from .browser import auto_block_if_proxied
->>>>>>> Stashed changes
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +52,6 @@ def _api_headers() -> dict[str, str]:
     }
 
 
-<<<<<<< Updated upstream
-=======
 def _get_curl_proxy() -> dict | None:
     """Return curl_cffi proxy dict from LETSFG_PROXY, or None."""
     import os
@@ -66,18 +61,13 @@ def _get_curl_proxy() -> dict | None:
     return {"http": url, "https": url}
 
 
->>>>>>> Stashed changes
 def _get_version_sync() -> str:
     """Fetch API version from /buildnumber (sync, run in executor)."""
     from curl_cffi import requests as cffi_requests
 
     try:
-<<<<<<< Updated upstream
-        sess = cffi_requests.Session(impersonate=_IMPERSONATE)
-=======
         proxies = _get_curl_proxy()
         sess = cffi_requests.Session(impersonate=_IMPERSONATE, proxies=proxies)
->>>>>>> Stashed changes
         r = sess.get(
             "https://wizzair.com/buildnumber",
             headers={"User-Agent": _UA},
@@ -103,12 +93,8 @@ def _search_timetable_sync(
     """POST to timetableV2 (sync, run in executor). Returns parsed JSON."""
     from curl_cffi import requests as cffi_requests
 
-<<<<<<< Updated upstream
-    sess = cffi_requests.Session(impersonate=_IMPERSONATE)
-=======
     proxies = _get_curl_proxy()
     sess = cffi_requests.Session(impersonate=_IMPERSONATE, proxies=proxies)
->>>>>>> Stashed changes
     base = f"https://be.wizzair.com/{version}/Api"
 
     flight_list = [
