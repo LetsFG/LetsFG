@@ -172,6 +172,7 @@ class AirChinaConnectorClient:
     AIRLINE_NAME = "Air China"
     SOURCE = "airchina_direct"
     HOMEPAGE = "https://www.airchina.com"
+    HOMEPAGE_HTTP = "http://www.airchina.com"
     DEFAULT_CURRENCY = "CNY"
 
     def __init__(self, timeout: float = 55.0):
@@ -219,7 +220,11 @@ class AirChinaConnectorClient:
 
         try:
             logger.info("AirChina: loading homepage for %s→%s", req.origin, req.destination)
-            await page.goto(self.HOMEPAGE, wait_until="domcontentloaded", timeout=30000)
+            try:
+                await page.goto(self.HOMEPAGE, wait_until="domcontentloaded", timeout=20000)
+            except Exception:
+                logger.info("AirChina: HTTPS unreachable, falling back to HTTP")
+                await page.goto(self.HOMEPAGE_HTTP, wait_until="domcontentloaded", timeout=20000)
             await asyncio.sleep(5.0)
             await _dismiss_overlays(page)
 
