@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Efistoffeles/letsfg",
   "title": "LetsFG",
-  "description": "Flight search & booking for AI agents. 400+ airlines, 195 local connectors. Rate limited: 10 searches/min. letsfg.co",
+  "description": "Flight search & booking for AI agents. 400+ airlines, 200 local connectors. Rate limited: 10 searches/min. letsfg.co",
   "repository": {
     "url": "https://github.com/LetsFG/LetsFG",
     "source": "github"
@@ -18,18 +18,11 @@
       },
       "environmentVariables": [
         {
-          "description": "Your LetsFG API key (optional — search works without it via cloud backend. API key needed for unlock/book).",
+          "description": "Your LetsFG API key (optional — only needed for unlock/book. Search runs locally, no key required).",
           "isRequired": false,
           "format": "string",
           "isSecret": true,
           "name": "LETSFG_API_KEY"
-        },
-        {
-          "description": "Search mode: 'cloud' (default, recommended) or 'local' (requires Python + Playwright)",
-          "isRequired": false,
-          "format": "string",
-          "isSecret": false,
-          "name": "LETSFG_SEARCH_MODE"
         }
       ]
     },
@@ -42,7 +35,7 @@
       },
       "environmentVariables": [
         {
-          "description": "Your LetsFG API key (optional — search works without it via cloud backend. API key needed for unlock/book).",
+          "description": "Your LetsFG API key (optional — only needed for unlock/book. Search runs locally, no key required).",
           "isRequired": false,
           "format": "string",
           "isSecret": true,

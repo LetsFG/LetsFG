@@ -28,9 +28,9 @@ Search 400+ airlines, book at raw prices, zero fees — forever.
 
 # Your AI agent just learned to book flights.
 
-**195 airlines. Real prices. One function call.**
+**200 airlines. Real prices. One function call.**
 
-LetsFG gives your AI agent flight search and booking superpowers — 195 airline connectors fire in parallel, enterprise GDS sources (Amadeus, Sabre, Duffel) fill in the rest, and your agent gets the cheapest price on the planet. Zero markup. Real airline tickets.
+LetsFG gives your AI agent flight search and booking superpowers — 200 airline connectors fire in parallel, enterprise GDS sources (Amadeus, Sabre, Duffel) fill in the rest, and your agent gets the cheapest price on the planet. Zero markup. Real airline tickets.
 
 **The same flight costs $20–$50 less** because you skip OTA inflation, cookie tracking, and surge pricing.
 
@@ -85,7 +85,7 @@ We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026
 
 </div>
 
-Ask it anything: *"Find me the cheapest flight from London to Barcelona next month"* — it searches 195 airlines in real time and gives you the best deals.
+Ask it anything: *"Find me the cheapest flight from London to Barcelona next month"* — it searches 200 airlines in real time and gives you the best deals.
 
 When you're ready to integrate it into your own agent, keep reading.
 
@@ -99,7 +99,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | **MCP Server (local)** | ✅ Free | ✅ Free | Ticket price only | Your machine |
 | **API / Messenger / Instagram** | ✅ Free | 1% (min $1) | Ticket price only | Our servers |
 
-**Local = 100% free.** The CLI, Python SDK, npm packages, and local MCP server run 195 airline connectors on your machine. No API key needed, no fees, no limits.
+**Local = 100% free.** The CLI, Python SDK, npm packages, and local MCP server run 200 airline connectors on your machine. No API key needed, no fees, no limits.
 
 **Server = free search + small unlock fee.** When you use our hosted API (or chat with us on Messenger/Instagram), search is completely free. We charge 1% of the ticket price (min $1) to unlock offer details. Booking is at the raw airline price — zero markup.
 
@@ -112,7 +112,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | | Google Flights / Expedia | **LetsFG** |
 |---|---|---|
 | Price | Inflated (tracking, cookies, surge) | **Raw airline price. $116 cheaper across 6 verified routes.** |
-| Coverage | Misses budget airlines | **195 connectors + 400 GDS airlines** |
+| Coverage | Misses budget airlines | **200 connectors + 400 GDS airlines** |
 | Speed | 30s+ (loading, ads, redirects) | **~10 seconds** |
 | Repeat search raises price? | Yes | **Never** |
 | Works in AI agents? | No | **Native** (CLI, MCP, SDK) |
@@ -134,7 +134,7 @@ Search flights immediately:
 letsfg search-local LHR BCN 2026-06-15
 ```
 
-That single command fires 195 airline connectors on your machine and returns real-time prices. **Free. Unlimited. Zero setup.**
+That single command fires 200 airline connectors on your machine and returns real-time prices. **Free. Unlimited. Zero setup.**
 
 Want enterprise GDS coverage too? One more command:
 
@@ -181,7 +181,7 @@ letsfg book off_xxx \
 }
 ```
 
-**That's it — search works immediately, no API key needed.** 195 airline connectors run locally.
+**That's it — search works immediately, no API key needed.** 200 airline connectors run locally.
 
 <details>
 <summary>Add API key for unlock/book + GDS coverage</summary>
@@ -242,7 +242,7 @@ for offer in result.offers[:5]:
 
 | Package | Command | What you get |
 |---------|---------|--------------|
-| **Python SDK + CLI** | `pip install letsfg` | SDK + CLI + 195 local airline connectors |
+| **Python SDK + CLI** | `pip install letsfg` | SDK + CLI + 200 local airline connectors |
 | **MCP Server** | `npx letsfg-mcp` | Claude, Cursor, Windsurf — no API key needed |
 | **JS/TS SDK** | `npm install -g letsfg` | SDK + CLI |
 | **Remote MCP** | `https://api.letsfg.co/mcp` | No install (API key required) |
@@ -273,7 +273,7 @@ All commands accept `--json` for structured output and `--api-key` to override t
 Search (free) → Unlock (free) → Book (ticket price only)
 ```
 
-1. **Search** — 195 local connectors + enterprise GDS sources fire in parallel. Returns full details: price, airlines, duration, stopovers, conditions.
+1. **Search** — 200 local connectors + enterprise GDS sources fire in parallel. Returns full details: price, airlines, duration, stopovers, conditions.
 2. **Unlock** — confirms the live price with the airline and reserves the fare for 30 minutes.
 3. **Book** — creates a real airline PNR. E-ticket sent to the passenger's inbox.
 
@@ -281,7 +281,7 @@ Search (free) → Unlock (free) → Book (ticket price only)
 
 | Channel | What it does | Speed | Auth |
 |---------|-------------|-------|------|
-| **Local connectors** | 195 airline scrapers on your machine via Playwright + httpx | 5-25s | None |
+| **Local connectors** | 200 airline scrapers on your machine via Playwright + httpx | 5-25s | None |
 | **Cloud GDS/NDC** | Amadeus, Duffel, Sabre, Travelport, Kiwi via backend API | 2-15s | API key |
 
 Results are merged, deduplicated, currency-normalized, and sorted. Best price wins.
@@ -309,7 +309,7 @@ Search a city code and LetsFG automatically searches all airports in that city. 
 │  AI Agents / CLI / SDK / MCP Server                 │
 ├──────────────────┬──────────────────────────────────┤
 │  Local connectors │  Enterprise Cloud API            │
-│  (195 airlines via│  (Amadeus, Duffel, Sabre,        │
+│  (200 airlines via│  (Amadeus, Duffel, Sabre,        │
 │   Playwright)     │   Travelport, Kiwi — contract-   │
 │                   │   only GDS/NDC providers)        │
 ├──────────────────┴──────────────────────────────────┤
@@ -319,7 +319,7 @@ Search a city code and LetsFG automatically searches all airports in that city. 
 ```
 
 <details>
-<summary><strong>195 airline connectors — full list</strong></summary>
+<summary><strong>200 airline connectors — full list</strong></summary>
 
 | Region | Airlines |
 |--------|----------|
@@ -350,5 +350,7 @@ Search a city code and LetsFG automatically searches all airports in that city. 
 **[Documentation](https://api.letsfg.co/docs)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Messenger](https://m.me/61579557368989)** · **[Instagram](https://ig.me/m/letsfg_)**
 
 MIT License · Made with ❤️ for AI agents
+
+Want updates? Click **Watch** above, or follow [@amjaworsky on X](https://x.com/amjaworsky).
 
 </div>

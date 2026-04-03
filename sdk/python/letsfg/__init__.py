@@ -1,7 +1,7 @@
 """
 LetsFG — Agent-native flight search & booking SDK.
 
-195 airline connectors run locally + enterprise GDS/NDC APIs via backend.
+200 airline connectors run locally + enterprise GDS/NDC APIs via backend.
 
 **GitHub Star Required!**
 Before using, you must:

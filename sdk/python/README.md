@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.Efistoffeles/letsfg -->
 
-**195 airlines. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. 195 direct airline connectors run locally, plus enterprise GDS/NDC providers via cloud API.
+**200 airlines. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. 200 direct airline connectors run locally, plus enterprise GDS/NDC providers via cloud API.
 
 > **Don't want to install anything?** [**Try it on Messenger**](https://m.me/61579557368989) — search flights instantly, no setup needed.
 
@@ -21,7 +21,7 @@ Search flights immediately — no account, no API key:
 letsfg search-local LHR BCN 2026-06-15
 ```
 
-That fires 195 airline connectors on your machine. **Free. Unlimited. Zero setup.**
+That fires 200 airline connectors on your machine. **Free. Unlimited. Zero setup.**
 
 > ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG) → register → unlimited access forever.** First 1,000 stars only.
 
@@ -286,7 +286,7 @@ if best:
 
 ## Local Search (No API Key)
 
-The SDK includes 195 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
+The SDK includes 200 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
 
 ```python
 from letsfg.local import search_local
@@ -352,7 +352,7 @@ letsfg locations "Berlin"
 | `locations` | Resolve city name to IATA codes | FREE |
 | `unlock` | Unlock offer (confirms price, reserves 30min) | FREE |
 | `book` | Book flight (creates real airline PNR) | Ticket price |
-| `search-local` | Search 195 local airline connectors | FREE |
+| `search-local` | Search 200 local airline connectors | FREE |
 | `system-info` | Show system resources & concurrency tier | FREE |
 | `register` | Register new agent, get API key | FREE |
 | `setup-payment` | Attach payment card (payment token) | FREE |

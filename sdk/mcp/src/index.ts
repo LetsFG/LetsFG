@@ -2,13 +2,11 @@
 /**
  * LetsFG MCP Server — Model Context Protocol integration.
  *
- * Two search modes:
- *   1. Local search (default) — spawns Python subprocess on your machine to run
- *      195 airline connectors locally. Requires: pip install letsfg && playwright install chromium
- *   2. Cloud search (LETSFG_SEARCH_MODE=cloud) — queries the LetsFG backend instead of running
- *      connectors locally. Useful if Python/Playwright is unavailable. Requires API key.
+ * All search runs locally — spawns Python subprocess on your machine to run
+ * 200 airline connectors. No backend calls for search or location resolution.
+ * Requires: pip install letsfg && playwright install chromium
  *
- * Uses backend API for unlock/book/payment operations.
+ * Uses backend API only for unlock/book/payment operations (requires API key).
  *
  * Usage in Claude Desktop / Cursor config:
  * {
@@ -34,55 +32,9 @@ import { spawn } from 'child_process';
 const BASE_URL = (process.env.LETSFG_BASE_URL || process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.letsfg.co').replace(/\/$/, '');
 const API_KEY = process.env.LETSFG_API_KEY || process.env.BOOSTEDTRAVEL_API_KEY || '';
 const PYTHON = process.env.LETSFG_PYTHON || process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
-const SEARCH_MODE = (process.env.LETSFG_SEARCH_MODE || 'local').toLowerCase(); // 'local' or 'cloud'
-const CLOUD_SEARCH_URL = (process.env.LETSFG_CLOUD_SEARCH_URL || 'https://workflow-engine-876385716101.us-central1.run.app').replace(/\/$/, '');
 const VERSION = '1.2.1';
 
-// ── Cloud Search ────────────────────────────────────────────────────────
-
-async function searchCloud(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const body: Record<string, unknown> = {
-    origin: params.origin,
-    destination: params.destination,
-    date_from: params.date_from,
-    adults: params.adults ?? 1,
-    currency: params.currency ?? 'EUR',
-    max_results: params.limit ?? 10,
-    source: 'mcp',  // signals MCP mode for richer response
-  };
-  if (params.return_from) body.return_date = params.return_from;
-
-  try {
-    const resp = await fetch(`${CLOUD_SEARCH_URL}/letsfg/flights/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': `letsfg-mcp/${VERSION}`, 'X-Client-Type': 'mcp' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180_000),
-    });
-
-    if (resp.status === 429) {
-      const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
-      return {
-        error: `Rate limit exceeded — max 10 searches per minute. ${data.error || ''}`.trim(),
-        retry_after: data.retry_after ?? resp.headers.get('Retry-After') ?? 60,
-      };
-    }
-
-    const data = await resp.json() as Record<string, unknown>;
-    if (resp.status >= 400) {
-      return { error: (data as Record<string, string>).error || `HTTP ${resp.status}` };
-    }
-    return data;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('timeout') || msg.includes('abort')) {
-      return { error: 'Search timed out — airline APIs can be slow. Try again or narrow your search.' };
-    }
-    return { error: `Cloud search failed: ${msg}` };
-  }
-}
-
-// ── Local Python Search (default) ───────────────────────────────────────
+// ── Local Python Search (runs on your machine, no backend) ──────────────
 
 function searchLocal(params: Record<string, unknown>): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
@@ -129,8 +81,8 @@ const TOOLS = [
     name: 'search_flights',
     description:
       'Search live flight availability and prices across 400+ airlines worldwide. ' +
-      'Queries 195 airline connectors (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
-      'Norwegian, Spring Airlines, Lucky Air, and 185+ more) plus enterprise GDS/NDC sources ' +
+      'Queries 200 airline connectors (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
+      'Norwegian, Spring Airlines, Lucky Air, and 190+ more) plus enterprise GDS/NDC sources ' +
       '(Amadeus, Duffel, Sabre, Travelport) — completely FREE.\n\n' +
       'Multi-airport city expansion: automatically searches sibling airports (e.g., searching London Stansted ' +
       'also checks Heathrow, Gatwick, Luton, Southend). Works for 25+ major cities worldwide.\n\n' +
@@ -360,10 +312,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       if (args.cabin_class) params.cabin_class = args.cabin_class;
       if (args.max_browsers) params.max_browsers = args.max_browsers;
 
-      // Local search (default) or cloud search (opt-in)
-      const result = SEARCH_MODE === 'cloud'
-        ? await searchCloud(params) as Record<string, unknown>
-        : await searchLocal(params) as Record<string, unknown>;
+      // Always local — runs 200 connectors on user's machine, zero backend cost
+      const result = await searchLocal(params) as Record<string, unknown>;
 
       if (result.error) return JSON.stringify(result, null, 2);
 
@@ -371,7 +321,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       const rateLimitInfo = result.rate_limit as Record<string, unknown> | undefined;
       const summary: Record<string, unknown> = {
         total_offers: offers.length,
-        source: SEARCH_MODE === 'cloud' ? 'cloud (195 airline connectors + GDS/NDC)' : 'local (195 airline connectors on your machine)',
+        source: 'local (200 airline connectors on your machine)',
         offers: offers.map(o => {
           // Handle both compact DM format and rich MCP format
           const hasRichFormat = o.outbound !== undefined;
@@ -415,7 +365,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
 
     case 'resolve_location': {
-      const result = await apiRequest('GET', `/api/v1/flights/locations/${encodeURIComponent(args.query as string)}`);
+      // Resolve locally via Python — no backend call
+      const result = await searchLocal({ __resolve_location: true, query: args.query }) as Record<string, unknown>;
       return JSON.stringify(result, null, 2);
     }
 
@@ -557,4 +508,4 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`LetsFG MCP v${VERSION} | search: ${SEARCH_MODE} | rate limit: 10 req/min | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
+process.stderr.write(`LetsFG MCP v${VERSION} | search: local | rate limit: 10 req/min | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);

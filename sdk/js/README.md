@@ -1,6 +1,6 @@
 # LetsFG — Your AI agent just learned to book flights. (Node.js)
 
-**195 airlines. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for AI agents.
+**200 airlines. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for AI agents.
 
 > **Don't want to install anything?** [**Try it on Messenger**](https://m.me/61579557368989) — search flights instantly, no setup needed.
 
@@ -81,7 +81,7 @@ letsfg book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john@exampl
 
 ### `searchLocal(origin, destination, dateFrom, options?)`
 
-Search 195 airline connectors locally (no API key needed). Requires Python + `letsfg` installed.
+Search 200 airline connectors locally (no API key needed). Requires Python + `letsfg` installed.
 
 ```typescript
 import { searchLocal } from 'letsfg';

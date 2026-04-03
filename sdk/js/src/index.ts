@@ -400,7 +400,10 @@ export class LetsFG {
   // ── Core methods ─────────────────────────────────────────────────────
 
   /**
-   * Search for flights — FREE, unlimited.
+   * Search for flights — FREE, unlimited, runs locally on your machine.
+   *
+   * Uses 200 airline connectors via Python subprocess. No backend call.
+   * Requires: pip install letsfg && playwright install chromium
    *
    * @param origin - IATA code (e.g., "GDN", "LON")
    * @param destination - IATA code (e.g., "BER", "BCN")
@@ -413,34 +416,47 @@ export class LetsFG {
     dateFrom: string,
     options: SearchOptions = {},
   ): Promise<FlightSearchResult> {
-    this.requireApiKey();
-    const body: Record<string, unknown> = {
-      origin: origin.toUpperCase(),
-      destination: destination.toUpperCase(),
-      date_from: dateFrom,
-      adults: options.adults ?? 1,
-      children: options.children ?? 0,
-      infants: options.infants ?? 0,
-      max_stopovers: options.maxStopovers ?? 2,
-      currency: options.currency ?? 'EUR',
-      limit: options.limit ?? 20,
-      sort: options.sort ?? 'price',
-    };
-    if (options.returnDate) body.return_from = options.returnDate;
-    if (options.cabinClass) body.cabin_class = options.cabinClass;
-
-    return this.post<FlightSearchResult>('/api/v1/flights/search', body);
+    return searchLocal(origin, destination, dateFrom, options);
   }
 
   /**
-   * Resolve a city/airport name to IATA codes.
+   * Resolve a city/airport name to IATA codes — runs locally, no backend call.
    */
   async resolveLocation(query: string): Promise<Array<Record<string, unknown>>> {
-    this.requireApiKey();
-    const data = await this.get<Record<string, unknown>>(`/api/v1/flights/locations/${encodeURIComponent(query)}`);
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray((data as Record<string, unknown>).locations)) return (data as Record<string, unknown>).locations as Array<Record<string, unknown>>;
-    return data ? [data] : [];
+    const { spawn } = await import('child_process');
+    const params = JSON.stringify({ __resolve_location: true, query });
+
+    return new Promise((resolve, reject) => {
+      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+      const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+      child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+      child.on('close', (code) => {
+        try {
+          const data = JSON.parse(stdout);
+          if (data.error) reject(new LetsFGError(data.error));
+          else resolve(Array.isArray(data) ? data : data.locations || [data]);
+        } catch {
+          reject(new LetsFGError(
+            `Location resolution failed (code ${code}): ${stdout || stderr}`
+          ));
+        }
+      });
+
+      child.on('error', (err) => {
+        reject(new LetsFGError(`Cannot start Python: ${err.message}`));
+      });
+
+      child.stdin.write(params);
+      child.stdin.end();
+    });
   }
 
   /**
