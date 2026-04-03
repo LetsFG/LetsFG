@@ -166,6 +166,116 @@ AIRPORT_COUNTRY: dict[str, str] = {
     "CMN": "MA", "RAK": "MA", "FEZ": "MA", "AGA": "MA", "TNG": "MA",
     "ALG": "DZ", "ORN": "DZ",
     "TUN": "TN", "NBE": "TN", "DJE": "TN",
+    # ── Additional Europe (LCY, SEN, Cyprus, Malta, Luxembourg, Slovakia, etc.) ──
+    "LCY": "GB", "SEN": "GB",  # London City, Southend
+    "LCA": "CY", "PFO": "CY", "ECN": "CY",  # Cyprus
+    "MLA": "MT",  # Malta
+    "LUX": "LU",  # Luxembourg
+    "BTS": "SK", "KSC": "SK",  # Slovakia
+    "GIB": "GI",  # Gibraltar
+    # ── Russia / CIS ──
+    "SVO": "RU", "DME": "RU", "VKO": "RU", "LED": "RU", "KJA": "RU",
+    "OVB": "RU", "VVO": "RU", "IKT": "RU", "KUF": "RU", "SVX": "RU",
+    "ROV": "RU", "KRR": "RU", "AER": "RU", "GOJ": "RU", "UFA": "RU",
+    "TBS": "GE", "BUS": "GE", "KUT": "GE",  # Georgia
+    "EVN": "AM", "GYD": "AZ",  # Armenia, Azerbaijan
+    "NQZ": "KZ", "ALA": "KZ", "TSE": "KZ", "CIT": "KZ",  # Kazakhstan
+    "TAS": "UZ", "SKD": "UZ", "BHK": "UZ",  # Uzbekistan
+    "FRU": "KG", "OSS": "KG",  # Kyrgyzstan
+    "DYU": "TJ", "LBD": "TJ",  # Tajikistan
+    "ASB": "TM",  # Turkmenistan
+    # ── Middle East (Iraq, Iran, Syria) ──
+    "BGW": "IQ", "BSR": "IQ", "EBL": "IQ", "NJF": "IQ", "ISU": "IQ",  # Iraq
+    "IKA": "IR", "THR": "IR", "MHD": "IR", "ISF": "IR", "SYZ": "IR", "TBZ": "IR",  # Iran
+    "DAM": "SY", "ALP": "SY",  # Syria
+    # ── Africa — East ──
+    "DAR": "TZ", "ZNZ": "TZ", "JRO": "TZ",  # Tanzania
+    "EBB": "UG",  # Uganda
+    "KGL": "KE",  # Actually Rwanda → fix below
+    "BJM": "BI",  # Burundi
+    "MGQ": "SO", "HGA": "SO",  # Somalia
+    "DJI": "DJ",  # Djibouti
+    "ASM": "ER",  # Eritrea
+    "MRU": "MU", "RRG": "MU",  # Mauritius
+    "SEZ": "SC",  # Seychelles
+    "TNR": "MG", "NOS": "MG",  # Madagascar
+    "HAH": "KM",  # Comoros
+    # ── Africa — West ──
+    "ABJ": "CI",  # Abidjan, Côte d'Ivoire
+    "BKO": "ML",  # Bamako, Mali
+    "OUA": "BF",  # Ouagadougou, Burkina Faso
+    "DLA": "CM", "NSI": "CM",  # Cameroon
+    "LBV": "GA",  # Libreville, Gabon
+    "FIH": "CD", "FBM": "CD",  # DR Congo
+    "BZV": "CG", "PNR": "CG",  # Congo-Brazzaville
+    "LFW": "TG",  # Lomé, Togo
+    "COO": "BJ",  # Cotonou, Benin
+    "NIM": "NE",  # Niamey, Niger
+    "NDJ": "TD",  # N'Djamena, Chad
+    "ROB": "LR", "MLW": "LR",  # Liberia
+    "FNA": "SL",  # Freetown, Sierra Leone
+    "CKY": "GN",  # Conakry, Guinea
+    "BJL": "GM",  # Banjul, Gambia
+    "OXB": "GW",  # Guinea-Bissau
+    "RAI": "CV",  # Cape Verde
+    "LUN": "ZM", "NLA": "ZM",  # Zambia
+    "HRE": "ZW", "BUQ": "ZW",  # Zimbabwe
+    "WDH": "NA",  # Namibia
+    "GBE": "BW",  # Botswana
+    "MPM": "MZ", "BEW": "MZ",  # Mozambique
+    "BLZ": "MW", "LLW": "MW",  # Malawi
+    "LAD": "AO", "VPE": "AO",  # Angola
+    "KRT": "SD", "PZU": "SD",  # Sudan
+    "JUB": "SS",  # South Sudan
+    # ── Africa — South ──
+    "MTS": "SZ",  # Eswatini
+    "MSU": "LS",  # Lesotho
+    # ── Pacific / Oceania ──
+    "NAN": "FJ", "SUV": "FJ",  # Fiji
+    "POM": "PG", "LAE": "PG",  # Papua New Guinea
+    "HIR": "SB",  # Honiara, Solomon Islands
+    "VLI": "VU",  # Port Vila, Vanuatu
+    "NOU": "NC", "GEA": "NC",  # New Caledonia
+    "PPT": "PF",  # Papeete, French Polynesia
+    "APW": "WS",  # Apia, Samoa
+    "TBU": "TO",  # Tonga
+    "GUM": "GU",  # Guam
+    "SPN": "MP",  # Saipan, N. Mariana Islands
+    "MAJ": "MH",  # Marshall Islands
+    "ROR": "PW",  # Palau
+    "TRW": "KI",  # Kiribati
+    "FUN": "TV",  # Funafuti, Tuvalu
+    "INU": "NR",  # Nauru
+    "YAP": "FM", "TKK": "FM", "PNI": "FM",  # Micronesia
+    "AIT": "CK", "RAR": "CK",  # Cook Islands
+    "WLS": "WF",  # Wallis and Futuna
+    "DIL": "TL",  # Timor-Leste
+    "BWN": "BN",  # Brunei
+    "PPG": "AS",  # Pago Pago, American Samoa
+    # ── Caribbean (additional) ──
+    "PAP": "HT", "CAP": "HT",  # Haiti
+    "GEO": "GY",  # Georgetown, Guyana
+    "PBM": "SR",  # Paramaribo, Suriname
+    "PTP": "GP",  # Guadeloupe
+    "FDF": "MQ",  # Martinique
+    "SLU": "LC", "UVF": "LC",  # St Lucia
+    "SVD": "VC",  # St Vincent
+    "GND": "GD",  # Grenada
+    "DOM": "DM",  # Dominica
+    "ANU": "AG", "SKB": "KN",  # Antigua, St Kitts
+    "EIS": "VG", "GCM": "KY", "PLS": "TC",  # BVI, Cayman, Turks & Caicos
+    "BDA": "BM",  # Bermuda
+    # ── Greenland ──
+    "SFJ": "GL", "GOH": "GL", "JAV": "GL",  # Greenland
+    # ── Additional Réunion ──
+    "RUN": "RE",  # Réunion
+    # ── Fix Rwanda ──
+    "KGL": "RW",  # Kigali is Rwanda, not Kenya
+    # ── Remaining gap countries ──
+    "KBL": "AF", "KDH": "AF", "MZR": "AF",  # Afghanistan
+    "PBH": "BT",  # Bhutan
+    "TIP": "LY", "BEN": "LY", "MJI": "LY",  # Libya
+    "ULN": "MN",  # Mongolia
 }
 
 # City codes that map to multiple airports in a country
@@ -174,6 +284,17 @@ CITY_COUNTRY: dict[str, str] = {
     "NYC": "US", "WAS": "US", "CHI": "US", "TYO": "JP", "OSA": "JP",
     "SEL": "KR", "BJS": "CN", "SHA": "CN", "BKK": "TH", "KUL": "MY",
     "REK": "IS", "MOW": "RU", "STO": "SE",
+    # Additional city codes
+    "IZM": "TR",  # Izmir
+    "SPK": "JP",  # Sapporo
+    "JKT": "ID",  # Jakarta
+    "RIO": "BR",  # Rio de Janeiro
+    "SAO": "BR",  # São Paulo
+    "YMQ": "CA",  # Montréal
+    "YTO": "CA",  # Toronto
+    "DXB": "AE",  # Dubai (city code used by some agents)
+    "THR": "IR",  # Tehran
+    "MEL": "AU",  # Melbourne (city code = airport)
 }
 
 # City code → constituent airport codes (for city expansion in fan-out)
@@ -196,6 +317,14 @@ CITY_AIRPORTS: dict[str, list[str]] = {
     "REK": ["KEF", "RKV"],
     "MOW": ["SVO", "DME", "VKO"],
     "STO": ["ARN", "BMA", "NYO", "VST"],
+    "WAW": ["WAW", "WMI"],
+    "BER": ["BER", "SXF"],
+    "BRU": ["BRU", "CRL"],
+    "OSL": ["OSL", "TRF", "RYG"],
+    "CPH": ["CPH", "MMX"],
+    "GVA": ["GVA", "MLH"],
+    "DUS": ["DUS", "NRN", "CGN"],
+    "FRA": ["FRA", "HHN"],
 }
 
 
@@ -1212,6 +1341,10 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "IN", "LK", "JP", "KR", "CN", "TW", "HK",
         "AU", "NZ", "AE", "SA", "TR",
     },
+    "despegar": {
+        "AR", "BR", "CL", "CO", "MX", "PE", "EC", "UY", "CR", "PA",
+        "DO", "PR", "US", "IT", "ES", "FR", "PT", "GB", "DE",
+    },
 }
 
 
@@ -1260,6 +1393,7 @@ def get_relevant_connectors(
         "agoda", "almosafer", "bookingcom",
         "musafir",
         "akbartravels", "airasiamove",
+        "despegar",
     }
 
     relevant = []
