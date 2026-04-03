@@ -49,12 +49,13 @@ console = Console() if HAS_RICH else None
 
 
 def _get_client(api_key: str | None = None, base_url: str | None = None) -> LetsFG:
-    key = api_key or os.environ.get("LETSFG_API_KEY", "")
     url = base_url or os.environ.get("LETSFG_BASE_URL")
-    if not key:
-        _err("API key required. Set LETSFG_API_KEY or use --api-key flag.\n"
-             "Register: letsfg register --name my-agent --email you@example.com")
-    return LetsFG(api_key=key, base_url=url, client_type="cli")
+    # LetsFG() handles key resolution: explicit > env > config file > auto-register
+    bt = LetsFG(api_key=api_key, base_url=url, client_type="cli")
+    if not bt.api_key:
+        _err("Could not connect to LetsFG API for auto-registration.\n"
+             "You can register manually: letsfg register --name my-agent --email you@example.com")
+    return bt
 
 
 def _err(msg: str):
@@ -842,25 +843,11 @@ def star(
 ):
     """Link your GitHub account — star the repo for FREE unlimited access.
 
-    1. Register first:  letsfg register --name my-agent --email you@example.com
-    2. Save the key:    export LETSFG_API_KEY=trav_...
-    3. Star the repo:   https://github.com/LetsFG/LetsFG
-    4. Run:             letsfg star --github <your-username>
+    1. Star the repo:   https://github.com/LetsFG/LetsFG
+    2. Run:             letsfg star --github <your-username>
 
-    Note: search-local works without any API key or registration.
+    That's it — no registration needed, we handle it automatically.
     """
-    key = api_key or os.environ.get("LETSFG_API_KEY", "")
-    if not key:
-        _err(
-            "API key required to link your GitHub star.\n\n"
-            "  You need to register first (it's free and instant):\n\n"
-            "    1. letsfg register --name my-agent --email you@example.com\n"
-            "    2. export LETSFG_API_KEY=trav_...   (save the key from step 1)\n"
-            "    3. Star https://github.com/LetsFG/LetsFG\n"
-            "    4. letsfg star --github your-username\n\n"
-            "  Note: local search works without any API key:\n"
-            "    letsfg search-local LHR BCN 2026-06-15"
-        )
     bt = _get_client(api_key, base_url)
     try:
         result = bt.link_github(github)
@@ -1024,7 +1011,11 @@ def register(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Register a new agent — get your API key."""
+    """Register a new agent — get your API key.
+
+    Note: this is optional! The CLI auto-registers on first use.
+    Use this command when you want a named agent with your email attached.
+    """
     try:
         result = LetsFG.register(
             agent_name=name,
@@ -1036,6 +1027,14 @@ def register(
     except LetsFGError as e:
         _err(f"{e.message}")
 
+    # Save the key to config file so it persists
+    from letsfg.client import _save_config
+    _save_config({
+        "api_key": result.get("api_key", ""),
+        "agent_id": result.get("agent_id", ""),
+        "auto_registered": False,
+    })
+
     if output_json:
         _json_out(result)
         return
@@ -1043,7 +1042,7 @@ def register(
     print(f"\n  ✓ Agent registered!")
     print(f"    Agent ID: {result.get('agent_id')}")
     print(f"    API Key:  {result.get('api_key')}")
-    print(f"\n    Save your API key:")
+    print(f"\n    Key saved to config. You can also export it:")
     print(f"    export LETSFG_API_KEY={result.get('api_key')}")
     print(f"\n    Next: Star the repo and link your GitHub:")
     print(f"    1. Star https://github.com/LetsFG/LetsFG")

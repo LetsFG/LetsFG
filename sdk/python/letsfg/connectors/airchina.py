@@ -937,30 +937,55 @@ class AirChinaConnectorClient:
                 logger.warning("AirChina: CAPTCHA detected on results page — attempting auto-solve...")
                 solved = await _solve_captcha_with_llm(page)
                 if solved:
-                    logger.info("AirChina: Captcha auto-solved! Waiting for results to load...")
-                    # After captcha solve, wait for flight data to load (SPA needs time)
-                    for wait_round in range(6):  # Up to 30 seconds
-                        await asyncio.sleep(5.0)
-                        # Check if flight data appeared
-                        has_data = await page.evaluate(r"""() => {
-                            const text = document.body.innerText || '';
-                            return /CA\d{3,4}/.test(text) && /[￥¥]\d{3,}/.test(text);
-                        }""")
-                        if has_data:
-                            logger.info("AirChina: Flight data loaded after captcha solve (%ds)", (wait_round + 1) * 5)
-                            break
-                        # Check for second captcha
-                        still_captcha = await page.evaluate("""() => {
-                            return (document.body.innerText || '').includes('安全验证');
-                        }""")
-                        if still_captcha:
-                            logger.warning("AirChina: Second captcha appeared, attempting solve...")
-                            solved2 = await _solve_captcha_with_llm(page)
-                            if not solved2:
+                    logger.info("AirChina: Captcha auto-solved! Waiting for results...")
+                    # After captcha solve, wait for results to load.
+                    # First try: just wait — the SPA may already have results behind captcha.
+                    await asyncio.sleep(5.0)
+                    has_data = await page.evaluate(r"""() => {
+                        const text = document.body.innerText || '';
+                        return /CA\d{3,4}/.test(text) && /[￥¥]\d{3,}/.test(text);
+                    }""")
+                    if has_data:
+                        logger.info("AirChina: Flight data ready after captcha solve")
+                    elif api_event.is_set():
+                        logger.info("AirChina: API data captured after captcha solve")
+                    else:
+                        # If no data, try clicking the re-search button or reload
+                        logger.info("AirChina: No data yet, clicking re-search button...")
+                        try:
+                            btn = page.locator("text=重新查询")
+                            if await btn.count() > 0:
+                                await btn.first.click()
+                                logger.info("AirChina: Clicked re-search button")
+                            else:
+                                logger.info("AirChina: No re-search button, reloading...")
+                                await page.reload(wait_until="domcontentloaded", timeout=30000)
+                        except Exception:
+                            await page.reload(wait_until="domcontentloaded", timeout=30000)
+                        await asyncio.sleep(3.0)
+                        # Wait for flight data after re-search/reload
+                        for wait_round in range(6):  # Up to 30 seconds
+                            await asyncio.sleep(5.0)
+                            # Check if flight data appeared
+                            has_data = await page.evaluate(r"""() => {
+                                const text = document.body.innerText || '';
+                                return /CA\d{3,4}/.test(text) && /[￥¥]\d{3,}/.test(text);
+                            }""")
+                            if has_data:
+                                logger.info("AirChina: Flight data loaded after re-search (%ds)", (wait_round + 1) * 5)
                                 break
-                        if api_event.is_set():
-                            logger.info("AirChina: API data captured after captcha solve")
-                            break
+                            # Check for second captcha
+                            still_captcha = await page.evaluate("""() => {
+                                return (document.body.innerText || '').includes('安全验证');
+                            }""")
+                            if still_captcha:
+                                logger.warning("AirChina: Second captcha appeared, attempting solve...")
+                                solved2 = await _solve_captcha_with_llm(page)
+                                if not solved2:
+                                    break
+                            if api_event.is_set():
+                                logger.info("AirChina: API data captured after re-search")
+                                break
                 else:
                     logger.warning("AirChina: Captcha auto-solve failed, falling back to manual wait...")
                     # Wait for manual solve
