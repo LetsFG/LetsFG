@@ -138,15 +138,13 @@ That single command fires 200 airline connectors on your machine and returns rea
 Want to star the repo for unlimited access everywhere (including server/API)?
 
 ```bash
-# Step 1: Register (free, instant — gives you an API key)
-letsfg register --name my-agent --email you@example.com
-export LETSFG_API_KEY=trav_...   # save the key from step 1
-
-# Step 2: Star the repo on GitHub, then verify
-letsfg star --github your-username   # ⭐ verify your star (one-time)
+# Star the repo on GitHub, then verify — that's it, no registration needed
+letsfg star --github your-username
 ```
 
-Want enterprise GDS coverage too? Use cloud search (needs the API key from above):
+The CLI auto-registers behind the scenes and saves your API key to `~/.letsfg/config.json`. No manual steps.
+
+Want enterprise GDS coverage too?
 
 ```bash
 letsfg search LHR JFK 2026-04-15
