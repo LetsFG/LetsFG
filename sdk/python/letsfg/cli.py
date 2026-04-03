@@ -1130,7 +1130,10 @@ def recover(
     req = urllib.request.Request(
         endpoint,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "letsfg-cli/1.7.1",
+        },
         method="POST",
     )
 
