@@ -38,7 +38,10 @@ Search is free. Booking charges the ticket price via Stripe (zero markup).
 from __future__ import annotations
 
 import json
+import logging
 import os
+import platform
+from pathlib import Path
 from typing import Any, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -53,6 +56,83 @@ from letsfg.models import (
 )
 
 DEFAULT_BASE_URL = "https://api.letsfg.co"
+
+_log = logging.getLogger(__name__)
+
+
+# ── Config file persistence (~/.letsfg/config.json) ───────────────────────
+
+def _config_dir() -> Path:
+    """Return the LetsFG config directory, creating it if needed."""
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", Path.home()))
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    d = base / "letsfg"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _config_path() -> Path:
+    return _config_dir() / "config.json"
+
+
+def _load_config() -> dict:
+    """Load saved config (api_key, agent_id, etc.)."""
+    p = _config_path()
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_config(data: dict) -> None:
+    """Persist config to disk."""
+    p = _config_path()
+    try:
+        existing = _load_config()
+        existing.update(data)
+        p.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    except Exception as e:
+        _log.debug("Could not save config to %s: %s", p, e)
+
+
+def _saved_api_key() -> str:
+    """Return the API key from config file, or empty string."""
+    return _load_config().get("api_key", "")
+
+
+def _auto_register(base_url: str | None = None) -> str:
+    """Silently register an anonymous agent and save the key. Returns the API key."""
+    url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+    hostname = platform.node() or "unknown"
+    body = json.dumps({
+        "agent_name": f"auto-{hostname[:40]}",
+        "email": "",
+    }).encode()
+    req = Request(
+        f"{url}/api/v1/agents/register",
+        data=body,
+        headers={"Content-Type": "application/json", "User-Agent": "LetsFG-Python-SDK/1.0.3"},
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+        api_key = result.get("api_key", "")
+        if api_key:
+            _save_config({
+                "api_key": api_key,
+                "agent_id": result.get("agent_id", ""),
+                "auto_registered": True,
+            })
+            _log.info("Auto-registered agent %s", result.get("agent_id"))
+        return api_key
+    except Exception as e:
+        _log.debug("Auto-registration failed: %s", e)
+        return ""
 
 # ── Bookable connector registry ────────────────────────────────────────────
 # Maps source tags to their BookableConnector subclass.
@@ -287,10 +367,17 @@ class LetsFG:
         timeout: int = 30,
         client_type: str | None = None,
     ):
-        self.api_key = api_key or os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
         self.base_url = (base_url or os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
         self._client_type = client_type or "python-sdk"
+
+        # Key resolution order: explicit > env > config file > auto-register
+        key = api_key or os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY") or ""
+        if not key:
+            key = _saved_api_key()
+        if not key:
+            key = _auto_register(self.base_url)
+        self.api_key = key
 
     def _require_api_key(self) -> None:
         if not self.api_key:
