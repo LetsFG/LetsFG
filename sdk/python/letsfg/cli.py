@@ -195,8 +195,16 @@ def _fmt_airline(owner: str, airlines: list[str]) -> str:
 
 
 def _offer_price(offer: dict) -> float:
-    """Extract comparable offer price; missing/invalid values sort last."""
+    """Extract comparable offer price; missing/invalid values sort last.
+
+    Prefers price_normalized (already converted to the search currency by the
+    engine) so that offers from different source currencies sort correctly.
+    Falls back to raw price when price_normalized is absent.
+    """
     try:
+        v = offer.get("price_normalized")
+        if v is not None:
+            return float(v)
         return float(offer.get("price", float("inf")))
     except (TypeError, ValueError):
         return float("inf")
