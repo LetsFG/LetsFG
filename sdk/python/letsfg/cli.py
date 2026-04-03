@@ -675,17 +675,18 @@ def search_cloud_cmd(
         print(f"No cloud flights found for {origin} → {destination} on {date}")
         return
 
-    print(f"\n  {total} offers  |  {origin} → {destination}  |  {date}  |  CLOUD only")
+    has_return = any(o.get("inbound") for o in offers)
+    trip_label = f"{origin} ↔ {destination}" if return_date else f"{origin} → {destination}"
+    date_label = f"{date} → {return_date}" if return_date else date
+    print(f"\n  {total} offers  |  {trip_label}  |  {date_label}  |  CLOUD only")
 
-    def _cloud_route(offer: dict) -> str:
-        route = offer.get("route")
+    def _cloud_leg_route(leg: dict) -> str:
+        if not leg:
+            return "-"
+        route = leg.get("route_str")
         if route:
             return route
-        ob = offer.get("outbound") or {}
-        route = ob.get("route_str")
-        if route:
-            return route
-        segs = ob.get("segments") or []
+        segs = leg.get("segments") or []
         if not segs:
             return "-"
         codes = [segs[0].get("origin", "")]
@@ -693,6 +694,22 @@ def search_cloud_cmd(
             codes.append(seg.get("destination", ""))
         codes = [c for c in codes if c]
         return "→".join(codes) if codes else "-"
+
+    def _cloud_route(offer: dict) -> str:
+        route = offer.get("route")
+        if route:
+            return route
+        ob = offer.get("outbound") or {}
+        return _cloud_leg_route(ob)
+
+    def _cloud_leg_duration(leg: dict) -> str:
+        if not leg:
+            return "-"
+        dur_s = leg.get("total_duration_seconds")
+        if dur_s:
+            h, m = divmod(int(dur_s) // 60, 60)
+            return f"{h}h {m:02d}m"
+        return "-"
 
     def _cloud_duration(offer: dict) -> str:
         dur_s = offer.get("duration_seconds")
@@ -743,6 +760,9 @@ def search_cloud_cmd(
         table.add_column("Route")
         table.add_column("Duration", justify="right")
         table.add_column("Stops", justify="center")
+        if has_return:
+            table.add_column("Return")
+            table.add_column("Ret Dur", justify="right")
 
         for i, o in enumerate(offers, 1):
             raw_price = o.get("price", 0)
@@ -752,8 +772,14 @@ def search_cloud_cmd(
             route = _cloud_route(o)
             dur = _cloud_duration(o)
             stops = _cloud_stops(o)
+            ib = o.get("inbound") or {}
 
-            table.add_row(str(i), f"{cur} {price:.2f}", airlines, route, dur, stops)
+            row = [str(i), f"{cur} {price:.2f}", airlines, route, dur, stops]
+            if has_return:
+                row.append(_cloud_leg_route(ib))
+                row.append(_cloud_leg_duration(ib))
+
+            table.add_row(*row)
         console.print(table)
     else:
         for i, o in enumerate(offers, 1):
@@ -764,7 +790,9 @@ def search_cloud_cmd(
             route = _cloud_route(o)
             dur = _cloud_duration(o)
             stops = _cloud_stops(o)
-            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}  {dur}  stops:{stops}")
+            ib = o.get("inbound") or {}
+            ret = f"  ret:{_cloud_leg_route(ib)} {_cloud_leg_duration(ib)}" if has_return and ib else ""
+            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}  {dur}  stops:{stops}{ret}")
 
     print()
 # ── Star (Link GitHub) ─────────────────────────────────────────────────────
