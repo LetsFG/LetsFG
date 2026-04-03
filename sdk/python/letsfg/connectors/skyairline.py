@@ -178,15 +178,28 @@ class SkyAirlineConnectorClient:
         valid_origins = city_match_set(req.origin)
         valid_dests = city_match_set(req.destination)
 
+        # Separate exact-date and nearby fares (airTRFX shows cached snapshots)
+        exact_fares: list[dict] = []
+        nearby_fares: list[dict] = []
         for fare in fares:
             orig = fare.get("originAirportCode", "")
             dest = fare.get("destinationAirportCode", "")
             if orig not in valid_origins or dest not in valid_dests:
                 continue
-
-            dep_date = fare.get("departureDate", "")
-            if dep_date[:10] != target_date:
+            if not fare.get("totalPrice") or float(fare.get("totalPrice", 0)) <= 0:
                 continue
+            if fare.get("departureDate", "")[:10] == target_date:
+                exact_fares.append(fare)
+            else:
+                nearby_fares.append(fare)
+
+        # Prefer exact-date fares; fall back to all route fares
+        use_fares = exact_fares if exact_fares else nearby_fares
+
+        for fare in use_fares:
+            orig = fare.get("originAirportCode", "")
+            dest = fare.get("destinationAirportCode", "")
+            dep_date = fare.get("departureDate", "")
 
             price = fare.get("totalPrice")
             if not price or float(price) <= 0:

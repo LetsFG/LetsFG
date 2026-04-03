@@ -120,7 +120,8 @@ class EvaAirConnectorClient:
 
         offers = self._extract_offers(html, req)
         _td = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
-        offers = [o for o in offers if o.outbound and o.outbound.segments and abs((o.outbound.segments[0].departure.date() - _td).days) <= 1]
+        exact = [o for o in offers if o.outbound and o.outbound.segments and o.outbound.segments[0].departure.date() == _td]
+        offers = exact if exact else offers
         offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
 
         elapsed = time.monotonic() - t0
