@@ -796,6 +796,8 @@ def search_cloud_cmd(
         table.add_column("Price", justify="right", style="green")
         table.add_column("Airline")
         table.add_column("Route")
+        table.add_column("Depart", justify="right")
+        table.add_column("Arrive", justify="right")
         table.add_column("Duration", justify="right")
         table.add_column("Stops", justify="center")
         if has_return:
@@ -808,11 +810,14 @@ def search_cloud_cmd(
             price, cur = _convert_cloud_price(raw_price, raw_currency, target_currency, eur_rates)
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             route = _cloud_route(o)
+            ob = o.get("outbound") or {}
+            depart = _cloud_leg_depart(ob)
+            arrive = _cloud_leg_arrive(ob)
             dur = _cloud_duration(o)
             stops = _cloud_stops(o)
             ib = o.get("inbound") or {}
 
-            row = [str(i), f"{cur} {price:.2f}", airlines, route, dur, stops]
+            row = [str(i), f"{cur} {price:.2f}", airlines, route, depart, arrive, dur, stops]
             if has_return:
                 row.append(_cloud_leg_route(ib))
                 row.append(_cloud_leg_duration(ib))
@@ -826,11 +831,14 @@ def search_cloud_cmd(
             price, cur = _convert_cloud_price(raw_price, raw_currency, target_currency, eur_rates)
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             route = _cloud_route(o)
+            ob = o.get("outbound") or {}
+            depart = _cloud_leg_depart(ob)
+            arrive = _cloud_leg_arrive(ob)
             dur = _cloud_duration(o)
             stops = _cloud_stops(o)
             ib = o.get("inbound") or {}
             ret = f"  ret:{_cloud_leg_route(ib)} {_cloud_leg_duration(ib)}" if has_return and ib else ""
-            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}  {dur}  stops:{stops}{ret}")
+            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {route}  {depart}→{arrive}  {dur}  stops:{stops}{ret}")
 
     print()
 # ── Star (Link GitHub) ─────────────────────────────────────────────────────
