@@ -98,6 +98,11 @@ def _json_out(data):
 
 # ── Airline display helpers ───────────────────────────────────────────────
 
+def _normalize_airline_name(name: str) -> str:
+    """Normalize airline names for tolerant reverse-lookup."""
+    cleaned = re.sub(r"[^a-z0-9]+", " ", name.lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
 _IATA_TO_AIRLINE: dict[str, str] = {
     # Alternative Airlines
     "W2": "FlexFlight",
@@ -176,6 +181,18 @@ _IATA_TO_AIRLINE: dict[str, str] = {
 }
 _AIRLINE_TO_IATA: dict[str, str] = {v.lower(): k for k, v in _IATA_TO_AIRLINE.items()}
 
+# Additional aliases for airline names that share the same IATA carrier code.
+_AIRLINE_ALIAS_TO_IATA: dict[str, str] = {
+    "Rwandair Express": "WB",
+}
+
+_AIRLINE_NORMALIZED_TO_IATA: dict[str, str] = {
+    _normalize_airline_name(name): code for name, code in _AIRLINE_TO_IATA.items()
+}
+_AIRLINE_NORMALIZED_TO_IATA.update(
+    {_normalize_airline_name(name): code for name, code in _AIRLINE_ALIAS_TO_IATA.items()}
+)
+
 
 def _fmt_airline(owner: str, airlines: list[str]) -> str:
     """Return 'CODE-FullName' for the Airline display column."""
@@ -216,6 +233,8 @@ def _fmt_airline(owner: str, airlines: list[str]) -> str:
 
     # Full airline name — attempt reverse lookup for its IATA code
     code = _AIRLINE_TO_IATA.get(owner.lower())
+    if not code:
+        code = _AIRLINE_NORMALIZED_TO_IATA.get(_normalize_airline_name(owner))
     return f"{code}-{owner}" if code else owner
 
 
