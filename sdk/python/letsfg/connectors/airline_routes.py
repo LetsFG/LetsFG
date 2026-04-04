@@ -418,10 +418,6 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
     "volotea": {
         "ES", "IT", "FR", "GR", "HR", "DE", "AT",
     },
-    "play": {
-        "IS", "GB", "IE", "FR", "DE", "DK", "NO", "SE", "ES", "PT",
-        "NL", "BE", "PL", "US", "CA",
-    },
     "sunexpress": {
         "TR", "DE", "AT", "CH", "GB", "NL", "BE", "DK", "SE", "NO",
         "FI",

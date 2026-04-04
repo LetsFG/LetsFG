@@ -68,7 +68,6 @@ from connectors.spring import SpringConnectorClient
 from connectors.peach import PeachConnectorClient
 from connectors.zipair import ZipairConnectorClient
 from connectors.condor import CondorConnectorClient
-from connectors.play import PlayConnectorClient
 from connectors.sunexpress import SunExpressConnectorClient
 from connectors.volotea import VoloteaConnectorClient
 from connectors.smartwings import SmartwingsConnectorClient
@@ -187,7 +186,7 @@ _BROWSER_SOURCES: set[str] = {
     "gol_direct", "indigo_direct", "jet2_direct", "jetsmart_direct",
     "jetstar_direct", "luckyair_direct", "9air_direct",
     "jetblue_direct", "avelo_direct", "breeze_direct",
-    "norwegian_direct", "peach_direct", "pegasus_direct", "play_direct",
+    "norwegian_direct", "peach_direct", "pegasus_direct",
     "porter_direct", "scoot_direct", "smartwings_direct", "southwest_direct",
     "spirit_direct", "sunexpress_direct", "transavia_direct", "twayair_direct",
     "vietjet_direct", "volaris_direct", "volotea_direct", "vueling_direct",
@@ -293,7 +292,6 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("peach_direct", PeachConnectorClient, 25.0),
     ("zipair_direct", ZipairConnectorClient, 25.0),
     ("condor_direct", CondorConnectorClient, 25.0),
-    ("play_direct", PlayConnectorClient, 25.0),
     ("sunexpress_direct", SunExpressConnectorClient, 25.0),
     ("volotea_direct", VoloteaConnectorClient, 25.0),
     ("smartwings_direct", SmartwingsConnectorClient, 25.0),

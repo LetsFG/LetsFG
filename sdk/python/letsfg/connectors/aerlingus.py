@@ -29,7 +29,7 @@ from ..models.flights import (
     FlightSegment,
 )
 from .browser import get_httpx_proxy_url
-from .airline_routes import get_city_airports, city_match_set
+from .airline_routes import city_match_set
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ _API_KEY = "HeQpRjsFI5xlAaSx2onkjc1HTK0ukqA1IrVvd5fvaMhNtzLTxInTpeYB1MK93pah"
 _SPUTNIK_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
@@ -245,9 +245,8 @@ class AerLingusConnectorClient:
             for fare in route.get("fares") or []:
                 orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
                 dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
-                if dest not in dest_set:
-                    if orig not in origin_set:
-                        continue
+                if orig not in origin_set or dest not in dest_set:
+                    continue
 
                 price = fare.get("totalPrice") or fare.get("usdTotalPrice")
                 if not price or float(price) <= 0:
@@ -362,21 +361,30 @@ class AerLingusConnectorClient:
         target_date = req.date_from.strftime("%Y-%m-%d")
         offers: list[FlightOffer] = []
 
-        # City-aware matching: LON matches LHR, LGW, STN, etc.
-        valid_origins = set(get_city_airports(req.origin))
-        valid_origins.add(req.origin)
-        valid_dests = set(get_city_airports(req.destination))
-        valid_dests.add(req.destination)
+        valid_origins = city_match_set(req.origin)
+        valid_dests = city_match_set(req.destination)
 
+        # Separate exact-date and nearby fares (airTRFX shows cached snapshots)
+        exact_fares: list[dict] = []
+        nearby_fares: list[dict] = []
         for fare in fares:
             orig = fare.get("originAirportCode", "")
             dest = fare.get("destinationAirportCode", "")
             if orig not in valid_origins or dest not in valid_dests:
                 continue
-
-            dep_date = fare.get("departureDate", "")
-            if dep_date[:10] != target_date:
+            if not fare.get("totalPrice") or float(fare.get("totalPrice", 0)) <= 0:
                 continue
+            if fare.get("departureDate", "")[:10] == target_date:
+                exact_fares.append(fare)
+            else:
+                nearby_fares.append(fare)
+
+        # Prefer exact-date fares; fall back to all route fares
+        use_fares = exact_fares if exact_fares else nearby_fares
+
+        for fare in use_fares:
+            orig = fare.get("originAirportCode", "")
+            dest = fare.get("destinationAirportCode", "")
 
             price = fare.get("totalPrice")
             if not price or float(price) <= 0:
@@ -384,6 +392,7 @@ class AerLingusConnectorClient:
 
             currency = fare.get("currencyCode") or "EUR"
             price_f = round(float(price), 2)
+            dep_date = fare.get("departureDate", "")
 
             dep_dt = datetime(2000, 1, 1)
             if dep_date:
