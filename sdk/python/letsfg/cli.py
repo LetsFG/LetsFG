@@ -273,9 +273,15 @@ def _format_leg_time(leg: dict, pos: str = "dep", include_day_offset: bool = Fal
         return "-"
 
     if pos == "dep":
-        dt_str = segs[0].get("departure", "")
+        dt_val = segs[0].get("departure", "")
     else:
-        dt_str = segs[-1].get("arrival", "")
+        dt_val = segs[-1].get("arrival", "")
+
+    # Some sources may pass datetime objects instead of ISO strings.
+    if hasattr(dt_val, "isoformat"):
+        dt_str = dt_val.isoformat()
+    else:
+        dt_str = str(dt_val) if dt_val is not None else ""
 
     if not dt_str:
         return "-"
@@ -284,6 +290,16 @@ def _format_leg_time(leg: dict, pos: str = "dep", include_day_offset: bool = Fal
         time_part = dt_str.split("T")[1][:5] if "T" in dt_str else dt_str[:5]
     except (IndexError, TypeError):
         return "-"
+
+    # KLM route-fare feed is date-only; 00:00 is not a real schedule time.
+    # Show N/A instead of misleading midnight values.
+    if (
+        time_part == "00:00"
+        and (leg.get("total_duration_seconds") in (0, None))
+        and segs
+        and segs[0].get("airline") == "KL"
+    ):
+        return "N/A"
 
     if pos != "arr" or not include_day_offset:
         return time_part
