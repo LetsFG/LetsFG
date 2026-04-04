@@ -217,15 +217,18 @@ def _offer_price_in_target(
     default_currency: str,
 ) -> float:
     """Extract comparable offer price in target currency; invalid values sort last."""
+    raw_currency = (offer.get("currency", default_currency) or default_currency).upper()
+
+    # price_normalized may be stale/mis-labeled by upstream. Only trust it when
+    # the raw offer currency already matches the requested target currency.
     normalized = offer.get("price_normalized")
-    if normalized is not None:
+    if normalized is not None and raw_currency == target_currency:
         try:
             return float(normalized)
         except (TypeError, ValueError):
             pass
 
     raw_price = offer.get("price", float("inf"))
-    raw_currency = (offer.get("currency", default_currency) or default_currency).upper()
     converted, _ = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
     try:
         return float(converted)
@@ -339,15 +342,18 @@ def _offer_display_price(
     Prefer price_normalized so the displayed value follows the same basis used
     for sorting. Fall back to on-the-fly conversion from raw connector currency.
     """
+    raw_currency = (offer.get("currency", default_currency) or default_currency).upper()
+
+    # Keep display/sort aligned: only trust normalized when raw currency already
+    # equals the requested target currency.
     normalized = offer.get("price_normalized")
-    if normalized is not None:
+    if normalized is not None and raw_currency == target_currency:
         try:
             return round(float(normalized), 2), target_currency
         except (TypeError, ValueError):
             pass
 
     raw_price = offer.get("price", 0)
-    raw_currency = (offer.get("currency", default_currency) or default_currency).upper()
     return _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
 
 
