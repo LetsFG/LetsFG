@@ -751,6 +751,8 @@ def search_cloud_cmd(
         "sort": sort,
     }
     if return_date:
+        # Send both keys for compatibility across backend versions.
+        params["return_from"] = return_date
         params["date_to"] = return_date
     if cabin:
         params["cabin"] = cabin
