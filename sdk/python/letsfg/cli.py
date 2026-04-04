@@ -884,6 +884,9 @@ def me(
             "agent_name": profile.agent_name,
             "email": profile.email,
             "tier": profile.tier,
+            "github_username": profile.github_username,
+            "github_star_verified": profile.github_star_verified,
+            "access_granted": profile.access_granted,
             "payment_ready": profile.payment_ready,
             "usage": profile.usage,
         })
@@ -895,11 +898,13 @@ def me(
     gh = getattr(profile, 'github_username', '') or ''
     star_ok = getattr(profile, 'github_star_verified', False)
     if star_ok:
-        print(f"  GitHub:  ✓ {gh} (star verified — unlimited access)")
+        print(f"  GitHub:  ✓ {gh} (star verified)")
     elif gh:
-        print(f"  GitHub:  {gh} (star not verified)")
+        print(f"  GitHub:  {gh} (star not yet verified — run: letsfg star --github {gh})")
     else:
         print(f"  GitHub:  Not linked — run: letsfg star --github <username>")
+    access = getattr(profile, 'access_granted', False)
+    print(f"  Access:  {'✓ Granted (search, unlock, book)' if access else '✗ Not granted — star the repo to unlock'}")
     print(f"  Payment: {'✓ Ready' if profile.payment_ready else '—'}")
     u = profile.usage
     print(f"  Searches: {u.get('total_searches', 0)}")
