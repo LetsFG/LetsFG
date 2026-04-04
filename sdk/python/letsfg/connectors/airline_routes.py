@@ -312,6 +312,7 @@ CITY_AIRPORTS: dict[str, list[str]] = {
     "BJS": ["PEK", "PKX"],
     "SHA": ["PVG", "SHA"],
     "BUE": ["EZE", "AEP"],
+    "RIO": ["GIG", "SDU"],
     "BKK": ["BKK", "DMK"],
     "KUL": ["KUL", "SZB"],
     "REK": ["KEF", "RKV"],
