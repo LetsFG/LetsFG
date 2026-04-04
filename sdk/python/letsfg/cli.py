@@ -210,6 +210,29 @@ def _offer_price(offer: dict) -> float:
         return float("inf")
 
 
+def _offer_price_in_target(
+    offer: dict,
+    target_currency: str,
+    eur_rates: dict[str, float],
+    default_currency: str,
+) -> float:
+    """Extract comparable offer price in target currency; invalid values sort last."""
+    normalized = offer.get("price_normalized")
+    if normalized is not None:
+        try:
+            return float(normalized)
+        except (TypeError, ValueError):
+            pass
+
+    raw_price = offer.get("price", float("inf"))
+    raw_currency = (offer.get("currency", default_currency) or default_currency).upper()
+    converted, _ = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+    try:
+        return float(converted)
+    except (TypeError, ValueError):
+        return float("inf")
+
+
 def _offer_duration_seconds(offer: dict) -> int:
     """Extract comparable offer duration; missing/invalid values sort last."""
     raw = offer.get("duration_seconds")
@@ -221,12 +244,20 @@ def _offer_duration_seconds(offer: dict) -> int:
         return int(1e18)
 
 
-def _final_sort_offers(offers: list[dict], sort: str) -> None:
+def _final_sort_offers(
+    offers: list[dict],
+    sort: str,
+    *,
+    target_currency: str,
+    eur_rates: dict[str, float],
+    default_currency: str,
+) -> None:
     """Apply deterministic client-side sorting after merged results are fetched."""
+    price_key = lambda o: _offer_price_in_target(o, target_currency, eur_rates, default_currency)
     if sort == "duration":
-        offers.sort(key=lambda o: (_offer_duration_seconds(o), _offer_price(o)))
+        offers.sort(key=lambda o: (_offer_duration_seconds(o), price_key(o)))
         return
-    offers.sort(key=lambda o: (_offer_price(o), _offer_duration_seconds(o)))
+    offers.sort(key=lambda o: (price_key(o), _offer_duration_seconds(o)))
 
 
 def _format_leg_time(leg: dict, pos: str = "dep", include_day_offset: bool = False) -> str:
@@ -295,6 +326,29 @@ def _convert_display_price(amount: float, from_cur: str, to_cur: str, eur_rates:
         return numeric_amount, from_cur
 
     return converted, to_cur
+
+
+def _offer_display_price(
+    offer: dict,
+    target_currency: str,
+    eur_rates: dict[str, float],
+    default_currency: str,
+) -> tuple[float, str]:
+    """Return the price/currency pair shown in tables.
+
+    Prefer price_normalized so the displayed value follows the same basis used
+    for sorting. Fall back to on-the-fly conversion from raw connector currency.
+    """
+    normalized = offer.get("price_normalized")
+    if normalized is not None:
+        try:
+            return round(float(normalized), 2), target_currency
+        except (TypeError, ValueError):
+            pass
+
+    raw_price = offer.get("price", 0)
+    raw_currency = (offer.get("currency", default_currency) or default_currency).upper()
+    return _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
 
 
 # ── Search ────────────────────────────────────────────────────────────────
@@ -371,8 +425,20 @@ def search(
     offers = result.get("offers", [])
     total = result.get("total_results", len(offers))
 
+    target_currency = currency.upper()
+    try:
+        eur_rates = asyncio.run(fetch_rates("EUR"))
+    except Exception:
+        eur_rates = {}
+
     # Apply a final local sort after all connector/provider results are merged.
-    _final_sort_offers(offers, sort)
+    _final_sort_offers(
+        offers,
+        sort,
+        target_currency=target_currency,
+        eur_rates=eur_rates,
+        default_currency=currency,
+    )
 
     offers = offers[:limit]
 
@@ -414,12 +480,6 @@ def search(
     def _time_str(leg, pos="dep"):
         return _format_leg_time(leg, pos=pos, include_day_offset=(pos == "arr"))
 
-    target_currency = currency.upper()
-    try:
-        eur_rates = asyncio.run(fetch_rates("EUR"))
-    except Exception:
-        eur_rates = {}
-
     if HAS_RICH:
         table = Table(show_header=True, header_style="bold")
         table.add_column("#", style="dim", width=4)
@@ -439,9 +499,7 @@ def search(
             ib = o.get("inbound")
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             stops = str(ob.get("stopovers", 0))
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             row = [str(i), f"{cur} {price:.2f}", airlines, _route_str(ob), _time_str(ob, "dep"), _time_str(ob, "arr"), _dur_str(ob), stops]
             if has_return:
                 row.append(_route_str(ib))
@@ -457,9 +515,7 @@ def search(
             ob_url = cond.get("outbound_booking_url", "")
             ib_url = cond.get("inbound_booking_url", "")
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             offer_id = o.get("id", "")
             id_str = f"  [{offer_id}]" if offer_id else ""
             if ob_url and ib_url:
@@ -474,9 +530,7 @@ def search(
                 print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str} — no booking URL")
     else:
         for i, o in enumerate(offers, 1):
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             ob = o.get("outbound", {})
             ib = o.get("inbound")
@@ -574,8 +628,20 @@ def search_local_cmd(
     offers = result.get("offers", [])
     total = result.get("total_results", len(offers))
 
+    target_currency = currency.upper()
+    try:
+        eur_rates = asyncio.run(fetch_rates("EUR"))
+    except Exception:
+        eur_rates = {}
+
     # Apply a final local sort after all connector/provider results are merged.
-    _final_sort_offers(offers, sort)
+    _final_sort_offers(
+        offers,
+        sort,
+        target_currency=target_currency,
+        eur_rates=eur_rates,
+        default_currency=currency,
+    )
 
     offers = offers[:limit]
 
@@ -614,12 +680,6 @@ def search_local_cmd(
     def _local_time(leg, pos="dep"):
         return _format_leg_time(leg, pos=pos, include_day_offset=(pos == "arr"))
 
-    target_currency = currency.upper()
-    try:
-        eur_rates = asyncio.run(fetch_rates("EUR"))
-    except Exception:
-        eur_rates = {}
-
     if HAS_RICH:
         table = Table(show_header=True, header_style="bold")
         table.add_column("#", style="dim", width=4)
@@ -635,18 +695,14 @@ def search_local_cmd(
             ob = o.get("outbound", {})
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             stops = str(ob.get("stopovers", 0))
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             table.add_row(str(i), f"{cur} {price:.2f}", airlines, _local_route(ob),
                           _local_time(ob, "dep"), _local_time(ob, "arr"),
                           _local_dur(ob), stops)
         console.print(table)
     else:
         for i, o in enumerate(offers, 1):
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             ob = o.get("outbound", {})
             dep = _local_time(ob, "dep")
@@ -709,8 +765,20 @@ def search_cloud_cmd(
     offers = data.get("offers", [])
     total = data.get("total_results", len(offers))
 
+    target_currency = currency.upper()
+    try:
+        eur_rates = asyncio.run(fetch_rates("EUR"))
+    except Exception:
+        eur_rates = {}
+
     # Apply a final local sort after all connector/provider results are merged.
-    _final_sort_offers(offers, sort)
+    _final_sort_offers(
+        offers,
+        sort,
+        target_currency=target_currency,
+        eur_rates=eur_rates,
+        default_currency=currency,
+    )
     offers = offers[:limit]
 
     if output_json:
@@ -783,12 +851,6 @@ def search_cloud_cmd(
     def _cloud_leg_arrive(leg: dict) -> str:
         return _format_leg_time(leg, pos="arr", include_day_offset=True)
 
-    target_currency = currency.upper()
-    try:
-        eur_rates = asyncio.run(fetch_rates("EUR"))
-    except Exception:
-        eur_rates = {}
-
     if HAS_RICH:
         table = Table(show_header=True, header_style="bold")
         table.add_column("#", style="dim", width=4)
@@ -804,9 +866,7 @@ def search_cloud_cmd(
             table.add_column("Ret Dur", justify="right")
 
         for i, o in enumerate(offers, 1):
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             route = _cloud_route(o)
             ob = o.get("outbound") or {}
@@ -825,9 +885,7 @@ def search_cloud_cmd(
         console.print(table)
     else:
         for i, o in enumerate(offers, 1):
-            raw_price = o.get("price", 0)
-            raw_currency = (o.get("currency", currency) or currency).upper()
-            price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
+            price, cur = _offer_display_price(o, target_currency, eur_rates, currency)
             airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
             route = _cloud_route(o)
             ob = o.get("outbound") or {}
