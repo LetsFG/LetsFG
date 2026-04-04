@@ -49,6 +49,7 @@ LetsFG gives your AI agent flight search and booking superpowers — 180+ airlin
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
 [![npm](https://img.shields.io/npm/v/letsfg-mcp?label=npm%20%28MCP%29)](https://www.npmjs.com/package/letsfg-mcp)
+[![Connector Health](https://api.letsfg.co/api/v1/analytics/connectors/health/badge)](https://api.letsfg.co/health/connectors)
 [![smithery badge](https://smithery.ai/badge/letsfg)](https://smithery.ai/servers/letsfg)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -340,7 +341,7 @@ Search a city code and LetsFG automatically searches all airports in that city. 
 
 <div align="center">
 
-**[Documentation](https://api.letsfg.co/docs)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Messenger](https://m.me/61579557368989)** · **[Instagram](https://ig.me/m/letsfg_)**
+**[Documentation](https://api.letsfg.co/docs)** · **[Connector Health](https://api.letsfg.co/health/connectors)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Messenger](https://m.me/61579557368989)** · **[Instagram](https://ig.me/m/letsfg_)**
 
 MIT License · Made with ❤️ for AI agents
 
