@@ -262,7 +262,6 @@ for offer in result.offers[:5]:
 |---------|-------------|
 | `letsfg star --github <username>` | **⭐ Verify GitHub star (required for free access)** |
 | `letsfg search <origin> <dest> <date>` | Search flights (free) |
-| `letsfg search-local <origin> <dest> <date>` | Search locally, no API key |
 | `letsfg register` | Get your API key |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |

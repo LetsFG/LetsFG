@@ -67,7 +67,7 @@ Override auto-detected browser concurrency limit for local search.
 - **Input:** max_browsers (integer, 1–32)
 - **Priority:** env var `LETSFG_MAX_BROWSERS` > explicit config > auto-detect from RAM
 - **Python:** `from letsfg import configure_max_browsers; configure_max_browsers(4)`
-- **CLI:** `letsfg search-local LHR BCN 2026-04-15 --max-browsers 4`
+- **CLI:** `letsfg search LHR BCN 2026-04-15 --max-browsers 4`
 - **MCP:** `search_flights` tool with `max_browsers` parameter
 - **JS:** `await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 })`
 
