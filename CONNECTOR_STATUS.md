@@ -138,10 +138,10 @@
 | 54 | emirates | EK | Browser | `done` | copilot-main | 2026-03-16T12:00Z | CDP Chrome + form fill + DOM scraping. Akamai WAF bypass via headed Chrome. 10 offers DXB→LHR (AED 2,155 cheapest). emirates.com/english/book/ — Next.js SPA with auto-suggest airports, DayPicker calendar. |
 | 55 | qatar | QR | API | `done` | copilot-main | 2026-03-15T12:00Z | Direct API via CDP Chrome. `page.evaluate(fetch('/dapi/public/bff/web/flight-search/flight-offers'))` with `Accept-Language: en`. Homepage visit for Akamai cookies. 5 offers DOH→DXB, 15 offers DOH→LHR. |
 | 56 | etihad | EY | `etihad.py` | `done` | | CDP Chrome + form fill + calendar pricing API interception | Etihad Airways. AUH hub → 70+ destinations. Calendar pricing via ada-services/bff-calendar-pricing. |
-| 57 | saudia | SV | — | `broken` | | | Saudia (Saudi Arabian Airlines). JED/RUH hubs → 100+ destinations. Hajj/Umrah traffic + regional. saudia.com. |
-| 58 | omanair | WY | — | `broken` | | | Oman Air. MCT hub → 50+ destinations (complements SalamAir). book.omanair.com — Incapsula protected. |
-| 59 | kuwaitairways | KU | — | `broken` | | | Kuwait Airways. KWI hub → 50+ destinations. kuwaitairways.com. |
-| 60 | royaljordanian | RJ | — | `broken` | | | Royal Jordanian. AMM hub → Levant/EU/US connectivity. rj.com. |
+| 57 | saudia | SV | saudia.py | `done` | | | Saudia (Saudi Arabian Airlines). CDP Chrome + Angular Material form fill + DOM scraping. JED/RUH hubs → 100+ destinations. Verified: 63 offers JED→RUH. |
+| 58 | omanair | WY | omanair.py | `done` | | | Oman Air. Sputnik fare API + curl_cffi (TLS fingerprint bypass). MCT hub → 50+ destinations. Verified: 1 offer MCT→DXB USD 152.69. |
+| 59 | kuwaitairways | KU | kuwaitairways.py | `done` | | | Kuwait Airways. CDP Chrome + Selectize.js form fill + Amadeus NDB DOM scraping. KWI hub → 50+ destinations. Verified: 3 offers KWI→DXB KWD 93.2. |
+| 60 | royaljordanian | RJ | royaljordanian.py | `done` | | | Royal Jordanian. CDP Chrome + AJAX form + Amadeus booking engine DOM scraping. AMM hub → Levant/EU/US. Verified: 3 offers AMM→DXB JOD 197.89. |
 | 61 | turkish | TK | — | `done` | | | Turkish Airlines. IST hub, largest network by destination count (340+). turkishairlines.com. |
 | 62 | singapore | SQ | — | `done` | CDP Chrome | SIN→LHR | Singapore Airlines. SIN hub, premium Asia-Pacific carrier. singaporeair.com. |
 | 63 | cathay | CX | cathay_direct | `done` | curl_cffi | open-search calendar API | Cathay Pacific. HKG hub → Asia/EU/NA/AU. cathaypacific.com. curl_cffi-only via open-search API (no auth). 80 destinations from HKG, also SIN/SYD/TPE/BKK origins. Calendar deal pricing. |
