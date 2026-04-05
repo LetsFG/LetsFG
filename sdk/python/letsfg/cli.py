@@ -123,7 +123,7 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     "DE": "Condor", "4Y": "Discover Airlines", "J2": "Azerbaijan Airlines",
     # Europe – LCC
     "FR": "Ryanair", "RK": "Ryanair UK", "W6": "Wizz Air", "U2": "easyJet", "VY": "Vueling",
-    "EW": "Eurowings", "HV": "Transavia", "PC": "Pegasus", "DY": "Norwegian",
+    "EW": "Eurowings", "HV": "Transavia", "TO": "Transavia France", "PC": "Pegasus", "VF": "AJet", "DY": "Norwegian",
     "I2": "Iberia Express", "V7": "Volotea", "LS": "Jet2", "FI": "Icelandair",
     "XQ": "SunExpress",
     # North America
