@@ -125,7 +125,7 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     "FR": "Ryanair", "RK": "Ryanair UK", "W6": "Wizz Air", "U2": "easyJet", "VY": "Vueling",
     "EW": "Eurowings", "HV": "Transavia", "TO": "Transavia France", "PC": "Pegasus", "VF": "AJet", "DY": "Norwegian",
     "I2": "Iberia Express", "V7": "Volotea", "LS": "Jet2", "FI": "Icelandair",
-    "XQ": "SunExpress",
+    "XQ": "SunExpress", "W4": "Windrose Air", "SM": "Samair Express",
     # North America
     "AA": "American Airlines", "DL": "Delta Air Lines", "UA": "United Airlines",
     "WN": "Southwest Airlines", "AS": "Alaska Airlines", "B6": "JetBlue Airways",
