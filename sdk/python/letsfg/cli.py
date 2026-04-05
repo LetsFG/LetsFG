@@ -117,10 +117,10 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     "S4": "Azores Airlines", "CY": "Cyprus Airways", "VS": "Virgin Atlantic",
     "DE": "Condor", "4Y": "Discover Airlines", "J2": "Azerbaijan Airlines",
     # Europe – LCC
-    "FR": "Ryanair", "W6": "Wizz Air", "U2": "easyJet", "VY": "Vueling",
-    "EW": "Eurowings", "HV": "Transavia", "PC": "Pegasus", "DY": "Norwegian",
+    "FR": "Ryanair", "RK": "Ryanair UK", "W6": "Wizz Air", "U2": "easyJet", "VY": "Vueling",
+    "EW": "Eurowings", "HV": "Transavia", "TO": "Transavia France", "PC": "Pegasus", "VF": "AJet", "DY": "Norwegian",
     "I2": "Iberia Express", "V7": "Volotea", "LS": "Jet2", "FI": "Icelandair",
-    "XQ": "SunExpress",
+    "XQ": "SunExpress", "W4": "Windrose Air", "SM": "Samair Express",
     # North America
     "AA": "American Airlines", "DL": "Delta Air Lines", "UA": "United Airlines",
     "WN": "Southwest Airlines", "AS": "Alaska Airlines", "B6": "JetBlue Airways",
@@ -148,7 +148,7 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     "CA": "Air China", "MU": "China Eastern Airlines",
     "CZ": "China Southern Airlines", "CI": "China Airlines",
     "HU": "Hainan Airlines", "BR": "EVA Air", "JX": "Starlux Airlines",
-    "UX": "Air Europa",
+    "UO": "HK Express", "UX": "Air Europa",
     # Asia – LCC
     "AK": "AirAsia", "FD": "Thai AirAsia", "VJ": "VietJet Air",
     "TR": "Scoot", "MM": "Peach Aviation", "ZG": "ZIPAIR",
