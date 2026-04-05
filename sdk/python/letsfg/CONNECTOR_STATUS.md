@@ -27,7 +27,7 @@
 
 ---
 
-## Connectors (101 total)
+## Connectors (140 total)
 
 ### Already Working (20) — DO NOT TOUCH
 
@@ -138,10 +138,10 @@
 | 54 | emirates | EK | Browser | `done` | copilot-main | 2026-03-16T12:00Z | CDP Chrome + form fill + DOM scraping. Akamai WAF bypass via headed Chrome. 10 offers DXB→LHR (AED 2,155 cheapest). emirates.com/english/book/ — Next.js SPA with auto-suggest airports, DayPicker calendar. |
 | 55 | qatar | QR | API | `done` | copilot-main | 2026-03-15T12:00Z | Direct API via CDP Chrome. `page.evaluate(fetch('/dapi/public/bff/web/flight-search/flight-offers'))` with `Accept-Language: en`. Homepage visit for Akamai cookies. 5 offers DOH→DXB, 15 offers DOH→LHR. |
 | 56 | etihad | EY | `etihad.py` | `done` | | CDP Chrome + form fill + calendar pricing API interception | Etihad Airways. AUH hub → 70+ destinations. Calendar pricing via ada-services/bff-calendar-pricing. |
-| 57 | saudia | SV | — | `broken` | | | Saudia (Saudi Arabian Airlines). JED/RUH hubs → 100+ destinations. Hajj/Umrah traffic + regional. saudia.com. |
-| 58 | omanair | WY | — | `broken` | | | Oman Air. MCT hub → 50+ destinations (complements SalamAir). book.omanair.com — Incapsula protected. |
-| 59 | kuwaitairways | KU | — | `broken` | | | Kuwait Airways. KWI hub → 50+ destinations. kuwaitairways.com. |
-| 60 | royaljordanian | RJ | — | `broken` | | | Royal Jordanian. AMM hub → Levant/EU/US connectivity. rj.com. |
+| 57 | saudia | SV | saudia.py | `done` | | | Saudia (Saudi Arabian Airlines). CDP Chrome + Angular Material form fill + DOM scraping. JED/RUH hubs → 100+ destinations. Verified: 63 offers JED→RUH. |
+| 58 | omanair | WY | omanair.py | `done` | | | Oman Air. Sputnik fare API + curl_cffi (TLS fingerprint bypass). MCT hub → 50+ destinations. Verified: 1 offer MCT→DXB USD 152.69. |
+| 59 | kuwaitairways | KU | kuwaitairways.py | `done` | | | Kuwait Airways. CDP Chrome + Selectize.js form fill + Amadeus NDB DOM scraping. KWI hub → 50+ destinations. Verified: 3 offers KWI→DXB KWD 93.2. |
+| 60 | royaljordanian | RJ | royaljordanian.py | `done` | | | Royal Jordanian. CDP Chrome + AJAX form + Amadeus booking engine DOM scraping. AMM hub → Levant/EU/US. Verified: 3 offers AMM→DXB JOD 197.89. |
 | 61 | turkish | TK | — | `done` | | | Turkish Airlines. IST hub, largest network by destination count (340+). turkishairlines.com. |
 | 62 | singapore | SQ | — | `done` | CDP Chrome | SIN→LHR | Singapore Airlines. SIN hub, premium Asia-Pacific carrier. singaporeair.com. |
 | 63 | cathay | CX | cathay_direct | `done` | curl_cffi | open-search calendar API | Cathay Pacific. HKG hub → Asia/EU/NA/AU. cathaypacific.com. curl_cffi-only via open-search API (no auth). 80 destinations from HKG, also SIN/SYD/TPE/BKK origins. Calendar deal pricing. |
@@ -200,6 +200,25 @@
 | 101 | wego | OTA | `done` | Wego. Middle East/Asia metasearch. 700+ airlines, GCC focus. |
 | 102 | airasiax | D7 | Browser | `done` | AirAsia X. KUL hub → AU/JP/KR/IN long-haul. Playwright + API interception, D7/XJ carrier filter. [#91](https://github.com/LetsFG/LetsFG/issues/91) |
 
+### New Duffel Bypass Connectors — AF-KLM + IAG + VS (6)
+
+| # | Connector | IATA | Type | Status | Claimed by | Timestamp | Notes |
+|---|-----------|------|------|--------|------------|-----------|-------|
+| 102 | klm | KL | klm.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | EveryMundo airTRFX __NEXT_DATA__ DpaHeadline. curl_cffi. 170+ dest from AMS. |
+| 103 | airfrance | AF | airfrance.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | EveryMundo airTRFX __NEXT_DATA__. Multi-market fallback (.nl → .us). curl_cffi. |
+| 104 | britishairways | BA | britishairways.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | SOLR /solr/lpbd/safe pricing feed via curl_cffi. LON departures. £66 AMS, £360 JFK, £74 BCN, £68 CDG. |
+| 105 | iberia | IB | iberia.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | LD+JSON schema.org Flight data from /cheap-flights/. Multi-market (gb/es/us). 126+ dest. curl_cffi. |
+| 106 | iberiaexpress | I2 | iberiaexpress.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | Reuses Iberia LD+JSON cache. MAD hub domestic Spain + short-haul EU. €51 BCN, €79 TFS, €69 DUB. |
+| 107 | virginatlantic | VS | virginatlantic.py | `done` | claude-connector-builder-2 | 2026-03-20T12:00Z | EveryMundo airTRFX at flights.virginatlantic.com. __NEXT_DATA__ DpaHeadline. LHR hub. curl_cffi. |
+| 108 | lufthansa | LH | lufthansa.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | JSON-LD Flight+Product extraction from lufthansa.com/xx/en/flights/. Shared lhgroup_base.py. curl_cffi. FRA/MUC hubs. 28 flights FRA→LHR. |
+| 109 | swiss | LX | swiss.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. JSON-LD from LH pages for ZRH/GVA routes. CHF currency. curl_cffi. |
+| 110 | austrian | OS | austrian.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. JSON-LD from LH pages for VIE routes. EUR currency. curl_cffi. |
+| 111 | brusselsairlines | SN | brusselsairlines.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. JSON-LD from LH pages for BRU routes. Strong Africa network. curl_cffi. |
+| 112 | discover | 4Y | discover.py | `done` | claude-connector-builder-3 | 2026-03-21T12:00Z | LHGroupBaseConnector subclass. LH pages show 4Y flights on leisure routes (FRA→TFS, HER, CUN). curl_cffi. |
+| 113 | elal | LY | elal.py | `done` | claude-connector-builder-3 | 2026-03-22T12:00Z | CDP Chrome + Angular 18 form fill + API interception. elal.com → /eng/<geo>. reCAPTCHA v3 present. TLV hub + EU/US/Asia routes. |
+| 114 | saudia | SV | saudia.py | `done` | claude-connector-builder-3 | 2026-03-22T12:00Z | CDP Chrome + Angular Material form fill + API interception. saudia.com Imperva WAF. JED/RUH hubs + global network. |
+| 115 | omanair | WY | omanair.py | `done` | claude-connector-builder-3 | 2026-03-22T12:00Z | CDP Chrome + Triplake booking engine. omanair.com custom widgets + Incapsula. MCT hub + ME/EU/Asia routes. |
+
 ---
 
 ## How to Claim a Connector
@@ -236,8 +255,8 @@ After fixing:
 ### Test script template
 ```python
 import sys, asyncio, logging
-sys.path.insert(0, r"c:\Users\Adam\Desktop\folder\LetsFG\sdk\python\letsfg")
-sys.path.insert(0, r"c:\Users\Adam\Desktop\folder\LetsFG")
+sys.path.insert(0, r"c:\Users\Adam\Desktop\folder\BoostedTravel-public\sdk\python\letsfg")
+sys.path.insert(0, r"c:\Users\Adam\Desktop\folder\BoostedTravel-public")
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
 from datetime import date
 from models.flights import FlightSearchRequest
