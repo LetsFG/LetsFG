@@ -153,7 +153,7 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     "CA": "Air China", "MU": "China Eastern Airlines", "FM": "Shanghai Airlines",
     "CZ": "China Southern Airlines", "CI": "China Airlines",
     "HU": "Hainan Airlines", "BR": "EVA Air", "JX": "Starlux Airlines",
-    "HO": "Juneyao Air", "BI": "Royal Brunei Airlines",
+    "HO": "Juneyao Air", "BI": "Royal Brunei Airlines", "UO": "HK Express",
     "UX": "Air Europa",
     # Asia – LCC
     "AK": "AirAsia", "FD": "Thai AirAsia", "VJ": "VietJet Air",
