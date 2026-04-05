@@ -233,6 +233,19 @@ def _is_airline_like(name: str) -> bool:
     return True
 
 
+def _format_airline_parts(parts: list[str]) -> str:
+    """Format and de-duplicate airline labels while preserving input order."""
+    rendered: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        label = _fmt_airline(part, [])
+        if not label or label == "-" or label in seen:
+            continue
+        seen.add(label)
+        rendered.append(label)
+    return " + ".join(rendered) if rendered else "-"
+
+
 def _fmt_airline(owner: str, airlines: list[str]) -> str:
     """Return 'CODE-FullName' for the Airline display column."""
     if not owner:
@@ -250,7 +263,7 @@ def _fmt_airline(owner: str, airlines: list[str]) -> str:
     if "|" in owner:
         parts = [p.strip() for p in owner.split("|") if p.strip()]
         parts = [p for p in parts if _is_airline_like(p)]
-        return " + ".join(_fmt_airline(p, []) for p in parts) if parts else "-"
+        return _format_airline_parts(parts)
 
     # Comma-separated multi-airline string (e.g. ixigo headerTextWeb)
     if "," in owner:
@@ -258,7 +271,7 @@ def _fmt_airline(owner: str, airlines: list[str]) -> str:
         seen: set[str] = set()
         unique = [p for p in parts if not (p in seen or seen.add(p))]
         unique = [p for p in unique if _is_airline_like(p)]
-        return " + ".join(_fmt_airline(p, []) for p in unique) if unique else "-"
+        return _format_airline_parts(unique)
 
     # Pure IATA code (2–3 uppercase letters/digits)
     if re.fullmatch(r"[A-Z0-9]{2,3}", owner):
