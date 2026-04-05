@@ -142,7 +142,7 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     "P5": "Wingo", "JA": "JetSMART", "FO": "Flybondi",
     # Africa
     "SA": "South African Airways", "FA": "FlySafair", "4Z": "Airlink", "5Z": "CemAir", "GE": "LIFT",
-    "ET": "Ethiopian Airlines", "KQ": "Kenya Airways",
+    "ET": "Ethiopian Airlines", "KQ": "Kenya Airways", "MS": "EgyptAir",
     "WB": "RwandAir", "P4": "Air Peace", "AH": "Air Algerie", "DT": "TAAG Angola Airlines",
     # Asia – full-service
     "SQ": "Singapore Airlines", "CX": "Cathay Pacific", "NH": "ANA",
