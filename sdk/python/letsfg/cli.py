@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 from typing import Optional
 
 try:
@@ -100,7 +101,11 @@ def _json_out(data):
 
 def _normalize_airline_name(name: str) -> str:
     """Normalize airline names for tolerant reverse-lookup."""
-    cleaned = re.sub(r"[^a-z0-9]+", " ", name.lower())
+    # Strip diacritics/unicode variants so names like "Algérie" map to
+    # the same key as "Algerie" for reverse IATA lookup.
+    ascii_name = unicodedata.normalize("NFKD", name)
+    ascii_name = "".join(ch for ch in ascii_name if not unicodedata.combining(ch))
+    cleaned = re.sub(r"[^a-z0-9]+", " ", ascii_name.lower())
     return re.sub(r"\s+", " ", cleaned).strip()
 
 _IATA_TO_AIRLINE: dict[str, str] = {
@@ -245,21 +250,24 @@ def _format_airline_parts(parts: list[str]) -> str:
             continue
         seen.add(label)
         rendered.append(label)
-    return " + ".join(rendered) if rendered else "-"
+    return " + ".join(rendered) if rendered else "Unknown"
 
 
 def _fmt_airline(owner: str, airlines: list[str]) -> str:
     """Return 'CODE-FullName' for the Airline display column."""
+    owner = (owner or "").strip()
+    airlines = [a.strip() for a in (airlines or []) if isinstance(a, str) and a.strip()]
+
     if not owner:
         owner = next((a for a in airlines if a), "")
     if not owner:
-        return "-"
+        return "Unknown"
     if not _is_airline_like(owner):
         fallback = next((a for a in airlines if _is_airline_like(a)), "")
         if fallback:
             owner = fallback
         else:
-            return "-"
+            return "Unknown"
 
     # Combo offer — e.g. "Ryanair|Wizz Air" produced by combo_engine
     if "|" in owner:
@@ -275,9 +283,10 @@ def _fmt_airline(owner: str, airlines: list[str]) -> str:
         unique = [p for p in unique if _is_airline_like(p)]
         return _format_airline_parts(unique)
 
-    # Pure IATA code (2–3 uppercase letters/digits)
-    if re.fullmatch(r"[A-Z0-9]{2,3}", owner):
-        code = owner
+    # Pure IATA code (2–3 letters/digits), tolerant to case/padding.
+    owner_code = owner.upper()
+    if re.fullmatch(r"[A-Z0-9]{2,3}", owner_code):
+        code = owner_code
         primary_name = _IATA_TO_AIRLINE.get(code)
         
         if not primary_name:
