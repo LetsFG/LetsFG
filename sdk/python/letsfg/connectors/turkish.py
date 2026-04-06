@@ -230,6 +230,15 @@ class TurkishConnectorClient:
                 total_results=len(sputnik_offers),
             )
 
+        # True round-trip must take priority. Try native TK RT first.
+        if req.return_from:
+            result = await self._do_search(req)
+            # For RT we only accept offers that actually include inbound legs.
+            if result.offers and all(o.inbound is not None for o in result.offers):
+                return result
+            logger.warning("TK: true RT path failed; falling back to split-leg pairing")
+            return await self._search_round_trip(req)
+
         # Slow path: CDP Chrome form fill + API interception
         # Retry once: first attempt warms PX cookies; second uses them.
         for attempt in range(2):
@@ -297,9 +306,8 @@ class TurkishConnectorClient:
             for fare in route.get("fares") or []:
                 orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
                 dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
-                if dest not in dest_set:
-                    if orig not in origin_set:
-                        continue
+                if orig not in origin_set or dest not in dest_set:
+                    continue
 
                 price = fare.get("totalPrice") or fare.get("usdTotalPrice")
                 if not price or float(price) <= 0:
@@ -392,6 +400,12 @@ class TurkishConnectorClient:
         target_iso = dt.strftime("%Y-%m-%d")       # 2026-06-15
         target_dmy = dt.strftime("%d-%m-%Y")        # 15-06-2026
         target_dmy_nodash = dt.strftime("%d%m%Y")   # 15062026
+        target_return_iso = None
+        target_return_dmy = None
+        if req.return_from:
+            rt = _to_datetime(req.return_from)
+            target_return_iso = rt.strftime("%Y-%m-%d")
+            target_return_dmy = rt.strftime("%d-%m-%Y")
 
         async def _on_response(response):
             nonlocal px_blocked
@@ -425,7 +439,6 @@ class TurkishConnectorClient:
         page.on("response", _on_response)
 
         # ── Route interceptor: rewrite departure date in availability API requests ──
-        api_request_body_logged = None
 
         # Flag: when True, route interceptor passes requests through unmodified.
         # Used during direct fetch to avoid re-serializing the JSON body
@@ -433,17 +446,12 @@ class TurkishConnectorClient:
         direct_fetch_active = False
 
         async def _intercept_availability(route):
-            nonlocal api_request_body_logged
             request = route.request
             body = request.post_data or ""
-            api_request_body_logged = body[:1000]
 
             if direct_fetch_active:
-                logger.warning("TK: direct fetch passthrough (%d bytes)", len(body))
                 await route.continue_()
                 return
-
-            logger.warning("TK: intercepted avail request (%d bytes): %s", len(body), body[:600])
 
             if not body:
                 await route.continue_()
@@ -452,6 +460,16 @@ class TurkishConnectorClient:
             try:
                 data = _json.loads(body)
                 modified = False
+
+                # Explicit RT rewrite: first leg = outbound, second leg = return.
+                od_list = data.get("originDestinationInformationList") if isinstance(data, dict) else None
+                if isinstance(od_list, list) and od_list:
+                    if isinstance(od_list[0], dict):
+                        od_list[0]["departureDate"] = target_dmy
+                        modified = True
+                    if req.return_from and len(od_list) > 1 and isinstance(od_list[1], dict):
+                        od_list[1]["departureDate"] = target_return_dmy
+                        modified = True
 
                 # Walk the JSON and replace ONLY departure date fields
                 def _fix_dates(obj):
@@ -463,13 +481,20 @@ class TurkishConnectorClient:
                             if isinstance(v, str) and kl in ("departuredate", "departure_date",
                                                               "departureDatetime", "departure"):
                                 if _re.match(r"\d{4}-\d{2}-\d{2}", v):
-                                    obj[k] = target_iso
+                                    obj[k] = target_return_iso if (req.return_from and "return" in kl and target_return_iso) else target_iso
                                     modified = True
                                 elif _re.match(r"\d{2}-\d{2}-\d{4}", v):
-                                    obj[k] = target_dmy
+                                    obj[k] = target_return_dmy if (req.return_from and "return" in kl and target_return_dmy) else target_dmy
                                     modified = True
                                 elif _re.match(r"\d{8}$", v):
                                     obj[k] = target_dmy_nodash
+                                    modified = True
+                            elif isinstance(v, str) and kl in ("returndate", "return_date", "arrivaldate") and req.return_from and target_return_dmy:
+                                if _re.match(r"\d{4}-\d{2}-\d{2}", v):
+                                    obj[k] = target_return_iso
+                                    modified = True
+                                elif _re.match(r"\d{2}-\d{2}-\d{4}", v):
+                                    obj[k] = target_return_dmy
                                     modified = True
                             elif isinstance(v, (dict, list)):
                                 _fix_dates(v)
@@ -492,7 +517,7 @@ class TurkishConnectorClient:
 
         # Only intercept the main availability calls, not sub-endpoints
         await page.route(
-            _re.compile(r".*/api/v1/availability(?!/validate|/price-calendar|/cheapest|/info-by-ond)"),
+            _re.compile(r".*/api/v1/availability(?!/validate|/price-calendar|/cheapest|/info-by-ond|/updated-availability)"),
             _intercept_availability,
         )
 
@@ -537,10 +562,16 @@ class TurkishConnectorClient:
 
             # One-way toggle
             try:
-                ow = page.locator("span:has-text('One way')").first
-                if await ow.count() > 0:
-                    await ow.click(timeout=5000)
-                    logger.warning("TK: One-way selected")
+                if req.return_from:
+                    rt = page.locator("#round-trip, span:has-text('Round trip')").first
+                    if await rt.count() > 0:
+                        await rt.click(timeout=5000, force=True)
+                        logger.warning("TK: Round-trip selected")
+                else:
+                    ow = page.locator("#one-way, span:has-text('One way')").first
+                    if await ow.count() > 0:
+                        await ow.click(timeout=5000, force=True)
+                        logger.warning("TK: One-way selected")
             except Exception:
                 pass
             await asyncio.sleep(1.0)
@@ -560,7 +591,6 @@ class TurkishConnectorClient:
                     from: fromVal, to: toVal,
                 };
             }""")
-            logger.warning("TK: form state — %s", displayed)
 
             # ── Fix airports if booking URL params weren't picked up ──
             form_from = (displayed or {}).get("from", "") or ""
@@ -568,10 +598,17 @@ class TurkishConnectorClient:
             form_day = (displayed or {}).get("day")
             manually_filled = False
 
-            if not form_to:
+            needs_manual_fill = (
+                not form_from
+                or req.origin.upper() not in form_from.upper()
+                or not form_to
+                or req.destination.upper() not in form_to.upper()
+            )
+
+            if needs_manual_fill:
                 logger.warning(
-                    "TK: booking URL didn't populate form (from=%r, to=%r), filling manually",
-                    form_from, form_to,
+                    "TK: booking URL didn't populate expected route (from=%r, to=%r, expected=%s->%s), filling manually",
+                    form_from, form_to, req.origin, req.destination,
                 )
                 ok1 = await self._fill_airport(page, "#fromPort", req.origin)
                 if ok1:
@@ -584,22 +621,81 @@ class TurkishConnectorClient:
                 if manually_filled and not form_day:
                     # Try to get a date into the form (route interceptor will
                     # correct it to the target date regardless).
-                    await self._fill_date(page, req.date_from)
+                    await self._fill_date(page, req.date_from, req.return_from)
                     await asyncio.sleep(0.5)
+
+            # For true RT, ensure both departure and return are selected.
+            if req.return_from:
+                await self._fill_date(page, req.date_from, req.return_from)
+                await asyncio.sleep(0.5)
+
+            # Capture current UI city labels for API payload parity.
+            # TK is sensitive to these fields for some RT searches.
+            current_from_city = ""
+            current_to_city = ""
+            try:
+                current_from_city = (await page.input_value("#fromPort") or "").strip()
+                current_to_city = (await page.input_value("#toPort") or "").strip()
+            except Exception:
+                pass
+
+            def _looks_like_iata(s: str) -> bool:
+                return bool(s) and len(s) == 3 and s.isalpha() and s.upper() == s
+
+            # TK's API expects human city labels (e.g. "Cape Town", "Atlanta").
+            # After manual fill, #fromPort/#toPort can contain only IATA codes,
+            # so fall back to the pre-fill labels (often reversed) when needed.
+            direct_origin_city = current_from_city
+            direct_dest_city = current_to_city
+            if not direct_origin_city and form_to:
+                direct_origin_city = form_to
+            if not direct_dest_city and form_from:
+                direct_dest_city = form_from
+            if _looks_like_iata(direct_origin_city) and form_to and not _looks_like_iata(form_to):
+                direct_origin_city = form_to
+            if _looks_like_iata(direct_dest_city) and form_from and not _looks_like_iata(form_from):
+                direct_dest_city = form_from
 
             # ── Click "Search flights" directly ──
             # Route interceptor will rewrite the date in the API request.
             search_clicked = False
-            for btn_text in ["Search flights", "Search", "Find flights"]:
+            search_selectors = [
+                "button.hm__RoundAndOneWayTab_searchButton__vpLcA",
+                "[class*='searchButton']",
+                "button:has-text('Search flights')",
+                "button:has-text('Search')",
+                "button:has-text('Find flights')",
+            ]
+            for selector in search_selectors:
                 try:
-                    btn = page.locator(f"button:has-text('{btn_text}')").first
+                    btn = page.locator(selector).first
                     if await btn.count() > 0 and await btn.is_visible():
-                        await btn.click(timeout=5000)
-                        logger.warning("TK: clicked '%s'", btn_text)
+                        await btn.click(timeout=5000, force=True)
+                        logger.warning("TK: clicked search via %s", selector)
                         search_clicked = True
                         break
                 except Exception:
                     continue
+
+            if not search_clicked:
+                try:
+                    search_clicked = bool(await page.evaluate("""() => {
+                        const selectors = [
+                            'button.hm__RoundAndOneWayTab_searchButton__vpLcA',
+                            'button[class*="searchButton"]',
+                            '[class*="buttonWrapper"] button',
+                        ];
+                        for (const sel of selectors) {
+                            const btn = document.querySelector(sel);
+                            if (btn && btn.offsetHeight > 0 && btn.offsetWidth > 0) {
+                                btn.click();
+                                return sel;
+                            }
+                        }
+                        return null;
+                    }"""))
+                except Exception:
+                    search_clicked = False
 
             if not search_clicked:
                 # JS fallback for search button
@@ -615,10 +711,8 @@ class TurkishConnectorClient:
                     return null;
                 }"""))
 
-            if search_clicked:
-                logger.warning("TK: search clicked, waiting for availability API…")
-            else:
-                logger.warning("TK: could not click search button")
+            if not search_clicked:
+                logger.info("TK: could not click search button")
 
             # Wait for availability API (crypto challenge may add latency)
             # Shorter wait if airports were manually filled (form may not submit properly)
@@ -641,59 +735,228 @@ class TurkishConnectorClient:
                 d_city = _AIRPORT_TO_CITY.get(req.destination.upper(), req.destination.upper())
                 try:
                     direct_fetch_active = True
-                    direct_result = await page.evaluate(
-                        """async (args) => {
-                        const [origin, dest, dateDMY, adults,
-                               oCC, dCC, oCityCode, dCityCode] = args;
+                    direct_fetch_js = """async (args) => {
+                        const [origin, dest, dateDMY, returnDateDMY, adults,
+                               oCC, dCC, oCityCode, dCityCode,
+                               oCityName, dCityName, tripType] = args;
                         const controller = new AbortController();
                         const timer = setTimeout(() => controller.abort(), 15000);
                         try {
-                            const resp = await fetch('/api/v1/availability', {
-                                method: 'POST',
-                                signal: controller.signal,
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json, text/plain, */*',
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                },
-                                body: JSON.stringify({
-                                    selectedBookerSearch: 'O',
-                                    selectedCabinClass: 'ECONOMY',
-                                    moduleType: 'TICKETING',
-                                    passengerTypeList: [{quantity: parseInt(adults), code: 'ADULT'}],
-                                    originDestinationInformationList: [{
-                                        originAirportCode: origin,
-                                        originCountryCode: oCC,
-                                        originCityCode: oCityCode,
-                                        originMultiPort: false,
-                                        originDomestic: false,
-                                        destinationAirportCode: dest,
-                                        destinationCountryCode: dCC,
-                                        destinationCityCode: dCityCode,
-                                        destinationMultiPort: true,
-                                        destinationDomestic: false,
-                                        departureDate: dateDMY,
-                                    }],
-                                    savedDate: new Date().toISOString(),
-                                    preselectedOptionDetails: [],
-                                }),
-                            });
-                            clearTimeout(timer);
-                            const status = resp.status;
-                            const text = await resp.text();
+                            // TK UI does two preflight calls before /availability.
+                            // Replaying them avoids Error-DS-30006 on direct RT fetch.
                             try {
-                                return {_status: status, _body: JSON.parse(text)};
-                            } catch {
-                                return {_status: status, _text: text.slice(0, 500)};
+                                await fetch('/api/v1/availability/price-calendar/validate-with-date', {
+                                    method: 'POST',
+                                    signal: controller.signal,
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Accept': 'application/json, text/plain, */*',
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    body: JSON.stringify({
+                                        departureAirportCode: origin,
+                                        arrivalAirportCode: dest,
+                                    }),
+                                });
+                            } catch {}
+
+                            const validateOdList = [{
+                                destinationAirportCode: dest,
+                                destinationMultiPort: false,
+                                originAirportCode: origin,
+                                originMultiPort: false,
+                                departureDate: dateDMY,
+                            }];
+                            if (tripType === 'R' && returnDateDMY) {
+                                validateOdList.push({
+                                    destinationAirportCode: origin,
+                                    destinationMultiPort: false,
+                                    originAirportCode: dest,
+                                    originMultiPort: false,
+                                    departureDate: returnDateDMY,
+                                });
                             }
+                            try {
+                                await fetch('/api/v1/availability/validate', {
+                                    method: 'POST',
+                                    signal: controller.signal,
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Accept': 'application/json, text/plain, */*',
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    body: JSON.stringify({
+                                        selectedBookerSearch: tripType,
+                                        selectedCabinClass: 'ECONOMY',
+                                        moduleType: 'TICKETING',
+                                        passengerTypeList: [{quantity: parseInt(adults), code: 'ADULT'}],
+                                        originDestinationInformationList: validateOdList,
+                                    }),
+                                });
+                            } catch {}
+
+                            const odList = [{
+                                originAirportCode: origin,
+                                originCountryCode: oCC,
+                                originCityCode: oCityCode,
+                                originCity: oCityName || oCityCode,
+                                originMultiPort: false,
+                                originDomestic: false,
+                                destinationAirportCode: dest,
+                                destinationCountryCode: dCC,
+                                destinationCityCode: dCityCode,
+                                destinationCity: dCityName || dCityCode,
+                                destinationMultiPort: false,
+                                destinationDomestic: false,
+                                departureDate: dateDMY,
+                            }];
+                            if (tripType === 'R' && returnDateDMY) {
+                                odList.push({
+                                    originAirportCode: dest,
+                                    originCountryCode: dCC,
+                                    originCityCode: dCityCode,
+                                    originCity: dCityName || dCityCode,
+                                    originMultiPort: false,
+                                    originDomestic: false,
+                                    destinationAirportCode: origin,
+                                    destinationCountryCode: oCC,
+                                    destinationCityCode: oCityCode,
+                                    destinationCity: oCityName || oCityCode,
+                                    destinationMultiPort: false,
+                                    destinationDomestic: false,
+                                    departureDate: returnDateDMY,
+                                });
+                            }
+                            const reqBody = {
+                                selectedBookerSearch: tripType,
+                                selectedCabinClass: 'ECONOMY',
+                                moduleType: 'TICKETING',
+                                passengerTypeList: [{quantity: parseInt(adults), code: 'ADULT'}],
+                                originDestinationInformationList: odList,
+                                savedDate: new Date().toISOString(),
+                                preselectedOptionDetails: [],
+                            };
+
+                            const getCookie = (name) => {
+                                try {
+                                    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\\[\\]\\\\/+^]/g, '\\\\$&') + '=([^;]*)'));
+                                    return m ? decodeURIComponent(m[1]) : '';
+                                } catch { return ''; }
+                            };
+                            const fromStorage = (keys) => {
+                                for (const k of keys) {
+                                    try {
+                                        const v = localStorage.getItem(k) || sessionStorage.getItem(k);
+                                        if (v) return v;
+                                    } catch {}
+                                }
+                                return '';
+                            };
+                            const mkId = () => {
+                                try {
+                                    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+                                        return globalThis.crypto.randomUUID();
+                                    }
+                                } catch {}
+                                return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                            };
+
+                            const headerBase = {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json, text/plain, */*',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'x-clientid': fromStorage(['x-clientid', 'xClientId', 'clientId']) || getCookie('x-clientid'),
+                                'x-bfp': fromStorage(['x-bfp', 'bfp']) || getCookie('x-bfp') || getCookie('bfp'),
+                                'x-conversationid': fromStorage(['x-conversationid', 'xConversationId']) || mkId(),
+                                'x-country': fromStorage(['x-country', 'countryCode']) || oCC || '',
+                                'x-platform': fromStorage(['x-platform', 'platform']) || 'WEB',
+                                'x-requestid': mkId(),
+                            };
+
+                            const cleanedHeaders = {};
+                            for (const [k, v] of Object.entries(headerBase)) {
+                                if (v !== null && v !== undefined && String(v).trim() !== '') {
+                                    cleanedHeaders[k] = String(v);
+                                }
+                            }
+
+                            const postJson = async (url, bodyObj) => {
+                                const r = await fetch(url, {
+                                    method: 'POST',
+                                    signal: controller.signal,
+                                    headers: cleanedHeaders,
+                                    body: JSON.stringify(bodyObj),
+                                });
+                                const t = await r.text();
+                                try {
+                                    return {status: r.status, body: JSON.parse(t), text: t};
+                                } catch {
+                                    return {status: r.status, body: null, text: t};
+                                }
+                            };
+
+                            // First availability attempt
+                            let av = await postJson('/api/v1/availability', reqBody);
+
+                            // In some RT flows TK requires extra calls before a
+                            // second availability request returns data.
+                            if (
+                                tripType === 'R' &&
+                                av.status === 200 &&
+                                (!av.body || !av.body.data)
+                            ) {
+                                try {
+                                    await postJson('/api/v1/availability/price-calendar/validate-with-date', {
+                                        departureAirportCode: origin,
+                                        arrivalAirportCode: dest,
+                                        outboundFlightDate: dateDMY,
+                                        returnFlightDate: returnDateDMY,
+                                    });
+                                } catch {}
+
+                                try {
+                                    await postJson('/api/v1/availability/flight-matrix', reqBody);
+                                } catch {}
+
+                                av = await postJson('/api/v1/availability', reqBody);
+                            }
+
+                            clearTimeout(timer);
+                            if (av.body !== null) {
+                                return {_status: av.status, _body: av.body};
+                            }
+                            return {_status: av.status, _text: (av.text || '').slice(0, 500)};
                         } catch(e) {
                             clearTimeout(timer);
                             return {_error: e.message};
                         }
-                    }""",
-                        [req.origin, req.destination, target_dmy, str(req.adults or 1),
-                         o_cc, d_cc, o_city, d_city],
-                    )
+                    }"""
+                    direct_fetch_args = [
+                        req.origin,
+                        req.destination,
+                        target_dmy,
+                        (req.return_from.strftime("%d-%m-%Y") if req.return_from else None),
+                        str(req.adults or 1),
+                        o_cc,
+                        d_cc,
+                        o_city,
+                        d_city,
+                            direct_origin_city,
+                            direct_dest_city,
+                        ("R" if req.return_from else "O"),
+                    ]
+
+                    direct_result = None
+                    for attempt in range(3):
+                        direct_result = await page.evaluate(direct_fetch_js, direct_fetch_args)
+                        if not isinstance(direct_result, dict):
+                            break
+                        status = direct_result.get("_status")
+                        if status != 428:
+                            break
+                        logger.warning("TK: direct fetch got 428 (PX crypto challenge), retry %d/3", attempt + 1)
+                        await asyncio.sleep(2.5)
+
                     # Give _on_response a moment to process
                     await asyncio.sleep(0.5)
                     # Parse the evaluate result directly (more reliable than _on_response timing)
@@ -712,7 +975,7 @@ class TurkishConnectorClient:
                                                type(inner).__name__,
                                                str(body)[:500])
                         elif status == 428:
-                            logger.warning("TK: direct fetch got 428 (PX crypto challenge)")
+                            logger.warning("TK: direct fetch ended on 428 after retries")
                         elif status == 403:
                             px_blocked = True
                             logger.warning("TK: direct fetch got 403 (PX blocked)")
@@ -794,6 +1057,168 @@ class TurkishConnectorClient:
             if not avail_data:
                 logger.warning("TK: no availability data captured")
                 return self._empty(req)
+
+            # ── RT Step 2: Fetch inbound options via updated-availability ──
+            # TK's RT API is two-step: first call returns outbound options only,
+            # then updated-availability (with selected outbound optionId + session)
+            # returns the inbound options.  We pick the cheapest outbound and
+            # inject the inbound ODIL entry into avail_data so _parse_availability
+            # sees len(odil) == 2 and handles it correctly.
+            if req.return_from and avail_data.get("amadeusJSessionId"):
+                out_odil = avail_data.get("originDestinationInformationList", [])
+                if out_odil:
+                    out_opts = out_odil[0].get("originDestinationOptionList", [])
+                    if out_opts:
+                        best_out = out_opts[0]
+                        out_opt_id = best_out.get("optionId", 0)
+                        pil0 = (best_out.get("fareCategory") or {}).get("ECONOMY", {}).get("bookingPriceInfoList", [])
+                        rec_id = pil0[0].get("recommendationId", 0) if pil0 else 0
+                        session_id = avail_data["amadeusJSessionId"]
+                        page_ticket = str(avail_data.get("pageTicket", "0"))
+                        du_tax = avail_data.get("duTax") or {"currency": None, "ecoAmount": 0, "bizAmount": 0, "ajEcoAmount": 0}
+
+                        _o_cc = get_country(req.origin) or ""
+                        _d_cc = get_country(req.destination) or ""
+                        _o_city = _AIRPORT_TO_CITY.get(req.origin.upper(), req.origin.upper())
+                        _d_city = _AIRPORT_TO_CITY.get(req.destination.upper(), req.destination.upper())
+                        _o_city_name = direct_origin_city or _o_city
+                        _d_city_name = direct_dest_city or _d_city
+
+                        try:
+                            direct_fetch_active = True  # bypass route interceptor
+                            upd_result = await page.evaluate(
+                                """async (args) => {
+                                const [origin, dest, outDMY, inDMY, adults, oCC, dCC, oCityCode, dCityCode,
+                                       oCityName, dCityName,
+                                       sessId, pgTicket, duTax, outFlightId, recId] = args;
+                                const controller = new AbortController();
+                                const timer = setTimeout(() => controller.abort(), 15000);
+
+                                const getCookie = (name) => {
+                                    try {
+                                        const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\\[\\]\\\\/+^]/g, '\\\\$&') + '=([^;]*)'));
+                                        return m ? decodeURIComponent(m[1]) : '';
+                                    } catch { return ''; }
+                                };
+                                const fromStorage = (keys) => {
+                                    for (const k of keys) {
+                                        try {
+                                            const v = localStorage.getItem(k) || sessionStorage.getItem(k);
+                                            if (v) return v;
+                                        } catch {}
+                                    }
+                                    return '';
+                                };
+                                const mkId = () => {
+                                    try {
+                                        if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+                                            return globalThis.crypto.randomUUID();
+                                        }
+                                    } catch {}
+                                    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                                };
+
+                                const hdr = {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json, text/plain, */*',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'x-clientid': fromStorage(['x-clientid', 'xClientId', 'clientId']) || getCookie('x-clientid'),
+                                    'x-bfp': fromStorage(['x-bfp', 'bfp']) || getCookie('x-bfp') || getCookie('bfp'),
+                                    'x-conversationid': fromStorage(['x-conversationid', 'xConversationId']) || mkId(),
+                                    'x-country': fromStorage(['x-country', 'countryCode']) || oCC || '',
+                                    'x-platform': fromStorage(['x-platform', 'platform']) || 'WEB',
+                                    'x-requestid': mkId(),
+                                };
+                                const headers = {};
+                                for (const [k, v] of Object.entries(hdr)) {
+                                    if (v !== null && v !== undefined && String(v).trim() !== '') {
+                                        headers[k] = String(v);
+                                    }
+                                }
+
+                                const odList = [
+                                    {
+                                        originAirportCode: origin, originCountryCode: oCC,
+                                        originCityCode: oCityCode, originCity: oCityName || oCityCode,
+                                        originMultiPort: false, originDomestic: false,
+                                        destinationAirportCode: dest, destinationCountryCode: dCC,
+                                        destinationCityCode: dCityCode, destinationCity: dCityName || dCityCode,
+                                        destinationMultiPort: false, destinationDomestic: false,
+                                        departureDate: outDMY,
+                                    },
+                                    {
+                                        originAirportCode: dest, originCountryCode: dCC,
+                                        originCityCode: dCityCode, originCity: dCityName || dCityCode,
+                                        originMultiPort: false, originDomestic: false,
+                                        destinationAirportCode: origin, destinationCountryCode: oCC,
+                                        destinationCityCode: oCityCode, destinationCity: oCityName || oCityCode,
+                                        destinationMultiPort: false, destinationDomestic: false,
+                                        departureDate: inDMY,
+                                    },
+                                ];
+                                try {
+                                    const resp = await fetch('/api/v1/availability/updated-availability', {
+                                        method: 'POST',
+                                        signal: controller.signal,
+                                        headers: headers,
+                                        body: JSON.stringify({
+                                            selectedBookerSearch: 'R',
+                                            selectedCabinClass: 'ECONOMY',
+                                            moduleType: 'TICKETING',
+                                            passengerTypeList: [{quantity: parseInt(adults), code: 'ADULT'}],
+                                            originDestinationInformationList: odList,
+                                            savedDate: new Date().toISOString(),
+                                            preselectedOptionDetails: [],
+                                            outboundFlightId: outFlightId,
+                                            inboundFlightId: 0,
+                                            recommendationId: recId,
+                                            amadeusJSessionId: sessId,
+                                            pageTicket: pgTicket,
+                                            duTax: duTax,
+                                            initialDynamicPricingId: null,
+                                        }),
+                                    });
+                                    clearTimeout(timer);
+                                    const text = await resp.text();
+                                    return {_status: resp.status, _body: JSON.parse(text)};
+                                } catch(e) {
+                                    clearTimeout(timer);
+                                    return {_error: e.message};
+                                }
+                            }""",
+                                [
+                                    req.origin, req.destination,
+                                    target_dmy, target_return_dmy,
+                                    str(req.adults or 1),
+                                    _o_cc, _d_cc, _o_city, _d_city,
+                                    _o_city_name, _d_city_name,
+                                    session_id, page_ticket, du_tax,
+                                    out_opt_id, rec_id,
+                                ],
+                            )
+                            if isinstance(upd_result, dict) and upd_result.get("_status") == 200:
+                                upd_body = upd_result.get("_body")
+                                if isinstance(upd_body, dict) and isinstance(upd_body.get("data"), dict):
+                                    upd_odil = upd_body["data"].get("originDestinationInformationList", [])
+                                    if upd_odil and upd_odil[0].get("originDestinationOptionList"):
+                                        avail_data["originDestinationInformationList"].append(upd_odil[0])
+                                        logger.warning(
+                                            "TK RT: injected %d inbound options from updated-availability",
+                                            len(upd_odil[0]["originDestinationOptionList"]),
+                                        )
+                                    else:
+                                        logger.warning("TK RT: updated-availability returned empty inbound ODIL")
+                                else:
+                                    logger.warning("TK RT: updated-availability no data object: %s", str(upd_result)[:300])
+                            else:
+                                logger.warning(
+                                    "TK RT: updated-availability status=%s err=%s",
+                                    upd_result.get("_status"), upd_result.get("_error"),
+                                )
+                        except Exception as _upd_err:
+                            logger.warning("TK RT: updated-availability exception: %s", _upd_err)
+                        finally:
+                            direct_fetch_active = False
 
             offers = self._parse_availability(avail_data, req)
             offers.sort(key=lambda o: o.price)
@@ -915,7 +1340,7 @@ class TurkishConnectorClient:
             logger.warning("TK: airport fill error %s: %s", selector, e)
             return False
 
-    async def _fill_date(self, page, dep_date) -> bool:
+    async def _fill_date(self, page, dep_date, return_date=None) -> bool:
         """Pick the departure date in TK's calendar widget.
 
         TK uses CSS modules with hashed class names. We try multiple
@@ -930,7 +1355,84 @@ class TurkishConnectorClient:
         date_ddmmmyyyy = dt.strftime("%d %b %Y")  # e.g. "15 Jun 2026"
         month_year = f"{target_month} {target_year}"
 
+        ret_dt = _to_datetime(return_date) if return_date else None
+        ret_day = str(ret_dt.day) if ret_dt else None
+        ret_month = ret_dt.strftime("%B") if ret_dt else None
+        ret_year = str(ret_dt.year) if ret_dt else None
+        ret_month_year = f"{ret_month} {ret_year}" if ret_dt else None
+
         try:
+            # Direct path for the current React calendar used on TK's homepage.
+            try:
+                datepicker = page.locator("#bookerDatepicker").first
+                if await datepicker.count() > 0:
+                    await datepicker.click(timeout=5000, force=True)
+                    await asyncio.sleep(1.0)
+
+                    next_btn = page.locator("button.react-calendar__navigation__next-button").first
+                    month_btn = page.locator("button[class*='monthDropdownButton']").first
+                    if await next_btn.count() > 0 and await month_btn.count() > 0:
+                        for _ in range(24):
+                            header = (await month_btn.text_content() or "").strip()
+                            if month_year in header:
+                                break
+                            await next_btn.click(timeout=3000, force=True)
+                            await asyncio.sleep(0.2)
+
+                        selected = await page.evaluate("""(target) => {
+                            const targetDay = String(target);
+                            const containers = document.querySelectorAll(
+                                '.react-calendar, [class*="calendar-modal-wrapper"], [class*="priceCalendar"]'
+                            );
+                            for (const container of containers) {
+                                if (container.offsetHeight <= 0 || container.offsetWidth <= 0) continue;
+                                for (const btn of container.querySelectorAll('button.react-calendar__tile, button')) {
+                                    const text = (btn.textContent || '').trim();
+                                    if (text === targetDay && !btn.disabled && btn.offsetHeight > 0) {
+                                        btn.click();
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        }""", target_day)
+                        if selected:
+                            logger.warning("TK: selected date %s via direct React calendar path", month_year)
+                            if ret_dt:
+                                try:
+                                    await datepicker.click(timeout=3000, force=True)
+                                except Exception:
+                                    pass
+                                await asyncio.sleep(0.3)
+                                for _ in range(24):
+                                    header = (await month_btn.text_content() or "").strip()
+                                    if ret_month_year in header:
+                                        break
+                                    await next_btn.click(timeout=3000, force=True)
+                                    await asyncio.sleep(0.2)
+                                ret_selected = await page.evaluate("""(target) => {
+                                    const targetDay = String(target);
+                                    const containers = document.querySelectorAll(
+                                        '.react-calendar, [class*="calendar-modal-wrapper"], [class*="priceCalendar"]'
+                                    );
+                                    for (const container of containers) {
+                                        if (container.offsetHeight <= 0 || container.offsetWidth <= 0) continue;
+                                        for (const btn of container.querySelectorAll('button.react-calendar__tile, button')) {
+                                            const text = (btn.textContent || '').trim();
+                                            if (text === targetDay && !btn.disabled && btn.offsetHeight > 0) {
+                                                btn.click();
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                    return false;
+                                }""", ret_day)
+                                if ret_selected:
+                                    logger.warning("TK: selected return date %s via direct React calendar path", ret_month_year)
+                            return True
+            except Exception as direct_err:
+                logger.warning("TK: direct calendar path failed: %s", direct_err)
+
             # Remove overlays first
             await page.evaluate("""() => {
                 document.querySelectorAll(
@@ -983,7 +1485,6 @@ class TurkishConnectorClient:
                     dpH: dp?.offsetHeight || 0,
                 };
             }""")
-            logger.warning("TK: date area DOM: %s", trigger_info)
 
             # Click the date trigger — try multiple approaches
             calendar_opened = False
@@ -1062,8 +1563,6 @@ class TurkishConnectorClient:
                 }
                 return { calendars: found.slice(0, 5), monthHeadings: headings.slice(0, 5) };
             }""")
-            logger.warning("TK: after click — calendars: %s, headings: %s",
-                          cal_check.get("calendars"), cal_check.get("monthHeadings"))
 
             if cal_check.get("calendars") or cal_check.get("monthHeadings"):
                 calendar_opened = True
@@ -1072,7 +1571,7 @@ class TurkishConnectorClient:
                 )
 
             # ── Step 2: Keyboard approach — Tab from destination field ──
-            logger.warning("TK: calendar not detected, trying keyboard approach")
+            focused = None
 
             # Click destination field first, then Tab to date
             dest_field = page.locator("#toPort")
@@ -1094,7 +1593,6 @@ class TurkishConnectorClient:
                         text: el.textContent?.trim().slice(0, 40),
                     } : null;
                 }""")
-                logger.warning("TK: after Tab×3, focused: %s", focused)
 
                 # Try typing the date
                 await page.keyboard.type(date_ddmmmyyyy, delay=50)
@@ -1145,7 +1643,6 @@ class TurkishConnectorClient:
                 }
                 return 'no-dp';
             }""", [date_iso, date_ddmmyyyy, target_day, target_month, target_year])
-            logger.warning("TK: React injection result: %s", injected)
 
             # ── Step 4: Direct date input injection (same as old Strategy A) ──
             date_inputs = await page.evaluate("""(args) => {
@@ -1170,12 +1667,10 @@ class TurkishConnectorClient:
                 }
                 return result;
             }""", [date_iso, date_ddmmyyyy, date_ddmmmyyyy])
-            if date_inputs:
-                logger.warning("TK: date input injection: %s", date_inputs)
+            _ = focused, injected, date_inputs
 
             # Even if calendar didn't visually open, the date might be set — return True
             # to allow the form submit attempt (which will quickly reveal if date wasn't set)
-            logger.warning("TK: date fill completed (calendar_opened=%s)", calendar_opened)
             return True  # Optimistically proceed — let search button attempt reveal issues
 
         except Exception as e:
@@ -1340,6 +1835,110 @@ class TurkishConnectorClient:
             return offers
 
         option_list = odil[0].get("originDestinationOptionList", [])
+
+        # Native round-trip responses can return separate outbound/inbound option lists.
+        if req.return_from and len(odil) > 1:
+            out_list = odil[0].get("originDestinationOptionList", []) or []
+            in_list = odil[1].get("originDestinationOptionList", []) or []
+            if out_list and in_list:
+                inbound_routes: list[tuple[float, str, FlightRoute, list[str]]] = []
+                for in_opt in in_list:
+                    try:
+                        in_sp = in_opt.get("startingPrice", {})
+                        in_price = float(in_sp.get("amount", 0) or 0)
+                        in_cur = in_sp.get("currencyCode", currency)
+                        in_seg_list = in_opt.get("segmentList", []) or []
+                        if in_price <= 0 or not in_seg_list:
+                            continue
+                        in_segments = []
+                        for seg in in_seg_list:
+                            fc = seg.get("flightCode", {})
+                            ac = fc.get("airlineCode", "TK")
+                            fn = fc.get("flightNumber", "")
+                            in_segments.append(FlightSegment(
+                                airline=ac,
+                                airline_name="Turkish Airlines" if ac == "TK" else ac,
+                                flight_no=f"{ac}{fn}",
+                                origin=seg["departureAirportCode"],
+                                destination=seg["arrivalAirportCode"],
+                                departure=_parse_tk_datetime(seg["departureDateTime"]),
+                                arrival=_parse_tk_datetime(seg["arrivalDateTime"]),
+                                duration_seconds=seg.get("journeyDurationInMillis", 0) // 1000,
+                                cabin_class="economy",
+                                aircraft=seg.get("equipmentName", ""),
+                            ))
+                        in_route = FlightRoute(
+                            segments=in_segments,
+                            total_duration_seconds=in_opt.get("journeyDuration", 0) // 1000,
+                            stopovers=max(len(in_segments) - 1, 0),
+                        )
+                        in_airlines = list({s.airline for s in in_segments})
+                        inbound_routes.append((in_price, in_cur, in_route, in_airlines))
+                    except Exception:
+                        continue
+
+                if inbound_routes:
+                    in_price_min, in_cur_min, in_route_min, in_airlines_min = min(inbound_routes, key=lambda t: t[0])
+                    for i, opt in enumerate(out_list):
+                        try:
+                            if opt.get("soldOut"):
+                                continue
+                            sp = opt.get("startingPrice", {})
+                            out_price = float(sp.get("amount", 0) or 0)
+                            out_cur = sp.get("currencyCode", currency)
+                            if out_price <= 0:
+                                continue
+                            seg_list = opt.get("segmentList", [])
+                            if not seg_list:
+                                continue
+
+                            out_segments = []
+                            for seg in seg_list:
+                                fc = seg.get("flightCode", {})
+                                ac = fc.get("airlineCode", "TK")
+                                fn = fc.get("flightNumber", "")
+                                out_segments.append(FlightSegment(
+                                    airline=ac,
+                                    airline_name="Turkish Airlines" if ac == "TK" else ac,
+                                    flight_no=f"{ac}{fn}",
+                                    origin=seg["departureAirportCode"],
+                                    destination=seg["arrivalAirportCode"],
+                                    departure=_parse_tk_datetime(seg["departureDateTime"]),
+                                    arrival=_parse_tk_datetime(seg["arrivalDateTime"]),
+                                    duration_seconds=seg.get("journeyDurationInMillis", 0) // 1000,
+                                    cabin_class="economy",
+                                    aircraft=seg.get("equipmentName", ""),
+                                ))
+
+                            out_route = FlightRoute(
+                                segments=out_segments,
+                                total_duration_seconds=opt.get("journeyDuration", 0) // 1000,
+                                stopovers=max(len(out_segments) - 1, 0),
+                            )
+                            total_price = round(out_price + in_price_min, 2)
+                            oid = opt.get("optionId", i)
+                            offer_id = hashlib.md5(
+                                f"tk_rt_{req.origin}_{req.destination}_{oid}_{total_price}".encode()
+                            ).hexdigest()[:12]
+                            all_airlines = list({*([s.airline for s in out_segments]), *in_airlines_min})
+                            offers.append(FlightOffer(
+                                id=f"tk_{offer_id}",
+                                price=total_price,
+                                currency=out_cur or in_cur_min,
+                                price_formatted=f"{total_price:,.0f} {out_cur or in_cur_min}",
+                                outbound=out_route,
+                                inbound=in_route_min,
+                                airlines=[("Turkish Airlines" if a == "TK" else a) for a in all_airlines],
+                                owner_airline="TK",
+                                booking_url=self._booking_url(req),
+                                is_locked=False,
+                                source="turkish_direct",
+                                source_tier="free",
+                            ))
+                        except Exception:
+                            continue
+                    if offers:
+                        return offers
         logger.warning("TK parse: %d options, currency=%s", len(option_list), currency)
 
         for i, opt in enumerate(option_list):
@@ -1449,4 +2048,77 @@ class TurkishConnectorClient:
             currency=req.currency,
             offers=[],
             total_results=0,
+        )
+
+    async def _search_round_trip(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """Build a round-trip result from two one-way searches.
+
+        Turkish's browser flow is currently reliable for one-way only. For RT
+        requests, run outbound + inbound one-way searches and pair each outbound
+        with the cheapest inbound option.
+        """
+        date_str = req.date_from.strftime("%Y-%m-%d") if hasattr(req.date_from, "strftime") else str(req.date_from)
+        return_date_str = req.return_from.strftime("%Y-%m-%d") if hasattr(req.return_from, "strftime") else str(req.return_from)
+
+        out_req = req.model_copy(update={"return_from": None, "return_to": None})
+        in_req = req.model_copy(update={
+            "origin": req.destination,
+            "destination": req.origin,
+            "date_from": req.return_from,
+            "return_from": None,
+            "return_to": None,
+        })
+
+        # Use sequential searches: this connector shares a single persistent CDP
+        # browser/profile, and parallel searches can interfere with each other.
+        out_resp = await self.search_flights(out_req)
+        in_resp = await self.search_flights(in_req)
+
+        out_offers = out_resp.offers or []
+        in_offers = in_resp.offers or []
+        if not out_offers or not in_offers:
+            return self._empty(req)
+
+        cheapest_in = min(in_offers, key=lambda o: o.price)
+        combined: list[FlightOffer] = []
+        for out_offer in out_offers:
+            inbound_route = cheapest_in.outbound
+            combined_price = round(out_offer.price + cheapest_in.price, 2)
+            all_airlines = list(dict.fromkeys(
+                [*(out_offer.airlines or []), *(cheapest_in.airlines or [])]
+            ))
+            offer_id = hashlib.md5(
+                f"tk_rt_{req.origin}_{req.destination}_{date_str}_{return_date_str}_{combined_price}_{out_offer.id}_{cheapest_in.id}".encode()
+            ).hexdigest()[:12]
+            combined.append(FlightOffer(
+                id=f"tk_{offer_id}",
+                price=combined_price,
+                currency=out_offer.currency,
+                price_formatted=f"{combined_price:,.2f} {out_offer.currency}",
+                outbound=out_offer.outbound,
+                inbound=inbound_route,
+                airlines=all_airlines,
+                owner_airline=out_offer.owner_airline,
+                booking_url=self._booking_url(req),
+                is_locked=False,
+                source="turkish_direct",
+                source_tier="free",
+            ))
+
+        combined.sort(key=lambda o: o.price)
+        search_hash = hashlib.md5(
+            f"tk{req.origin}{req.destination}{req.date_from}{req.return_from}".encode()
+        ).hexdigest()[:12]
+        return FlightSearchResponse(
+            search_id=f"fs_{search_hash}",
+            origin=req.origin,
+            destination=req.destination,
+            currency=combined[0].currency if combined else (req.currency or "TRY"),
+            offers=combined,
+            total_results=len(combined),
+            search_params={
+                "turkish_roundtrip_mode": "fallback_pairing",
+                "turkish_outbound_offer_count": len(out_offers),
+                "turkish_inbound_offer_count": len(in_offers),
+            },
         )
