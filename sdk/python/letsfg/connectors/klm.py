@@ -314,6 +314,12 @@ class KlmConnectorClient:
         dest_code = fare.get("destinationAirportCode") or req.destination
         cabin = (fare.get("formattedTravelClass") or "Economy").lower()
 
+        outbound_date = target_date
+        # Respect explicit user intent: one-way searches should not inherit
+        # a synthetic return date from provider fare metadata.
+        inbound_date = req.return_from.strftime("%Y-%m-%d") if req.return_from else None
+
+
         try:
             dep_dt = datetime.strptime(dep_date_str, "%Y-%m-%d")
         except ValueError:

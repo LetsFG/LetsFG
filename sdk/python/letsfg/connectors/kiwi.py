@@ -429,9 +429,20 @@ class KiwiConnectorClient:
         if not outbound:
             return None
 
-        # Collect airlines
+        # Collect airlines in itinerary order (deterministic, no set randomization)
         all_segs = outbound.segments + (inbound.segments if inbound else [])
-        airlines = list({s.airline for s in all_segs if s.airline})
+        airlines: list[str] = []
+        for seg in all_segs:
+            code = (seg.airline or "").strip()
+            if code and code not in airlines:
+                airlines.append(code)
+
+        # Prefer the first outbound segment carrier as owner airline.
+        owner_airline = ""
+        if outbound.segments and outbound.segments[0].airline:
+            owner_airline = outbound.segments[0].airline
+        elif airlines:
+            owner_airline = airlines[0]
 
         # Travel hack info
         travel_hack = itin.get("travelHack", {}) or {}
@@ -495,7 +506,7 @@ class KiwiConnectorClient:
             outbound=outbound,
             inbound=inbound,
             airlines=airlines,
-            owner_airline=airlines[0] if airlines else "",
+            owner_airline=owner_airline,
             booking_url=booking_url,
             is_locked=False,
             conditions=conditions,
