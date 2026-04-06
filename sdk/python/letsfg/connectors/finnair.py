@@ -336,7 +336,9 @@ class FinnairConnectorClient:
             currency = dest_info.get("currency", "EUR")
             booking_url = (
                 f"https://www.finnair.com/en/flights/{req.origin.lower()}-"
-                f"{req.destination.lower()}"
+                f"{req.destination.lower()}/{req.date_from.strftime('%Y%m%d')}/"
+                f"?adults={req.adults or 1}"
+                + (f"&return={req.return_from.strftime('%Y%m%d')}" if req.return_from else "")
             )
 
             for tp in dest_info.get("travelClassPrices", []):

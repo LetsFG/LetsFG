@@ -275,7 +275,12 @@ class SunCountryConnectorClient:
                                 inbound=cheapest_ib_route,
                                 airlines=["Sun Country Airlines"],
                                 owner_airline="SY",
-                                booking_url="https://www.suncountry.com/booking/select",
+                                booking_url=(
+                                    f"https://www.suncountry.com/booking/select"
+                                    f"?origin={req.origin}&destination={req.destination}"
+                                    f"&departureDate={req.date_from.strftime('%m/%d/%Y')}"
+                                    + (f"&returnDate={req.return_from.strftime('%m/%d/%Y')}" if req.return_from else "")
+                                ),
                                 is_locked=False,
                                 source="suncountry_direct",
                                 source_tier="free",
@@ -296,7 +301,12 @@ class SunCountryConnectorClient:
     ) -> list[FlightOffer]:
         fares = data.get("lowfares") or []
         target = req.date_from.strftime("%Y-%m-%d")
-        booking_url = "https://www.suncountry.com/booking/select"
+        booking_url = (
+            f"https://www.suncountry.com/booking/select"
+            f"?origin={req.origin}&destination={req.destination}"
+            f"&departureDate={req.date_from.strftime('%m/%d/%Y')}"
+            + (f"&returnDate={req.return_from.strftime('%m/%d/%Y')}" if req.return_from else "")
+        )
         offers: list[FlightOffer] = []
 
         for fare in fares:

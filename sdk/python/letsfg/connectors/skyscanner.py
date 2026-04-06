@@ -456,6 +456,9 @@ def _parse_skyscanner(data: dict, req: FlightSearchRequest) -> list[FlightOffer]
                 booking_url=(
                     f"https://www.skyscanner.net/transport/flights/"
                     f"{req.origin.lower()}/{req.destination.lower()}/"
+                    f"{req.date_from.strftime('%y%m%d')}/"
+                    f"?adultsv2={req.adults or 1}&cabinclass=economy"
+                    + (f"&rtn={req.return_from.strftime('%y%m%d')}" if req.return_from else "")
                 ),
             ))
         except Exception as e:

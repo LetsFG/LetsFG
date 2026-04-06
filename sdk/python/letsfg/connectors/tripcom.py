@@ -327,6 +327,9 @@ def _parse_ctrip(
                     f"https://www.trip.com/flights/"
                     f"{req.origin.lower()}-to-{req.destination.lower()}/"
                     f"tickets-{req.origin.lower()}-{req.destination.lower()}"
+                    f"?depdate={req.date_from.isoformat()}"
+                    f"&cabin=y_s&adult={req.adults or 1}"
+                    + (f"&rdate={req.return_from.isoformat()}" if req.return_from else "")
                 ),
             ))
         except Exception as e:

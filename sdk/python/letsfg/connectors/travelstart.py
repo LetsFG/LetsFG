@@ -256,7 +256,13 @@ def _parse_bundled_itin(
             f"tst{itin.get('id','')}{price}{currency}".encode()
         ).hexdigest()[:12]
 
-        booking_url = deep_link or "https://www.travelstart.co.za/"
+        booking_url = deep_link or (
+            f"https://www.travelstart.co.za/search?"
+            f"origin={req.origin}&destination={req.destination}"
+            f"&departDate={req.date_from.isoformat()}"
+            f"&adults={req.adults or 1}&children={req.children or 0}"
+            + (f"&returnDate={req.return_from.isoformat()}" if req.return_from else "")
+        )
 
         return FlightOffer(
             id=f"off_tst_{h}",
@@ -345,7 +351,13 @@ def _parse_unbundled_rt(
             owner_airline=all_airlines[0] if all_airlines else "TravelStart",
             source="travelstart",
             source_tier="ota",
-            booking_url=deep_link or "https://www.travelstart.co.za/",
+            booking_url=deep_link or (
+                f"https://www.travelstart.co.za/search?"
+                f"origin={req.origin}&destination={req.destination}"
+                f"&departDate={req.date_from.isoformat()}"
+                f"&adults={req.adults or 1}&children={req.children or 0}"
+                + (f"&returnDate={req.return_from.isoformat()}" if req.return_from else "")
+            ),
         ))
 
     # Each inbound paired with cheapest outbound (skip if already seen)
@@ -384,7 +396,13 @@ def _parse_unbundled_rt(
             owner_airline=all_airlines[0] if all_airlines else "TravelStart",
             source="travelstart",
             source_tier="ota",
-            booking_url=deep_link or "https://www.travelstart.co.za/",
+            booking_url=deep_link or (
+                f"https://www.travelstart.co.za/search?"
+                f"origin={req.origin}&destination={req.destination}"
+                f"&departDate={req.date_from.isoformat()}"
+                f"&adults={req.adults or 1}&children={req.children or 0}"
+                + (f"&returnDate={req.return_from.isoformat()}" if req.return_from else "")
+            ),
         ))
 
     return offers

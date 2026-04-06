@@ -428,8 +428,16 @@ def _parse_cheapoair(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
 
             airlines = list({s.airline for s in flight_segments if s.airline})
             booking_url = (
-                itin.get("deepLink") or itin.get("bookingUrl") or
-                f"https://www.cheapoair.com/"
+                itin.get("deepLink") or itin.get("bookingUrl") or (
+                    f"https://www.cheapoair.com/flights/results"
+                    f"?fl_dep_apt={req.origin}"
+                    f"&fl_arr_apt={req.destination}"
+                    f"&fl_dep_dt={req.date_from.strftime('%m/%d/%Y')}"
+                    f"&fl_ADT={req.adults or 1}"
+                    f"&fl_CHD={req.children or 0}"
+                    f"&tripType={'2' if req.return_from else '1'}"
+                    + (f"&fl_ret_dt={req.return_from.strftime('%m/%d/%Y')}" if req.return_from else "")
+                )
             )
 
             h = hashlib.md5(
