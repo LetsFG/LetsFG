@@ -533,14 +533,15 @@ class TurkishConnectorClient:
                 ).forEach(el => el.remove());
             }""")
 
-            # One-way toggle
-            try:
-                ow = page.locator("span:has-text('One way')").first
-                if await ow.count() > 0:
-                    await ow.click(timeout=5000)
-                    logger.warning("TK: One-way selected")
-            except Exception:
-                pass
+            # One-way toggle (only for OW searches; RT is the default)
+            if not req.return_from:
+                try:
+                    ow = page.locator("span:has-text('One way')").first
+                    if await ow.count() > 0:
+                        await ow.click(timeout=5000)
+                        logger.warning("TK: One-way selected")
+                except Exception:
+                    pass
             await asyncio.sleep(1.0)
 
             # Diagnostic: check displayed date
@@ -642,7 +643,7 @@ class TurkishConnectorClient:
                     direct_result = await page.evaluate(
                         """async (args) => {
                         const [origin, dest, dateDMY, adults,
-                               oCC, dCC, oCityCode, dCityCode] = args;
+                               oCC, dCC, oCityCode, dCityCode, isRt, retDateDMY] = args;
                         const controller = new AbortController();
                         const timer = setTimeout(() => controller.abort(), 15000);
                         try {
@@ -655,23 +656,38 @@ class TurkishConnectorClient:
                                     'X-Requested-With': 'XMLHttpRequest',
                                 },
                                 body: JSON.stringify({
-                                    selectedBookerSearch: 'O',
+                                    selectedBookerSearch: isRt ? 'R' : 'O',
                                     selectedCabinClass: 'ECONOMY',
                                     moduleType: 'TICKETING',
                                     passengerTypeList: [{quantity: parseInt(adults), code: 'ADULT'}],
-                                    originDestinationInformationList: [{
-                                        originAirportCode: origin,
-                                        originCountryCode: oCC,
-                                        originCityCode: oCityCode,
-                                        originMultiPort: false,
-                                        originDomestic: false,
-                                        destinationAirportCode: dest,
-                                        destinationCountryCode: dCC,
-                                        destinationCityCode: dCityCode,
-                                        destinationMultiPort: true,
-                                        destinationDomestic: false,
-                                        departureDate: dateDMY,
-                                    }],
+                                    originDestinationInformationList: [
+                                        {
+                                            originAirportCode: origin,
+                                            originCountryCode: oCC,
+                                            originCityCode: oCityCode,
+                                            originMultiPort: false,
+                                            originDomestic: false,
+                                            destinationAirportCode: dest,
+                                            destinationCountryCode: dCC,
+                                            destinationCityCode: dCityCode,
+                                            destinationMultiPort: true,
+                                            destinationDomestic: false,
+                                            departureDate: dateDMY,
+                                        },
+                                        ...(isRt ? [{
+                                            originAirportCode: dest,
+                                            originCountryCode: dCC,
+                                            originCityCode: dCityCode,
+                                            originMultiPort: false,
+                                            originDomestic: false,
+                                            destinationAirportCode: origin,
+                                            destinationCountryCode: oCC,
+                                            destinationCityCode: oCityCode,
+                                            destinationMultiPort: true,
+                                            destinationDomestic: false,
+                                            departureDate: retDateDMY,
+                                        }] : []),
+                                    ],
                                     savedDate: new Date().toISOString(),
                                     preselectedOptionDetails: [],
                                 }),
@@ -690,7 +706,9 @@ class TurkishConnectorClient:
                         }
                     }""",
                         [req.origin, req.destination, target_dmy, str(req.adults or 1),
-                         o_cc, d_cc, o_city, d_city],
+                         o_cc, d_cc, o_city, d_city,
+                         bool(req.return_from),
+                         _to_datetime(req.return_from).strftime("%d.%m.%Y") if req.return_from else ""],
                     )
                     # Give _on_response a moment to process
                     await asyncio.sleep(0.5)
@@ -741,13 +759,14 @@ class TurkishConnectorClient:
                     ).forEach(el => el.remove());
                 }""")
 
-                # One-way
-                try:
-                    ow = page.locator("span:has-text('One way')").first
-                    if await ow.count() > 0:
-                        await ow.click(timeout=5000)
-                except Exception:
-                    pass
+                # One-way (only for OW)
+                if not req.return_from:
+                    try:
+                        ow = page.locator("span:has-text('One way')").first
+                        if await ow.count() > 0:
+                            await ow.click(timeout=5000)
+                    except Exception:
+                        pass
                 await asyncio.sleep(2.0)
 
                 # Fill airports (works reliably)
@@ -1340,6 +1359,43 @@ class TurkishConnectorClient:
         option_list = odil[0].get("originDestinationOptionList", [])
         logger.warning("TK parse: %d options, currency=%s", len(option_list), currency)
 
+        # Parse inbound options if available (RT search)
+        ib_route = None
+        ib_price = 0
+        if len(odil) > 1 and req.return_from:
+            ib_options = odil[1].get("originDestinationOptionList", [])
+            if ib_options:
+                # Find cheapest inbound
+                cheapest_ib = None
+                for ib_opt in ib_options:
+                    if ib_opt.get("soldOut"):
+                        continue
+                    sp = ib_opt.get("startingPrice", {})
+                    p = sp.get("amount", 0)
+                    if p > 0 and (cheapest_ib is None or p < cheapest_ib[0]):
+                        segs = []
+                        for seg in ib_opt.get("segmentList", []):
+                            fc = seg.get("flightCode", {})
+                            ac = fc.get("airlineCode", "TK")
+                            fn = fc.get("flightNumber", "")
+                            segs.append(FlightSegment(
+                                airline=ac,
+                                airline_name="Turkish Airlines" if ac == "TK" else ac,
+                                flight_no=f"{ac}{fn}",
+                                origin=seg["departureAirportCode"],
+                                destination=seg["arrivalAirportCode"],
+                                departure=_parse_tk_datetime(seg["departureDateTime"]),
+                                arrival=_parse_tk_datetime(seg["arrivalDateTime"]),
+                                duration_seconds=seg.get("journeyDurationInMillis", 0) // 1000,
+                                cabin_class="economy",
+                                aircraft=seg.get("equipmentName", ""),
+                            ))
+                        if segs:
+                            cheapest_ib = (p, segs, ib_opt.get("journeyDuration", 0) // 1000, max(len(segs) - 1, 0))
+                if cheapest_ib:
+                    ib_price, ib_segs, ib_dur, ib_stops = cheapest_ib
+                    ib_route = FlightRoute(segments=ib_segs, total_duration_seconds=ib_dur, stopovers=ib_stops)
+
         for i, opt in enumerate(option_list):
             try:
                 if opt.get("soldOut"):
@@ -1396,13 +1452,14 @@ class TurkishConnectorClient:
 
                 all_airlines = list({s.airline for s in segments})
 
+                rt_price = price + ib_price if ib_route else price
                 offers.append(FlightOffer(
-                    id=f"tk_{offer_id}",
-                    price=price,
+                    id=f"tk_{'rt_' if ib_route else ''}{offer_id}",
+                    price=rt_price,
                     currency=cur,
-                    price_formatted=f"{price:,.0f} {cur}",
+                    price_formatted=f"{rt_price:,.0f} {cur}",
                     outbound=route,
-                    inbound=None,
+                    inbound=ib_route,
                     airlines=[("Turkish Airlines" if a == "TK" else a) for a in all_airlines],
                     owner_airline="TK",
                     booking_url=self._booking_url(req),
@@ -1425,9 +1482,8 @@ class TurkishConnectorClient:
     def _booking_url(req: FlightSearchRequest) -> str:
         dt = _to_datetime(req.date_from)
         adults = req.adults or 1
-        # TK uses DD.MM.YYYY in some URL forms; also try ISO as fallback
         date_dot = dt.strftime("%d.%m.%Y")
-        return (
+        url = (
             f"https://www.turkishairlines.com/en-int/flights/booking/"
             f"availability-international/"
             f"?originAirportCode={req.origin}"
@@ -1435,6 +1491,10 @@ class TurkishConnectorClient:
             f"&departureDate={date_dot}"
             f"&adult={adults}"
         )
+        if req.return_from:
+            rdt = _to_datetime(req.return_from)
+            url += f"&returnDate={rdt.strftime('%d.%m.%Y')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(

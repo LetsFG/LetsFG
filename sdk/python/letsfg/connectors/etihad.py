@@ -324,24 +324,35 @@ class EtihadConnectorClient:
 
             # Direct API call from browser JS context (bypasses Akamai — same origin, valid session)
             dep = req.date_from.strftime("%Y-%m-%d") if hasattr(req.date_from, 'strftime') else str(req.date_from)
+            is_rt = bool(req.return_from)
+            if is_rt:
+                try:
+                    d1 = req.date_from if hasattr(req.date_from, 'toordinal') else datetime.strptime(str(req.date_from), "%Y-%m-%d")
+                    d2 = req.return_from if hasattr(req.return_from, 'toordinal') else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                    trip_dur = max(1, (d2 - d1).days)
+                except Exception:
+                    trip_dur = 7
+            else:
+                trip_dur = 0
             result = await page.evaluate("""async (params) => {
-                const [origin, dest, depDate] = params;
+                const [origin, dest, depDate, isRt, tripDur] = params;
                 try {
+                    const body = {
+                        originAirportCode: origin,
+                        destinationAirportCode: dest,
+                        cabinClass: 'ECONOMY',
+                        tripType: isRt ? 'return' : 'oneway',
+                        passengerTypeCode: 'ADT',
+                        departureDate: depDate,
+                    };
+                    if (isRt) body.tripDuration = String(tripDur);
                     const resp = await fetch('/ada-services/bff-calendar-pricing/service/instant-search/v2/fetch-prices', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json, text/plain, */*',
                         },
-                        body: JSON.stringify({
-                            originAirportCode: origin,
-                            destinationAirportCode: dest,
-                            cabinClass: 'ECONOMY',
-                            tripType: 'return',
-                            passengerTypeCode: 'ADT',
-                            departureDate: depDate,
-                            tripDuration: '7',
-                        }),
+                        body: JSON.stringify(body),
                         credentials: 'include',
                     });
                     if (!resp.ok) return {_error: resp.status, _text: (await resp.text()).substring(0, 300)};
@@ -349,7 +360,7 @@ class EtihadConnectorClient:
                 } catch (e) {
                     return {_error: -1, _msg: e.message};
                 }
-            }""" , [api_origin, api_dest, dep])
+            }""" , [api_origin, api_dest, dep, is_rt, trip_dur])
 
             if not result or result.get("_error"):
                 err = result.get("_error", "?") if result else "null"
@@ -646,11 +657,13 @@ class EtihadConnectorClient:
                 if price <= 0:
                     continue
 
-                # API returns round-trip prices; estimate one-way as ~55%
-                one_way_price = round(price * 0.55, 2)
+                if req.return_from:
+                    use_price = price  # full round-trip price
+                else:
+                    use_price = round(price * 0.55, 2)  # estimate one-way
 
                 offer = self._build_offer(
-                    req, one_way_price, currency, dt, info
+                    req, use_price, currency, dt, info
                 )
                 if offer:
                     offers.append(offer)
@@ -697,13 +710,32 @@ class EtihadConnectorClient:
 
         booking_url = self._booking_url(req)
 
+        inbound = None
+        if req.return_from:
+            try:
+                rdt = req.return_from if isinstance(req.return_from, datetime) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+            except (ValueError, TypeError):
+                rdt = dep_dt
+            ib_seg = FlightSegment(
+                airline="EY",
+                airline_name="Etihad Airways",
+                flight_no="EY",
+                origin=req.destination,
+                destination=req.origin,
+                departure=rdt if isinstance(rdt, datetime) else datetime(rdt.year, rdt.month, rdt.day),
+                arrival=rdt if isinstance(rdt, datetime) else datetime(rdt.year, rdt.month, rdt.day),
+                duration_seconds=0,
+                cabin_class="economy",
+            )
+            inbound = FlightRoute(segments=[ib_seg], total_duration_seconds=0, stopovers=0)
+
         return FlightOffer(
-            id=f"ey_{offer_id}",
+            id=f"ey_{'rt_' if req.return_from else ''}{offer_id}",
             price=price,
             currency=currency,
             price_formatted=f"{price:,.0f} {currency}",
             outbound=route,
-            inbound=None,
+            inbound=inbound,
             airlines=["Etihad Airways"],
             owner_airline="EY",
             booking_url=booking_url,
@@ -731,13 +763,21 @@ class EtihadConnectorClient:
         adults = req.adults or 1
         children = req.children or 0
         infants = req.infants or 0
-        return (
+        trip = "return" if req.return_from else "oneway"
+        url = (
             f"https://www.etihad.com/en/book/flights"
             f"?from={req.origin}&to={req.destination}"
             f"&departdate={date_str}"
             f"&adult={adults}&child={children}&infant={infants}"
-            f"&class=Economy&trip=oneway"
+            f"&class=Economy&trip={trip}"
         )
+        if req.return_from:
+            try:
+                rdt = req.return_from if hasattr(req.return_from, 'strftime') else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                url += f"&returndate={rdt.strftime('%d-%m-%Y')}"
+            except (ValueError, TypeError):
+                pass
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(

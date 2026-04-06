@@ -312,11 +312,7 @@ class ScootConnectorClient:
                     inbound=inbound,
                     airlines=["Scoot"],
                     owner_airline="TR",
-                    booking_url=(
-                        f"https://booking.flyscoot.com/"
-                        f"?origin={orig}&destination={dest}&depart={dep_str}"
-                        f"&pax={req.adults or 1}&type=OW"
-                    ),
+                    booking_url="https://booking.flyscoot.com",
                     is_locked=False,
                     source="scoot_direct",
                     source_tier="free",
@@ -436,8 +432,9 @@ class ScootConnectorClient:
                 logger.warning("Scoot: search form never appeared")
                 return None
 
-            # Step 3: Set one-way
-            await self._set_one_way(page)
+            # Step 3: Set one-way (only for OW; RT is default)
+            if not req.return_from:
+                await self._set_one_way(page)
             await asyncio.sleep(0.5)
 
             # Step 5: Fill origin
@@ -460,6 +457,13 @@ class ScootConnectorClient:
                 logger.warning("Scoot: date fill failed")
                 return None
             await asyncio.sleep(0.3)
+
+            # Step 7b: Fill return date if RT
+            if req.return_from:
+                ok = await self._fill_date(page, req.return_from)
+                if not ok:
+                    logger.warning("Scoot: return date fill failed, continuing anyway")
+                await asyncio.sleep(0.3)
 
             # Step 8: Click search (enable API capture first)
             search_clicked["ready"] = True
@@ -884,11 +888,73 @@ class ScootConnectorClient:
 
     # ── Response parsing ────────────────────────────────────────────────────
 
+    def _parse_navitaire_journey(self, journey: dict, req: FlightSearchRequest,
+                                fare_lookup: dict[str, float]) -> Optional[tuple[float, FlightRoute]]:
+        """Parse a single Navitaire journey into (price, FlightRoute) or None."""
+        if not isinstance(journey, dict):
+            return None
+
+        best_price = float("inf")
+        for fare in journey.get("fares", []):
+            fkey = fare.get("fareAvailabilityKey", "")
+            if fkey in fare_lookup:
+                p = fare_lookup[fkey]
+                if 0 < p < best_price:
+                    best_price = p
+        if best_price == float("inf"):
+            return None
+
+        segments: list[FlightSegment] = []
+        for seg in journey.get("segments", []):
+            ident = seg.get("identifier", {})
+            desig = seg.get("designator", {})
+            carrier = ident.get("carrierCode", "TR")
+            flight_num = str(ident.get("identifier", "")).strip()
+            flight_no = f"{carrier}{flight_num}" if flight_num else ""
+            segments.append(FlightSegment(
+                airline=carrier,
+                airline_name="Scoot",
+                flight_no=flight_no,
+                origin=desig.get("origin", req.origin),
+                destination=desig.get("destination", req.destination),
+                departure=self._parse_dt(desig.get("departure", "")),
+                arrival=self._parse_dt(desig.get("arrival", "")),
+                cabin_class="M",
+            ))
+
+        if not segments:
+            desig = journey.get("designator", {})
+            if desig:
+                segments.append(FlightSegment(
+                    airline="TR", airline_name="Scoot",
+                    flight_no="",
+                    origin=desig.get("origin", req.origin),
+                    destination=desig.get("destination", req.destination),
+                    departure=self._parse_dt(desig.get("departure", "")),
+                    arrival=self._parse_dt(desig.get("arrival", "")),
+                    cabin_class="M",
+                ))
+            if not segments:
+                return None
+
+        total_dur = 0
+        if segments[0].departure and segments[-1].arrival:
+            delta = segments[-1].arrival - segments[0].departure
+            total_dur = max(int(delta.total_seconds()), 0)
+
+        route = FlightRoute(
+            segments=segments,
+            total_duration_seconds=total_dur,
+            stopovers=max(len(segments) - 1, 0),
+        )
+        return (best_price, route)
+
     def _parse_navitaire_response(self, data: Any, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse Scoot Navitaire availability API response.
 
         Structure: data.trips[].journeys[] with pricing in data.faresAvailable[].
         Each journey.fares[].fareAvailabilityKey maps to faresAvailable[].totals.fareTotal.
+        For RT: trips[0] = outbound, trips[1] = inbound.
         """
         if not isinstance(data, dict):
             return []
@@ -907,86 +973,51 @@ class ScootConnectorClient:
                 fare_lookup[key] = float(price)
 
         trips = data.get("trips", [])
-        for trip in trips:
-            if not isinstance(trip, dict):
-                continue
-            for journey in trip.get("journeys", []):
-                if not isinstance(journey, dict):
-                    continue
+        is_rt = bool(req.return_from) and len(trips) >= 2
 
-                # Find cheapest fare for this journey
-                best_price = float("inf")
-                for fare in journey.get("fares", []):
-                    fkey = fare.get("fareAvailabilityKey", "")
-                    if fkey in fare_lookup:
-                        p = fare_lookup[fkey]
-                        if 0 < p < best_price:
-                            best_price = p
-                if best_price == float("inf"):
-                    continue
+        # ── Parse outbound journeys (trip[0]) ──────────────────────────
+        ob_journeys: list[tuple[str, float, FlightRoute]] = []
+        ob_trip = trips[0] if trips else {}
+        if isinstance(ob_trip, dict):
+            for journey in ob_trip.get("journeys", []):
+                parsed = self._parse_navitaire_journey(journey, req, fare_lookup)
+                if parsed:
+                    price, route = parsed
+                    jkey = journey.get("journeyKey", f"{req.origin}{req.destination}{time.monotonic()}")
+                    ob_journeys.append((jkey, price, route))
 
-                # Parse segments
-                segments: list[FlightSegment] = []
-                for seg in journey.get("segments", []):
-                    ident = seg.get("identifier", {})
-                    desig = seg.get("designator", {})
-                    carrier = ident.get("carrierCode", "TR")
-                    flight_num = str(ident.get("identifier", "")).strip()
-                    flight_no = f"{carrier}{flight_num}" if flight_num else ""
-                    segments.append(FlightSegment(
-                        airline=carrier,
-                        airline_name="Scoot",
-                        flight_no=flight_no,
-                        origin=desig.get("origin", req.origin),
-                        destination=desig.get("destination", req.destination),
-                        departure=self._parse_dt(desig.get("departure", "")),
-                        arrival=self._parse_dt(desig.get("arrival", "")),
-                        cabin_class="M",
-                    ))
+        # ── Parse inbound journeys (trip[1]) if RT ─────────────────────
+        ib_route: Optional[FlightRoute] = None
+        ib_price = 0.0
+        if is_rt:
+            ib_best_price = float("inf")
+            ib_trip = trips[1]
+            if isinstance(ib_trip, dict):
+                for journey in ib_trip.get("journeys", []):
+                    parsed = self._parse_navitaire_journey(journey, req, fare_lookup)
+                    if parsed and parsed[0] < ib_best_price:
+                        ib_best_price = parsed[0]
+                        ib_route = parsed[1]
+                        ib_price = parsed[0]
 
-                if not segments:
-                    # Fallback: use journey-level designator
-                    desig = journey.get("designator", {})
-                    if desig:
-                        segments.append(FlightSegment(
-                            airline="TR", airline_name="Scoot",
-                            flight_no="",
-                            origin=desig.get("origin", req.origin),
-                            destination=desig.get("destination", req.destination),
-                            departure=self._parse_dt(desig.get("departure", "")),
-                            arrival=self._parse_dt(desig.get("arrival", "")),
-                            cabin_class="M",
-                        ))
-                    if not segments:
-                        continue
-
-                total_dur = 0
-                if segments[0].departure and segments[-1].arrival:
-                    delta = segments[-1].arrival - segments[0].departure
-                    total_dur = max(int(delta.total_seconds()), 0)
-
-                route = FlightRoute(
-                    segments=segments,
-                    total_duration_seconds=total_dur,
-                    stopovers=max(len(segments) - 1, 0),
-                )
-
-                journey_key = journey.get("journeyKey", f"{req.origin}{req.destination}{time.monotonic()}")
-
-                offers.append(FlightOffer(
-                    id=f"tr_{hashlib.md5(str(journey_key).encode()).hexdigest()[:12]}",
-                    price=round(best_price, 2),
-                    currency=currency,
-                    price_formatted=f"{best_price:.2f} {currency}",
-                    outbound=route,
-                    inbound=None,
-                    airlines=["Scoot"],
-                    owner_airline="TR",
-                    booking_url=booking_url,
-                    is_locked=False,
-                    source="scoot_direct",
-                    source_tier="free",
-                ))
+        # ── Build offers ───────────────────────────────────────────────
+        for jkey, price, route in ob_journeys:
+            total_price = round(price + ib_price, 2) if is_rt else round(price, 2)
+            prefix = "tr_rt_" if is_rt and ib_route else "tr_"
+            offers.append(FlightOffer(
+                id=f"{prefix}{hashlib.md5(str(jkey).encode()).hexdigest()[:12]}",
+                price=total_price,
+                currency=currency,
+                price_formatted=f"{total_price:.2f} {currency}",
+                outbound=route,
+                inbound=ib_route,
+                airlines=["Scoot"],
+                owner_airline="TR",
+                booking_url=booking_url,
+                is_locked=False,
+                source="scoot_direct",
+                source_tier="free",
+            ))
 
         return offers
 
@@ -1199,7 +1230,44 @@ class ScootConnectorClient:
     def _parse_dom_cards(self, cards: list, req: FlightSearchRequest) -> list[FlightOffer]:
         offers = []
         booking_url = self._build_booking_url(req)
+        is_rt = bool(req.return_from)
+
+        # Classify cards into outbound and inbound by origin
+        ob_cards: list[dict] = []
+        ib_cards: list[dict] = []
         for card in cards:
+            price = card.get("price")
+            if not price or price <= 0:
+                continue
+            card_origin = card.get("origin", req.origin)
+            if is_rt and card_origin == req.destination:
+                ib_cards.append(card)
+            else:
+                ob_cards.append(card)
+
+        # If no IB cards but RT, all cards are outbound (fallback)
+        if is_rt and not ib_cards:
+            ob_cards = [c for c in cards if c.get("price") and c["price"] > 0]
+
+        # Find cheapest IB for pairing
+        ib_route: Optional[FlightRoute] = None
+        ib_price = 0.0
+        if is_rt and ib_cards:
+            cheapest_ib = min(ib_cards, key=lambda c: c["price"])
+            ib_price = cheapest_ib["price"]
+            ib_times = cheapest_ib.get("times", [])
+            ib_dep = self._parse_dt(ib_times[0]) if ib_times else datetime(2000, 1, 1)
+            ib_arr = self._parse_dt(ib_times[1]) if len(ib_times) > 1 else datetime(2000, 1, 1)
+            ib_dur = max(int((ib_arr - ib_dep).total_seconds()), 0) if ib_dep.year > 2000 and ib_arr.year > 2000 else 0
+            ib_seg = FlightSegment(
+                airline="TR", airline_name="Scoot",
+                flight_no=cheapest_ib.get("flightNo", ""),
+                origin=req.destination, destination=req.origin,
+                departure=ib_dep, arrival=ib_arr, cabin_class="M",
+            )
+            ib_route = FlightRoute(segments=[ib_seg], total_duration_seconds=ib_dur, stopovers=0)
+
+        for card in ob_cards:
             price = card.get("price")
             if not price or price <= 0:
                 continue
@@ -1218,11 +1286,13 @@ class ScootConnectorClient:
             )
             route = FlightRoute(segments=[seg], total_duration_seconds=total_dur,
                                 stopovers=0)
+            total_price = round(price + ib_price, 2) if is_rt and ib_route else round(price, 2)
+            prefix = "tr_rt_" if is_rt and ib_route else "tr_"
             offers.append(FlightOffer(
-                id=f"tr_{hashlib.md5(f'{flight_no}{price}'.encode()).hexdigest()[:12]}",
-                price=round(price, 2), currency="SGD",
-                price_formatted=f"{price:.2f} SGD",
-                outbound=route, inbound=None,
+                id=f"{prefix}{hashlib.md5(f'{flight_no}{price}'.encode()).hexdigest()[:12]}",
+                price=total_price, currency="SGD",
+                price_formatted=f"{total_price:.2f} SGD",
+                outbound=route, inbound=ib_route,
                 airlines=["Scoot"], owner_airline="TR",
                 booking_url=booking_url, is_locked=False,
                 source="scoot_direct", source_tier="free",
@@ -1267,11 +1337,16 @@ class ScootConnectorClient:
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
         dep = req.date_from.strftime("%Y-%m-%d")
-        return (
+        trip_type = "RT" if req.return_from else "OW"
+        url = (
             f"https://booking.flyscoot.com/"
             f"?origin={req.origin}&destination={req.destination}&depart={dep}"
-            f"&pax={req.adults or 1}&type=OW"
+            f"&pax={req.adults or 1}&type={trip_type}"
         )
+        if req.return_from:
+            ret = req.return_from.strftime("%Y-%m-%d") if hasattr(req.return_from, 'strftime') else str(req.return_from)
+            url += f"&return={ret}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(

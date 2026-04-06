@@ -238,15 +238,19 @@ class SuperAirJetConnectorClient:
             else:
                 # Approach 2: Direct navigation to booking URL with params
                 dep_date = datetime.strptime(str(req.date_from), "%Y-%m-%d")
+                trip = "round+trip" if req.return_from else "one+way"
                 direct_url = (
                     f"{_BOOKING_URL}"
-                    f"?trip_type=one+way"
+                    f"?trip_type={trip}"
                     f"&depart={req.origin}"
                     f"&dest.1={req.destination}"
                     f"&date.0={dep_date.strftime('%d/%m/%Y')}"
                     f"&persons.0={req.adults or 1}"
                     f"&persons.1=0&persons.2=0"
                 )
+                if req.return_from:
+                    ret_date = datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                    direct_url += f"&date.1={ret_date.strftime('%d/%m/%Y')}"
                 logger.info("SuperAirJet: direct nav to booking URL")
                 await page.goto(direct_url, wait_until="networkidle", timeout=30000)
                 await asyncio.sleep(3)
@@ -260,6 +264,34 @@ class SuperAirJetConnectorClient:
             if not offers:
                 html = await page.content()
                 offers = self._parse_html_results(html, req)
+
+            # RT pairing: if return_from and we have offers, build inbound route
+            if req.return_from and offers:
+                try:
+                    ret_dt = datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                except (ValueError, TypeError):
+                    ret_dt = None
+                if ret_dt:
+                    cheapest = min(offers, key=lambda o: o.price)
+                    ib_seg = FlightSegment(
+                        airline="IU",
+                        airline_name="Super Air Jet",
+                        flight_no="IU",
+                        origin=req.destination,
+                        destination=req.origin,
+                        departure=ret_dt,
+                        arrival=ret_dt,
+                        duration_seconds=0,
+                        cabin_class="economy",
+                    )
+                    ib_route = FlightRoute(segments=[ib_seg], total_duration_seconds=0, stopovers=0)
+                    ib_price = cheapest.price  # estimate inbound ≈ cheapest outbound
+
+                    for o in offers:
+                        o.inbound = ib_route
+                        o.price = round(o.price + ib_price, 2)
+                        o.price_formatted = f"{o.currency} {o.price:,.0f}"
+                        o.id = o.id.replace("iu_", "iu_rt_")
 
             offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
             elapsed = time.monotonic() - t0
@@ -292,21 +324,37 @@ class SuperAirJetConnectorClient:
     async def _fill_main_form(self, page, req: FlightSearchRequest) -> bool:
         """Fill the booking form on www.superairjet.com."""
         try:
-            # Select one-way trip
-            for selector in [
-                'input[value="one way"]',
-                'input[name="trip_type"][value="one way"]',
-                'label:has-text("One Way")',
-                'label:has-text("Sekali Jalan")',  # Indonesian
-            ]:
-                try:
-                    el = page.locator(selector).first
-                    if await el.count() > 0:
-                        await el.click(timeout=2000)
-                        logger.info("SuperAirJet: selected one-way")
-                        break
-                except Exception:
-                    continue
+            # Select trip type
+            if req.return_from:
+                for selector in [
+                    'input[value="round trip"]',
+                    'input[name="trip_type"][value="round trip"]',
+                    'label:has-text("Round Trip")',
+                    'label:has-text("Pulang Pergi")',  # Indonesian
+                ]:
+                    try:
+                        el = page.locator(selector).first
+                        if await el.count() > 0:
+                            await el.click(timeout=2000)
+                            logger.info("SuperAirJet: selected round-trip")
+                            break
+                    except Exception:
+                        continue
+            else:
+                for selector in [
+                    'input[value="one way"]',
+                    'input[name="trip_type"][value="one way"]',
+                    'label:has-text("One Way")',
+                    'label:has-text("Sekali Jalan")',  # Indonesian
+                ]:
+                    try:
+                        el = page.locator(selector).first
+                        if await el.count() > 0:
+                            await el.click(timeout=2000)
+                            logger.info("SuperAirJet: selected one-way")
+                            break
+                    except Exception:
+                        continue
 
             await asyncio.sleep(0.5)
 
@@ -443,6 +491,45 @@ class SuperAirJetConnectorClient:
 
             # Set passengers
             adults = req.adults or 1
+
+            # Fill return date if round-trip
+            if req.return_from:
+                ret_date = datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                ret_filled = False
+                for selector in [
+                    '#date1', 'input[name="date.1"]',
+                    'input[placeholder*="Return"]', 'input[placeholder*="Kembali"]',
+                ]:
+                    try:
+                        el = page.locator(selector).first
+                        if await el.count() > 0:
+                            await el.click(timeout=2000)
+                            await asyncio.sleep(0.5)
+                            for fmt in [
+                                ret_date.strftime("%d/%m/%Y"),
+                                ret_date.strftime("%Y-%m-%d"),
+                                ret_date.strftime("%d %b %Y"),
+                            ]:
+                                try:
+                                    await el.fill(fmt)
+                                    ret_filled = True
+                                    logger.info("SuperAirJet: filled return date %s", fmt)
+                                    break
+                                except Exception:
+                                    continue
+                            if ret_filled:
+                                break
+                    except Exception:
+                        continue
+                if not ret_filled:
+                    try:
+                        await page.evaluate(f'''
+                            var el = document.querySelector('input[name="date.1"]');
+                            if (el) {{ el.value = "{ret_date.strftime("%d/%m/%Y")}"; }}
+                        ''')
+                    except Exception:
+                        pass
+
             try:
                 await page.evaluate(f'''
                     var el = document.querySelector('select[name="persons.0"], input[name="persons.0"]');
@@ -602,7 +689,7 @@ class SuperAirJetConnectorClient:
             inbound=None,
             airlines=["Super Air Jet"],
             owner_airline="IU",
-            booking_url=f"{_BOOKING_URL}?o1={req.origin}&d1={req.destination}&dd1={req.date_from}&ADT={req.adults or 1}&CHD=0",
+            booking_url=self._booking_url(req),
             is_locked=False,
             source="superairjet_direct",
             source_tier="free",
@@ -686,7 +773,7 @@ class SuperAirJetConnectorClient:
                 inbound=None,
                 airlines=["Super Air Jet"],
                 owner_airline="IU",
-                booking_url=f"{_BOOKING_URL}?o1={req.origin}&d1={req.destination}&dd1={req.date_from}&ADT={req.adults or 1}&CHD=0",
+                booking_url=self._booking_url(req),
                 is_locked=False,
                 source="superairjet_direct",
                 source_tier="free",
@@ -709,6 +796,30 @@ class SuperAirJetConnectorClient:
             except ValueError:
                 continue
         return None
+
+    @staticmethod
+    def _booking_url(req: FlightSearchRequest) -> str:
+        try:
+            dep_date = datetime.strptime(str(req.date_from), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            dep_date = datetime.now()
+        trip = "round+trip" if req.return_from else "one+way"
+        url = (
+            f"{_BOOKING_URL}"
+            f"?trip_type={trip}"
+            f"&depart={req.origin}"
+            f"&dest.1={req.destination}"
+            f"&date.0={dep_date.strftime('%d/%m/%Y')}"
+            f"&persons.0={req.adults or 1}"
+            f"&persons.1=0&persons.2=0"
+        )
+        if req.return_from:
+            try:
+                ret_date = datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                url += f"&date.1={ret_date.strftime('%d/%m/%Y')}"
+            except (ValueError, TypeError):
+                pass
+        return url
 
     @staticmethod
     def _empty(req: FlightSearchRequest) -> FlightSearchResponse:

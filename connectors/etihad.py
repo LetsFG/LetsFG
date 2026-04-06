@@ -40,14 +40,69 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
-from connectors.browser import find_chrome, stealth_popen_kwargs, _launched_procs
+from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied, inject_stealth_js
+
+# Map IATA airport/city codes to Etihad locale codes.
+# The calendar pricing API validates origin country against the site locale.
+_ORIGIN_TO_LOCALE: dict[str, str] = {
+    # UAE
+    "AUH": "en-ae", "DXB": "en-ae", "SHJ": "en-ae",
+    # Saudi Arabia
+    "RUH": "en-sa", "JED": "en-sa", "DMM": "en-sa",
+    # India
+    "DEL": "en-in", "BOM": "en-in", "BLR": "en-in", "HYD": "en-in",
+    "MAA": "en-in", "CCU": "en-in", "AMD": "en-in", "COK": "en-in",
+    # UK
+    "LHR": "en-gb", "LGW": "en-gb", "MAN": "en-gb", "EDI": "en-gb", "LON": "en-gb",
+    # US
+    "JFK": "en-us", "IAD": "en-us", "ORD": "en-us", "LAX": "en-us", "SFO": "en-us",
+    "EWR": "en-us", "DFW": "en-us", "NYC": "en-us",
+    # Australia
+    "SYD": "en-au", "MEL": "en-au", "BNE": "en-au", "PER": "en-au",
+    # France
+    "CDG": "en-fr", "ORY": "en-fr", "PAR": "en-fr",
+    # Germany
+    "FRA": "en-de", "MUC": "en-de", "BER": "en-de", "DUS": "en-de",
+    # Egypt
+    "CAI": "en-eg",
+    # Pakistan
+    "ISB": "en-pk", "KHI": "en-pk", "LHE": "en-pk",
+    # Japan
+    "NRT": "en-jp", "HND": "en-jp", "TYO": "en-jp",
+    # South Korea
+    "ICN": "en-kr", "SEL": "en-kr",
+    # Thailand
+    "BKK": "en-th",
+    # Singapore
+    "SIN": "en-sg",
+    # Malaysia
+    "KUL": "en-my",
+    # Indonesia
+    "CGK": "en-id",
+    # Philippines
+    "MNL": "en-ph",
+    # Qatar
+    "DOH": "en-qa",
+    # Kuwait
+    "KWI": "en-kw",
+    # Bahrain
+    "BAH": "en-bh",
+    # Oman
+    "MCT": "en-om",
+    # Jordan
+    "AMM": "en-jo",
+    # Kenya
+    "NBO": "en-ke",
+    # South Africa
+    "JNB": "en-za", "CPT": "en-za",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +172,7 @@ async def _get_context():
                 f"--remote-debugging-port={_DEBUG_PORT}",
                 f"--user-data-dir={_USER_DATA_DIR}",
                 "--no-first-run",
+                *proxy_chrome_args(),
                 "--no-default-browser-check",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-http2",
@@ -197,20 +253,33 @@ async def _reset_profile():
     except Exception:
         pass
     if _chrome_proc:
+        pid = _chrome_proc.pid
         try:
-            _chrome_proc.terminate()
+            _chrome_proc.kill()
         except Exception:
             pass
+        try:
+            _chrome_proc.wait(timeout=5)
+        except Exception:
+            try:
+                import signal
+                os.kill(pid, signal.SIGTERM)
+            except Exception:
+                pass
     _browser = None
     _context = None
     _pw_instance = None
     _chrome_proc = None
+    await asyncio.sleep(0.5)
     if os.path.isdir(_USER_DATA_DIR):
-        try:
-            shutil.rmtree(_USER_DATA_DIR)
-            logger.info("Etihad: deleted stale Chrome profile")
-        except Exception:
-            pass
+        for retry in range(3):
+            try:
+                shutil.rmtree(_USER_DATA_DIR)
+                logger.info("Etihad: deleted stale Chrome profile")
+                break
+            except Exception:
+                if retry < 2:
+                    await asyncio.sleep(1.0)
 
 
 class EtihadConnectorClient:
@@ -227,36 +296,15 @@ class EtihadConnectorClient:
 
         context = await _get_context()
         page = await context.new_page()
-
-        # Interception state
-        price_data: dict = {}
-        akamai_blocked = False
-
-        async def _on_response(response):
-            nonlocal akamai_blocked
-            url = response.url
-            if "fetch-prices" not in url:
-                return
-            status = response.status
-            if status == 403:
-                akamai_blocked = True
-                logger.warning("Etihad: Akamai 403 on fetch-prices")
-                return
-            if status == 200:
-                try:
-                    data = await response.json()
-                    if isinstance(data, dict) and "pricePerDay" in data:
-                        price_data.update(data)
-                        logger.info("Etihad: captured calendar pricing response")
-                except Exception as e:
-                    logger.warning("Etihad: failed to parse fetch-prices: %s", e)
-
-        page.on("response", _on_response)
+        await inject_stealth_js(page)
+        await auto_block_if_proxied(page)
 
         try:
-            logger.info("Etihad: loading homepage for %s→%s", req.origin, req.destination)
+            # Determine locale from origin for correct market context
+            locale = _ORIGIN_TO_LOCALE.get(req.origin, "en-ae")
+            logger.info("Etihad: loading homepage for %s→%s (locale=%s)", req.origin, req.destination, locale)
             await page.goto(
-                "https://www.etihad.com/en/",
+                f"https://www.etihad.com/{locale}/",
                 wait_until="domcontentloaded",
                 timeout=int(self.timeout * 1000),
             )
@@ -266,46 +314,69 @@ class EtihadConnectorClient:
             await _dismiss_overlays(page)
             await asyncio.sleep(0.5)
 
-            # Fill search form
-            ok = await self._fill_form(page, req)
-            if not ok:
-                logger.warning("Etihad: form fill failed")
-                return self._empty(req)
+            # Etihad API needs real airport IATA codes, not city codes like LON
+            from .airline_routes import get_city_airports
+            origins = get_city_airports(req.origin)
+            destinations = get_city_airports(req.destination)
+            # Use first airport from each city (e.g. LON → LHR, NYC → JFK)
+            api_origin = origins[0] if origins else req.origin
+            api_dest = destinations[0] if destinations else req.destination
 
-            # Click Search
-            try:
-                search_btn = page.locator("button:has-text('Search')").first
-                await search_btn.click(timeout=5000)
-                logger.info("Etihad: clicked Search")
-            except Exception:
-                # JS fallback click
+            # Direct API call from browser JS context (bypasses Akamai — same origin, valid session)
+            dep = req.date_from.strftime("%Y-%m-%d") if hasattr(req.date_from, 'strftime') else str(req.date_from)
+            is_rt = bool(req.return_from)
+            if is_rt:
                 try:
-                    await page.evaluate("""() => {
-                        const btn = [...document.querySelectorAll('button')]
-                            .find(b => b.textContent.trim() === 'Search');
-                        if (btn) btn.click();
-                    }""")
-                except Exception as e:
-                    logger.warning("Etihad: search click failed: %s", e)
-                    return self._empty(req)
+                    d1 = req.date_from if hasattr(req.date_from, 'toordinal') else datetime.strptime(str(req.date_from), "%Y-%m-%d")
+                    d2 = req.return_from if hasattr(req.return_from, 'toordinal') else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                    trip_dur = max(1, (d2 - d1).days)
+                except Exception:
+                    trip_dur = 7
+            else:
+                trip_dur = 0
+            result = await page.evaluate("""async (params) => {
+                const [origin, dest, depDate, isRt, tripDur] = params;
+                try {
+                    const body = {
+                        originAirportCode: origin,
+                        destinationAirportCode: dest,
+                        cabinClass: 'ECONOMY',
+                        tripType: isRt ? 'return' : 'oneway',
+                        passengerTypeCode: 'ADT',
+                        departureDate: depDate,
+                    };
+                    if (isRt) body.tripDuration = String(tripDur);
+                    const resp = await fetch('/ada-services/bff-calendar-pricing/service/instant-search/v2/fetch-prices', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json, text/plain, */*',
+                        },
+                        body: JSON.stringify(body),
+                        credentials: 'include',
+                    });
+                    if (!resp.ok) return {_error: resp.status, _text: (await resp.text()).substring(0, 300)};
+                    return await resp.json();
+                } catch (e) {
+                    return {_error: -1, _msg: e.message};
+                }
+            }""" , [api_origin, api_dest, dep, is_rt, trip_dur])
 
-            # Wait for intercepted response
-            remaining = max(self.timeout - (time.monotonic() - t0), 10)
-            deadline = time.monotonic() + remaining
-            while not price_data and not akamai_blocked and time.monotonic() < deadline:
-                await asyncio.sleep(0.5)
-
-            if akamai_blocked:
-                logger.warning("Etihad: Akamai flagged, resetting profile")
-                await _reset_profile()
+            if not result or result.get("_error"):
+                err = result.get("_error", "?") if result else "null"
+                txt = result.get("_text", "") if result else ""
+                logger.warning("Etihad: API returned error %s (using %s→%s): %s", err, api_origin, api_dest, txt[:200])
+                if err == 403:
+                    logger.warning("Etihad: Akamai flagged, resetting profile")
+                    await _reset_profile()
                 return self._empty(req)
 
-            if not price_data or not price_data.get("pricePerDay"):
-                logger.warning("Etihad: no pricePerDay in response")
+            if not result.get("pricePerDay"):
+                logger.warning("Etihad: no pricePerDay in response (keys=%s)", list(result.keys())[:10])
                 return self._empty(req)
 
-            currency = price_data.get("currency", "AED")
-            offers = self._parse_calendar(price_data, req, currency)
+            currency = result.get("currency", "AED")
+            offers = self._parse_calendar(result, req, currency)
             offers.sort(key=lambda o: o.price)
 
             elapsed = time.monotonic() - t0
@@ -315,7 +386,7 @@ class EtihadConnectorClient:
             )
 
             search_hash = hashlib.md5(
-                f"etihad{req.origin}{req.destination}{req.date_from}".encode()
+                f"etihad{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
             ).hexdigest()[:12]
 
             return FlightSearchResponse(
@@ -341,7 +412,7 @@ class EtihadConnectorClient:
     # ------------------------------------------------------------------
 
     async def _fill_form(self, page, req: FlightSearchRequest) -> bool:
-        """Fill Etihad search form: origin + destination."""
+        """Fill Etihad search form: origin + destination + date."""
         # Origin
         ok = await self._fill_airport(page, "#fsporigin", req.origin)
         if not ok:
@@ -353,7 +424,148 @@ class EtihadConnectorClient:
         if not ok:
             return False
         await asyncio.sleep(0.5)
+
+        # Departure date — click the date field and select target date
+        ok = await self._fill_date(page, req)
+        if not ok:
+            logger.warning("Etihad: date fill failed, proceeding anyway")
+            # Don't fail — search may still work with default dates
+
         return True
+
+    async def _fill_date(self, page, req: FlightSearchRequest) -> bool:
+        """Fill departure date in Etihad's date picker."""
+        try:
+            dt = req.date_from if hasattr(req.date_from, 'strftime') else datetime.strptime(str(req.date_from), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return False
+
+        target_day = str(dt.day)
+        target_month = dt.strftime("%B")   # e.g. "June"
+        target_year = str(dt.year)
+
+        try:
+            # Click departure date field to open calendar
+            # Etihad uses a styled div[role="tab"] with text "Travelling when?"
+            date_click = await page.evaluate("""() => {
+                // Primary: Etihad's date card is a div with role=tab containing "Travelling when?"
+                const tabs = document.querySelectorAll('div[role="tab"], [role="tab"]');
+                for (const t of tabs) {
+                    const text = (t.textContent || '').toLowerCase();
+                    if (text.includes('travelling when') || text.includes('when') || text.includes('date')) {
+                        if (t.offsetHeight > 0) { t.click(); return 'tab:' + text.trim().substring(0, 40); }
+                    }
+                }
+                // Fallback: div with dates class
+                const dateCards = document.querySelectorAll('.ey-fsp-stat--guest-and-date, .ey-fsp-stat--field-icon.dates, [class*="fsp"][class*="date"]');
+                for (const el of dateCards) {
+                    const text = (el.textContent || '').toLowerCase();
+                    if ((text.includes('when') || text.includes('date') || el.classList.contains('dates')) && el.offsetHeight > 0) {
+                        el.click();
+                        return 'class:' + (el.className || '').substring(0, 50);
+                    }
+                }
+                // Previous selectors as last resort
+                const selectors = [
+                    '#fspdate', '#departure-date', '#fspdeparture',
+                    'input[placeholder*="Departure"]', 'input[placeholder*="departure"]',
+                    '[data-testid*="departure-date"]', '[data-testid*="date"]',
+                    '.fsp-date-picker', '.departure-date',
+                ];
+                for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (el && el.offsetHeight > 0) { el.click(); return sel; }
+                }
+                // Try clicking elements with "Departure" label
+                const labels = document.querySelectorAll('label, span, div');
+                for (const l of labels) {
+                    const t = (l.textContent || '').toLowerCase().trim();
+                    if ((t === 'departure' || t === 'departing' || t.includes('depart'))
+                        && l.offsetHeight > 0) {
+                        l.click(); return 'label:' + t;
+                    }
+                }
+                return null;
+            }""")
+
+            if date_click:
+                logger.info("Etihad: opened date picker via %s", date_click)
+                await asyncio.sleep(1.5)
+            else:
+                logger.warning("Etihad: could not find departure date field")
+                return False
+
+            # Navigate calendar to target month — click "next" until visible
+            for _ in range(14):
+                found = await page.evaluate("""(args) => {
+                    const [targetMonth, targetYear] = args;
+                    const check = targetMonth.toLowerCase() + ' ' + targetYear;
+                    // Check calendar headers
+                    const headers = document.querySelectorAll(
+                        '.calendar-header, .month-name, [class*="calendar"] [class*="month"], ' +
+                        '[class*="datepicker"] [class*="header"], th[class*="month"], ' +
+                        '.DayPicker-Caption, [class*="CalendarMonth"]'
+                    );
+                    for (const h of headers) {
+                        const t = (h.textContent || '').toLowerCase();
+                        if (t.includes(targetMonth.toLowerCase()) && t.includes(targetYear)) {
+                            return true;
+                        }
+                    }
+                    // Check any element containing month+year text
+                    const all = document.body.innerText.toLowerCase();
+                    return all.includes(check);
+                }""", [target_month, target_year])
+
+                if found:
+                    break
+
+                # Click next month button
+                clicked = await page.evaluate("""() => {
+                    const btns = document.querySelectorAll(
+                        'button[aria-label*="next"], button[aria-label*="Next"], ' +
+                        '.next-month, [class*="next"], .calendar-forward, ' +
+                        '[data-testid*="next"], .DayPicker-NavButton--next'
+                    );
+                    for (const b of btns) {
+                        if (b.offsetHeight > 0) { b.click(); return true; }
+                    }
+                    return false;
+                }""")
+                if not clicked:
+                    break
+                await asyncio.sleep(0.5)
+
+            # Click the target day
+            clicked = await page.evaluate("""(args) => {
+                const [targetMonth, targetYear, day] = args;
+                // Try finding day cells with the target number
+                const cells = document.querySelectorAll(
+                    'td[data-day], button[data-day], .calendar-day, ' +
+                    '[class*="CalendarDay"], [class*="day"], ' +
+                    '[role="gridcell"], td button, .DayPicker-Day'
+                );
+                for (const c of cells) {
+                    const dayText = (c.getAttribute('data-day') || c.textContent || '').trim();
+                    if (dayText === day && c.offsetHeight > 0 && !c.classList.contains('disabled')) {
+                        c.click();
+                        return true;
+                    }
+                }
+                return false;
+            }""", [target_month, target_year, target_day])
+
+            if clicked:
+                logger.info("Etihad: selected departure date %s", dt.strftime("%Y-%m-%d"))
+                await asyncio.sleep(1.0)
+                return True
+            else:
+                logger.warning("Etihad: could not click day %s in calendar", target_day)
+                return False
+
+        except Exception as e:
+            logger.warning("Etihad: date fill error: %s", e)
+            return False
 
     async def _fill_airport(self, page, selector: str, iata: str) -> bool:
         """Fill an airport typeahead field and select first match."""
@@ -445,11 +657,13 @@ class EtihadConnectorClient:
                 if price <= 0:
                     continue
 
-                # API returns round-trip prices; estimate one-way as ~55%
-                one_way_price = round(price * 0.55, 2)
+                if req.return_from:
+                    use_price = price  # full round-trip price
+                else:
+                    use_price = round(price * 0.55, 2)  # estimate one-way
 
                 offer = self._build_offer(
-                    req, one_way_price, currency, dt, info
+                    req, use_price, currency, dt, info
                 )
                 if offer:
                     offers.append(offer)
@@ -496,13 +710,32 @@ class EtihadConnectorClient:
 
         booking_url = self._booking_url(req)
 
+        inbound = None
+        if req.return_from:
+            try:
+                rdt = req.return_from if isinstance(req.return_from, datetime) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+            except (ValueError, TypeError):
+                rdt = dep_dt
+            ib_seg = FlightSegment(
+                airline="EY",
+                airline_name="Etihad Airways",
+                flight_no="EY",
+                origin=req.destination,
+                destination=req.origin,
+                departure=rdt if isinstance(rdt, datetime) else datetime(rdt.year, rdt.month, rdt.day),
+                arrival=rdt if isinstance(rdt, datetime) else datetime(rdt.year, rdt.month, rdt.day),
+                duration_seconds=0,
+                cabin_class="economy",
+            )
+            inbound = FlightRoute(segments=[ib_seg], total_duration_seconds=0, stopovers=0)
+
         return FlightOffer(
-            id=f"ey_{offer_id}",
+            id=f"ey_{'rt_' if req.return_from else ''}{offer_id}",
             price=price,
             currency=currency,
             price_formatted=f"{price:,.0f} {currency}",
             outbound=route,
-            inbound=None,
+            inbound=inbound,
             airlines=["Etihad Airways"],
             owner_airline="EY",
             booking_url=booking_url,
@@ -530,17 +763,25 @@ class EtihadConnectorClient:
         adults = req.adults or 1
         children = req.children or 0
         infants = req.infants or 0
-        return (
+        trip = "return" if req.return_from else "oneway"
+        url = (
             f"https://www.etihad.com/en/book/flights"
             f"?from={req.origin}&to={req.destination}"
             f"&departdate={date_str}"
             f"&adult={adults}&child={children}&infant={infants}"
-            f"&class=Economy&trip=oneway"
+            f"&class=Economy&trip={trip}"
         )
+        if req.return_from:
+            try:
+                rdt = req.return_from if hasattr(req.return_from, 'strftime') else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                url += f"&returndate={rdt.strftime('%d-%m-%Y')}"
+            except (ValueError, TypeError):
+                pass
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(
-            f"etihad{req.origin}{req.destination}{req.date_from}".encode()
+            f"etihad{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{search_hash}",

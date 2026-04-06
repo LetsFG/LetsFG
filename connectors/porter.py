@@ -25,13 +25,14 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
+from .browser import find_chrome, proxy_chrome_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ _CHROME_FLAGS = [
     "--force-color-profile=srgb",
     "--metrics-recording-only",
     "--no-first-run",
+    *proxy_chrome_args(),
     "--password-store=basic",
     "--no-service-autorun",
     "--disable-search-engine-choice-screen",
@@ -96,7 +98,7 @@ async def _get_browser():
         if _browser and _browser.is_connected():
             return _browser
 
-        from connectors.browser import find_chrome
+        from .browser import find_chrome
 
         chrome = find_chrome()
         user_data = os.path.join(
@@ -146,7 +148,8 @@ class PorterConnectorClient:
     _RESULTS_URL_TPL = (
         "https://www.flyporter.com/en/flight/tickets/Select_BAF"
         "?departStation={origin}&destination={dest}&depDate={date}"
-        "&paxADT=1&paxCHD=0&paxINF=0&trpType=OneWay&fareClass=R&bookWithPoints=0"
+        "&paxADT=1&paxCHD=0&paxINF=0&trpType={trip_type}&fareClass=R&bookWithPoints=0"
+        "{ret_param}"
     )
 
     def __init__(self, timeout: float = 60.0):
@@ -162,16 +165,24 @@ class PorterConnectorClient:
         page = context.pages[0] if context.pages else await context.new_page()
 
         try:
+            trip_type = "RoundTrip" if req.return_from else "OneWay"
+            ret_param = ""
+            if req.return_from:
+                ret_date = req.return_from.strftime("%Y-%m-%d") if hasattr(req.return_from, 'strftime') else str(req.return_from)
+                ret_param = f"&retDate={ret_date}"
             results_url = self._RESULTS_URL_TPL.format(
                 origin=req.origin,
                 dest=req.destination,
                 date=req.date_from.strftime("%Y-%m-%d"),
+                trip_type=trip_type,
+                ret_param=ret_param,
             )
             logger.info(
                 "Porter: searching %s→%s on %s",
                 req.origin, req.destination, req.date_from.strftime("%Y-%m-%d"),
             )
 
+            await auto_block_if_proxied(page)
             try:
                 await page.goto(results_url, wait_until="commit", timeout=15000)
             except Exception:
@@ -221,8 +232,18 @@ class PorterConnectorClient:
         try:
             flight_data = await page.evaluate("""() => {
                 const results = [];
+                // Detect section headings to classify flights by direction
+                let currentSection = 'outbound';
+                const allElements = document.querySelectorAll('li, h2, h3, [class*="heading"], [class*="section"]');
+                
                 const items = document.querySelectorAll('li');
                 for (const item of items) {
+                    // Check for section labels in parent/preceding elements
+                    const parentText = (item.closest('[class*="section"]') || item.parentElement || {}).textContent || '';
+                    if (/return|inbound/i.test(parentText) && !/depart|outbound/i.test(parentText.substring(0, 50))) {
+                        currentSection = 'inbound';
+                    }
+                    
                     const headings = item.querySelectorAll('h4');
                     let dep = null, arr = null;
                     for (const h of headings) {
@@ -263,7 +284,7 @@ class PorterConnectorClient:
                     }
 
                     if (fares.length > 0) {
-                        results.push({ dep, arr, flightNum, duration, nonstop: isNonstop, fares });
+                        results.push({ dep, arr, flightNum, duration, nonstop: isNonstop, fares, section: currentSection });
                     }
                 }
                 return results;
@@ -277,11 +298,18 @@ class PorterConnectorClient:
 
             booking_url = self._build_booking_url(req)
             dep_date = req.date_from.strftime("%Y-%m-%d")
+            ret_date = None
+            if req.return_from:
+                ret_date = req.return_from.strftime("%Y-%m-%d") if hasattr(req.return_from, 'strftime') else str(req.return_from)
             offers: list[FlightOffer] = []
+            ob_flights = []
+            ib_flights = []
 
             for f in flight_data:
-                dep_time = self._parse_time(f.get("dep", ""), dep_date)
-                arr_time = self._parse_time(f.get("arr", ""), dep_date)
+                section = f.get("section", "outbound")
+                use_date = ret_date if (section == "inbound" and ret_date) else dep_date
+                dep_time = self._parse_time(f.get("dep", ""), use_date)
+                arr_time = self._parse_time(f.get("arr", ""), use_date)
                 dur_min = 0
                 dur_match = re.search(r"(\d+)\s*min", f.get("duration", ""))
                 if dur_match:
@@ -294,12 +322,14 @@ class PorterConnectorClient:
                 nonstop = f.get("nonstop", True)
                 dur_sec = dur_min * 60
 
+                seg_origin = req.destination if section == "inbound" else req.origin
+                seg_dest = req.origin if section == "inbound" else req.destination
                 seg = FlightSegment(
                     airline="PD",
                     airline_name="Porter Airlines",
                     flight_no=flight_num,
-                    origin=req.origin,
-                    destination=req.destination,
+                    origin=seg_origin,
+                    destination=seg_dest,
                     departure=dep_time,
                     arrival=arr_time,
                     duration_seconds=dur_sec,
@@ -316,11 +346,36 @@ class PorterConnectorClient:
                     offer_id = hashlib.md5(
                         f"PD-{flight_num}-{dep_time}-{cat}-{price}".encode()
                     ).hexdigest()[:12]
+                    entry = {"route": route, "price": price, "cat": cat, "offer_id": offer_id}
+                    if section == "inbound":
+                        ib_flights.append(entry)
+                    else:
+                        ob_flights.append(entry)
+
+            # Build offers: pair OB x cheapest IB for RT, or emit OW
+            if req.return_from and ob_flights and ib_flights:
+                cheapest_ib = min(ib_flights, key=lambda x: x["price"])
+                for ob in ob_flights:
                     offers.append(FlightOffer(
-                        id=offer_id,
-                        price=float(price),
+                        id=f"pd_rt_{ob['offer_id']}",
+                        price=float(ob["price"] + cheapest_ib["price"]),
                         currency="CAD",
-                        outbound=route,
+                        outbound=ob["route"],
+                        inbound=cheapest_ib["route"],
+                        airlines=["PD"],
+                        owner_airline="PD",
+                        source="porter_scraper",
+                        source_tier="protocol",
+                        is_locked=False,
+                        booking_url=booking_url,
+                    ))
+            else:
+                for entry in (ob_flights or ib_flights):
+                    offers.append(FlightOffer(
+                        id=entry["offer_id"],
+                        price=float(entry["price"]),
+                        currency="CAD",
+                        outbound=entry["route"],
                         airlines=["PD"],
                         owner_airline="PD",
                         source="porter_scraper",
@@ -350,7 +405,7 @@ class PorterConnectorClient:
     def _build_response(self, offers: list[FlightOffer], req: FlightSearchRequest, elapsed: float) -> FlightSearchResponse:
         offers.sort(key=lambda o: o.price)
         logger.info("Porter %s→%s returned %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
-        h = hashlib.md5(f"porter{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
+        h = hashlib.md5(f"porter{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}", origin=req.origin, destination=req.destination,
             currency=req.currency, offers=offers, total_results=len(offers),
@@ -359,13 +414,17 @@ class PorterConnectorClient:
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
         dep = req.date_from.strftime("%Y-%m-%d")
-        return (
+        url = (
             f"https://www.flyporter.com/en/flight-results?from={req.origin}"
-            f"&to={req.destination}&departure={dep}&adults={req.adults}&tripType=oneway"
+            f"&to={req.destination}&departure={dep}&adults={req.adults}&tripType={'roundtrip' if req.return_from else 'oneway'}"
         )
+        if req.return_from:
+            ret = req.return_from.strftime("%Y-%m-%d") if hasattr(req.return_from, 'strftime') else str(req.return_from)
+            url += f"&return={ret}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
-        h = hashlib.md5(f"porter{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
+        h = hashlib.md5(f"porter{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}", origin=req.origin, destination=req.destination,
             currency=req.currency, offers=[], total_results=0,

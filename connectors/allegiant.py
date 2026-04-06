@@ -36,13 +36,14 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
+from .browser import auto_block_if_proxied
 logger = logging.getLogger(__name__)
 
 _VIEWPORTS = [
@@ -256,6 +257,7 @@ async def _ensure_warm_ctx(proxy: dict):
         # Warm up: load homepage to establish Cloudflare cookies in context
         logger.info("Allegiant: warming up Cloudflare cookies...")
         page = await _warm_ctx.new_page()
+        await auto_block_if_proxied(page)
         try:
             from playwright_stealth import stealth_async
             await stealth_async(page)
@@ -335,6 +337,7 @@ class AllegiantConnectorClient:
 
         # Fresh page per search — avoids Next.js SPA routing / Apollo cache issues
         page = await ctx.new_page()
+        await auto_block_if_proxied(page)
         try:
             from playwright_stealth import stealth_async
             await stealth_async(page)
@@ -418,18 +421,58 @@ class AllegiantConnectorClient:
         departing = flights_data.get("departing") or []
         if not isinstance(departing, list):
             departing = []
+        returning = flights_data.get("returning") or []
+        if not isinstance(returning, list):
+            returning = []
 
         booking_url = self._build_booking_url(req)
-        offers: list[FlightOffer] = []
+        is_rt = bool(req.return_from)
 
+        # Parse outbound offers
+        ob_offers: list[FlightOffer] = []
         for opt in departing:
             if not isinstance(opt, dict):
                 continue
             offer = self._parse_flight_option(opt, req, booking_url)
             if offer:
-                offers.append(offer)
+                ob_offers.append(offer)
 
-        return offers
+        # Parse inbound and build RT offers
+        if is_rt and returning:
+            ib_routes: list[tuple[FlightRoute, float]] = []
+            for opt in returning:
+                if not isinstance(opt, dict):
+                    continue
+                offer = self._parse_flight_option(opt, req, booking_url)
+                if offer and offer.outbound:
+                    ib_routes.append((offer.outbound, offer.price))
+
+            if ib_routes:
+                ib_routes.sort(key=lambda x: x[1])
+                cheapest_ib_route, cheapest_ib_price = ib_routes[0]
+                offers: list[FlightOffer] = []
+                for ob in ob_offers:
+                    total = round(ob.price + cheapest_ib_price, 2)
+                    key = f"{ob.id}_rt_{total}"
+                    offers.append(FlightOffer(
+                        id=f"g4_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                        price=total,
+                        currency="USD",
+                        price_formatted=f"${total:.2f}",
+                        outbound=ob.outbound,
+                        inbound=cheapest_ib_route,
+                        airlines=["Allegiant"],
+                        owner_airline="G4",
+                        booking_url=booking_url,
+                        is_locked=False,
+                        source="allegiant_direct",
+                        source_tier="free",
+                    ))
+                # RT + OW for combo engine
+                offers.extend(ob_offers)
+                return offers
+
+        return ob_offers
 
     def _parse_flight_option(
         self, opt: dict, req: FlightSearchRequest, booking_url: str
@@ -521,16 +564,23 @@ class AllegiantConnectorClient:
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
         dep = req.date_from.strftime("%Y-%m-%d")
-        return (
+        is_rt = bool(req.return_from)
+        url = (
             f"https://www.allegiantair.com/booking/flights"
-            f"?tt=ONEWAY&o={req.origin}&d={req.destination}"
+            f"?tt={'ROUNDTRIP' if is_rt else 'ONEWAY'}&o={req.origin}&d={req.destination}"
             f"&ta={req.adults}&tc=0&tis=0&til=0"
-            f"&ds={dep}&de=&c=1&h=1"
+            f"&ds={dep}"
         )
+        if is_rt:
+            url += f"&de={req.return_from.strftime('%Y-%m-%d')}"
+        else:
+            url += "&de="
+        url += "&c=1&h=1"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(
-            f"allegiant{req.origin}{req.destination}{req.date_from}".encode()
+            f"allegiant{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",
@@ -550,7 +600,7 @@ class AllegiantConnectorClient:
             req.origin, req.destination, len(offers), elapsed,
         )
         h = hashlib.md5(
-            f"allegiant{req.origin}{req.destination}{req.date_from}".encode()
+            f"allegiant{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",

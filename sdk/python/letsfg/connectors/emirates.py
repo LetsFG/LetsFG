@@ -251,16 +251,17 @@ class EmiratesConnectorClient:
             await _dismiss_overlays(page)
             await asyncio.sleep(0.5)
 
-            # Step 2: Click "One way"
-            await page.evaluate("""() => {
-                const btns = document.querySelectorAll('button');
-                for (const b of btns) {
-                    if (b.textContent.trim() === 'One way' && b.offsetHeight > 0) {
-                        b.click(); return;
+            # Step 2: Click "One way" (only for one-way searches; RT is the default)
+            if not req.return_from:
+                await page.evaluate("""() => {
+                    const btns = document.querySelectorAll('button');
+                    for (const b of btns) {
+                        if (b.textContent.trim() === 'One way' && b.offsetHeight > 0) {
+                            b.click(); return;
+                        }
                     }
-                }
-            }""")
-            await asyncio.sleep(1.0)
+                }""")
+                await asyncio.sleep(1.0)
 
             # Step 3: Fill airport fields
             ok = await self._fill_airports(page, req.origin, req.destination)
@@ -273,6 +274,12 @@ class EmiratesConnectorClient:
             if not ok:
                 logger.warning("Emirates: date selection failed")
                 return self._empty(req)
+
+            # Step 4b: Fill return date if round-trip
+            if req.return_from:
+                ok = await self._fill_return_date(page, req)
+                if not ok:
+                    logger.warning("Emirates: return date selection failed, continuing anyway")
 
             # Step 5: Click "Search flights"
             await page.evaluate("""() => {
@@ -324,6 +331,27 @@ class EmiratesConnectorClient:
             for f in flights:
                 offer = self._build_offer(f, req)
                 if offer:
+                    # For RT: build inbound placeholder, scraped prices are RT total
+                    if req.return_from:
+                        try:
+                            rdt = req.return_from if isinstance(req.return_from, (datetime, date)) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                            if not isinstance(rdt, datetime):
+                                rdt = datetime(rdt.year, rdt.month, rdt.day)
+                        except (ValueError, TypeError):
+                            rdt = offer.outbound.segments[0].departure
+                        ib_seg = FlightSegment(
+                            airline="EK",
+                            airline_name="Emirates",
+                            flight_no="EK",
+                            origin=req.destination,
+                            destination=req.origin,
+                            departure=rdt,
+                            arrival=rdt,
+                            duration_seconds=0,
+                            cabin_class="economy",
+                        )
+                        offer.inbound = FlightRoute(segments=[ib_seg], total_duration_seconds=0, stopovers=0)
+                        offer.id = offer.id.replace("ek_", "ek_rt_")
                     offers.append(offer)
 
             offers.sort(key=lambda o: o.price)
@@ -647,6 +675,81 @@ class EmiratesConnectorClient:
 
         except Exception as e:
             logger.warning("Emirates: date selection error: %s", e)
+            return False
+
+    async def _fill_return_date(self, page, req: FlightSearchRequest) -> bool:
+        """Fill the return date field for round-trip searches."""
+        try:
+            dt = req.return_from if isinstance(req.return_from, (datetime, date)) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return False
+
+        target_month_name = dt.strftime("%B")
+        target_year = str(dt.year)
+        target_day = str(dt.day)
+        date_iso = dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt)
+
+        try:
+            # Click the return date input
+            await page.evaluate("""() => {
+                const inp = document.querySelector('#date-input1, #endDate, [data-ref="date-input-return"]');
+                if (inp) { inp.focus(); inp.click(); }
+            }""")
+            await asyncio.sleep(2.0)
+
+            # Navigate calendar to target month
+            for _ in range(18):
+                visible_months = await page.evaluate(r"""() => {
+                    let caps = [...document.querySelectorAll('.CalendarMonth_caption strong')].map(c => c.textContent);
+                    if (caps.length > 0) return caps.filter(Boolean);
+                    const all = document.querySelectorAll('strong, h2, h3, span');
+                    return [...all].map(e => e.textContent).filter(t => /^[A-Z][a-z]+ \d{4}$/.test(t?.trim()));
+                }""")
+                found = any(target_month_name in (vm or "") and target_year in (vm or "") for vm in (visible_months or []))
+                if found:
+                    break
+                await page.evaluate("""() => {
+                    const selectors = ['button[aria-label*="forward"]', 'button[aria-label*="next"]',
+                        '.DayPickerNavigation_button:last-of-type', '[class*="nav-next"]'];
+                    for (const s of selectors) {
+                        const btn = document.querySelector(s);
+                        if (btn && btn.offsetHeight > 0) { btn.click(); return true; }
+                    }
+                    return false;
+                }""")
+                await asyncio.sleep(0.5)
+
+            # Click the target day
+            clicked = await page.evaluate("""(args) => {
+                const [targetDay, targetMonthName, dateIso] = args;
+                // aria-label approach
+                const labels = document.querySelectorAll('td[aria-label], button[aria-label]');
+                for (const el of labels) {
+                    const lbl = el.getAttribute('aria-label') || '';
+                    if (lbl.includes(dateIso) || (lbl.includes(targetDay) && lbl.includes(targetMonthName))) {
+                        el.click(); return true;
+                    }
+                }
+                // Walk calendar cells
+                const cells = document.querySelectorAll('td, button');
+                for (const c of cells) {
+                    if (c.textContent.trim() === targetDay) {
+                        const parent = (c.closest('table, [class*="month"]') || c.parentElement || {}).textContent || '';
+                        if (parent.includes(targetMonthName)) {
+                            c.click(); return true;
+                        }
+                    }
+                }
+                return false;
+            }""", [target_day, target_month_name, date_iso])
+
+            await asyncio.sleep(1.5)
+            if clicked:
+                logger.info("Emirates: return date selected → %s", date_iso)
+            return bool(clicked)
+
+        except Exception as e:
+            logger.warning("Emirates: return date error: %s", e)
             return False
 
     # ------------------------------------------------------------------

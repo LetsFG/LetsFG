@@ -256,6 +256,14 @@ class QatarConnectorClient:
                 "ignoreInvalidPromoCode": True,
                 "passengers": passengers,
             }
+            if req.return_from:
+                ret_dt = _to_datetime(req.return_from)
+                payload["itineraries"].append({
+                    "origin": req.destination,
+                    "destination": req.origin,
+                    "departureDate": ret_dt.strftime("%Y-%m-%d"),
+                    "isRequested": True,
+                })
 
             api_result = await page.evaluate(
                 """async ([url, payload]) => {
@@ -346,10 +354,16 @@ class QatarConnectorClient:
         self, data: dict, req: FlightSearchRequest
     ) -> list[FlightOffer]:
         """Parse /dapi/public/bff/web/flight-search/flight-offers response."""
-        offers: list[FlightOffer] = []
         flight_offers = data.get("flightOffers", [])
         if not isinstance(flight_offers, list):
-            return offers
+            return []
+
+        is_rt = bool(req.return_from)
+        booking_url = self._user_booking_url(req)
+
+        # Parse all flight offer options
+        ob_offers: list[FlightOffer] = []
+        ib_routes: list[tuple[FlightRoute, float, str]] = []  # (route, price, currency)
 
         for fo in flight_offers:
             if not isinstance(fo, dict):
@@ -426,31 +440,63 @@ class QatarConnectorClient:
             if not best_price or best_price <= 0:
                 continue
 
-            offer_key = (
-                f"qr_{req.origin}_{req.destination}"
-                f"_{segments[0].departure.isoformat()}_{best_price}"
-            )
-            offer_id = hashlib.md5(offer_key.encode()).hexdigest()[:12]
-            all_airlines = list({s.airline for s in segments})
+            # Determine direction by first segment origin
+            first_origin = segments[0].origin
+            is_inbound = is_rt and first_origin == req.destination
 
-            offers.append(
-                FlightOffer(
-                    id=f"qr_{offer_id}",
-                    price=round(best_price, 2),
-                    currency=best_currency,
-                    outbound=route,
-                    airlines=[
-                        ("Qatar Airways" if a == "QR" else a) for a in all_airlines
-                    ],
+            if is_inbound:
+                ib_routes.append((route, round(best_price, 2), best_currency))
+            else:
+                offer_key = (
+                    f"qr_{req.origin}_{req.destination}"
+                    f"_{segments[0].departure.isoformat()}_{best_price}"
+                )
+                offer_id = hashlib.md5(offer_key.encode()).hexdigest()[:12]
+                all_airlines = list({s.airline for s in segments})
+
+                ob_offers.append(
+                    FlightOffer(
+                        id=f"qr_{offer_id}",
+                        price=round(best_price, 2),
+                        currency=best_currency,
+                        outbound=route,
+                        inbound=None,
+                        airlines=[
+                            ("Qatar Airways" if a == "QR" else a) for a in all_airlines
+                        ],
+                        owner_airline="QR",
+                        booking_url=booking_url,
+                        is_locked=False,
+                        source="qatar_direct",
+                        source_tier="free",
+                    )
+                )
+
+        # Build RT offers pairing OB × cheapest IB
+        if is_rt and ib_routes and ob_offers:
+            ib_routes.sort(key=lambda x: x[1])
+            cheapest_ib_route, cheapest_ib_price, _ = ib_routes[0]
+            rt_offers: list[FlightOffer] = []
+            for ob in ob_offers:
+                total = round(ob.price + cheapest_ib_price, 2)
+                key = f"{ob.id}_rt_{total}"
+                rt_offers.append(FlightOffer(
+                    id=f"qr_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=total,
+                    currency=ob.currency,
+                    outbound=ob.outbound,
+                    inbound=cheapest_ib_route,
+                    airlines=ob.airlines,
                     owner_airline="QR",
-                    booking_url=self._user_booking_url(req),
+                    booking_url=booking_url,
                     is_locked=False,
                     source="qatar_direct",
                     source_tier="free",
-                )
-            )
+                ))
+            # RT + OW for combo engine
+            return rt_offers + ob_offers
 
-        return offers
+        return ob_offers
 
     # ------------------------------------------------------------------
     # Helpers
@@ -459,13 +505,18 @@ class QatarConnectorClient:
     @staticmethod
     def _user_booking_url(req: FlightSearchRequest) -> str:
         dt = _to_datetime(req.date_from)
-        return (
+        is_rt = bool(req.return_from)
+        url = (
             f"https://www.qatarairways.com/en/booking.html"
             f"?from={req.origin}&to={req.destination}"
             f"&departing={dt.strftime('%Y-%m-%d')}"
             f"&adults={req.adults or 1}"
-            f"&tripType=O&bookingClass=E"
+            f"&tripType={'R' if is_rt else 'O'}&bookingClass=E"
         )
+        if is_rt:
+            ret_dt = _to_datetime(req.return_from)
+            url += f"&returning={ret_dt.strftime('%Y-%m-%d')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(

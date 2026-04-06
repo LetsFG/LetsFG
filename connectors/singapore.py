@@ -37,14 +37,14 @@ import time
 from datetime import datetime, date, timedelta
 from typing import Optional
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
-from connectors.browser import find_chrome, stealth_popen_kwargs, _launched_procs
+from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,7 @@ async def _get_context():
                 f"--remote-debugging-port={_DEBUG_PORT}",
                 f"--user-data-dir={_USER_DATA_DIR}",
                 "--no-first-run",
+                *proxy_chrome_args(),
                 "--no-default-browser-check",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-http2",
@@ -203,6 +204,7 @@ class SingaporeConnectorClient:
 
         context = await _get_context()
         page = await context.new_page()
+        await auto_block_if_proxied(page)
 
         akamai_blocked = False
 
@@ -243,21 +245,36 @@ class SingaporeConnectorClient:
                 logger.warning("Singapore: destination fill failed")
                 return self._empty(req)
 
-            # Step 4: Open calendar & set one-way
+            # Step 4: Open calendar & set trip type
             await page.locator("#departDate1").click()
             await asyncio.sleep(2.0)
 
-            await page.evaluate("""() => {
-                const ow = document.getElementById('oneway_id');
-                if (ow && !ow.checked) ow.click();
-            }""")
+            if not req.return_from:
+                # One-way: click the one-way radio
+                await page.evaluate("""() => {
+                    const ow = document.getElementById('oneway_id');
+                    if (ow && !ow.checked) ow.click();
+                }""")
+            else:
+                # Round-trip: ensure round-trip radio is selected (default)
+                await page.evaluate("""() => {
+                    const rt = document.getElementById('roundtrip_id');
+                    if (rt && !rt.checked) rt.click();
+                }""")
             await asyncio.sleep(1.0)
 
-            # Step 5: Navigate calendar & pick date
+            # Step 5: Navigate calendar & pick outbound date
             ok = await self._fill_date(page, req)
             if not ok:
                 logger.warning("Singapore: date selection failed")
                 return self._empty(req)
+
+            # Step 5b: Fill return date if round-trip
+            if req.return_from:
+                ok = await self._fill_return_date(page, req)
+                if not ok:
+                    logger.warning("Singapore: return date selection failed")
+                    return self._empty(req)
 
             # Close calendar
             await page.evaluate("""() => {
@@ -332,10 +349,48 @@ class SingaporeConnectorClient:
             flights = await self._scrape_results(page, req)
 
             offers = []
-            for f in flights:
-                offer = self._build_offer(f, req)
-                if offer:
-                    offers.append(offer)
+
+            if req.return_from and flights:
+                # Classify flights into outbound vs inbound by origin
+                ob_flights = []
+                ib_flights = []
+                for f in flights:
+                    f_origin = (f.get("origin") or "").upper()
+                    if f_origin == req.origin.upper():
+                        ob_flights.append(f)
+                    elif f_origin == req.destination.upper():
+                        ib_flights.append(f)
+                    else:
+                        ob_flights.append(f)  # default to outbound
+
+                if ob_flights and ib_flights:
+                    # Find cheapest inbound for RT pairing
+                    cheapest_ib = min(ib_flights, key=lambda f: f.get("price", float("inf")))
+                    ib_offer = self._build_offer(cheapest_ib, req, direction="inbound")
+                    ib_route = ib_offer.outbound if ib_offer else None
+                    ib_price = cheapest_ib.get("price", 0)
+
+                    for f in ob_flights:
+                        ob_offer = self._build_offer(f, req, direction="outbound")
+                        if ob_offer and ib_route:
+                            rt_price = f.get("price", 0) + ib_price
+                            ob_offer.price = rt_price
+                            ob_offer.currency = ob_offer.currency
+                            ob_offer.price_formatted = f"{ob_offer.currency} {rt_price:,.2f}"
+                            ob_offer.inbound = ib_route
+                            ob_offer.id = ob_offer.id.replace("sq_", "sq_rt_")
+                            offers.append(ob_offer)
+                else:
+                    # Only one direction found — emit as one-way for combo engine
+                    for f in flights:
+                        offer = self._build_offer(f, req)
+                        if offer:
+                            offers.append(offer)
+            else:
+                for f in flights:
+                    offer = self._build_offer(f, req)
+                    if offer:
+                        offers.append(offer)
 
             offers.sort(key=lambda o: o.price)
 
@@ -346,7 +401,7 @@ class SingaporeConnectorClient:
             )
 
             search_hash = hashlib.md5(
-                f"singapore{req.origin}{req.destination}{req.date_from}".encode()
+                f"singapore{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
             ).hexdigest()[:12]
 
             currency = offers[0].currency if offers else "SGD"
@@ -533,6 +588,52 @@ class SingaporeConnectorClient:
             logger.warning("Singapore: date selection error: %s", e)
             return False
 
+    async def _fill_return_date(self, page, req: FlightSearchRequest) -> bool:
+        """Navigate calendar and pick the return date for round-trip."""
+        try:
+            dt = req.return_from if isinstance(req.return_from, (datetime, date)) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            logger.warning("Singapore: invalid return_from: %s", req.return_from)
+            return False
+
+        target_date_str = dt.strftime("%Y-%m-%d")
+
+        try:
+            # Navigate forward to reach target month
+            for _ in range(12):
+                found = await page.evaluate("""(dateStr) => {
+                    const day = document.querySelector('li[date-data="' + dateStr + '"]');
+                    return day && !day.classList.contains('calendar_days--disabled');
+                }""", target_date_str)
+                if found:
+                    break
+                await page.evaluate("""() => {
+                    const next = document.querySelector('.calendar a.right');
+                    if (next) next.click();
+                }""")
+                await asyncio.sleep(0.5)
+
+            clicked = await page.evaluate("""(dateStr) => {
+                const day = document.querySelector('li[date-data="' + dateStr + '"]');
+                if (day && !day.classList.contains('calendar_days--disabled')) {
+                    day.click();
+                    return true;
+                }
+                return false;
+            }""", target_date_str)
+
+            if not clicked:
+                logger.warning("Singapore: could not click return date %s", target_date_str)
+                return False
+
+            await asyncio.sleep(1.0)
+            logger.info("Singapore: return date selected → %s", target_date_str)
+            return True
+
+        except Exception as e:
+            logger.warning("Singapore: return date selection error: %s", e)
+            return False
+
     # ------------------------------------------------------------------
     # DOM scraping
     # ------------------------------------------------------------------
@@ -654,10 +755,13 @@ class SingaporeConnectorClient:
     # Offer construction
     # ------------------------------------------------------------------
 
-    def _build_offer(self, flight: dict, req: FlightSearchRequest) -> Optional[FlightOffer]:
+    def _build_offer(self, flight: dict, req: FlightSearchRequest, direction: str = "outbound") -> Optional[FlightOffer]:
         """Build a FlightOffer from scraped flight data."""
         try:
-            dt = req.date_from if isinstance(req.date_from, (datetime, date)) else datetime.strptime(str(req.date_from), "%Y-%m-%d")
+            if direction == "inbound" and req.return_from:
+                dt = req.return_from if isinstance(req.return_from, (datetime, date)) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+            else:
+                dt = req.date_from if isinstance(req.date_from, (datetime, date)) else datetime.strptime(str(req.date_from), "%Y-%m-%d")
             dep_date = dt if isinstance(dt, date) and not isinstance(dt, datetime) else dt.date() if isinstance(dt, datetime) else dt
         except (ValueError, TypeError):
             dep_date = date.today()
@@ -737,17 +841,25 @@ class SingaporeConnectorClient:
             date_str = dt.strftime("%d%m%Y")  # SIA uses DDMMYYYY format
         except (ValueError, TypeError):
             date_str = ""
-        return (
+        trip_type = "R" if req.return_from else "O"
+        url = (
             f"https://www.singaporeair.com/en_UK/sg/plan-and-book/official-website-background/"
             f"?selectedOrigin={req.origin}&selectedDestination={req.destination}"
-            f"&selectedDate={date_str}&tripType=O&cabinClass=Y"
+            f"&selectedDate={date_str}&tripType={trip_type}&cabinClass=Y"
             f"&numOfAdults={req.adults or 1}&numOfChildren={req.children or 0}"
             f"&numOfInfants={req.infants or 0}"
         )
+        if req.return_from:
+            try:
+                rdt = req.return_from if isinstance(req.return_from, (datetime, date)) else datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                url += f"&selectedReturnDate={rdt.strftime('%d%m%Y')}"
+            except (ValueError, TypeError):
+                pass
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(
-            f"singapore{req.origin}{req.destination}{req.date_from}".encode()
+            f"singapore{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{search_hash}",
