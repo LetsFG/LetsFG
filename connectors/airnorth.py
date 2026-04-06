@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 
 from curl_cffi import requests as creq
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
@@ -101,7 +101,7 @@ class AirnorthConnectorClient:
         )
 
         h = hashlib.md5(
-            f"airnorth{req.origin}{req.destination}{req.date_from}".encode()
+            f"airnorth{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",
@@ -136,10 +136,11 @@ class AirnorthConnectorClient:
             # Step 2: POST search form
             dep_date = datetime.strptime(str(req.date_from), "%Y-%m-%d")
             date_str = dep_date.strftime("%d %b %Y")  # e.g. "20 Apr 2026"
+            is_rt = bool(req.return_from)
 
             form_data = {
                 "__RequestVerificationToken": token,
-                "SearchViewModel.TripType": "One-Way",
+                "SearchViewModel.TripType": "Return" if is_rt else "One-Way",
                 "SearchViewModel.FlightSearches[0].Origin": req.origin,
                 "SearchViewModel.FlightSearches[0].Destination": req.destination,
                 "SearchViewModel.FlightSearches[0].DepartureDate": date_str,
@@ -148,6 +149,11 @@ class AirnorthConnectorClient:
                 "SearchViewModel.InfantCount": str(req.infants or 0),
                 "assist": "No",
             }
+            if is_rt:
+                ret_date = datetime.strptime(str(req.return_from), "%Y-%m-%d")
+                form_data["SearchViewModel.FlightSearches[1].Origin"] = req.destination
+                form_data["SearchViewModel.FlightSearches[1].Destination"] = req.origin
+                form_data["SearchViewModel.FlightSearches[1].DepartureDate"] = ret_date.strftime("%d %b %Y")
 
             r2 = sess.post(
                 _SEARCH_URL,
@@ -178,17 +184,77 @@ class AirnorthConnectorClient:
         self, html: str, req: FlightSearchRequest
     ) -> list[FlightOffer]:
         """Parse flight-strip blocks → FlightOffer list."""
+        is_rt = bool(req.return_from)
+
+        # For RT, HTML has two segment panels; split on segment/panel boundary
+        # Look for common .NET B2C segment markers
+        segment_parts = re.split(
+            r'<div[^>]*(?:id=["\']?(?:return|segment-?1|inbound)|'
+            r'data-segment=["\']?1|'
+            r'class=["\'][^"]*return-flights)',
+            html,
+            maxsplit=1,
+        )
+        ob_html = segment_parts[0]
+        ib_html = segment_parts[1] if is_rt and len(segment_parts) > 1 else ""
+
+        # Parse outbound strips
+        dep_date = datetime.strptime(str(req.date_from), "%Y-%m-%d")
+        ob_offers = self._extract_strips(ob_html, req, dep_date)
+
+        if is_rt and ib_html:
+            # Parse inbound strips
+            ret_date = datetime.strptime(str(req.return_from), "%Y-%m-%d")
+            # Create a temporary request with swapped origin/dest for parsing
+            ib_req = FlightSearchRequest(
+                origin=req.destination,
+                destination=req.origin,
+                date_from=req.return_from,
+                adults=req.adults,
+                children=req.children,
+                infants=req.infants,
+            )
+            ib_offers = self._extract_strips(ib_html, ib_req, ret_date)
+
+            if ib_offers:
+                # Pair outbound × cheapest inbound
+                ib_offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+                cheapest_ib = ib_offers[0]
+                rt_offers: list[FlightOffer] = []
+                for ob in ob_offers:
+                    total = round(ob.price + cheapest_ib.price, 2)
+                    key = f"{ob.id}_rt_{total}"
+                    rt_offers.append(FlightOffer(
+                        id=f"tl_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                        price=total,
+                        currency="AUD",
+                        price_formatted=f"A${total:.2f}",
+                        outbound=ob.outbound,
+                        inbound=cheapest_ib.outbound,
+                        airlines=["Airnorth"],
+                        owner_airline="TL",
+                        booking_url=ob.booking_url,
+                        is_locked=False,
+                        source="airnorth_direct",
+                        source_tier="free",
+                    ))
+                # RT offers + OW for combo engine
+                return rt_offers + ob_offers
+
+        return ob_offers
+
+    def _extract_strips(
+        self, html: str, req: FlightSearchRequest, dep_date: datetime
+    ) -> list[FlightOffer]:
+        """Parse flight-strip blocks from one HTML section."""
         offers: list[FlightOffer] = []
 
-        # Split on flight-strip boundaries
         strips = re.split(r'<div class="flight-strip">', html)
         if len(strips) < 2:
             logger.info("Airnorth: no flight-strip blocks found")
             return []
 
-        dep_date = datetime.strptime(str(req.date_from), "%Y-%m-%d")
-
-        for strip_html in strips[1:]:  # first element is before first strip
+        for strip_html in strips[1:]:
             flight_info = self._parse_strip(strip_html, req, dep_date)
             if flight_info:
                 offers.extend(flight_info)
@@ -364,7 +430,7 @@ class AirnorthConnectorClient:
     @staticmethod
     def _empty(req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(
-            f"airnorth{req.origin}{req.destination}{req.date_from}".encode()
+            f"airnorth{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",

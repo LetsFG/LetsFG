@@ -87,6 +87,7 @@ class PiaConnectorClient:
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
         dep_date = req.date_from.strftime("%d.%m.%Y")
+        is_rt = bool(req.return_from)
         params = {
             "depPort": req.origin,
             "arrPort": req.destination,
@@ -94,9 +95,11 @@ class PiaConnectorClient:
             "adult": str(req.adults),
             "child": str(req.children),
             "infant": str(req.infants),
-            "tripType": "ONE_WAY",
+            "tripType": "ROUND_TRIP" if is_rt else "ONE_WAY",
             "lang": "en",
         }
+        if is_rt:
+            params["returnDate"] = req.return_from.strftime("%d.%m.%Y")
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
@@ -129,8 +132,57 @@ class PiaConnectorClient:
 
     def _parse_html(self, html: str, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse flight cards from Crane IBE server-rendered HTML."""
-        offers: list[FlightOffer] = []
         booking_url = self._build_booking_url(req)
+        is_rt = bool(req.return_from)
+
+        # Split HTML into OB / IB sections by availability-flight-table
+        table_sections = re.split(r'<div[^>]*class="[^"]*availability-flight-table[^"]*"', html)
+        # table_sections[0] = before first table, [1] = outbound, [2] = inbound (if RT)
+        ob_html = table_sections[1] if len(table_sections) > 1 else html
+        ib_html = table_sections[2] if is_rt and len(table_sections) > 2 else ""
+
+        ob_offers = self._parse_flight_section(ob_html, req, booking_url)
+
+        if is_rt and ib_html:
+            ib_offers = self._parse_flight_section(ib_html, req, booking_url)
+            # Extract inbound routes with prices
+            ib_routes: list[tuple[FlightRoute, float]] = []
+            for ib in ib_offers:
+                if ib.outbound:
+                    ib_routes.append((ib.outbound, ib.price))
+
+            if ib_routes:
+                ib_routes.sort(key=lambda x: x[1])
+                cheapest_ib_route, cheapest_ib_price = ib_routes[0]
+                offers: list[FlightOffer] = []
+                for ob in ob_offers:
+                    total = round(ob.price + cheapest_ib_price, 2)
+                    key = f"{ob.id}_rt_{total}"
+                    offers.append(FlightOffer(
+                        id=f"pk_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                        price=total,
+                        currency=ob.currency,
+                        price_formatted=f"{total:,.2f} {ob.currency}",
+                        outbound=ob.outbound,
+                        inbound=cheapest_ib_route,
+                        airlines=ob.airlines,
+                        owner_airline=self.IATA,
+                        booking_url=booking_url,
+                        is_locked=False,
+                        source=self.SOURCE,
+                        source_tier="free",
+                    ))
+                # Also emit OW for combo engine
+                offers.extend(ob_offers)
+                return offers
+
+        return ob_offers
+
+    def _parse_flight_section(
+        self, section_html: str, req: FlightSearchRequest, booking_url: str
+    ) -> list[FlightOffer]:
+        """Parse one availability-flight-table section into offers."""
+        offers: list[FlightOffer] = []
 
         parts = re.split(r'<div[^>]*class="js-journey"', html)
 

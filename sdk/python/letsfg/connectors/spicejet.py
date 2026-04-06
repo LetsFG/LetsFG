@@ -201,6 +201,8 @@ class SpiceJetConnectorClient:
                 "srCitizen": 0,
             },
         }
+        if req.return_from:
+            body["returnDate"] = req.return_from.strftime("%Y-%m-%d")
 
         sess = cffi_requests.Session(impersonate=_IMPERSONATE, proxies=get_curl_cffi_proxies())
         try:
@@ -241,14 +243,57 @@ class SpiceJetConnectorClient:
         """Parse /api/v3/search/availability response into FlightOffer list."""
         booking_url = self._build_booking_url(req)
         offers: list[FlightOffer] = []
+        is_rt = bool(req.return_from)
 
         trips = data.get("data", {}).get("trips", [])
-        for trip in trips:
-            journeys = trip.get("journeysAvailable", [])
-            for journey in journeys:
+
+        # Parse outbound journeys (trips[0])
+        outbound_journeys: list[dict] = []
+        inbound_journeys: list[dict] = []
+        if trips:
+            outbound_journeys = trips[0].get("journeysAvailable", [])
+        if is_rt and len(trips) > 1:
+            inbound_journeys = trips[1].get("journeysAvailable", [])
+
+        # Parse all outbound offers
+        ob_offers: list[FlightOffer] = []
+        for journey in outbound_journeys:
+            offer = self._parse_journey(journey, req, booking_url)
+            if offer:
+                ob_offers.append(offer)
+
+        # Parse all inbound routes
+        ib_routes: list[tuple[FlightRoute, float]] = []
+        if inbound_journeys:
+            for journey in inbound_journeys:
                 offer = self._parse_journey(journey, req, booking_url)
-                if offer:
-                    offers.append(offer)
+                if offer and offer.outbound:
+                    ib_routes.append((offer.outbound, offer.price))
+
+        if is_rt and ib_routes:
+            # Pair each outbound with cheapest inbound for RT offers
+            ib_routes.sort(key=lambda x: x[1])
+            cheapest_ib_route, cheapest_ib_price = ib_routes[0]
+            for ob in ob_offers:
+                total = round(ob.price + cheapest_ib_price, 2)
+                key = f"{ob.id}_rt_{total}"
+                offers.append(FlightOffer(
+                    id=f"sg_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=total,
+                    currency=ob.currency,
+                    price_formatted=f"{total:.0f} {ob.currency}",
+                    outbound=ob.outbound,
+                    inbound=cheapest_ib_route,
+                    airlines=["SpiceJet"],
+                    owner_airline="SG",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="spicejet_direct_api",
+                    source_tier="protocol",
+                ))
+
+        # Always emit OW outbound for combo engine
+        offers.extend(ob_offers)
         return offers
 
     def _parse_journey(
@@ -403,11 +448,15 @@ class SpiceJetConnectorClient:
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
         dep = req.date_from.strftime("%Y-%m-%d")
-        return (
+        is_rt = bool(req.return_from)
+        url = (
             f"https://www.spicejet.com/search?from={req.origin}&to={req.destination}"
-            f"&tripType=1&departure={dep}&adult={req.adults}&child={req.children}"
+            f"&tripType={'2' if is_rt else '1'}&departure={dep}&adult={req.adults}&child={req.children}"
             f"&srCitizen=0&infant={req.infants}&currency=INR"
         )
+        if is_rt:
+            url += f"&return={req.return_from.strftime('%Y-%m-%d')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(f"spicejet{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()).hexdigest()[:12]

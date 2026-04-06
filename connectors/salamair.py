@@ -1,10 +1,10 @@
 """
-SalamAir direct API connector — pure httpx, no browser needed.
+SalamAir direct API connector — curl_cffi for TLS fingerprint bypass.
 
 SalamAir (IATA: OV) is an Omani low-cost carrier based in Muscat, operating
 60+ routes from Muscat to the Middle East, South Asia, Africa, and Europe.
 
-Strategy (httpx, no browser):
+Strategy (curl_cffi required — api.salamair.com fingerprints TLS):
   The booking.salamair.com React SPA calls a REST API at api.salamair.com.
   We replicate those exact calls:
     1. POST /api/session → get JWT session token (X-Session-Token header)
@@ -26,21 +26,23 @@ Response structure (per market date):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
 from datetime import datetime
 from typing import Optional
 
-import httpx
+from curl_cffi import requests as creq
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
+from .browser import get_curl_cffi_proxies
 
 logger = logging.getLogger(__name__)
 
@@ -62,51 +64,37 @@ _HEADERS = {
 
 
 class SalamAirConnectorClient:
-    """SalamAir scraper — httpx calls to api.salamair.com REST API."""
+    """SalamAir scraper — curl_cffi calls to api.salamair.com REST API."""
 
     def __init__(self, timeout: float = 20.0):
         self.timeout = timeout
-        self._http: Optional[httpx.AsyncClient] = None
-        self._token: Optional[str] = None
-
-    async def _client(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
-            self._http = httpx.AsyncClient(
-                timeout=self.timeout,
-                headers=_HEADERS,
-                follow_redirects=True,
-            )
-        return self._http
-
-    async def _ensure_token(self, client: httpx.AsyncClient) -> str:
-        """Create a session and cache the JWT token."""
-        if self._token:
-            return self._token
-        resp = await client.post(f"{_API_BASE}/api/session")
-        token = resp.headers.get("x-session-token", "")
-        if not token:
-            raise RuntimeError(f"SalamAir session failed: {resp.status_code}")
-        self._token = token
-        return token
 
     async def close(self):
-        if self._http and not self._http.is_closed:
-            await self._http.aclose()
-        self._token = None
+        pass
 
-    async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
-        t0 = time.monotonic()
-        client = await self._client()
+    def _search_sync(self, req: FlightSearchRequest) -> dict | None:
+        """Run session + search synchronously via curl_cffi."""
+        sess = creq.Session(impersonate="chrome131", proxies=get_curl_cffi_proxies())
+        hdrs = dict(_HEADERS)
+        to = int(self.timeout)
 
+        # 1. Get session token
         try:
-            token = await self._ensure_token(client)
+            resp = sess.post(f"{_API_BASE}/api/session", headers=hdrs, timeout=to)
         except Exception as e:
             logger.error("SalamAir session error: %s", e)
-            return self._empty(req)
+            return None
 
+        token = resp.headers.get("x-session-token", "")
+        if not token:
+            logger.warning("SalamAir session failed: %d", resp.status_code)
+            return None
+
+        # 2. Search flights
         date_str = req.date_from.strftime("%Y-%m-%d")
+        is_rt = bool(req.return_from)
         params = {
-            "TripType": "1",
+            "TripType": "2" if is_rt else "1",
             "OriginStationCode": req.origin,
             "DestinationStationCode": req.destination,
             "DepartureDate": date_str,
@@ -116,6 +104,8 @@ class SalamAirConnectorClient:
             "extraCount": "0",
             "days": "0",
         }
+        if is_rt:
+            params["ReturnDate"] = req.return_from.strftime("%Y-%m-%d")
         if req.currency and req.currency != "EUR":
             params["currencyCode"] = req.currency
 
@@ -123,26 +113,29 @@ class SalamAirConnectorClient:
         url = f"{_API_BASE}/api/flights?{qs}"
 
         try:
-            resp = await client.get(
-                url, headers={"X-Session-Token": token}
-            )
-        except httpx.TimeoutException:
-            logger.warning("SalamAir search timed out %s→%s", req.origin, req.destination)
-            return self._empty(req)
+            hdrs["X-Session-Token"] = token
+            resp = sess.get(url, headers=hdrs, timeout=to)
         except Exception as e:
             logger.error("SalamAir search error: %s", e)
-            return self._empty(req)
+            return None
 
         if resp.status_code != 200:
             logger.warning("SalamAir search %d: %s", resp.status_code, resp.text[:200])
-            # Token may have expired — clear for next call
-            self._token = None
-            return self._empty(req)
+            return None
 
         try:
-            data = resp.json()
+            return resp.json()
         except Exception:
             logger.warning("SalamAir non-JSON response")
+            return None
+
+    async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        t0 = time.monotonic()
+
+        data = await asyncio.get_event_loop().run_in_executor(
+            None, self._search_sync, req
+        )
+        if not data:
             return self._empty(req)
 
         offers = self._parse_trips(data, req)
@@ -156,7 +149,7 @@ class SalamAirConnectorClient:
         )
 
         search_hash = hashlib.md5(
-            f"salamair{req.origin}{req.destination}{req.date_from}".encode()
+            f"salamair{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
 
         return FlightSearchResponse(
@@ -172,20 +165,61 @@ class SalamAirConnectorClient:
 
     def _parse_trips(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
         offers: list[FlightOffer] = []
-        target_date = req.date_from.strftime("%Y-%m-%d")
+        trips = data.get("trips", [])
+        is_rt = bool(req.return_from)
 
-        for trip in data.get("trips", []):
-            currency = trip.get("currencyCode") or req.currency or "OMR"
-
-            for market in trip.get("markets", []):
+        # Parse outbound from trips[0]
+        ob_target = req.date_from.strftime("%Y-%m-%d")
+        ob_offers: list[FlightOffer] = []
+        if trips:
+            currency = trips[0].get("currencyCode") or req.currency or "OMR"
+            for market in trips[0].get("markets", []):
                 market_date = (market.get("date") or "")[:10]
-                if market_date != target_date:
+                if market_date != ob_target:
                     continue
-
                 for flight in market.get("flights") or []:
-                    flight_offers = self._parse_flight(flight, currency, req)
-                    offers.extend(flight_offers)
+                    ob_offers.extend(self._parse_flight(flight, currency, req))
 
+        # Parse inbound from trips[1] for RT
+        ib_routes: list[tuple[FlightRoute, float, str]] = []  # (route, price, currency)
+        if is_rt and len(trips) > 1:
+            ib_target = req.return_from.strftime("%Y-%m-%d")
+            currency = trips[1].get("currencyCode") or req.currency or "OMR"
+            for market in trips[1].get("markets", []):
+                market_date = (market.get("date") or "")[:10]
+                if market_date != ib_target:
+                    continue
+                for flight in market.get("flights") or []:
+                    ib_offers = self._parse_flight(flight, currency, req)
+                    for ib in ib_offers:
+                        if ib.outbound:
+                            ib_routes.append((ib.outbound, ib.price, ib.currency))
+
+        # Build RT offers: each outbound × cheapest inbound
+        if is_rt and ib_routes:
+            ib_routes.sort(key=lambda x: x[1])
+            cheapest_ib_route, cheapest_ib_price, _ = ib_routes[0]
+            for ob in ob_offers:
+                total = round(ob.price + cheapest_ib_price, 2)
+                key = f"{ob.id}_rt_{total}"
+                offers.append(FlightOffer(
+                    id=f"ov_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=total,
+                    currency=ob.currency,
+                    price_formatted=f"{total:.2f} {ob.currency}",
+                    outbound=ob.outbound,
+                    inbound=cheapest_ib_route,
+                    airlines=["SalamAir"],
+                    owner_airline="OV",
+                    availability_seats=ob.availability_seats,
+                    booking_url=self._booking_url(req),
+                    is_locked=False,
+                    source="salamair_direct",
+                    source_tier="free",
+                ))
+
+        # Always emit OW outbound for combo engine
+        offers.extend(ob_offers)
         return offers
 
     def _parse_flight(
@@ -335,16 +369,20 @@ class SalamAirConnectorClient:
     @staticmethod
     def _booking_url(req: FlightSearchRequest) -> str:
         d = req.date_from.strftime("%Y%m%d")
-        return (
-            f"{_BOOKING_ORIGIN}/en/search?tripType=oneway"
+        trip = "roundtrip" if req.return_from else "oneway"
+        url = (
+            f"{_BOOKING_ORIGIN}/en/search?tripType={trip}"
             f"&origin={req.origin}&destination={req.destination}"
             f"&departureDate={d}&adult={req.adults or 1}"
             f"&child={req.children or 0}&infant={req.infants or 0}"
         )
+        if req.return_from:
+            url += f"&returnDate={req.return_from.strftime('%Y%m%d')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(
-            f"salamair{req.origin}{req.destination}{req.date_from}".encode()
+            f"salamair{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{search_hash}",

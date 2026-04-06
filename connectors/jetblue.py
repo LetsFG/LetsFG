@@ -38,13 +38,14 @@ from typing import Any, Optional
 
 import httpx
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
+from .browser import auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ _BOOKING_URL_TPL = (
     "https://www.jetblue.com/booking/flights"
     "?from={origin}&to={dest}&depart={date}"
     "&isMultiCity=false&noOfRoute=1&adults={adults}&children=0&infants=0"
-    "&sharedMarket=false&roundTripFaresFlag=false&usePoints=false"
+    "&sharedMarket=false&roundTripFaresFlag={rt_flag}&usePoints=false"
+    "{return_part}"
 )
 
 _VIEWPORTS = [
@@ -157,6 +159,7 @@ class JetBlueConnectorClient:
     # ------------------------------------------------------------------
 
     async def _search_via_api(self, req: FlightSearchRequest) -> list[FlightOffer]:
+        is_rt = bool(req.return_from)
         month_str = req.date_from.strftime("%B %Y").upper()  # "APRIL 2026"
         params = {
             "apiKey": "None",
@@ -164,11 +167,13 @@ class JetBlueConnectorClient:
             "destination": req.destination,
             "fareType": "LOWEST",
             "month": month_str,
-            "tripType": "ONE_WAY",
+            "tripType": "ROUND_TRIP" if is_rt else "ONE_WAY",
             "adult": str(req.adults),
             "child": "0",
             "infant": "0",
         }
+        if is_rt:
+            params["returnMonth"] = req.return_from.strftime("%B %Y").upper()
         proxy_url = _get_proxy_url()
         try:
             async with httpx.AsyncClient(
@@ -192,49 +197,78 @@ class JetBlueConnectorClient:
         target_date = req.date_from.strftime("%Y-%m-%d")
         booking_url = self._build_booking_url(req)
         offers: list[FlightOffer] = []
+        is_rt = bool(req.return_from)
+
+        # Find return fare for RT
+        inbound_route = None
+        inbound_price = 0.0
+        if is_rt:
+            ret_fares = data.get("inboundFares") or data.get("returnFares") or []
+            ret_target = req.return_from.strftime("%Y-%m-%d")
+            for rf in ret_fares:
+                if rf.get("date") == ret_target and rf.get("amount", 0) > 0:
+                    ib_amount = rf.get("amount", 0) + rf.get("tax", 0)
+                    inbound_price = ib_amount
+                    inbound_route = FlightRoute(
+                        segments=[FlightSegment(
+                            airline="B6", airline_name="JetBlue Airways",
+                            flight_no="", origin=req.destination,
+                            destination=req.origin,
+                            departure=datetime.strptime(ret_target, "%Y-%m-%d"),
+                            arrival=datetime.strptime(ret_target, "%Y-%m-%d"),
+                            cabin_class="M",
+                        )],
+                        total_duration_seconds=0, stopovers=0,
+                    )
+                    break
 
         for fare in fares:
             fare_date = fare.get("date", "")
             amount = fare.get("amount", 0)
             if not fare_date or not amount or amount <= 0:
                 continue
-            # Only return the fare matching the requested date
             if fare_date != target_date:
                 continue
 
             tax = fare.get("tax", 0)
-            total = amount + tax
+            ob_total = amount + tax
             seats = fare.get("seats", 0)
 
             seg = FlightSegment(
-                airline="B6",
-                airline_name="JetBlue Airways",
-                flight_no="",
-                origin=req.origin,
+                airline="B6", airline_name="JetBlue Airways",
+                flight_no="", origin=req.origin,
                 destination=req.destination,
                 departure=datetime.strptime(fare_date, "%Y-%m-%d"),
                 arrival=datetime.strptime(fare_date, "%Y-%m-%d"),
                 cabin_class="M",
             )
-            route = FlightRoute(
-                segments=[seg],
-                total_duration_seconds=0,
-                stopovers=0,
+            outbound_route = FlightRoute(
+                segments=[seg], total_duration_seconds=0, stopovers=0,
             )
-            offer_id = f"b6_{hashlib.md5(f'{req.origin}{req.destination}{fare_date}{total}'.encode()).hexdigest()[:12]}"
+
+            if is_rt and inbound_route:
+                total = round(ob_total + inbound_price, 2)
+                offer_id = f"b6_{hashlib.md5(f'{req.origin}{req.destination}{fare_date}rt{total}'.encode()).hexdigest()[:12]}"
+                offers.append(FlightOffer(
+                    id=offer_id, price=total, currency=currency,
+                    price_formatted=f"${total:.2f}",
+                    outbound=outbound_route, inbound=inbound_route,
+                    airlines=["JetBlue"], owner_airline="B6",
+                    booking_url=booking_url, is_locked=False,
+                    source="jetblue_direct", source_tier="free",
+                    availability_seats=seats if seats else None,
+                ))
+
+            # Always emit OW for combo engine
+            ow_total = round(ob_total, 2)
+            offer_id = f"b6_{hashlib.md5(f'{req.origin}{req.destination}{fare_date}{ow_total}'.encode()).hexdigest()[:12]}"
             offers.append(FlightOffer(
-                id=offer_id,
-                price=round(total, 2),
-                currency=currency,
-                price_formatted=f"${total:.2f}",
-                outbound=route,
-                inbound=None,
-                airlines=["JetBlue"],
-                owner_airline="B6",
-                booking_url=booking_url,
-                is_locked=False,
-                source="jetblue_direct",
-                source_tier="free",
+                id=offer_id, price=ow_total, currency=currency,
+                price_formatted=f"${ow_total:.2f}",
+                outbound=outbound_route, inbound=None,
+                airlines=["JetBlue"], owner_airline="B6",
+                booking_url=booking_url, is_locked=False,
+                source="jetblue_direct", source_tier="free",
                 availability_seats=seats if seats else None,
             ))
 
@@ -258,9 +292,11 @@ class JetBlueConnectorClient:
             try:
                 from playwright_stealth import stealth_async
                 page = await context.new_page()
+                await auto_block_if_proxied(page)
                 await stealth_async(page)
             except ImportError:
                 page = await context.new_page()
+                await auto_block_if_proxied(page)
 
             captured: dict = {}
             api_event = asyncio.Event()
@@ -451,7 +487,7 @@ class JetBlueConnectorClient:
             req.origin, req.destination, len(offers), elapsed, method,
         )
         h = hashlib.md5(
-            f"jetblue{req.origin}{req.destination}{req.date_from}".encode()
+            f"jetblue{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",
@@ -464,16 +500,19 @@ class JetBlueConnectorClient:
 
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
+        is_rt = bool(req.return_from)
         return _BOOKING_URL_TPL.format(
             origin=req.origin,
             dest=req.destination,
             date=req.date_from.strftime("%Y-%m-%d"),
             adults=req.adults,
+            rt_flag="true" if is_rt else "false",
+            return_part=f"&return={req.return_from.strftime('%Y-%m-%d')}" if is_rt else "",
         )
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(
-            f"jetblue{req.origin}{req.destination}{req.date_from}".encode()
+            f"jetblue{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
             search_id=f"fs_{h}",

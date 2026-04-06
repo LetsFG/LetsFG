@@ -418,17 +418,29 @@ class NorwegianConnectorClient:
             return None
 
         # Step 2: Search flights
-        search_body = {
-            "commercialFareFamilies": ["DYSTD"],
-            "itineraries": [{
-                "originLocationCode": req.origin,
-                "destinationLocationCode": req.destination,
-                "departureDateTime": f"{date_str}.000",
+        itineraries = [{
+            "originLocationCode": req.origin,
+            "destinationLocationCode": req.destination,
+            "departureDateTime": f"{date_str}.000",
+            "directFlights": False,
+            "originLocationType": "airport",
+            "destinationLocationType": "airport",
+            "isRequestedBound": True,
+        }]
+        if req.return_from:
+            ret_str = req.return_from.strftime("%Y-%m-%dT00:00:00")
+            itineraries.append({
+                "originLocationCode": req.destination,
+                "destinationLocationCode": req.origin,
+                "departureDateTime": f"{ret_str}.000",
                 "directFlights": False,
                 "originLocationType": "airport",
                 "destinationLocationType": "airport",
                 "isRequestedBound": True,
-            }],
+            })
+        search_body = {
+            "commercialFareFamilies": ["DYSTD"],
+            "itineraries": itineraries,
             "travelers": self._build_travelers(req),
             "searchPreferences": {"showSoldOut": True, "showMilesPrice": False},
         }
@@ -603,53 +615,100 @@ class NorwegianConnectorClient:
 
     def _parse_air_bounds(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse Amadeus DES air-bounds response into FlightOffers."""
-        offers: list[FlightOffer] = []
         groups = data.get("data", {}).get("airBoundGroups", [])
         booking_url = self._build_booking_url(req)
+        is_rt = bool(req.return_from)
+
+        # Classify each group as outbound or inbound by first segment origin
+        outbound_groups: list[tuple[FlightRoute, float, str]] = []
+        inbound_groups: list[tuple[FlightRoute, float, str]] = []
 
         for group in groups:
             bound_details = group.get("boundDetails", {})
             segments_raw = bound_details.get("segments", [])
-            duration = bound_details.get("duration", 0)  # seconds
+            duration = bound_details.get("duration", 0)
 
-            # Parse segments from flightIds
             segments = self._parse_segments(segments_raw)
             if not segments:
                 continue
 
-            # Fix arrival times using bound duration
             self._fix_arrival_times(segments, duration)
-
-            stopovers = max(len(segments) - 1, 0)
 
             route = FlightRoute(
                 segments=segments,
                 total_duration_seconds=max(duration, 0),
-                stopovers=stopovers,
+                stopovers=max(len(segments) - 1, 0),
             )
 
-            # Get cheapest fare from airBounds (LOWFARE < LOWPLUS < FLEX)
+            # Get cheapest fare (LOWFARE)
             for air_bound in group.get("airBounds", []):
-                fare_family = air_bound.get("fareFamilyCode", "")
-                if fare_family != "LOWFARE":
-                    continue  # Only take cheapest fare family
-
+                if air_bound.get("fareFamilyCode", "") != "LOWFARE":
+                    continue
                 total_prices = air_bound.get("prices", {}).get("totalPrices", [])
                 if not total_prices:
                     continue
-
                 price_obj = total_prices[0]
                 total_cents = price_obj.get("total", 0)
                 currency = price_obj.get("currencyCode", "EUR")
-                price = total_cents / 100.0  # Prices are in cents
-
+                price = total_cents / 100.0
                 if price <= 0:
                     continue
 
-                flight_ids = "_".join(s.get("flightId", "") for s in segments_raw)
-                key = f"{flight_ids}_{fare_family}_{total_cents}"
+                # Classify direction by first segment origin
+                first_origin = segments[0].origin if segments else ""
+                if is_rt and first_origin == req.destination:
+                    inbound_groups.append((route, price, currency))
+                else:
+                    outbound_groups.append((route, price, currency))
+                break
 
-                offer = FlightOffer(
+        # Build offers
+        offers: list[FlightOffer] = []
+
+        if is_rt and outbound_groups and inbound_groups:
+            # Pair outbound × cheapest inbound, and vice versa
+            inbound_groups.sort(key=lambda x: x[1])
+            for ob_route, ob_price, ob_cur in outbound_groups:
+                ib_route, ib_price, ib_cur = inbound_groups[0]
+                total = round(ob_price + ib_price, 2)
+                currency = ob_cur
+                key = f"{ob_route.segments[0].flight_no}_{ib_route.segments[0].flight_no}_{total}"
+                offers.append(FlightOffer(
+                    id=f"dy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=total,
+                    currency=currency,
+                    price_formatted=f"{total:.2f} {currency}",
+                    outbound=ob_route,
+                    inbound=ib_route,
+                    airlines=["Norwegian"],
+                    owner_airline="DY",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="norwegian_api",
+                    source_tier="free",
+                ))
+            # Also emit one-way outbound offers for combo engine
+            for ob_route, ob_price, ob_cur in outbound_groups:
+                key = f"ow_{ob_route.segments[0].flight_no}_{ob_price}"
+                offers.append(FlightOffer(
+                    id=f"dy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=round(ob_price, 2),
+                    currency=ob_cur,
+                    price_formatted=f"{ob_price:.2f} {ob_cur}",
+                    outbound=ob_route,
+                    inbound=None,
+                    airlines=["Norwegian"],
+                    owner_airline="DY",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="norwegian_api",
+                    source_tier="free",
+                ))
+        else:
+            # One-way search or no inbound results
+            for route, price, currency in outbound_groups:
+                key = f"{route.segments[0].flight_no}_{price}"
+                offers.append(FlightOffer(
                     id=f"dy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
                     price=round(price, 2),
                     currency=currency,
@@ -662,9 +721,7 @@ class NorwegianConnectorClient:
                     is_locked=False,
                     source="norwegian_api",
                     source_tier="free",
-                )
-                offers.append(offer)
-                break  # Only one offer per group (cheapest)
+                ))
 
         return offers
 
@@ -742,14 +799,19 @@ class NorwegianConnectorClient:
 
     def _build_booking_url(self, req: FlightSearchRequest) -> str:
         date_str = req.date_from.strftime("%d/%m/%Y")
-        return (
+        is_rt = bool(req.return_from)
+        trip = "2" if is_rt else "1"
+        url = (
             f"https://www.norwegian.com/en/"
             f"?D_City={req.origin}&A_City={req.destination}"
-            f"&TripType=1&D_Day={date_str}"
+            f"&TripType={trip}&D_Day={date_str}"
             f"&AdultCount={req.adults}"
             f"&ChildCount={req.children or 0}"
             f"&InfantCount={req.infants or 0}"
         )
+        if is_rt:
+            url += f"&R_Day={req.return_from.strftime('%d/%m/%Y')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(

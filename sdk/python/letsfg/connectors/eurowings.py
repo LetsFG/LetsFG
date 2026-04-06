@@ -307,6 +307,20 @@ class EurowingsConnectorClient:
     @staticmethod
     def _build_api_body(req: FlightSearchRequest) -> dict:
         """Build the QUERY_FLIGHT_DATA request payload."""
+        is_rt = bool(req.return_from)
+        params = {
+            "origin": req.origin,
+            "destination": req.destination,
+            "outwardDate": req.date_from.strftime("%Y-%m-%d"),
+            "adultCount": req.adults,
+            "childCount": req.children,
+            "infantCount": req.infants,
+            "tripType": "RETURN" if is_rt else "ONE_WAY",
+            "locale": "en-GB",
+            "systemType": "SYS_1N",
+        }
+        if is_rt:
+            params["returnDate"] = req.return_from.strftime("%Y-%m-%d")
         return {
             "_payload": {
                 "_type": "UPDATE_COMPONENT",
@@ -314,17 +328,7 @@ class EurowingsConnectorClient:
                     "_type": "ew/components/booking/shoppingexperience",
                     "_path": "/content/eurowings/en/booking/flights/flight-search/shopping/select/jcr:content/main/flightselect",
                     "_action": "QUERY_FLIGHT_DATA",
-                    "_parameters": {
-                        "origin": req.origin,
-                        "destination": req.destination,
-                        "outwardDate": req.date_from.strftime("%Y-%m-%d"),
-                        "adultCount": req.adults,
-                        "childCount": req.children,
-                        "infantCount": req.infants,
-                        "tripType": "ONE_WAY",
-                        "locale": "en-GB",
-                        "systemType": "SYS_1N",
-                    },
+                    "_parameters": params,
                 }],
             }
         }
@@ -764,14 +768,48 @@ class EurowingsConnectorClient:
             return []
         booking_url = self._build_booking_url(req)
         offers: list[FlightOffer] = []
+        is_rt = bool(req.return_from)
 
         # Navigate to the journeys array
-        journeys = self._extract_journeys(data)
-        if journeys:
-            for journey in journeys:
+        ob_journeys, ib_journeys = self._extract_journeys(data)
+        if ob_journeys:
+            ob_offers: list[FlightOffer] = []
+            for journey in ob_journeys:
                 offer = self._parse_journey(journey, req, booking_url)
                 if offer:
-                    offers.append(offer)
+                    ob_offers.append(offer)
+
+            if is_rt and ib_journeys:
+                # Parse inbound journeys
+                ib_routes: list[tuple[FlightRoute, float, list[str]]] = []
+                for journey in ib_journeys:
+                    offer = self._parse_journey(journey, req, booking_url)
+                    if offer and offer.outbound:
+                        ib_routes.append((offer.outbound, offer.price, offer.airlines))
+
+                if ib_routes:
+                    ib_routes.sort(key=lambda x: x[1])
+                    cheapest_ib_route, cheapest_ib_price, _ = ib_routes[0]
+                    for ob in ob_offers:
+                        total = round(ob.price + cheapest_ib_price, 2)
+                        key = f"{ob.id}_rt_{total}"
+                        offers.append(FlightOffer(
+                            id=f"ew_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                            price=total,
+                            currency="EUR",
+                            price_formatted=f"{total:.2f} EUR",
+                            outbound=ob.outbound,
+                            inbound=cheapest_ib_route,
+                            airlines=ob.airlines,
+                            owner_airline="EW",
+                            booking_url=booking_url,
+                            is_locked=False,
+                            source="eurowings_direct",
+                            source_tier="free",
+                        ))
+
+            # Always emit OW outbound for combo engine
+            offers.extend(ob_offers)
             return offers
 
         # Fallback: try legacy keys
@@ -802,8 +840,8 @@ class EurowingsConnectorClient:
         return offers
 
     @staticmethod
-    def _extract_journeys(data: dict) -> list:
-        """Navigate the nested QUERY_FLIGHT_DATA response to find the journeys list."""
+    def _extract_journeys(data: dict) -> tuple[list, list]:
+        """Navigate the nested QUERY_FLIGHT_DATA response to find outbound & inbound journeys."""
         try:
             updates = data.get("_payload", {}).get("_updates", [])
             for upd in updates:
@@ -811,11 +849,12 @@ class EurowingsConnectorClient:
                 flights = rd.get("flights", [])
                 if flights:
                     schedules = flights[0].get("schedules", [])
-                    if schedules:
-                        return schedules[0].get("journeys", [])
+                    ob = schedules[0].get("journeys", []) if len(schedules) > 0 else []
+                    ib = schedules[1].get("journeys", []) if len(schedules) > 1 else []
+                    return ob, ib
         except (KeyError, IndexError, TypeError):
             pass
-        return []
+        return [], []
 
     def _parse_journey(
         self, journey: dict, req: FlightSearchRequest, booking_url: str,
@@ -1032,13 +1071,17 @@ class EurowingsConnectorClient:
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
         dep = req.date_from.strftime("%Y-%m-%d")
-        return (
+        is_rt = bool(req.return_from)
+        url = (
             f"https://www.eurowings.com/en/booking/flights/search.html"
             f"?origin={req.origin}&destination={req.destination}"
             f"&outboundDate={dep}&adultCount={req.adults}"
             f"&childCount={req.children}&infantCount={req.infants}"
-            f"&isOneWay=true"
+            f"&isOneWay={'false' if is_rt else 'true'}"
         )
+        if is_rt:
+            url += f"&returnDate={req.return_from.strftime('%Y-%m-%d')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(f"eurowings{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]

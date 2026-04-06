@@ -166,6 +166,7 @@ class CheapoairConnectorClient:
 
             # CheapOair URL format
             dep = req.date_from.strftime("%m/%d/%Y")
+            is_rt = bool(req.return_from)
             url = (
                 f"https://www.cheapoair.com/flights/results"
                 f"?fl_dep_apt={req.origin}"
@@ -175,8 +176,10 @@ class CheapoairConnectorClient:
                 f"&fl_CHD={req.children or 0}"
                 f"&fl_INF=0"
                 f"&fl_class=Economy"
-                f"&tripType=1"
+                f"&tripType={'2' if is_rt else '1'}"
             )
+            if is_rt:
+                url += f"&fl_ret_dt={req.return_from.strftime('%m/%d/%Y')}"
 
             await page.goto(url, wait_until="domcontentloaded", timeout=25000)
 
@@ -363,8 +366,65 @@ def _parse_cheapoair(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
             # Inbound (if round-trip)
             inbound = None
             if len(legs) > 1 and req.return_from:
-                # Build inbound similarly... (simplified for now)
-                pass
+                ib_leg = legs[1]
+                ib_segments_data = (
+                    ib_leg.get("segments") or
+                    ib_leg.get("flights") or
+                    ib_leg.get("flightSegments") or
+                    []
+                )
+                ib_segs: list[FlightSegment] = []
+                for seg in ib_segments_data:
+                    if not isinstance(seg, dict):
+                        continue
+                    airline = (
+                        seg.get("airlineCode") or seg.get("airline") or
+                        seg.get("marketingCarrier") or seg.get("carrier", "")
+                    )
+                    flight_no = (
+                        seg.get("flightNumber") or seg.get("flightNo") or
+                        seg.get("number", "")
+                    )
+                    seg_origin = (
+                        seg.get("departureAirport") or seg.get("origin") or
+                        seg.get("from", req.destination)
+                    )
+                    seg_dest = (
+                        seg.get("arrivalAirport") or seg.get("destination") or
+                        seg.get("to", req.origin)
+                    )
+                    dep_time = (
+                        seg.get("departureDateTime") or seg.get("departure") or
+                        seg.get("departTime", "")
+                    )
+                    arr_time = (
+                        seg.get("arrivalDateTime") or seg.get("arrival") or
+                        seg.get("arrivalTime", "")
+                    )
+                    if isinstance(seg_origin, dict):
+                        seg_origin = seg_origin.get("code") or seg_origin.get("iata", req.destination)
+                    if isinstance(seg_dest, dict):
+                        seg_dest = seg_dest.get("code") or seg_dest.get("iata", req.origin)
+                    if isinstance(airline, dict):
+                        airline = airline.get("code") or airline.get("iata", "")
+                    ib_segs.append(FlightSegment(
+                        airline=str(airline),
+                        flight_no=f"{airline}{flight_no}" if flight_no else str(airline),
+                        origin=str(seg_origin),
+                        destination=str(seg_dest),
+                        departure=_parse_dt(dep_time),
+                        arrival=_parse_dt(arr_time),
+                    ))
+                if ib_segs:
+                    ib_dur = ib_leg.get("duration") or 0
+                    if isinstance(ib_dur, str):
+                        ib_dur = 0
+                    ib_total_dur = int(ib_dur) * 60 if ib_dur and int(ib_dur) < 2000 else int(ib_dur) if ib_dur else 0
+                    inbound = FlightRoute(
+                        segments=ib_segs,
+                        total_duration_seconds=ib_total_dur,
+                        stopovers=max(0, len(ib_segs) - 1),
+                    )
 
             airlines = list({s.airline for s in flight_segments if s.airline})
             booking_url = (

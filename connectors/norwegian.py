@@ -36,6 +36,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import subprocess
 import time
 from datetime import datetime, timedelta
@@ -43,14 +44,15 @@ from typing import Optional
 
 from curl_cffi import requests as cffi_requests
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
-from connectors.browser import stealth_popen_kwargs, find_chrome, _launched_procs
+from .airline_routes import get_city_airports
+from .browser import stealth_popen_kwargs, find_chrome, _launched_procs, get_curl_cffi_proxies, proxy_chrome_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,7 @@ async def _get_browser():
         f"--remote-debugging-port={_DEBUG_PORT}",
         f"--user-data-dir={_USER_DATA_DIR}",
         "--no-first-run",
+        *proxy_chrome_args(),
         "--no-default-browser-check",
         "--disable-blink-features=AutomationControlled",
         "--disable-http2",
@@ -144,6 +147,42 @@ async def _get_browser():
     return _browser
 
 
+async def _reset_chrome_profile():
+    """Kill Chrome and wipe the profile so next farm gets a fresh start."""
+    global _browser, _pw_instance, _chrome_proc, _farmed_cookies, _farm_timestamp
+    logger.info("Norwegian: resetting Chrome profile for fresh Incapsula farm")
+    if _browser:
+        try:
+            await _browser.close()
+        except Exception:
+            pass
+        _browser = None
+    if _pw_instance:
+        try:
+            await _pw_instance.stop()
+        except Exception:
+            pass
+        _pw_instance = None
+    if _chrome_proc:
+        try:
+            _chrome_proc.terminate()
+            _chrome_proc.wait(timeout=5)
+        except Exception:
+            try:
+                _chrome_proc.kill()
+            except Exception:
+                pass
+        _chrome_proc = None
+    _farmed_cookies = []
+    _farm_timestamp = 0.0
+    if os.path.isdir(_USER_DATA_DIR):
+        try:
+            shutil.rmtree(_USER_DATA_DIR)
+            logger.info("Norwegian: deleted stale Chrome profile %s", _USER_DATA_DIR)
+        except Exception as e:
+            logger.warning("Norwegian: failed to delete Chrome profile: %s", e)
+
+
 class NorwegianConnectorClient:
     """Norwegian hybrid scraper — cookie-farm + curl_cffi direct API."""
 
@@ -156,6 +195,52 @@ class NorwegianConnectorClient:
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         """
         Search Norwegian flights via cookie-farm + curl_cffi direct API.
+
+        Norwegian requires airport codes (LGW, LTN), not city codes (LON).
+        Expands city codes and merges results.
+        """
+        origins = get_city_airports(req.origin)
+        destinations = get_city_airports(req.destination)
+
+        if len(origins) > 1 or len(destinations) > 1:
+            all_offers: list[FlightOffer] = []
+            for o in origins:
+                for d in destinations:
+                    if o == d:
+                        continue
+                    sub_req = FlightSearchRequest(
+                        origin=o,
+                        destination=d,
+                        date_from=req.date_from,
+                        return_from=req.return_from,
+                        adults=req.adults,
+                        children=req.children,
+                        infants=req.infants,
+                        cabin_class=req.cabin_class,
+                        currency=req.currency,
+                        max_stopovers=req.max_stopovers,
+                    )
+                    try:
+                        resp = await self._search_single(sub_req)
+                        all_offers.extend(resp.offers)
+                    except Exception:
+                        pass
+            all_offers.sort(key=lambda o: o.price)
+            search_hash = hashlib.md5(
+                f"norwegian{req.origin}{req.destination}{req.date_from}".encode()
+            ).hexdigest()[:12]
+            return FlightSearchResponse(
+                search_id=f"fs_{search_hash}",
+                origin=req.origin,
+                destination=req.destination,
+                currency=all_offers[0].currency if all_offers else req.currency,
+                offers=all_offers,
+                total_results=len(all_offers),
+            )
+        return await self._search_single(req)
+
+    async def _search_single(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """Search a single origin→destination pair (airport-level codes).
 
         Fast path (~1s): curl_cffi with farmed Incapsula cookies.
         Slow path (~18s): Playwright farms cookies first, then curl_cffi.
@@ -172,7 +257,16 @@ class NorwegianConnectorClient:
 
             # If search failed (expired cookies), re-farm once and retry
             if data is None:
-                logger.info("Norwegian: API search failed, re-farming cookies")
+                logger.warning("Norwegian: API search failed, re-farming cookies")
+                cookies = await self._farm_cookies(req)
+                if cookies:
+                    data = await self._api_search(req, cookies)
+
+            # If still failing, reset the Chrome profile (Incapsula may have
+            # flagged the browser fingerprint) and try from scratch
+            if data is None:
+                logger.warning("Norwegian: persistent failure, resetting Chrome profile")
+                await _reset_chrome_profile()
                 cookies = await self._farm_cookies(req)
                 if cookies:
                     data = await self._api_search(req, cookies)
@@ -232,6 +326,7 @@ class NorwegianConnectorClient:
 
         try:
             page = await context.new_page()
+            await auto_block_if_proxied(page)
 
             logger.info("Norwegian: farming Incapsula cookies from booking.norwegian.com")
             await page.goto(
@@ -239,7 +334,8 @@ class NorwegianConnectorClient:
                 wait_until="domcontentloaded",
                 timeout=30000,
             )
-            await asyncio.sleep(3)
+            # Incapsula JS challenge needs ~5-6s to generate reese84 + visid cookies
+            await asyncio.sleep(6)
 
             cookies = await context.cookies()
             if cookies:
@@ -273,7 +369,7 @@ class NorwegianConnectorClient:
         self, req: FlightSearchRequest, cookies: list[dict]
     ) -> Optional[dict]:
         """Synchronous curl_cffi token + search."""
-        sess = cffi_requests.Session(impersonate=_IMPERSONATE)
+        sess = cffi_requests.Session(impersonate=_IMPERSONATE, proxies=get_curl_cffi_proxies())
 
         # Load farmed cookies into session
         for c in cookies:
@@ -322,17 +418,29 @@ class NorwegianConnectorClient:
             return None
 
         # Step 2: Search flights
-        search_body = {
-            "commercialFareFamilies": ["DYSTD"],
-            "itineraries": [{
-                "originLocationCode": req.origin,
-                "destinationLocationCode": req.destination,
-                "departureDateTime": f"{date_str}.000",
+        itineraries = [{
+            "originLocationCode": req.origin,
+            "destinationLocationCode": req.destination,
+            "departureDateTime": f"{date_str}.000",
+            "directFlights": False,
+            "originLocationType": "airport",
+            "destinationLocationType": "airport",
+            "isRequestedBound": True,
+        }]
+        if req.return_from:
+            ret_str = req.return_from.strftime("%Y-%m-%dT00:00:00")
+            itineraries.append({
+                "originLocationCode": req.destination,
+                "destinationLocationCode": req.origin,
+                "departureDateTime": f"{ret_str}.000",
                 "directFlights": False,
                 "originLocationType": "airport",
                 "destinationLocationType": "airport",
                 "isRequestedBound": True,
-            }],
+            })
+        search_body = {
+            "commercialFareFamilies": ["DYSTD"],
+            "itineraries": itineraries,
             "travelers": self._build_travelers(req),
             "searchPreferences": {"showSoldOut": True, "showMilesPrice": False},
         }
@@ -507,53 +615,100 @@ class NorwegianConnectorClient:
 
     def _parse_air_bounds(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse Amadeus DES air-bounds response into FlightOffers."""
-        offers: list[FlightOffer] = []
         groups = data.get("data", {}).get("airBoundGroups", [])
         booking_url = self._build_booking_url(req)
+        is_rt = bool(req.return_from)
+
+        # Classify each group as outbound or inbound by first segment origin
+        outbound_groups: list[tuple[FlightRoute, float, str]] = []
+        inbound_groups: list[tuple[FlightRoute, float, str]] = []
 
         for group in groups:
             bound_details = group.get("boundDetails", {})
             segments_raw = bound_details.get("segments", [])
-            duration = bound_details.get("duration", 0)  # seconds
+            duration = bound_details.get("duration", 0)
 
-            # Parse segments from flightIds
             segments = self._parse_segments(segments_raw)
             if not segments:
                 continue
 
-            # Fix arrival times using bound duration
             self._fix_arrival_times(segments, duration)
-
-            stopovers = max(len(segments) - 1, 0)
 
             route = FlightRoute(
                 segments=segments,
                 total_duration_seconds=max(duration, 0),
-                stopovers=stopovers,
+                stopovers=max(len(segments) - 1, 0),
             )
 
-            # Get cheapest fare from airBounds (LOWFARE < LOWPLUS < FLEX)
+            # Get cheapest fare (LOWFARE)
             for air_bound in group.get("airBounds", []):
-                fare_family = air_bound.get("fareFamilyCode", "")
-                if fare_family != "LOWFARE":
-                    continue  # Only take cheapest fare family
-
+                if air_bound.get("fareFamilyCode", "") != "LOWFARE":
+                    continue
                 total_prices = air_bound.get("prices", {}).get("totalPrices", [])
                 if not total_prices:
                     continue
-
                 price_obj = total_prices[0]
                 total_cents = price_obj.get("total", 0)
                 currency = price_obj.get("currencyCode", "EUR")
-                price = total_cents / 100.0  # Prices are in cents
-
+                price = total_cents / 100.0
                 if price <= 0:
                     continue
 
-                flight_ids = "_".join(s.get("flightId", "") for s in segments_raw)
-                key = f"{flight_ids}_{fare_family}_{total_cents}"
+                # Classify direction by first segment origin
+                first_origin = segments[0].origin if segments else ""
+                if is_rt and first_origin == req.destination:
+                    inbound_groups.append((route, price, currency))
+                else:
+                    outbound_groups.append((route, price, currency))
+                break
 
-                offer = FlightOffer(
+        # Build offers
+        offers: list[FlightOffer] = []
+
+        if is_rt and outbound_groups and inbound_groups:
+            # Pair outbound × cheapest inbound, and vice versa
+            inbound_groups.sort(key=lambda x: x[1])
+            for ob_route, ob_price, ob_cur in outbound_groups:
+                ib_route, ib_price, ib_cur = inbound_groups[0]
+                total = round(ob_price + ib_price, 2)
+                currency = ob_cur
+                key = f"{ob_route.segments[0].flight_no}_{ib_route.segments[0].flight_no}_{total}"
+                offers.append(FlightOffer(
+                    id=f"dy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=total,
+                    currency=currency,
+                    price_formatted=f"{total:.2f} {currency}",
+                    outbound=ob_route,
+                    inbound=ib_route,
+                    airlines=["Norwegian"],
+                    owner_airline="DY",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="norwegian_api",
+                    source_tier="free",
+                ))
+            # Also emit one-way outbound offers for combo engine
+            for ob_route, ob_price, ob_cur in outbound_groups:
+                key = f"ow_{ob_route.segments[0].flight_no}_{ob_price}"
+                offers.append(FlightOffer(
+                    id=f"dy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=round(ob_price, 2),
+                    currency=ob_cur,
+                    price_formatted=f"{ob_price:.2f} {ob_cur}",
+                    outbound=ob_route,
+                    inbound=None,
+                    airlines=["Norwegian"],
+                    owner_airline="DY",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="norwegian_api",
+                    source_tier="free",
+                ))
+        else:
+            # One-way search or no inbound results
+            for route, price, currency in outbound_groups:
+                key = f"{route.segments[0].flight_no}_{price}"
+                offers.append(FlightOffer(
                     id=f"dy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
                     price=round(price, 2),
                     currency=currency,
@@ -566,9 +721,7 @@ class NorwegianConnectorClient:
                     is_locked=False,
                     source="norwegian_api",
                     source_tier="free",
-                )
-                offers.append(offer)
-                break  # Only one offer per group (cheapest)
+                ))
 
         return offers
 
@@ -646,14 +799,19 @@ class NorwegianConnectorClient:
 
     def _build_booking_url(self, req: FlightSearchRequest) -> str:
         date_str = req.date_from.strftime("%d/%m/%Y")
-        return (
+        is_rt = bool(req.return_from)
+        trip = "2" if is_rt else "1"
+        url = (
             f"https://www.norwegian.com/en/"
             f"?D_City={req.origin}&A_City={req.destination}"
-            f"&TripType=1&D_Day={date_str}"
+            f"&TripType={trip}&D_Day={date_str}"
             f"&AdultCount={req.adults}"
             f"&ChildCount={req.children or 0}"
             f"&InfantCount={req.infants or 0}"
         )
+        if is_rt:
+            url += f"&R_Day={req.return_from.strftime('%d/%m/%Y')}"
+        return url
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(

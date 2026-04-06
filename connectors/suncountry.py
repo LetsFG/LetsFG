@@ -29,13 +29,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional
 
-from models.flights import (
+from ..models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
+from .browser import auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class SunCountryConnectorClient:
                 currency="USD",
                 offers=offers,
                 total_results=len(offers),
-                search_id=f"suncountry_{req.origin}_{req.destination}_{req.date_from}",
+                search_id=f"suncountry_{req.origin}_{req.destination}_{req.date_from}_{req.return_from or ''}",
             )
         except Exception as e:
             logger.error("SunCountry search error: %s", e)
@@ -124,6 +125,7 @@ class SunCountryConnectorClient:
         )
         try:
             page = await context.new_page()
+            await auto_block_if_proxied(page)
             try:
                 from playwright_stealth import stealth_async
                 await stealth_async(page)
@@ -168,6 +170,7 @@ class SunCountryConnectorClient:
 
             # Step 2: Call lowfare/outbound via in-browser fetch
             # Request a ±3 day window centred on the target date
+            is_rt = bool(req.return_from)
             start_dt = req.date_from - timedelta(days=3)
             end_dt = req.date_from + timedelta(days=3)
             body = {
@@ -176,7 +179,7 @@ class SunCountryConnectorClient:
                     "destination": req.destination,
                     "currencyCode": "USD",
                     "includeTaxesAndFees": True,
-                    "isRoundTrip": False,
+                    "isRoundTrip": is_rt,
                     "numberOfPassengers": req.adults,
                     "startDate": start_dt.strftime("%m/%d/%Y"),
                     "endDate": end_dt.strftime("%m/%d/%Y"),
@@ -211,7 +214,76 @@ class SunCountryConnectorClient:
                 logger.warning("SunCountry: lowfare error: %s", result)
                 return []
 
-            return self._parse_lowfare(result, req)
+            ob_offers = self._parse_lowfare(result, req)
+
+            # For RT, also fetch inbound lowfares
+            if is_rt and ob_offers:
+                ib_start = req.return_from - timedelta(days=3)
+                ib_end = req.return_from + timedelta(days=3)
+                ib_body = {
+                    "request": {
+                        "origin": req.destination,
+                        "destination": req.origin,
+                        "currencyCode": "USD",
+                        "includeTaxesAndFees": True,
+                        "isRoundTrip": True,
+                        "numberOfPassengers": req.adults,
+                        "startDate": ib_start.strftime("%m/%d/%Y"),
+                        "endDate": ib_end.strftime("%m/%d/%Y"),
+                    }
+                }
+                ib_result = await page.evaluate(
+                    """async ([token, subKey, body]) => {
+                        try {
+                            const resp = await fetch(
+                                'https://syprod-api.suncountry.com/ext/v1/lowfare/inbound',
+                                {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Ocp-Apim-Subscription-Key': subKey,
+                                        'Authorization': token
+                                    },
+                                    body: JSON.stringify(body)
+                                }
+                            );
+                            if (!resp.ok) return { error: resp.status };
+                            return await resp.json();
+                        } catch (e) {
+                            return { error: e.message };
+                        }
+                    }""",
+                    [token, _SUB_KEY, ib_body],
+                )
+
+                if ib_result and not ib_result.get("error"):
+                    ib_offers = self._parse_lowfare_inbound(ib_result, req)
+                    if ib_offers:
+                        # Build RT offers: outbound × cheapest inbound
+                        ib_offers.sort(key=lambda x: x[1])
+                        cheapest_ib_route, cheapest_ib_price = ib_offers[0]
+                        rt_offers: list[FlightOffer] = []
+                        for ob in ob_offers:
+                            total = round(ob.price + cheapest_ib_price, 2)
+                            key = f"{ob.id}_rt_{total}"
+                            rt_offers.append(FlightOffer(
+                                id=f"sy_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                                price=total,
+                                currency="USD",
+                                price_formatted=f"${total:.2f}",
+                                outbound=ob.outbound,
+                                inbound=cheapest_ib_route,
+                                airlines=["Sun Country Airlines"],
+                                owner_airline="SY",
+                                booking_url="https://www.suncountry.com/booking/select",
+                                is_locked=False,
+                                source="suncountry_direct",
+                                source_tier="free",
+                            ))
+                        # RT offers first, then OW for combo engine
+                        return rt_offers + ob_offers
+
+            return ob_offers
         finally:
             await context.close()
 
@@ -274,6 +346,41 @@ class SunCountryConnectorClient:
 
         return offers
 
+    def _parse_lowfare_inbound(
+        self, data: dict, req: FlightSearchRequest,
+    ) -> list[tuple[FlightRoute, float]]:
+        """Parse inbound lowfares into (route, price) tuples."""
+        fares = data.get("lowfares") or []
+        target = req.return_from.strftime("%Y-%m-%d")
+        results: list[tuple[FlightRoute, float]] = []
+
+        for fare in fares:
+            fare_date = (fare.get("date") or "")[:10]
+            if fare_date != target:
+                continue
+            if fare.get("noFlights") or fare.get("soldOut"):
+                continue
+            price = fare.get("price")
+            if not price or price <= 0:
+                continue
+
+            dep_dt = datetime.fromisoformat(fare["date"])
+            seg = FlightSegment(
+                airline="SY",
+                airline_name="Sun Country Airlines",
+                flight_no="SY",
+                origin=req.destination,
+                destination=req.origin,
+                departure=dep_dt,
+                arrival=dep_dt,
+                duration_seconds=0,
+                cabin_class="economy",
+            )
+            route = FlightRoute(segments=[seg])
+            results.append((route, round(price, 2)))
+
+        return results
+
     @staticmethod
     def _empty(req: FlightSearchRequest) -> FlightSearchResponse:
         return FlightSearchResponse(
@@ -282,5 +389,5 @@ class SunCountryConnectorClient:
             currency="USD",
             offers=[],
             total_results=0,
-            search_id=f"suncountry_{req.origin}_{req.destination}_{req.date_from}",
+            search_id=f"suncountry_{req.origin}_{req.destination}_{req.date_from}_{req.return_from or ''}",
         )

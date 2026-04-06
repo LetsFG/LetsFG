@@ -92,8 +92,9 @@ class SalamAirConnectorClient:
 
         # 2. Search flights
         date_str = req.date_from.strftime("%Y-%m-%d")
+        is_rt = bool(req.return_from)
         params = {
-            "TripType": "1",
+            "TripType": "2" if is_rt else "1",
             "OriginStationCode": req.origin,
             "DestinationStationCode": req.destination,
             "DepartureDate": date_str,
@@ -103,6 +104,8 @@ class SalamAirConnectorClient:
             "extraCount": "0",
             "days": "0",
         }
+        if is_rt:
+            params["ReturnDate"] = req.return_from.strftime("%Y-%m-%d")
         if req.currency and req.currency != "EUR":
             params["currencyCode"] = req.currency
 
@@ -162,20 +165,61 @@ class SalamAirConnectorClient:
 
     def _parse_trips(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
         offers: list[FlightOffer] = []
-        target_date = req.date_from.strftime("%Y-%m-%d")
+        trips = data.get("trips", [])
+        is_rt = bool(req.return_from)
 
-        for trip in data.get("trips", []):
-            currency = trip.get("currencyCode") or req.currency or "OMR"
-
-            for market in trip.get("markets", []):
+        # Parse outbound from trips[0]
+        ob_target = req.date_from.strftime("%Y-%m-%d")
+        ob_offers: list[FlightOffer] = []
+        if trips:
+            currency = trips[0].get("currencyCode") or req.currency or "OMR"
+            for market in trips[0].get("markets", []):
                 market_date = (market.get("date") or "")[:10]
-                if market_date != target_date:
+                if market_date != ob_target:
                     continue
-
                 for flight in market.get("flights") or []:
-                    flight_offers = self._parse_flight(flight, currency, req)
-                    offers.extend(flight_offers)
+                    ob_offers.extend(self._parse_flight(flight, currency, req))
 
+        # Parse inbound from trips[1] for RT
+        ib_routes: list[tuple[FlightRoute, float, str]] = []  # (route, price, currency)
+        if is_rt and len(trips) > 1:
+            ib_target = req.return_from.strftime("%Y-%m-%d")
+            currency = trips[1].get("currencyCode") or req.currency or "OMR"
+            for market in trips[1].get("markets", []):
+                market_date = (market.get("date") or "")[:10]
+                if market_date != ib_target:
+                    continue
+                for flight in market.get("flights") or []:
+                    ib_offers = self._parse_flight(flight, currency, req)
+                    for ib in ib_offers:
+                        if ib.outbound:
+                            ib_routes.append((ib.outbound, ib.price, ib.currency))
+
+        # Build RT offers: each outbound × cheapest inbound
+        if is_rt and ib_routes:
+            ib_routes.sort(key=lambda x: x[1])
+            cheapest_ib_route, cheapest_ib_price, _ = ib_routes[0]
+            for ob in ob_offers:
+                total = round(ob.price + cheapest_ib_price, 2)
+                key = f"{ob.id}_rt_{total}"
+                offers.append(FlightOffer(
+                    id=f"ov_{hashlib.md5(key.encode()).hexdigest()[:12]}",
+                    price=total,
+                    currency=ob.currency,
+                    price_formatted=f"{total:.2f} {ob.currency}",
+                    outbound=ob.outbound,
+                    inbound=cheapest_ib_route,
+                    airlines=["SalamAir"],
+                    owner_airline="OV",
+                    availability_seats=ob.availability_seats,
+                    booking_url=self._booking_url(req),
+                    is_locked=False,
+                    source="salamair_direct",
+                    source_tier="free",
+                ))
+
+        # Always emit OW outbound for combo engine
+        offers.extend(ob_offers)
         return offers
 
     def _parse_flight(
