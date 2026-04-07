@@ -306,9 +306,8 @@ class TurkishConnectorClient:
             for fare in route.get("fares") or []:
                 orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
                 dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
-                if dest not in dest_set:
-                    if orig not in origin_set:
-                        continue
+                if orig not in origin_set or dest not in dest_set:
+                    continue
 
                 price = fare.get("totalPrice") or fare.get("usdTotalPrice")
                 if not price or float(price) <= 0:
@@ -399,7 +398,8 @@ class TurkishConnectorClient:
         # ── Target date for route interception ──
         dt = _to_datetime(req.date_from)
         target_iso = dt.strftime("%Y-%m-%d")       # 2026-06-15
-        target_dmy = dt.strftime("%d-%m-%Y")        # 15-06-2026
+        target_dmy = dt.strftime("%d-%m-%Y")        # 15-06-2026 (dash-separated)
+        target_dot = dt.strftime("%d.%m.%Y")        # 15.06.2026 (TK native format)
         target_dmy_nodash = dt.strftime("%d%m%Y")   # 15062026
 
         async def _on_response(response):
@@ -433,13 +433,23 @@ class TurkishConnectorClient:
 
         page.on("response", _on_response)
 
-        # ── Route interceptor: rewrite departure date in availability API requests ──
+        # ── Route interceptor: rewrite dates AND fix geo-swapped airports ──
         api_request_body_logged = None
 
         # Flag: when True, route interceptor passes requests through unmodified.
         # Used during direct fetch to avoid re-serializing the JSON body
         # (Python json.dumps may differ from JS JSON.stringify, breaking integrity).
         direct_fetch_active = False
+
+        # Pre-compute airport/city/country metadata for route correction
+        _origin = req.origin.upper()
+        _destination = req.destination.upper()
+        _o_cc = get_country(req.origin) or ""
+        _d_cc = get_country(req.destination) or ""
+        _o_city = _AIRPORT_TO_CITY.get(_origin, _origin)
+        _d_city = _AIRPORT_TO_CITY.get(_destination, _destination)
+        _is_rt = req.return_from is not None
+        _ret_dmy = _to_datetime(req.return_from).strftime("%d-%m-%Y") if req.return_from else ""
 
         async def _intercept_availability(route):
             nonlocal api_request_body_logged
@@ -462,6 +472,40 @@ class TurkishConnectorClient:
                 data = _json.loads(body)
                 modified = False
 
+                # ── Fix geo-swapped airports ──
+                # TK geo-detects the browser IP and may pre-fill the form with
+                # reversed airports (e.g. ATL→CPT instead of CPT→ATL).  Detect
+                # this by checking if originAirportCode in the first leg matches
+                # req.destination instead of req.origin.
+                odil = data.get("originDestinationInformationList", [])
+                if odil and isinstance(odil[0], dict):
+                    first_origin = (odil[0].get("originAirportCode") or "").upper()
+                    if first_origin == _destination and first_origin != _origin:
+                        logger.warning("TK: geo-swap detected (form has %s→, expected %s→), rebuilding legs",
+                                       first_origin, _origin)
+                        ob_leg = {
+                            "originAirportCode": _origin,
+                            "originMultiPort": True,
+                            "destinationAirportCode": _destination,
+                            "destinationMultiPort": False,
+                            "departureDate": target_dmy,
+                        }
+                        new_odil = [ob_leg]
+                        if _is_rt:
+                            ib_leg = {
+                                "originAirportCode": _destination,
+                                "originMultiPort": True,
+                                "destinationAirportCode": _origin,
+                                "destinationMultiPort": False,
+                                "departureDate": _ret_dmy,
+                            }
+                            new_odil.append(ib_leg)
+                            data["selectedBookerSearch"] = "R"
+                        else:
+                            data["selectedBookerSearch"] = "O"
+                        data["originDestinationInformationList"] = new_odil
+                        modified = True
+
                 # Walk the JSON and replace ONLY departure date fields
                 def _fix_dates(obj):
                     nonlocal modified
@@ -473,6 +517,9 @@ class TurkishConnectorClient:
                                                               "departureDatetime", "departure"):
                                 if _re.match(r"\d{4}-\d{2}-\d{2}", v):
                                     obj[k] = target_iso
+                                    modified = True
+                                elif _re.match(r"\d{2}\.\d{2}\.\d{4}", v):
+                                    obj[k] = target_dot
                                     modified = True
                                 elif _re.match(r"\d{2}-\d{2}-\d{4}", v):
                                     obj[k] = target_dmy
@@ -490,10 +537,11 @@ class TurkishConnectorClient:
                 _fix_dates(data)
                 if modified:
                     new_body = _json.dumps(data)
-                    logger.warning("TK: rewrote API request date → %s", target_iso)
+                    logger.warning("TK: rewrote API request (dates/airports) → %s→%s on %s",
+                                   _origin, _destination, target_iso)
                     await route.continue_(post_data=new_body)
                 else:
-                    logger.warning("TK: no date fields found in API body, passing through")
+                    logger.warning("TK: no date/airport fixes needed, passing through")
                     await route.continue_()
             except Exception as exc:
                 logger.warning("TK: route intercept error: %s, passing through", exc)
@@ -537,19 +585,16 @@ class TurkishConnectorClient:
             await self._dismiss_cookies(page)
             await asyncio.sleep(1.0)
 
-            # Dismiss overlays
-            await page.evaluate("""() => {
-                document.querySelectorAll(
-                    '[role="dialog"], .modal-backdrop, .overlay, [class*="popup"]'
-                ).forEach(el => el.remove());
-            }""")
+            # Dismiss overlays + error modals (TK renders i18n-key error modals on fresh profiles)
+            await self._remove_overlays(page)
 
             # One-way toggle (only for OW searches; RT is the default)
             if not req.return_from:
                 try:
-                    ow = page.locator("span:has-text('One way')").first
+                    # Text may be translated ("One way") or i18n key ("Booker.OneWay")
+                    ow = page.locator("span:has-text('One way'), span:has-text('Booker.OneWay')").first
                     if await ow.count() > 0:
-                        await ow.click(timeout=5000)
+                        await ow.click(timeout=5000, force=True)
                         logger.warning("TK: One-way selected")
                 except Exception:
                     pass
@@ -597,14 +642,16 @@ class TurkishConnectorClient:
                     await self._fill_date(page, req.date_from)
                     await asyncio.sleep(0.5)
 
-            # ── Click "Search flights" directly ──
-            # Route interceptor will rewrite the date in the API request.
+            # ── Click "Search flights" ──
+            # Remove overlays right before clicking (modals may reappear)
+            await self._remove_overlays(page)
             search_clicked = False
-            for btn_text in ["Search flights", "Search", "Find flights"]:
+            # Match translated text OR i18n keys
+            for btn_text in ["Search flights", "Booker.SearchFlights", "Search", "Find flights"]:
                 try:
                     btn = page.locator(f"button:has-text('{btn_text}')").first
                     if await btn.count() > 0 and await btn.is_visible():
-                        await btn.click(timeout=5000)
+                        await btn.click(timeout=5000, force=True)
                         logger.warning("TK: clicked '%s'", btn_text)
                         search_clicked = True
                         break
@@ -612,9 +659,16 @@ class TurkishConnectorClient:
                     continue
 
             if not search_clicked:
-                # JS fallback for search button
+                # CSS class fallback (works regardless of i18n)
                 search_clicked = bool(await page.evaluate("""() => {
-                    const patterns = ['search', 'find flights'];
+                    // Method 1: by class containing searchButton
+                    const byClass = document.querySelector('[class*="searchButton"], [class*="SearchButton"]');
+                    if (byClass && byClass.offsetHeight > 0) {
+                        byClass.click();
+                        return 'class:' + (byClass.textContent || '').trim().slice(0, 30);
+                    }
+                    // Method 2: by text patterns
+                    const patterns = ['search', 'find flights', 'booker.searchflights'];
                     for (const b of document.querySelectorAll('button')) {
                         const t = (b.textContent || '').toLowerCase().trim();
                         if (b.offsetHeight > 0 && patterns.some(p => t.includes(p))) {
@@ -644,17 +698,11 @@ class TurkishConnectorClient:
             # included automatically (same-origin request).
             if not avail_data and not px_blocked:
                 logger.warning("TK: form didn't trigger API, attempting direct fetch from page context")
-                # Build a complete request body matching what TK's form would send
-                o_cc = get_country(req.origin) or ""
-                d_cc = get_country(req.destination) or ""
-                o_city = _AIRPORT_TO_CITY.get(req.origin.upper(), req.origin.upper())
-                d_city = _AIRPORT_TO_CITY.get(req.destination.upper(), req.destination.upper())
                 try:
                     direct_fetch_active = True
                     direct_result = await page.evaluate(
                         """async (args) => {
-                        const [origin, dest, dateDMY, adults,
-                               oCC, dCC, oCityCode, dCityCode, isRt, retDateDMY] = args;
+                        const [origin, dest, dateDMY, adults, isRt, retDateDMY] = args;
                         const controller = new AbortController();
                         const timer = setTimeout(() => controller.abort(), 15000);
                         try {
@@ -669,38 +717,25 @@ class TurkishConnectorClient:
                                 body: JSON.stringify({
                                     selectedBookerSearch: isRt ? 'R' : 'O',
                                     selectedCabinClass: 'ECONOMY',
-                                    moduleType: 'TICKETING',
+                                    inbound: false,
+                                    stayDuration: isRt ? 7 : 0,
                                     passengerTypeList: [{quantity: parseInt(adults), code: 'ADULT'}],
                                     originDestinationInformationList: [
                                         {
                                             originAirportCode: origin,
-                                            originCountryCode: oCC,
-                                            originCityCode: oCityCode,
-                                            originMultiPort: false,
-                                            originDomestic: false,
+                                            originMultiPort: true,
                                             destinationAirportCode: dest,
-                                            destinationCountryCode: dCC,
-                                            destinationCityCode: dCityCode,
-                                            destinationMultiPort: true,
-                                            destinationDomestic: false,
+                                            destinationMultiPort: false,
                                             departureDate: dateDMY,
                                         },
                                         ...(isRt ? [{
                                             originAirportCode: dest,
-                                            originCountryCode: dCC,
-                                            originCityCode: dCityCode,
-                                            originMultiPort: false,
-                                            originDomestic: false,
+                                            originMultiPort: true,
                                             destinationAirportCode: origin,
-                                            destinationCountryCode: oCC,
-                                            destinationCityCode: oCityCode,
-                                            destinationMultiPort: true,
-                                            destinationDomestic: false,
+                                            destinationMultiPort: false,
                                             departureDate: retDateDMY,
                                         }] : []),
                                     ],
-                                    savedDate: new Date().toISOString(),
-                                    preselectedOptionDetails: [],
                                 }),
                             });
                             clearTimeout(timer);
@@ -717,9 +752,8 @@ class TurkishConnectorClient:
                         }
                     }""",
                         [req.origin, req.destination, target_dmy, str(req.adults or 1),
-                         o_cc, d_cc, o_city, d_city,
                          bool(req.return_from),
-                         _to_datetime(req.return_from).strftime("%d.%m.%Y") if req.return_from else ""],
+                         _to_datetime(req.return_from).strftime("%d-%m-%Y") if req.return_from else ""],
                     )
                     # Give _on_response a moment to process
                     await asyncio.sleep(0.5)
@@ -764,18 +798,14 @@ class TurkishConnectorClient:
                 await asyncio.sleep(5.0)
                 await self._dismiss_cookies(page)
                 await asyncio.sleep(1.0)
-                await page.evaluate("""() => {
-                    document.querySelectorAll(
-                        '[role="dialog"], .modal-backdrop, .overlay, [class*="popup"]'
-                    ).forEach(el => el.remove());
-                }""")
+                await self._remove_overlays(page)
 
                 # One-way (only for OW)
                 if not req.return_from:
                     try:
-                        ow = page.locator("span:has-text('One way')").first
+                        ow = page.locator("span:has-text('One way'), span:has-text('Booker.OneWay')").first
                         if await ow.count() > 0:
-                            await ow.click(timeout=5000)
+                            await ow.click(timeout=5000, force=True)
                     except Exception:
                         pass
                 await asyncio.sleep(2.0)
@@ -791,13 +821,14 @@ class TurkishConnectorClient:
                     # Try date fill (may fail — calendar won't open)
                     await self._fill_date(page, req.date_from)
                     await asyncio.sleep(0.5)
+                    await self._remove_overlays(page)
 
-                    # Click search — route interceptor will fix the date even if _fill_date failed
-                    for btn_text in ["Search flights", "Search"]:
+                    # Click search — match translated + i18n keys + class
+                    for btn_text in ["Search flights", "Booker.SearchFlights", "Search"]:
                         try:
                             btn = page.locator(f"button:has-text('{btn_text}')").first
                             if await btn.count() > 0:
-                                await btn.click(timeout=5000)
+                                await btn.click(timeout=5000, force=True)
                                 logger.warning("TK: clicked '%s' (homepage)", btn_text)
                                 break
                         except Exception:
@@ -869,6 +900,29 @@ class TurkishConnectorClient:
         except Exception:
             pass
 
+    async def _remove_overlays(self, page) -> None:
+        """Remove TK modal/overlay elements that block interaction.
+
+        On fresh Chrome profiles, TK renders error modals with i18n keys
+        (e.g. 'InformationModal.CloseText') and transparent overlays that
+        intercept all pointer events.  Remove them aggressively.
+        """
+        try:
+            removed = await page.evaluate("""() => {
+                let count = 0;
+                document.querySelectorAll(
+                    '[role="dialog"], .modal-backdrop, [class*="overlay"], ' +
+                    '[class*="modal-background"], [class*="error-modal"], ' +
+                    '[class*="popup"], [class*="thy-modal"], ' +
+                    '[class*="InformationModal"]'
+                ).forEach(el => { el.remove(); count++; });
+                return count;
+            }""")
+            if removed:
+                logger.info("TK: removed %d overlay/modal elements", removed)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Form fill
     # ------------------------------------------------------------------
@@ -909,23 +963,31 @@ class TurkishConnectorClient:
             except Exception:
                 logger.warning("TK: %s not visible after 10s", selector)
                 return False
-            # Force-click bypasses overlay/interceptor issues
+            # Remove overlays first, then force-click
+            await self._remove_overlays(page)
             await field.click(timeout=5000, force=True)
             await asyncio.sleep(0.3)
-            await field.click(click_count=3)
+            await field.click(click_count=3, force=True)
             await asyncio.sleep(0.1)
             await field.fill("")
             await asyncio.sleep(0.1)
             await field.type(iata, delay=80)
             await asyncio.sleep(2.5)
 
-            # Click first dropdown option
-            opt = page.locator("[role='option']").first
-            if await opt.count() > 0:
-                await opt.click(timeout=3000)
-                value = await field.input_value()
-                logger.info("TK: filled %s -> %s", selector, value)
-                return True
+            # Remove overlays again before clicking option
+            await self._remove_overlays(page)
+
+            # Click first matching airport option (skip "see all" links)
+            opts = page.locator("[role='option']")
+            count = await opts.count()
+            for i in range(min(count, 5)):
+                opt = opts.nth(i)
+                text = await opt.inner_text()
+                if iata.upper() in text.upper() or i == min(1, count - 1):
+                    await opt.click(timeout=3000, force=True)
+                    value = await field.input_value()
+                    logger.info("TK: filled %s -> %s", selector, value)
+                    return True
 
             # Keyboard fallback
             await field.press("ArrowDown")
@@ -1366,6 +1428,19 @@ class TurkishConnectorClient:
             logger.warning("TK parse: no originDestinationInformationList in data (keys: %s)",
                            list(data.keys())[:10])
             return offers
+
+        # ── Swap guard: detect if response legs are reversed ──
+        # When TK geo-detects the browser IP, odil[0] may contain the return
+        # leg (dest→origin) instead of the outbound leg.  Detect by checking
+        # the first segment's departure airport against req.origin.
+        first_opts = odil[0].get("originDestinationOptionList", [])
+        if first_opts and len(odil) > 1 and req.return_from:
+            first_seg = (first_opts[0].get("segmentList") or [{}])[0]
+            first_dep = (first_seg.get("departureAirportCode") or "").upper()
+            if first_dep == req.destination.upper() and first_dep != req.origin.upper():
+                logger.warning("TK parse: swapped odil detected (first leg departs %s, expected %s) — swapping",
+                               first_dep, req.origin)
+                odil = [odil[1], odil[0]]
 
         option_list = odil[0].get("originDestinationOptionList", [])
         logger.warning("TK parse: %d options, currency=%s", len(option_list), currency)
