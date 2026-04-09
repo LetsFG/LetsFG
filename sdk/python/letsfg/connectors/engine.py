@@ -940,8 +940,39 @@ class MultiProvider:
             )
 
         # Run all providers in parallel (normal + combo one-way searches)
+        # Use asyncio.wait with a global timeout so we return whatever results
+        # are ready after GLOBAL_TIMEOUT seconds, rather than waiting forever
+        # for slow browser connectors queued behind the semaphore.
         all_tasks = tasks + combo_tasks
-        results = await asyncio.gather(*all_tasks, return_exceptions=True)
+        GLOBAL_TIMEOUT = float(os.environ.get("LETSFG_SEARCH_TIMEOUT", "60"))
+        
+        # Create named Task objects so we can identify which finished
+        named_tasks = [asyncio.create_task(t, name=str(i)) for i, t in enumerate(all_tasks)]
+        
+        # Wait with timeout — returns (done, pending) sets
+        done, pending = await asyncio.wait(named_tasks, timeout=GLOBAL_TIMEOUT, return_when=asyncio.ALL_COMPLETED)
+        
+        # Cancel any pending tasks (they're too slow)
+        if pending:
+            logger.info("Global timeout (%.0fs): %d/%d tasks completed, cancelling %d pending",
+                        GLOBAL_TIMEOUT, len(done), len(named_tasks), len(pending))
+            for task in pending:
+                task.cancel()
+            # Wait briefly for cancellations to propagate
+            await asyncio.gather(*pending, return_exceptions=True)
+        
+        # Rebuild results list in original order
+        results = []
+        for i in range(len(all_tasks)):
+            task = named_tasks[i]
+            if task.done() and not task.cancelled():
+                try:
+                    results.append(task.result())
+                except Exception as e:
+                    results.append(e)
+            else:
+                # Task was cancelled or still pending — treat as timeout
+                results.append(asyncio.TimeoutError(f"Task {i} cancelled (global timeout)"))
 
         # Split results: normal providers vs combo legs
         normal_results = results[:len(tasks)]

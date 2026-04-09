@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.Efistoffeles/letsfg",
+  "name": "io.github.LetsFG/letsfg",
   "title": "LetsFG",
-  "description": "Flight search & booking for AI agents. 400+ airlines, 200 local connectors. Rate limited: 10 searches/min. letsfg.co",
+  "description": "Flight search & booking for AI agents. 200+ airline connectors running locally + enterprise GDS/NDC APIs. Zero price bias, raw airline prices. letsfg.co",
   "repository": {
     "url": "https://github.com/LetsFG/LetsFG",
     "source": "github"
   },
-  "version": "2026.4.6",
+  "version": "2026.4.8",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "letsfg-mcp",
-      "version": "2026.4.6",
+      "version": "2026.4.8",
       "transport": {
         "type": "stdio"
       },
@@ -29,7 +29,7 @@
     {
       "registryType": "pypi",
       "identifier": "letsfg",
-      "version": "2026.4.6",
+      "version": "2026.4.8",
       "transport": {
         "type": "stdio"
       },
