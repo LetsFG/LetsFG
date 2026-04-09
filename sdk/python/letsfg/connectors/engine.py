@@ -944,7 +944,7 @@ class MultiProvider:
         # are ready after GLOBAL_TIMEOUT seconds, rather than waiting forever
         # for slow browser connectors queued behind the semaphore.
         all_tasks = tasks + combo_tasks
-        GLOBAL_TIMEOUT = float(os.environ.get("LETSFG_SEARCH_TIMEOUT", "60"))
+        GLOBAL_TIMEOUT = float(os.environ.get("LETSFG_SEARCH_TIMEOUT", "90"))
         
         # Create named Task objects so we can identify which finished
         named_tasks = [asyncio.create_task(t, name=str(i)) for i, t in enumerate(all_tasks)]
