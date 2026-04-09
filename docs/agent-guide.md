@@ -27,7 +27,7 @@ result = bt.search("LHR", "JFK", "2026-06-01")
 
 **When to use fast mode:** Quick price lookups, time-sensitive queries, constrained machines. Covers Kiwi, Skyscanner, Kayak, Momondo, eDreams, Trip.com, Booking.com + Ryanair, Wizz Air, Southwest, and regional OTAs for every continent.
 
-**When to use default (full) search:** Maximum coverage across all 200+ connectors. Finds niche airlines and routes that OTAs may miss.
+**When to use default (full) local search:** Maximum coverage across all 200+ connectors. Finds niche airlines and routes that OTAs may miss.
 
 **When to use full API search:** Comprehensive coverage across 400+ airlines, booking flow (unlock → book), GDS/NDC fares not available on airline websites.
 

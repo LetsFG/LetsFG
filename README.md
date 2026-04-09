@@ -141,6 +141,12 @@ That single command fires 180+ airline connectors on your machine and returns re
 letsfg search LHR BCN 2026-06-15 --mode fast
 ```
 
+**Short on time?** Use `--mode fast` to search only OTAs + key airlines (~25 connectors, 20-40s instead of 6+ min):
+
+```bash
+letsfg search LHR BCN 2026-06-15 --mode fast
+```
+
 Want to unlock and book? Star the repo for free access:
 
 ```bash
