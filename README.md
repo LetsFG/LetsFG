@@ -20,17 +20,17 @@ The more we cover, the better it gets — for all of us.
 
 **Share with a friend ✈️**
 
-<a href="https://twitter.com/intent/tweet?text=Found%20this%20%E2%80%94%20180%2B%20airline%20connectors%2C%20real%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.&url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_𝕏-000000?style=flat-square&logo=x&logoColor=white" alt="Share on X"></a>
+<a href="https://twitter.com/intent/tweet?text=Found%20this.%20200%2B%20airline%20connectors%2C%20real%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.&url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_𝕏-000000?style=flat-square&logo=x&logoColor=white" alt="Share on X"></a>
 &nbsp;
 <a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_LinkedIn-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="Share on LinkedIn"></a>
 &nbsp;
-<a href="https://reddit.com/submit?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&title=LetsFG%20%E2%80%94%20180%2B%20airline%20connectors%20for%20AI%20agents.%20Real%20prices%2C%20zero%20markup."><img src="https://img.shields.io/badge/Share_on_Reddit-FF4500?style=flat-square&logo=reddit&logoColor=white" alt="Share on Reddit"></a>
+<a href="https://reddit.com/submit?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&title=LetsFG%20-%20200%2B%20airline%20connectors%20for%20AI%20agents.%20Real%20prices%2C%20zero%20markup."><img src="https://img.shields.io/badge/Share_on_Reddit-FF4500?style=flat-square&logo=reddit&logoColor=white" alt="Share on Reddit"></a>
 &nbsp;
-<a href="https://wa.me/?text=Check%20this%20out%20%E2%80%94%20LetsFG%20searches%20180%2B%20airlines%20and%20gives%20you%20the%20real%20price.%20No%20markup.%20https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white" alt="Share on WhatsApp"></a>
+<a href="https://wa.me/?text=Check%20this%20out!%20LetsFG%20searches%20200%2B%20airlines%20and%20gives%20you%20the%20real%20price.%20No%20markup.%20https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white" alt="Share on WhatsApp"></a>
 &nbsp;
-<a href="https://t.me/share/url?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&text=LetsFG%20%E2%80%94%20180%2B%20airline%20connectors%20for%20AI%20agents.%20Real%20prices%2C%20zero%20markup."><img src="https://img.shields.io/badge/Share_on_Telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Share on Telegram"></a>
+<a href="https://t.me/share/url?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&text=LetsFG%20-%20200%2B%20airline%20connectors%20for%20AI%20agents.%20Real%20prices%2C%20zero%20markup."><img src="https://img.shields.io/badge/Share_on_Telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Share on Telegram"></a>
 &nbsp;
-<a href="mailto:?subject=Check%20out%20LetsFG&body=Found%20this%20%E2%80%94%20180%2B%20airline%20connectors%2C%20real%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.%0A%0Ahttps%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Send_via_Email-EA4335?style=flat-square&logo=gmail&logoColor=white" alt="Send via Email"></a>
+<a href="mailto:?subject=Check%20out%20LetsFG&body=Found%20this.%20200%2B%20airline%20connectors%2C%20real%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.%0A%0Ahttps%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Send_via_Email-EA4335?style=flat-square&logo=gmail&logoColor=white" alt="Send via Email"></a>
 &nbsp;
 <a href="https://github.com/LetsFG/LetsFG"><img src="https://img.shields.io/badge/Copy_Link_%F0%9F%94%97-555555?style=flat-square" alt="Copy Link"></a>
 
