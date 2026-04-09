@@ -136,11 +136,14 @@ def test_search():
     max_stops = data.get("max_stops")
     if max_stops is not None:
         max_stops = int(max_stops)
+    cabin_class = (data.get("cabin_class") or "").strip().upper() or None
+    if cabin_class and cabin_class not in ("M", "W", "C", "F"):
+        cabin_class = None  # ignore invalid values
 
     try:
         result = asyncio.run(_run_test_search(
             origin, destination, date_from, return_date,
-            adults, currency, limit, max_stops,
+            adults, currency, limit, max_stops, cabin_class,
         ))
         return jsonify(result)
     except Exception as exc:
@@ -151,6 +154,7 @@ def test_search():
 async def _run_test_search(
     origin: str, destination: str, date_from: str, return_date: str | None,
     adults: int, currency: str, limit: int, max_stops: int | None,
+    cabin_class: str | None = None,
 ) -> dict:
     """Run API + local search in parallel, merge results.
 
@@ -161,7 +165,7 @@ async def _run_test_search(
       - Both streams are merged and sorted by price
     """
     import time as _time
-    from search_worker import _search_api, _search_local, _deduplicate, _filter_by_stops
+    from search_worker import _search_api, _search_local, _deduplicate, _filter_by_stops, _filter_route_mismatch, _get_valid_airports
 
     LETSFG_API_KEY = os.environ.get("LETSFG_API_KEY", "")
     t0 = _time.monotonic()
@@ -176,19 +180,23 @@ async def _run_test_search(
         api_tasks.append(_search_api(
             origin, destination, date_from, adults, currency, limit,
             max_stopovers=max_stops, return_date=return_date,
+            cabin_class=cabin_class,
         ))
         api_labels.append("api_rt" if return_date else "api_out")
 
     # Local connector fan-out — one-way for combo engine
-    local_tasks.append(_search_local(origin, destination, date_from, adults, currency, limit))
+    local_tasks.append(_search_local(origin, destination, date_from, adults, currency, limit,
+                                     cabin_class=cabin_class))
     local_labels.append("local_out")
     if return_date:
-        local_tasks.append(_search_local(destination, origin, return_date, adults, currency, limit))
+        local_tasks.append(_search_local(destination, origin, return_date, adults, currency, limit,
+                                         cabin_class=cabin_class))
         local_labels.append("local_ret")
         # Native RT fan-out — aggregators (Skyscanner, Kayak, etc.) do round-trip in one call
         local_tasks.append(_search_local(
             origin, destination, date_from, adults, currency, limit,
             return_date=return_date, only_rt_capable=True,
+            cabin_class=cabin_class,
         ))
         local_labels.append("local_rt")
 
@@ -268,6 +276,9 @@ async def _run_test_search(
         all_offers = one_way_offers + local_out
 
     merged = _deduplicate(all_offers)
+    # Route validation — drop offers whose origin/destination don't match the request
+    valid_origins, valid_dests = _get_valid_airports(origin, destination)
+    merged = _filter_route_mismatch(merged, valid_origins, valid_dests)
     if max_stops is not None:
         merged = _filter_by_stops(merged, max_stops)
     merged.sort(key=lambda o: float(o.get("price", 999999)))

@@ -365,6 +365,8 @@ async def run_search(params: dict) -> dict:
 
     # ── Merge, deduplicate, sort ────────────────────────────────────────
     merged = _deduplicate(all_offers)
+    valid_origins, valid_dests = _get_valid_airports(origin, destination)
+    merged = _filter_route_mismatch(merged, valid_origins, valid_dests)
     if max_stops is not None:
         merged = _filter_by_stops(merged, max_stops)
     merged.sort(key=lambda o: float(o.get("price", 999999)))
@@ -491,16 +493,22 @@ async def _run_round_trip(
     elapsed_p2 = time.monotonic() - t0
     logger.info("Phase 2 round-trip fan-out complete in %.1fs", elapsed_p2)
 
+    # ── Route validation (prevents wrong-origin offers from leaking) ───
+    valid_origins, valid_dests = _get_valid_airports(origin, destination)
+
     # ── Build cross-airline combos ──────────────────────────────────────
     combos_json: list[dict] = []
     try:
+        # Validate outbound/return offers match the requested route BEFORE
+        # feeding them into the combo engine (prevents SIN→BKK leaking into FRA→BKK results).
+        combo_out = _filter_route_mismatch(outbound_offers, valid_origins, valid_dests)
+        combo_ret = _filter_route_mismatch(return_offers, valid_dests, valid_origins)
+
         # Pre-filter legs when max_stops is specified.
         # This ensures combos are only built from legs meeting the stops criteria.
-        combo_out = outbound_offers
-        combo_ret = return_offers
         if max_stops is not None:
-            combo_out = _filter_by_stops(outbound_offers, max_stops)
-            combo_ret = _filter_by_stops(return_offers, max_stops)
+            combo_out = _filter_by_stops(combo_out, max_stops)
+            combo_ret = _filter_by_stops(combo_ret, max_stops)
             logger.info("Combo pre-filter: %d out → %d, %d ret → %d",
                         len(outbound_offers), len(combo_out),
                         len(return_offers), len(combo_ret))
@@ -516,6 +524,8 @@ async def _run_round_trip(
     # API RT offers + aggregator RT offers + outbound one-ways + return one-ways + combos
     all_offers = api_offers + rt_aggregator_offers + outbound_offers + return_offers + combos_json
     merged = _deduplicate(all_offers)
+    # Final route validation on all merged offers (catches any stray results from API/aggregators)
+    merged = _filter_route_mismatch(merged, valid_origins, valid_dests)
     if max_stops is not None:
         merged = _filter_by_stops(merged, max_stops)
     merged.sort(key=lambda o: float(o.get("price", 999999)))
@@ -599,6 +609,7 @@ async def _search_api(
     adults: int, currency: str, limit: int,
     max_stopovers: int | None = None,
     return_date: str | None = None,
+    cabin_class: str | None = None,
 ) -> dict:
     """Search via LetsFG API — Duffel, Amadeus, Sabre (400+ airlines).
 
@@ -618,6 +629,8 @@ async def _search_api(
         body["max_stopovers"] = max_stopovers
     if return_date:
         body["return_from"] = return_date
+    if cabin_class:
+        body["cabin_class"] = cabin_class
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{LETSFG_BASE_URL}/api/v1/flights/search",
@@ -641,6 +654,7 @@ async def _search_local(
     adults: int, currency: str, limit: int,
     return_date: str | None = None,
     only_rt_capable: bool = False,
+    cabin_class: str | None = None,
 ) -> dict:
     """Fan out search to individual connector-worker Cloud Run instances.
 
@@ -706,6 +720,8 @@ async def _search_local(
         }
         if return_date:
             payload["return_date"] = return_date
+        if cabin_class:
+            payload["cabin_class"] = cabin_class
         return payload
 
     # Fast connectors (Ryanair, Wizzair, Kiwi) — search all pairs
@@ -859,6 +875,81 @@ def _filter_by_stops(offers: list[dict], max_stops: int) -> list[dict]:
         ib_stops = inbound.get("stopovers", 0) if inbound else 0
         if ob_stops <= max_stops and ib_stops <= max_stops:
             filtered.append(offer)
+    return filtered
+
+
+def _get_valid_airports(origin: str, destination: str) -> tuple[set[str], set[str]]:
+    """Return sets of valid origin and destination IATA codes (including city siblings)."""
+    try:
+        from letsfg.connectors.airline_routes import get_city_airports
+        origin_set = set(get_city_airports(origin)) | {origin}
+        dest_set = set(get_city_airports(destination)) | {destination}
+    except Exception:
+        origin_set = {origin}
+        dest_set = {destination}
+    return origin_set, dest_set
+
+
+def _offer_route_origin(offer: dict) -> str | None:
+    """Extract the first departure airport from an offer's outbound leg."""
+    segments = (offer.get("outbound") or {}).get("segments") or []
+    if segments:
+        return (segments[0].get("origin") or "").upper()
+    return None
+
+
+def _offer_route_destination(offer: dict) -> str | None:
+    """Extract the final arrival airport from an offer's outbound leg."""
+    segments = (offer.get("outbound") or {}).get("segments") or []
+    if segments:
+        return (segments[-1].get("destination") or "").upper()
+    return None
+
+
+def _filter_route_mismatch(
+    offers: list[dict],
+    valid_origins: set[str],
+    valid_destinations: set[str],
+) -> list[dict]:
+    """Drop offers whose outbound origin/destination don't match the requested route.
+
+    For round-trip offers (with inbound), also validates that inbound goes
+    from destination back to origin.  Uses city-expanded airport sets so
+    LON->BCN accepts LHR->BCN, STN->BCN, etc.
+    """
+    filtered = []
+    dropped = 0
+    for offer in offers:
+        ob_origin = _offer_route_origin(offer)
+        ob_dest = _offer_route_destination(offer)
+
+        # If we can't determine the route, keep the offer (don't break existing results)
+        if not ob_origin or not ob_dest:
+            filtered.append(offer)
+            continue
+
+        # Outbound must go from a valid origin to a valid destination
+        if ob_origin not in valid_origins or ob_dest not in valid_destinations:
+            dropped += 1
+            continue
+
+        # For round-trip offers, validate inbound direction too
+        inbound = offer.get("inbound")
+        if inbound:
+            ib_segments = inbound.get("segments") or []
+            if ib_segments:
+                ib_origin = (ib_segments[0].get("origin") or "").upper()
+                ib_dest = (ib_segments[-1].get("destination") or "").upper()
+                if ib_origin and ib_dest:
+                    if ib_origin not in valid_destinations or ib_dest not in valid_origins:
+                        dropped += 1
+                        continue
+
+        filtered.append(offer)
+
+    if dropped:
+        logger.warning("Route filter: dropped %d/%d offers with mismatched origin/destination",
+                       dropped, len(offers))
     return filtered
 
 
