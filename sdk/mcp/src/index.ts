@@ -132,9 +132,12 @@ const TOOLS = [
   {
     name: 'search_flights',
     description:
-      'Search 200+ airline connectors for live flight prices. FREE, unlimited. ' +
-      'Returns offers with prices, airlines, times, durations, stopovers. ' +
-      'Read the letsfg://guide resource for full workflow details.',
+      'Search 200+ airline connectors for live flight prices — completely FREE, unlimited, read-only.\n\n' +
+      'Returns structured offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
+      'Covers 180+ airlines across all continents (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, and 170+ more).\n\n' +
+      'Multi-airport city expansion: searching one London airport auto-checks all 5. Works for 25+ major cities.\n\n' +
+      'Rate limited to 10 req/min. Safe to call multiple times, results are never cached. ' +
+      'See letsfg://guide resource for the full search→unlock→book workflow.',
     inputSchema: {
       type: 'object',
       required: ['origin', 'destination', 'date_from'],
@@ -169,8 +172,10 @@ const TOOLS = [
   {
     name: 'unlock_flight_offer',
     description:
-      'Confirm live price and reserve offer for 30 minutes (step 2 of 3). FREE with GitHub star. ' +
-      'ALWAYS call before book_flight. Not idempotent.',
+      'Confirm live price with the airline and reserve offer for 30 minutes (step 2 of 3). FREE with GitHub star.\n\n' +
+      'This is the "quote" step — ALWAYS call before book_flight. The confirmed_price may differ from search price; ' +
+      'if so, inform the user before proceeding. Requires GitHub star (call link_github first).\n\n' +
+      'Not idempotent — calling twice on the same offer may charge twice.',
     inputSchema: {
       type: 'object',
       required: ['offer_id'],
@@ -182,9 +187,12 @@ const TOOLS = [
   {
     name: 'book_flight',
     description:
-      'Book an unlocked flight — creates real airline reservation (step 3 of 3). Charges ticket price via Stripe. ' +
-      'Always provide idempotency_key. Use REAL passenger details (name must match passport). ' +
-      'See letsfg://guide for full flow and error handling.',
+      'Book an unlocked flight — creates real airline reservation with PNR (step 3 of 3).\n\n' +
+      'FLOW: search_flights → unlock_flight_offer → setup_payment (once) → book_flight\n' +
+      'CHARGES: Ticket price via Stripe (2.9% + 30¢ processing). Zero markup.\n' +
+      'SAFETY: Always provide idempotency_key to prevent double-bookings. Use REAL passenger details — ' +
+      'names must match passport, email receives the e-ticket.\n\n' +
+      'Errors include error_code/error_category: transient → retry, validation → fix input, business → ask user.',
     inputSchema: {
       type: 'object',
       required: ['offer_id', 'passengers', 'contact_email'],
@@ -232,8 +240,9 @@ const TOOLS = [
   {
     name: 'start_checkout',
     description:
-      'Automate airline checkout up to payment page (never submits payment). ' +
-      'Supported: Ryanair, Wizz Air, EasyJet. Others return booking URL only. ' +
+      'Automate airline checkout up to payment page — NEVER submits payment or enters card info.\n\n' +
+      'Supported: Ryanair, Wizz Air, EasyJet (drives browser through flight selection + passenger forms). ' +
+      'Other airlines return booking URL only. Uses safe test data if passengers omitted.\n' +
       'Requires checkout_token from unlock_flight_offer.',
     inputSchema: {
       type: 'object',
