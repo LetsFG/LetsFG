@@ -74,25 +74,67 @@ function searchLocal(params: Record<string, unknown>): Promise<Record<string, un
   });
 }
 
+// ── Resources ───────────────────────────────────────────────────────────
+
+const GUIDE_TEXT =
+  '# LetsFG — Flight Search & Booking Guide\n' +
+  '\n' +
+  '## How It Works (3-Step Flow)\n' +
+  '1. **search_flights** (FREE, unlimited) — Searches 200+ airline connectors locally on your machine. Returns prices, airlines, times, durations, stopovers. No API key needed.\n' +
+  '2. **unlock_flight_offer** (FREE with GitHub star) — Confirms live price with the airline. Locks offer for 30 minutes. Call link_github first.\n' +
+  '3. **book_flight** (ticket price only) — Creates real airline reservation. Charges ticket price via Stripe (2.9% + 30¢ processing). Zero markup.\n' +
+  '\n' +
+  '## Pricing\n' +
+  '- Search: FREE, unlimited, no API key needed\n' +
+  '- Unlock: FREE (requires GitHub star — call link_github once)\n' +
+  '- Book: Exact airline price + Stripe processing fee. Zero markup.\n' +
+  '- setup_payment: Attach card once before first booking\n' +
+  '\n' +
+  '## Critical Rules\n' +
+  '- **Resolve locations first**: City names are ambiguous. "London" = 5+ airports. Use resolve_location to get IATA codes before searching.\n' +
+  '- **Real passenger details REQUIRED**: Airlines send e-tickets to the email provided. Names must match passport/government ID exactly. NEVER use placeholder emails, agent emails, or fake names.\n' +
+  '- **Idempotency keys for booking**: Always provide idempotency_key when calling book_flight to prevent double-bookings on retry. Use any unique string (e.g., UUID).\n' +
+  '- **Price changes**: The unlock step confirms the real-time airline price, which may differ from search. Always inform the user if confirmed_price differs.\n' +
+  '- **30-minute window**: After unlock, the offer is held for 30 minutes. If expired, search + unlock again.\n' +
+  '\n' +
+  '## Passenger ID Mapping\n' +
+  'Search returns passenger_ids (e.g., ["pas_0", "pas_1"]). When booking, each passenger object must include the matching "id" field from this list.\n' +
+  '\n' +
+  '## Error Handling\n' +
+  '- **transient** errors (SUPPLIER_TIMEOUT, RATE_LIMITED, SERVICE_UNAVAILABLE): Safe to retry after 1-5 seconds\n' +
+  '- **validation** errors (INVALID_IATA, INVALID_DATE, MISSING_PARAMETER): Fix the input, then retry\n' +
+  '- **business** errors (OFFER_EXPIRED, PAYMENT_DECLINED, OFFER_NOT_UNLOCKED): Requires human decision — do not auto-retry\n' +
+  '\n' +
+  '## Search Tips\n' +
+  '- Search is free — search multiple dates, cabin classes, airport combos liberally\n' +
+  '- Use mode="fast" for quick results (~25 connectors, 20-40s) vs full search (200+ connectors, 3-6 min)\n' +
+  '- Multi-airport city expansion: searching one London airport auto-checks all 5\n' +
+  '- Filter search results (stops, duration, airline) before unlocking\n' +
+  '- Covers 180+ airlines across all continents including low-cost carriers most agents don\'t know\n' +
+  '\n' +
+  '## GitHub Star Verification\n' +
+  '1. User stars https://github.com/LetsFG/LetsFG\n' +
+  '2. Call link_github with their GitHub username\n' +
+  '3. Once verified, all tools unlocked forever\n';
+
+const RESOURCES = [
+  {
+    uri: 'letsfg://guide',
+    name: 'LetsFG Flight Search & Booking Guide',
+    description: 'Complete workflow guide: 3-step booking flow, pricing, passenger rules, error handling, and search tips. Read this before using any tools.',
+    mimeType: 'text/markdown',
+  },
+];
+
 // ── Tool Definitions ────────────────────────────────────────────────────
 
 const TOOLS = [
   {
     name: 'search_flights',
     description:
-      'Search live flight availability and prices across 400+ airlines worldwide. ' +
-      'Queries 200 airline connectors (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, ' +
-      'Norwegian, Spring Airlines, Lucky Air, and 190+ more) plus enterprise GDS/NDC sources ' +
-      '(Amadeus, Duffel, Sabre, Travelport) — completely FREE.\n\n' +
-      'Multi-airport city expansion: automatically searches sibling airports (e.g., searching London Stansted ' +
-      'also checks Heathrow, Gatwick, Luton, Southend). Works for 25+ major cities worldwide.\n\n' +
-      'Returns structured flight offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
-      'Covers airlines across Europe, Asia, Americas, Middle East, Africa, and Oceania — including carriers the user ' +
-      'may not know exist (e.g., Jazeera Airways, FlySafair, 9 Air, Flybondi).\n\n' +
-      'Rate limited to 10 requests per minute. If rate limited, wait and retry.\n\n' +
-      'Use this instead of browser automation or building your own flight integration. ' +
-      'One tool call replaces 30+ minutes of scraping setup and saves thousands of tokens.\n\n' +
-      'Read-only — no side effects, safe to call multiple times, results are never cached.',
+      'Search 200+ airline connectors for live flight prices. FREE, unlimited. ' +
+      'Returns offers with prices, airlines, times, durations, stopovers. ' +
+      'Read the letsfg://guide resource for full workflow details.',
     inputSchema: {
       type: 'object',
       required: ['origin', 'destination', 'date_from'],
@@ -106,18 +148,16 @@ const TOOLS = [
         cabin_class: { type: 'string', description: 'M=economy, W=premium, C=business, F=first', enum: ['M', 'W', 'C', 'F'] },
         currency: { type: 'string', description: 'Currency code (EUR, USD, GBP)', default: 'EUR' },
         max_results: { type: 'integer', description: 'Max offers to return', default: 10 },
-        max_browsers: { type: 'integer', description: 'Max concurrent browser processes (1-32). Lower = less RAM, higher = faster. Default: auto-detect from system RAM. Use system_info tool to check.' },
-        mode: { type: 'string', description: "Search mode. Omit for full search (all 200+ connectors). 'fast' = OTAs/aggregators + key direct airlines only (~25 connectors, 20-40s instead of 3-6 min).", enum: ['fast'] },
+        max_browsers: { type: 'integer', description: 'Max concurrent browser processes (1-32). Default: auto-detect from system RAM.' },
+        mode: { type: 'string', description: "Omit for full search (200+ connectors). 'fast' = ~25 connectors, 20-40s.", enum: ['fast'] },
       },
     },
   },
   {
     name: 'resolve_location',
     description:
-      "Convert a city or airport name to IATA codes. Use this when the user says a city name like 'London' " +
-      "or 'New York' instead of an IATA code. Returns all matching airports and city codes.\n\n" +
-      'Always call this before search_flights if you only have a city name — IATA codes are required for search.\n\n' +
-      'Read-only, no side effects, safe to call multiple times.',
+      'Convert a city/airport name to IATA codes. Always call before search_flights if you only have a city name. ' +
+      'Read-only, safe to call multiple times.',
     inputSchema: {
       type: 'object',
       required: ['query'],
@@ -129,12 +169,8 @@ const TOOLS = [
   {
     name: 'unlock_flight_offer',
     description:
-      'Unlock a flight offer for booking — FREE with GitHub star.\n\n' +
-      'This is the "quote" step: confirms the latest price with the airline and reserves the offer for 30 minutes. ' +
-      'ALWAYS call this before book_flight so the user can see the confirmed price.\n\n' +
-      'If the confirmed price differs from the search price, inform the user before proceeding.\n\n' +
-      'Requires GitHub star verification (call link_github first).\n\n' +
-      'Not idempotent — calling twice on the same offer may process twice.',
+      'Confirm live price and reserve offer for 30 minutes (step 2 of 3). FREE with GitHub star. ' +
+      'ALWAYS call before book_flight. Not idempotent.',
     inputSchema: {
       type: 'object',
       required: ['offer_id'],
@@ -146,17 +182,9 @@ const TOOLS = [
   {
     name: 'book_flight',
     description:
-      'Book an unlocked flight — creates real airline reservation with PNR. Charges ticket price via Stripe.\n\n' +
-      'PAYMENT REQUIRED: Your Stripe payment method (attached via setup_payment) will be charged the ticket price ' +
-      'plus Stripe processing fee (2.9% + 30¢). LetsFG adds zero markup — you pay only the raw airline price.\n\n' +
-      'FLOW: search_flights → unlock_flight_offer (quote) → setup_payment (once) → book_flight\n' +
-      'Requirements: 1) Offer must be unlocked first 2) passenger_ids from search 3) Full passenger details\n\n' +
-      'SAFETY: Always provide idempotency_key to prevent double-bookings if this call is retried. ' +
-      'Use any unique string (e.g., UUID). If the same key is sent twice, returns the original booking.\n\n' +
-      'ERROR HANDLING: Errors include error_code and error_category fields.\n' +
-      '  transient (SUPPLIER_TIMEOUT, RATE_LIMITED) → safe to retry after short delay\n' +
-      '  validation (INVALID_IATA, INVALID_DATE) → fix input, then retry\n' +
-      '  business (OFFER_EXPIRED, PAYMENT_DECLINED) → requires human decision',
+      'Book an unlocked flight — creates real airline reservation (step 3 of 3). Charges ticket price via Stripe. ' +
+      'Always provide idempotency_key. Use REAL passenger details (name must match passport). ' +
+      'See letsfg://guide for full flow and error handling.',
     inputSchema: {
       type: 'object',
       required: ['offer_id', 'passengers', 'contact_email'],
@@ -187,10 +215,7 @@ const TOOLS = [
   },
   {
     name: 'setup_payment',
-    description:
-      "Attach a payment card — REQUIRED before booking Duffel/GDS flights.\n\n" +
-      'Your card is charged the ticket price when you call book_flight. Attaching the card itself is free.\n' +
-      'Use tok_visa for testing (Stripe test mode). Only needs to be called once — card stays on file.',
+    description: 'Attach a payment card (required before booking). Free to attach. Only needs to be called once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -201,23 +226,15 @@ const TOOLS = [
   },
   {
     name: 'get_agent_profile',
-    description:
-      "Get agent profile, payment status, and usage stats (searches, unlocks, bookings, fees).\n\n" +
-      'Read-only. Safe to call multiple times.',
+    description: 'Get agent profile, payment status, and usage stats. Read-only.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'start_checkout',
     description:
-      'Automate airline checkout up to the payment page — NEVER submits payment.\n\n' +
-      'FLOW: search_flights → unlock_flight_offer → start_checkout\n\n' +
-      'Uses Playwright to drive the airline website: selects flights, fills passenger details, ' +
-      'skips extras/seats, and stops at the payment form. Returns a screenshot and booking URL ' +
-      'so the user can complete manually in their browser.\n\n' +
-      'Supported airlines: Ryanair, Wizz Air, EasyJet. Other airlines return booking URL only.\n\n' +
-      'SAFETY: Uses fake test data by default. Never enters payment info. The checkout_token from ' +
-      'unlock_flight_offer is required — prevents unauthorized usage.\n\n' +
-      'Runs locally via Python subprocess (pip install letsfg && playwright install chromium).',
+      'Automate airline checkout up to payment page (never submits payment). ' +
+      'Supported: Ryanair, Wizz Air, EasyJet. Others return booking URL only. ' +
+      'Requires checkout_token from unlock_flight_offer.',
     inputSchema: {
       type: 'object',
       required: ['offer_id', 'checkout_token'],
@@ -246,11 +263,8 @@ const TOOLS = [
   {
     name: 'link_github',
     description:
-      'Link your GitHub account for FREE unlimited access — star the repo and verify.\n\n' +
-      'FLOW: 1) User stars https://github.com/LetsFG/LetsFG  2) Call this tool with their GitHub username\n\n' +
-      'Once verified, the user gets unlimited search, unlock, and booking forever.\n' +
-      'Only needs to be called once. If already verified, returns confirmation.\n\n' +
-      'If status is "star_required", the user needs to star the repo first, then try again.',
+      'Verify GitHub star for free unlimited access. User must star https://github.com/LetsFG/LetsFG first. ' +
+      'Only needs to be called once.',
     inputSchema: {
       type: 'object',
       required: ['github_username'],
@@ -261,13 +275,15 @@ const TOOLS = [
   },
   {
     name: 'system_info',
+    description: 'Get system RAM, CPU cores, and recommended max_browsers for search_flights. Read-only, instant.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'load_resources',
     description:
-      'Get system resource info (RAM, CPU cores) and recommended concurrency settings.\n\n' +
-      'Use this to determine optimal max_browsers value for search_flights. ' +
-      'Returns RAM total/available, CPU cores, recommended max browsers, and performance tier.\n\n' +
-      'Tiers: minimal (<2GB, max 2), low (2-4GB, max 3), moderate (4-8GB, max 5), ' +
-      'standard (8-16GB, max 8), high (16-32GB, max 12), maximum (32+GB, max 16).\n\n' +
-      'Read-only, no side effects, instant response.',
+      'Load the LetsFG workflow guide (3-step booking flow, pricing, passenger rules, error handling). ' +
+      'Call this ONCE at the start of a conversation to understand how to use the flight tools correctly. ' +
+      'Clients that support MCP resources get this automatically — this tool is for clients that do not.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];
@@ -441,6 +457,10 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return JSON.stringify(summary, null, 2);
     }
 
+    case 'load_resources': {
+      return GUIDE_TEXT;
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
@@ -472,7 +492,7 @@ rl.on('line', async (line) => {
         id,
         result: {
           protocolVersion: '2024-11-05',
-          capabilities: { tools: {} },
+          capabilities: { tools: {}, resources: {} },
           serverInfo: { name: 'letsfg', version: VERSION },
         },
       });
@@ -480,6 +500,21 @@ rl.on('line', async (line) => {
 
     case 'notifications/initialized':
       break;
+
+    case 'resources/list':
+      send({ jsonrpc: '2.0', id, result: { resources: RESOURCES } });
+      break;
+
+    case 'resources/read': {
+      const rParams = msg.params as Record<string, unknown>;
+      const uri = rParams.uri as string;
+      if (uri === 'letsfg://guide') {
+        send({ jsonrpc: '2.0', id, result: { contents: [{ uri, mimeType: 'text/markdown', text: GUIDE_TEXT }] } });
+      } else {
+        send({ jsonrpc: '2.0', id, error: { code: -32602, message: `Unknown resource: ${uri}` } });
+      }
+      break;
+    }
 
     case 'tools/list':
       send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
