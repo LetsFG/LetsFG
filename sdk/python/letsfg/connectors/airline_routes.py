@@ -1362,6 +1362,19 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "JP", "KR", "IN", "TH",
         "AE", "SA",
     },
+    # ── Regional coverage expansion ──
+    "esky": {
+        "PL", "CZ", "HU", "RO", "BG", "SK", "HR", "RS", "BA", "ME",
+        "DE", "AT", "GB", "FR", "IT", "ES", "PT", "GR", "NL", "BE",
+        "BR", "CO", "MX", "AR", "PE", "CL", "TR", "EG", "TN", "MA",
+    },
+    "hkexpress": {
+        "HK", "JP", "KR", "TW", "CN", "TH", "VN", "SG", "MY", "PH",
+        "KH", "ID", "IN", "AU",
+    },
+    "aircairo": {
+        "EG", "SA", "AE", "KW", "JO", "TR", "DE", "IT", "FR", "GB",
+    },
 }
 
 

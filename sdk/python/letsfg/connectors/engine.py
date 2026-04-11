@@ -231,6 +231,9 @@ from .musafir import MusafirConnectorClient
 from .akbartravels import AkbartravelsConnectorClient
 from .airasiamove import AirasiamoveConnectorClient
 from .hopper import HopperConnectorClient
+from .esky import EskyConnectorClient
+from .hkexpress import HKExpressConnectorClient
+from .aircairo import AirCairoConnectorClient
 
 from ..models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -349,6 +352,28 @@ _BROWSER_SOURCES: set[str] = {
     "musafir_ota",
     "akbartravels_ota",
     "airasiamove_ota",
+}
+
+# Fast mode sources — OTAs, metas, and key high-volume LCCs (~25 connectors).
+# These cover 90%+ of global routes with a ~20-40s search time vs 6+ min for all connectors.
+# Includes: all OTAs, all metas, plus key direct airlines (top EU/US LCCs).
+_FAST_MODE_SOURCES: set[str] = {
+    # ── OTAs (Online Travel Agencies) ──
+    "traveloka_ota", "webjet_ota", "tiket_ota", "edreams_ota", "tripcom_ota",
+    "cleartrip_ota", "opodo_ota", "despegar_ota", "etraveli_ota", "rehlat_ota",
+    "travelstart_ota", "travix_ota", "travelup_ota", "lastminute_ota", "byojet_ota",
+    "yatra_ota", "auntbetty_ota", "flightcatchers_ota", "traveltrolley_ota",
+    "almosafer_ota", "bookingcom_ota", "musafir_ota", "akbartravels_ota",
+    "airasiamove_ota", "esky_ota",
+    # ── Meta-search aggregators ──
+    "wego_meta", "momondo_meta", "kayak_meta", "cheapflights_meta", "skyscanner_meta",
+    "aviasales_meta", "agoda_meta", "ixigo_meta", "skiplagged_meta",
+    # ── Key direct airlines (top LCCs with high route coverage) ──
+    "ryanair_direct", "wizzair_direct", "easyjet_direct", "southwest_direct",
+    "spirit_direct", "frontier_direct", "allegiant_direct", "jetblue_direct",
+    "vueling_direct", "norwegian_direct", "transavia_direct",
+    # ── Kiwi is always included (global aggregator) ──
+    "kiwi_connector",
 }
 
 
@@ -618,6 +643,10 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("airasiamove_ota", AirasiamoveConnectorClient, 55.0),
     # ── Hopper (direct commerce API — no browser needed) ──
     ("hopper_direct", HopperConnectorClient, 25.0),
+    # ── Regional coverage expansion ──
+    ("esky_ota", EskyConnectorClient, 55.0),
+    ("hkexpress_direct", HKExpressConnectorClient, 25.0),
+    ("aircairo_direct", AirCairoConnectorClient, 45.0),
 ]
 
 
@@ -728,7 +757,7 @@ class MultiProvider:
     def _get_kiwi_connector(self) -> Optional[KiwiConnectorClient]:
         return KiwiConnectorClient(timeout=25.0)
 
-    async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+    async def search_flights(self, req: FlightSearchRequest, mode: str | None = None) -> FlightSearchResponse:
         """
         Search flights across ALL sources in parallel:
         - 1 async HTTP call to Cloud Run backend (paid APIs: Duffel, Amadeus, Sabre, etc.)
@@ -741,15 +770,25 @@ class MultiProvider:
 
         All browser instances launched by connectors are automatically
         closed after results are collected.
+
+        Args:
+            req: Flight search request with origin, destination, dates, etc.
+            mode: Search mode. None (default) = all connectors.
+                  "fast" = OTAs + metas + key LCCs only (~25 connectors, 20-40s).
         """
         try:
-            return await self._search_flights_inner(req)
+            return await self._search_flights_inner(req, mode=mode)
         finally:
             await self._cleanup_connectors()
 
-    async def _search_flights_inner(self, req: FlightSearchRequest) -> FlightSearchResponse:
+    async def _search_flights_inner(self, req: FlightSearchRequest, mode: str | None = None) -> FlightSearchResponse:
         # Clear telemetry from previous searches
         self._connector_telemetry.clear()
+
+        fast_mode = mode == "fast"
+        if fast_mode:
+            logger.info("Fast mode: using ~25 OTAs/metas/key LCCs instead of %d full connectors",
+                        len(_DIRECT_AIRLINE_connectorS))
         
         tasks = []
         providers_used = []
@@ -781,27 +820,39 @@ class MultiProvider:
         wizzair_connector = self._get_wizzair_connector()
         kiwi_connector = self._get_kiwi_connector()
 
+        # In fast mode, only include these special connectors if they're in _FAST_MODE_SOURCES
         ryanair_countries = AIRLINE_COUNTRIES.get("ryanair")
-        if ryanair_connector and (not origin_country or not dest_country or not ryanair_countries
+        if ryanair_connector and (not fast_mode or "ryanair_direct" in _FAST_MODE_SOURCES) and (
+                not origin_country or not dest_country or not ryanair_countries
                 or (origin_country in ryanair_countries and dest_country in ryanair_countries)):
             tasks.append(self._search_ryanair_direct(ryanair_connector, req))
             providers_used.append("ryanair_direct")
 
         # Wizzair requires Chrome (CDP) — skip when browsers unavailable
         wizz_countries = AIRLINE_COUNTRIES.get("wizz")
-        if _BROWSERS_AVAILABLE and wizzair_connector and (
+        if _BROWSERS_AVAILABLE and wizzair_connector and (not fast_mode or "wizzair_direct" in _FAST_MODE_SOURCES) and (
                 not origin_country or not dest_country or not wizz_countries
                 or (origin_country in wizz_countries and dest_country in wizz_countries)):
             tasks.append(self._search_wizzair_direct(wizzair_connector, req))
             providers_used.append("wizzair_direct")
 
-        # Kiwi is a global aggregator — always query it
-        if kiwi_connector:
+        # Kiwi is a global aggregator — always query it (always in fast mode set)
+        if kiwi_connector and (not fast_mode or "kiwi_connector" in _FAST_MODE_SOURCES):
             tasks.append(self._search_kiwi_connector(kiwi_connector, req))
             providers_used.append("kiwi_connector")
 
         # ── Direct airline website connectors (46 LCCs) — route-filtered ──
         filtered_connectors = get_relevant_connectors(req.origin, req.destination, _DIRECT_AIRLINE_connectorS)
+
+        # Fast mode: filter to only OTAs + metas + key LCCs
+        if fast_mode:
+            before_fast = len(filtered_connectors)
+            filtered_connectors = [
+                (src, cls, t) for src, cls, t in filtered_connectors
+                if src in _FAST_MODE_SOURCES
+            ]
+            logger.info("Fast mode: filtered to %d/%d connectors",
+                        len(filtered_connectors), before_fast)
 
         # Skip browser-based connectors when Chrome is not available
         # (cloud/agent environments). API-only connectors still run.
