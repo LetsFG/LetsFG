@@ -132,6 +132,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | Repeat search raises price? | Yes | **Never** |
 | Works in AI agents? | No | **Native** (CLI, MCP, SDK) |
 | Booking | Redirects to OTA checkout | **Real airline PNR, e-ticket to inbox** |
+| Cabin class filter | No | **Economy, premium, business, first** |
 | Cost to you | Hidden markup | **CLI/local: 100% free. Server: free search, 1% unlock.** |
 
 ---
@@ -154,6 +155,14 @@ That single command fires 200+ connectors on your machine and returns real-time 
 
 ```bash
 letsfg search LHR BCN 2026-06-15 --mode fast
+```
+
+**Flying business or first?** Filter by cabin class — only get results that match:
+
+```bash
+letsfg search LHR JFK 2026-06-15 --cabin C    # business class
+letsfg search LHR JFK 2026-06-15 --cabin F    # first class
+letsfg search LHR JFK 2026-06-15 --cabin W    # premium economy
 ```
 
 Want to unlock and book? Star the repo for free access:
@@ -299,7 +308,7 @@ All commands accept `--json` for structured output and `--api-key` to override t
 Search (free) → Unlock (free) → Book (ticket price only)
 ```
 
-1. **Search** — 200+ local connectors fire in parallel on your machine, covering 400+ airlines. Returns full details: price, airlines, duration, stopovers, conditions.
+1. **Search** — 200+ local connectors fire in parallel on your machine, covering 400+ airlines. Filter by cabin class (economy, premium, business, first). Returns full details: price, airlines, duration, stopovers, conditions.
 2. **Unlock** — confirms the live price with the airline and reserves the fare for 30 minutes.
 3. **Book** — creates a real airline PNR. E-ticket sent to the passenger's inbox.
 
