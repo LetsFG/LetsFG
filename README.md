@@ -1,24 +1,32 @@
 <div align="center">
 
-<!-- COMMUNITY HERO BANNER -->
-<table>
-<tr>
-<td align="center">
-
-## ⭐ Join the Community ⭐
-
-<a href="https://github.com/LetsFG/LetsFG/stargazers">
-  <img src="https://img.shields.io/github/stars/LetsFG/LetsFG?style=for-the-badge&logo=github&label=STARS&color=gold" alt="GitHub stars">
+<a href="https://github.com/LetsFG/LetsFG">
+  <img src="assets/banner.png" alt="LetsFG" width="600">
 </a>
 
-The bigger we get, the more airlines we cover.<br>
-The more we cover, the better it gets — for all of us.
+<br>
 
-**Support us with a ⭐**
+# We're LetsFG — a community of travelers.
 
-<a href="https://github.com/LetsFG/LetsFG"><img src="https://img.shields.io/badge/⭐_Star_this_repo-FFD700?style=for-the-badge" alt="Star"></a>
+Finding a flight shouldn't mean checking 47 websites. Or 3 hours of searching.<br>
+Or having that feeling you could've got a better deal if you'd just waited a little longer.
 
-**Share with a friend ✈️**
+**So we built something about it.**<br>
+No markup. No tracking. No price that goes up because you looked twice.
+
+<br>
+
+[<img src="https://img.shields.io/badge/⭐_Star_to_unlock_free_access-FFD700?style=for-the-badge&logoColor=black" alt="Star to unlock">](https://github.com/LetsFG/LetsFG)
+&nbsp;&nbsp;
+[<img src="https://img.shields.io/badge/💬_Try_on_Messenger-0099FF?style=for-the-badge&logo=messenger&logoColor=white" alt="Try on Messenger">](https://m.me/61579557368989)
+&nbsp;&nbsp;
+[<img src="https://img.shields.io/badge/📸_Try_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Try on Instagram">](https://ig.me/m/letsfg_)
+&nbsp;&nbsp;
+[<img src="https://img.shields.io/badge/📦_pip_install_letsfg-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="pip install">](https://pypi.org/project/letsfg/)
+
+<br>
+
+### Join the community. Help others find cheaper flights. Spread the word.<br>⭐ Star the repo. Share with a friend ✈️
 
 <a href="https://twitter.com/intent/tweet?text=Found%20this.%20200%2B%20airline%20connectors%2C%20real%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.&url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_𝕏-000000?style=flat-square&logo=x&logoColor=white" alt="Share on X"></a>
 &nbsp;
@@ -32,21 +40,7 @@ The more we cover, the better it gets — for all of us.
 &nbsp;
 <a href="mailto:?subject=Check%20out%20LetsFG&body=Found%20this.%20200%2B%20airline%20connectors%2C%20real%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.%0A%0Ahttps%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Send_via_Email-EA4335?style=flat-square&logo=gmail&logoColor=white" alt="Send via Email"></a>
 
-</td>
-</tr>
-</table>
-
 ---
-
-<img src="assets/logo.png" alt="LetsFG" width="140">
-
-# We're LetsFG — a community of travelers.
-
-Finding a flight shouldn't mean checking 47 websites. Or 3 hours of searching.<br>
-Or having that feeling you could've got a better deal if you'd just waited a little longer.
-
-**So we built something about it.**<br>
-No markup. No tracking. No price that goes up because you looked twice.
 
 # Your AI agent just learned to book flights.
 
@@ -55,16 +49,6 @@ No markup. No tracking. No price that goes up because you looked twice.
 LetsFG gives your AI agent flight search and booking superpowers. 200+ connectors fire in parallel on your machine, scanning the entire world for the cheapest price. Zero markup. Real airline tickets.
 
 **The same flight costs $20–$50 less** because you skip OTA inflation, cookie tracking, and surge pricing.
-
-<br>
-
-[<img src="https://img.shields.io/badge/⭐_Star_to_unlock_free_access-FFD700?style=for-the-badge&logoColor=black" alt="Star to unlock">](https://github.com/LetsFG/LetsFG)
-&nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/💬_Try_on_Messenger-0099FF?style=for-the-badge&logo=messenger&logoColor=white" alt="Try on Messenger">](https://m.me/61579557368989)
-&nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/📸_Try_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Try on Instagram">](https://ig.me/m/letsfg_)
-&nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/📦_pip_install_letsfg-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="pip install">](https://pypi.org/project/letsfg/)
 
 <br>
 
