@@ -138,14 +138,16 @@ from .klm import KlmConnectorClient
 from .airfrance import AirfranceConnectorClient
 from .azerbaijanairlines import AzerbaijanairlinesConnectorClient
 from .srilankan import SrilankanConnectorClient
-from .iberia import IberiaConnectorClient
-from .iberiaexpress import IberiaExpressConnectorClient
+# DISABLED: These connectors extract promotional JSON-LD "prices from" data,
+# NOT actual bookable fares. Shows impossibly low prices that don't exist.
+# from .iberia import IberiaConnectorClient
+# from .iberiaexpress import IberiaExpressConnectorClient
 from .virginatlantic import VirginAtlanticConnectorClient
-from .lufthansa import LufthansaConnectorClient
-from .swiss import SwissConnectorClient
-from .austrian import AustrianConnectorClient
-from .brusselsairlines import BrusselsAirlinesConnectorClient
-from .discover import DiscoverConnectorClient
+# from .lufthansa import LufthansaConnectorClient
+# from .swiss import SwissConnectorClient
+# from .austrian import AustrianConnectorClient
+# from .brusselsairlines import BrusselsAirlinesConnectorClient
+# from .discover import DiscoverConnectorClient
 from .elal import ElAlConnectorClient
 from .saudia import SaudiaConnectorClient
 from .omanair import OmanairConnectorClient
@@ -576,15 +578,16 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("wingo_direct", WingoConnectorClient, 45.0),
     ("klm_direct", KlmConnectorClient, 25.0),
     ("airfrance_direct", AirfranceConnectorClient, 25.0),
-    ("iberia_direct", IberiaConnectorClient, 25.0),
-    ("iberiaexpress_direct", IberiaExpressConnectorClient, 25.0),
+    # DISABLED: JSON-LD connectors return promotional "prices from", not real fares
+    # ("iberia_direct", IberiaConnectorClient, 25.0),
+    # ("iberiaexpress_direct", IberiaExpressConnectorClient, 25.0),
     ("virginatlantic_direct", VirginAtlanticConnectorClient, 25.0),
-    # ── Lufthansa Group (curl_cffi JSON-LD extraction) ──
-    ("lufthansa_direct", LufthansaConnectorClient, 20.0),
-    ("swiss_direct", SwissConnectorClient, 20.0),
-    ("austrian_direct", AustrianConnectorClient, 20.0),
-    ("brusselsairlines_direct", BrusselsAirlinesConnectorClient, 20.0),
-    ("discover_direct", DiscoverConnectorClient, 20.0),
+    # ── Lufthansa Group — DISABLED (JSON-LD = promotional prices, not bookable) ──
+    # ("lufthansa_direct", LufthansaConnectorClient, 20.0),
+    # ("swiss_direct", SwissConnectorClient, 20.0),
+    # ("austrian_direct", AustrianConnectorClient, 20.0),
+    # ("brusselsairlines_direct", BrusselsAirlinesConnectorClient, 20.0),
+    # ("discover_direct", DiscoverConnectorClient, 20.0),
     # ── Middle East Playwright connectors (CDP Chrome + form fill) ──
     ("elal_direct", ElAlConnectorClient, 55.0),
     ("saudia_direct", SaudiaConnectorClient, 55.0),
