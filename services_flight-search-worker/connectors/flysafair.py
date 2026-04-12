@@ -1,0 +1,378 @@
+"""
+FlySafair direct API scraper — queries Sabre/EzyCommerce REST API.
+
+FlySafair (IATA: FA) is a South African low-cost carrier.
+Their website (flysafair.co.za) is a Vue.js SPA backed by the
+Sabre EzyCommerce availability API. The API is publicly accessible
+with static headers — no auth tokens, cookies, or sessions required.
+
+Endpoint: POST safair-api-ase1.ezycommerce.sabre.com/api/v1/Availability/SearchShop
+Discovered via network interception, Mar 2026.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import time
+from datetime import datetime
+from typing import Any, Optional
+
+import httpx
+
+from ..models.flights import (
+    FlightOffer,
+    FlightRoute,
+    FlightSearchRequest,
+    FlightSearchResponse,
+    FlightSegment,
+)
+from .browser import get_httpx_proxy_url
+
+logger = logging.getLogger(__name__)
+
+_API_BASE = "https://safair-api-ase1.ezycommerce.sabre.com/api/v1"
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/135.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/plain",
+    "Content-Type": "application/json;charset=UTF-8",
+    "channel": "web",
+    "appcontext": "ibe",
+    "tenant-identifier": (
+        "f0fb7f8d0f5e6fc0df2506194e74e94367f1a351de7aee12685e5a1da70464ff"
+    ),
+    "x-clientversion": "0.5.3926-safair-2026-02-12",
+    "languagecode": "en-za",
+    "Origin": "https://www.flysafair.co.za",
+    "Referer": "https://www.flysafair.co.za/",
+}
+
+
+class FlySafairConnectorClient:
+    """Direct scraper for FlySafair's Sabre API — zero auth, real-time prices."""
+
+    def __init__(self, timeout: float = 20.0):
+        self.timeout = timeout
+        self._http: Optional[httpx.AsyncClient] = None
+
+    async def _client(self) -> httpx.AsyncClient:
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(
+                timeout=self.timeout,
+                headers=_HEADERS,
+                follow_redirects=True,
+                proxy=get_httpx_proxy_url(),)
+        return self._http
+
+    async def close(self):
+        if self._http and not self._http.is_closed:
+            await self._http.aclose()
+
+    async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        ob_result = await self._search_ow(req)
+        if req.return_from and ob_result.total_results > 0:
+            ib_req = req.model_copy(update={"origin": req.destination, "destination": req.origin, "date_from": req.return_from, "return_from": None})
+            ib_result = await self._search_ow(ib_req)
+            if ib_result.total_results > 0:
+                ob_result.offers = self._combine_rt(ob_result.offers, ib_result.offers, req)
+                ob_result.total_results = len(ob_result.offers)
+        return ob_result
+
+
+    async def _search_ow(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """
+        Search FlySafair availability via the Sabre EzyCommerce API.
+
+        POST /api/v1/Availability/SearchShop
+        Returns real-time fares — no browser, no auth.
+        """
+        client = await self._client()
+        date_str = req.date_from.strftime("%Y-%m-%d")
+
+        passengers = [{"code": "ADT", "count": req.adults}]
+        if req.children:
+            passengers.append({"code": "CHD", "count": req.children})
+        if req.infants:
+            passengers.append({"code": "INF", "count": req.infants})
+
+        routes = [{
+            "fromAirport": req.origin,
+            "toAirport": req.destination,
+            "startDate": date_str,
+            "endDate": date_str,
+            "departureDate": None,
+            "segmentKey": None,
+            "cabin": None,
+        }]
+
+        if req.return_from:
+            ret_str = req.return_from.strftime("%Y-%m-%d")
+            routes.append({
+                "fromAirport": req.destination,
+                "toAirport": req.origin,
+                "startDate": ret_str,
+                "endDate": ret_str,
+                "departureDate": None,
+                "segmentKey": None,
+                "cabin": None,
+            })
+
+        body = {
+            "languageCode": "en-za",
+            "currency": "ZAR",
+            "passengers": passengers,
+            "routes": routes,
+            "promoCode": "",
+            "filterMethod": "102",
+            "fareTypeCategories": [1],
+            "isManageBooking": False,
+            "sanlamSubscriptionId": None,
+            "externalProfileId": None,
+            "fareTypeFilters": [],
+            "fareClass": None,
+        }
+
+        t0 = time.monotonic()
+
+        try:
+            resp = await client.post(
+                f"{_API_BASE}/Availability/SearchShop",
+                json=body,
+            )
+        except httpx.TimeoutException:
+            logger.warning("FlySafair API timed out")
+            return self._empty(req)
+        except Exception as e:
+            logger.error("FlySafair API error: %s", e)
+            return self._empty(req)
+
+        elapsed = time.monotonic() - t0
+
+        if resp.status_code != 200:
+            logger.warning(
+                "FlySafair API returned %d: %s",
+                resp.status_code,
+                resp.text[:300],
+            )
+            return self._empty(req)
+
+        try:
+            data = resp.json()
+        except Exception:
+            logger.warning("FlySafair returned non-JSON response")
+            return self._empty(req)
+
+        currency = data.get("currency", "ZAR")
+        api_routes = data.get("routes", [])
+
+        outbound_flights = []
+        return_flights = []
+
+        for i, route in enumerate(api_routes):
+            flights = route.get("flights", [])
+            for flight in flights:
+                parsed = self._parse_flight(flight, currency)
+                if parsed:
+                    if i == 0:
+                        outbound_flights.append(parsed)
+                    else:
+                        return_flights.append(parsed)
+
+        offers = []
+        booking_url = self._build_booking_url(req)
+
+        if req.return_from and return_flights:
+            outbound_flights.sort(key=lambda x: x["price"])
+            return_flights.sort(key=lambda x: x["price"])
+
+            for ob in outbound_flights[:15]:
+                for rt in return_flights[:10]:
+                    total = ob["price"] + rt["price"]
+                    offer = FlightOffer(
+                        id=f"fa_{hashlib.md5((ob['key'] + rt['key']).encode()).hexdigest()[:12]}",
+                        price=round(total, 2),
+                        currency=currency,
+                        price_formatted=f"{total:.2f} {currency}",
+                        outbound=ob["route"],
+                        inbound=rt["route"],
+                        airlines=["FlySafair"],
+                        owner_airline="FA",
+                        booking_url=booking_url,
+                        is_locked=False,
+                        source="flysafair_direct",
+                        source_tier="free",
+                    )
+                    offers.append(offer)
+        else:
+            for ob in outbound_flights:
+                offer = FlightOffer(
+                    id=f"fa_{hashlib.md5(ob['key'].encode()).hexdigest()[:12]}",
+                    price=round(ob["price"], 2),
+                    currency=currency,
+                    price_formatted=f"{ob['price']:.2f} {currency}",
+                    outbound=ob["route"],
+                    inbound=None,
+                    airlines=["FlySafair"],
+                    owner_airline="FA",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="flysafair_direct",
+                    source_tier="free",
+                )
+                offers.append(offer)
+
+        offers.sort(key=lambda o: o.price)
+
+        logger.info(
+            "FlySafair direct %s→%s returned %d offers in %.1fs",
+            req.origin, req.destination, len(offers), elapsed,
+        )
+
+        search_hash = hashlib.md5(
+            f"flysafair{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+        ).hexdigest()[:12]
+
+        return FlightSearchResponse(
+            search_id=f"fs_{search_hash}",
+            origin=req.origin,
+            destination=req.destination,
+            currency=currency,
+            offers=offers,
+            total_results=len(offers),
+        )
+
+    def _parse_flight(self, flight: dict, currency: str) -> Optional[dict]:
+        """Parse a single flight from the Sabre SearchShop response."""
+        if flight.get("soldOut") or flight.get("soldout"):
+            return None
+
+        lowest_price = flight.get("lowestPriceTotal") or flight.get("lowestPriceSinglePax")
+        if not lowest_price or lowest_price <= 0:
+            # Try extracting from fareTypes
+            for ft in flight.get("fareTypes", []):
+                for fare in ft.get("fares", []):
+                    if not fare.get("soldOut"):
+                        p = fare.get("price", 0)
+                        if p > 0 and (lowest_price is None or p < lowest_price):
+                            lowest_price = p
+            if not lowest_price or lowest_price <= 0:
+                return None
+
+        legs = flight.get("legs", [])
+        segments = []
+        for leg in legs:
+            dep_str = leg.get("departureDate", "")
+            arr_str = leg.get("arrivalDate", "")
+            segments.append(FlightSegment(
+                airline=leg.get("carrierCode", "FA"),
+                airline_name="FlySafair",
+                flight_no=f"FA{leg.get('flightNumber', flight.get('flightNumber', ''))}",
+                origin=leg.get("from", {}).get("code", ""),
+                destination=leg.get("to", {}).get("code", ""),
+                departure=self._parse_dt(dep_str),
+                arrival=self._parse_dt(arr_str),
+                cabin_class="M",
+            ))
+
+        if not segments:
+            # Fallback: build from flight-level data
+            segments.append(FlightSegment(
+                airline=flight.get("carrierCode", "FA"),
+                airline_name="FlySafair",
+                flight_no=f"FA{flight.get('flightNumber', '')}",
+                origin=flight.get("from", {}).get("code", ""),
+                destination=flight.get("to", {}).get("code", ""),
+                departure=self._parse_dt(flight.get("departureDate", "")),
+                arrival=self._parse_dt(flight.get("arrivalDate", "")),
+                cabin_class="M",
+            ))
+
+        flight_time = flight.get("flightTime", 0)
+        total_dur = flight_time * 60 if flight_time else 0
+        if not total_dur and len(segments) >= 1:
+            total_dur = max(
+                int((segments[-1].arrival - segments[0].departure).total_seconds()),
+                0,
+            )
+
+        route = FlightRoute(
+            segments=segments,
+            total_duration_seconds=total_dur,
+            stopovers=max(len(segments) - 1, 0),
+        )
+
+        flight_key = str(
+            flight.get("key")
+            or flight.get("id")
+            or f"{segments[0].flight_no}_{segments[0].departure.isoformat()}"
+        )
+
+        return {
+            "price": float(lowest_price),
+            "key": flight_key,
+            "route": route,
+        }
+
+    @staticmethod
+    def _parse_dt(s: Any) -> datetime:
+        if not s:
+            return datetime(2000, 1, 1)
+        s = str(s)
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            pass
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(s[:len(fmt) + 2], fmt)
+            except (ValueError, IndexError):
+                continue
+        return datetime(2000, 1, 1)
+
+    @staticmethod
+    def _build_booking_url(req: FlightSearchRequest) -> str:
+        dep = req.date_from.strftime("%Y-%m-%d")
+        return (
+            f"https://www.flysafair.co.za/flight/select"
+            f"?origin={req.origin}&destination={req.destination}"
+            f"&date={dep}&adults={req.adults}&tripType={'roundtrip' if req.return_from else 'oneway'}"
+        )
+
+    def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        h = hashlib.md5(
+            f"flysafair{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+        ).hexdigest()[:12]
+        return FlightSearchResponse(
+            search_id=f"fs_{h}",
+            origin=req.origin,
+            destination=req.destination,
+            currency=req.currency,
+            offers=[],
+            total_results=0,
+        )
+
+
+    @staticmethod
+    def _combine_rt(
+        ob: list[FlightOffer], ib: list[FlightOffer], req,
+    ) -> list[FlightOffer]:
+        combos: list[FlightOffer] = []
+        for o in ob[:15]:
+            for i in ib[:10]:
+                price = round(o.price + i.price, 2)
+                cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
+                combos.append(FlightOffer(
+                    id=f"rt_flys_{cid}", price=price, currency=o.currency,
+                    outbound=o.outbound, inbound=i.outbound,
+                    airlines=list(dict.fromkeys(o.airlines + i.airlines)),
+                    owner_airline=o.owner_airline,
+                    booking_url=o.booking_url, is_locked=False,
+                    source=o.source, source_tier=o.source_tier,
+                ))
+        combos.sort(key=lambda c: c.price)
+        return combos[:20]

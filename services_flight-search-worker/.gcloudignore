@@ -1,0 +1,12 @@
+# Runtime Chrome profile data (6+ GB)
+connectors/.*_chrome_data/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Local dev artifacts
+.git/
+.venv/
+*.egg-info/

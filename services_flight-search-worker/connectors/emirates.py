@@ -118,7 +118,7 @@ async def _get_context():
                 "--no-default-browser-check",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-http2",
-                "--window-position=100,100",
+                "--window-position=-2400,-2400",
                 "--window-size=1400,900",
                 "about:blank",
             ]
@@ -590,18 +590,6 @@ class EmiratesConnectorClient:
                 logger.warning("Emirates: direct bootstrap failed: %s", e)
 
             if not direct_bootstrap_ok:
-                # Direct bootstrap failed (likely Akamai blocked) - navigate back to
-                # the booking form page before attempting form fill
-                logger.warning("Emirates: direct bootstrap failed, returning to booking form")
-                await page.goto(
-                    "https://www.emirates.com/english/book/",
-                    wait_until="domcontentloaded",
-                    timeout=45000,
-                )
-                await asyncio.sleep(2.0)
-                await _dismiss_overlays(page)
-                await asyncio.sleep(0.5)
-
                 # Step 2: Select journey type based on request
                 is_rt = req.return_from is not None
                 ok = await self._set_journey_type(page, is_rt)
@@ -738,8 +726,8 @@ class EmiratesConnectorClient:
             )
 
             # For round-trip body-text fallback scrapes (no real times), multiple
-            # prices are extracted from the page. These are typically all RT totals
-            # for different flight/fare combinations — keep the lowest (best deal).
+            # prices appear (one-way leg prices + RT total). Keep only the highest
+            # — most likely to be the actual RT fare.
             # DO NOT filter proper DOM-scraped results that have real departure times.
             if (
                 flights 
@@ -747,9 +735,9 @@ class EmiratesConnectorClient:
                 and len(flights) > 1 
                 and not has_real_times
             ):
-                # Sort by price ascending, keep only the lowest (cheapest RT fare)
-                flights = sorted(flights, key=lambda f: f.get("price", 0))[:1]
-                logger.warning("Emirates: RT body-text fallback filter kept lowest price=%s", 
+                # Sort by price descending, keep only the highest
+                flights = sorted(flights, key=lambda f: f.get("price", 0), reverse=True)[:1]
+                logger.warning("Emirates: RT body-text fallback filter kept highest price=%s", 
                               flights[0].get("price") if flights else None)
 
             if not flights:
@@ -978,7 +966,7 @@ class EmiratesConnectorClient:
             "isReward": "false",
             "country": "US",
             "searchType": "BOOKING",
-            "class": {"M": "ECONOMY", "W": "ECONOMY", "C": "BUSINESS", "F": "FIRST"}.get(req.cabin_class or "M", "ECONOMY"),
+            "class": "ECONOMY",
             "flightSearchType": "ROUND_TRIP" if req.return_from else "ONE_WAY",
             "journeyType": "RETURN" if req.return_from else "OW",
         }
@@ -1062,7 +1050,7 @@ class EmiratesConnectorClient:
                 return null;
             }""", is_rt)
 
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.8)
             if is_rt:
                 has_return_input = await page.evaluate("""() => {
                     const selectors = [
