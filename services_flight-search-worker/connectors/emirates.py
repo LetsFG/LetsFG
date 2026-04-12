@@ -214,6 +214,11 @@ def _extract_api_flights(payload: dict, out: list[dict]) -> None:
     if not isinstance(payload, dict):
         return
 
+    # Priority: Parse Emirates bounds structure (has real segment data with times)
+    if isinstance(payload.get("bounds"), list) and payload["bounds"]:
+        _parse_bounds_payload(payload, out)
+        return
+
     # Detect currency from top-level
     currency = ""
     for ckey in ("currency", "saleCurrency", "pricedCurrency", "currencyCode"):
@@ -255,10 +260,175 @@ def _extract_api_flights(payload: dict, out: list[dict]) -> None:
                 continue
             flight = _parse_api_option(opt, currency)
             if flight and flight.get("price", 0) > 0:
+                # Skip items with no flight data (e.g. currency conversion results)
+                if not flight.get("origin") and not flight.get("destination"):
+                    continue
                 out.append(flight)
 
     if out:
         logger.info("Emirates: extracted %d flights from API interception", len(out))
+
+
+def _parse_bounds_payload(payload: dict, out: list[dict]) -> None:
+    """Parse Emirates bounds-based search results.
+
+    Emirates returns separate OUTBOUND/INBOUND bounds, each with options
+    containing airSegments (flight details) and cabins (fare classes).
+    The top-level lowestFare holds the total RT price.
+    """
+    bounds = payload.get("bounds")
+    if not isinstance(bounds, list):
+        return
+
+    # Extract currency from currency.sale.code or currency.priced.code
+    currency = ""
+    cur_obj = payload.get("currency")
+    if isinstance(cur_obj, dict):
+        for ck in ("sale", "priced"):
+            sub = cur_obj.get(ck)
+            if isinstance(sub, dict):
+                c = (sub.get("code") or "").upper()
+                if len(c) == 3:
+                    currency = c
+                    break
+
+    # Extract lowest RT fare from lowestFare.total[].amount
+    price = 0.0
+    lf = payload.get("lowestFare")
+    if isinstance(lf, dict):
+        total = lf.get("total")
+        if isinstance(total, list):
+            for t in total:
+                if isinstance(t, dict):
+                    amt = t.get("amount")
+                    if isinstance(amt, (int, float)) and amt > 0:
+                        price = float(amt)
+                        break
+
+    for bound in bounds:
+        if not isinstance(bound, dict):
+            continue
+
+        bound_type = (bound.get("type") or "").upper()
+        bound_origin = bound.get("origin", "")
+        bound_dest = bound.get("destination", "")
+
+        options = bound.get("options")
+        if not isinstance(options, list):
+            continue
+
+        for opt in options:
+            if not isinstance(opt, dict):
+                continue
+
+            segs = opt.get("airSegments")
+            if not isinstance(segs, list) or not segs:
+                continue
+
+            first_seg = segs[0] if isinstance(segs[0], dict) else {}
+            last_seg = segs[-1] if isinstance(segs[-1], dict) else {}
+
+            # Times from segment datetimes
+            dep_time = "00:00"
+            arr_time = "00:00"
+            dep_dt_str = first_seg.get("departureDateTime", "")
+            arr_dt_str = last_seg.get("arrivalDateTime", "")
+            if isinstance(dep_dt_str, str) and dep_dt_str:
+                tm = re.search(r"(\d{2}):(\d{2})", dep_dt_str)
+                if tm:
+                    dep_time = f"{tm.group(1)}:{tm.group(2)}"
+            if isinstance(arr_dt_str, str) and arr_dt_str:
+                tm = re.search(r"(\d{2}):(\d{2})", arr_dt_str)
+                if tm:
+                    arr_time = f"{tm.group(1)}:{tm.group(2)}"
+
+            # Flight number
+            carrier = first_seg.get("carrierCode") or first_seg.get("marketingCarrierCode") or "EK"
+            flt_num = str(first_seg.get("flightNumber", ""))
+            flight_no = f"{carrier}{flt_num}" if flt_num else carrier
+
+            # Duration from ondDuration (e.g. "8H45M") or segment duration
+            dur_str = opt.get("ondDuration", "")
+            duration = 0
+            if isinstance(dur_str, str) and dur_str:
+                hm = re.search(r"(\d+)H(?:(\d+)M)?", dur_str)
+                if hm:
+                    duration = int(hm.group(1)) * 60 + int(hm.group(2) or 0)
+            if not duration:
+                seg_dur = first_seg.get("duration", "")
+                if isinstance(seg_dur, str):
+                    hm = re.search(r"(\d+)H(?:(\d+)M)?", seg_dur)
+                    if hm:
+                        duration = int(hm.group(1)) * 60 + int(hm.group(2) or 0)
+
+            stops = opt.get("numberOfConnections")
+            if not isinstance(stops, int):
+                stops = max(0, len(segs) - 1)
+
+            aircraft = first_seg.get("aircraftType", "")
+            origin = first_seg.get("departure") or bound_origin
+            destination = last_seg.get("arrival") or bound_dest
+            date_str = dep_dt_str[:10] if isinstance(dep_dt_str, str) and len(dep_dt_str) >= 10 else ""
+
+            # Try to extract inbound flight info from combinableWith patterns
+            # e.g. "JFK_MXP_EK206_1669567666_Y_FLEX" → inbound JFK→MXP EK206
+            inbound_info = None
+            cabs = opt.get("cabins")
+            if isinstance(cabs, list):
+                for cab in cabs:
+                    if inbound_info:
+                        break
+                    if not isinstance(cab, dict):
+                        continue
+                    brands = cab.get("brandInformation")
+                    if not isinstance(brands, list):
+                        continue
+                    for brand in brands:
+                        if not isinstance(brand, dict):
+                            continue
+                        combinable = brand.get("combinableWith")
+                        if isinstance(combinable, list) and combinable:
+                            for cid in combinable:
+                                if isinstance(cid, str) and "_" in cid:
+                                    parts = cid.split("_")
+                                    if len(parts) >= 3:
+                                        inbound_info = (parts[0], parts[1], parts[2])
+                                        break
+                            break
+
+            flight = {
+                "flightNo": flight_no,
+                "depTime": dep_time,
+                "arrTime": arr_time,
+                "dateStr": date_str,
+                "duration": duration,
+                "durationText": dur_str if isinstance(dur_str, str) else "",
+                "nonstop": stops == 0,
+                "stops": stops,
+                "origin": origin,
+                "originCity": "",
+                "destination": destination,
+                "destinationCity": "",
+                "cabin": "economy",
+                "price": price,
+                "currency": currency or "AED",
+                "aircraft": str(aircraft),
+                "bound_type": bound_type,
+            }
+
+            # For outbound bounds, attach inbound info from combinableWith
+            if bound_type == "OUTBOUND" and inbound_info:
+                flight["inbound_origin"] = inbound_info[0]
+                flight["inbound_destination"] = inbound_info[1]
+                ib_flt = inbound_info[2]
+                flight["inbound_flightNo"] = ib_flt if ib_flt[:2].isalpha() else f"EK{ib_flt}"
+                flight["inbound_depTime"] = "00:00"
+                flight["inbound_arrTime"] = "00:00"
+
+            out.append(flight)
+
+    if out:
+        logger.info("Emirates: extracted %d flights from bounds structure", len(out))
 
 
 def _parse_api_option(opt: dict, fallback_currency: str) -> Optional[dict]:
@@ -731,6 +901,15 @@ class EmiratesConnectorClient:
             else:
                 # Priority 2: DOM scraping (multi-strategy)
                 flights = await self._scrape_results(page, req)
+
+            # For RT requests with bounds-parsed outbound flights, ensure inbound info is set
+            if req.return_from is not None and flights:
+                for f in flights:
+                    if f.get("bound_type") == "OUTBOUND" and not f.get("inbound_origin"):
+                        f["inbound_origin"] = req.destination
+                        f["inbound_destination"] = req.origin
+                        f["inbound_depTime"] = "00:00"
+                        f["inbound_arrTime"] = "00:00"
             
             # Track if we got proper structured flights (with real times) vs body-text fallback
             has_real_times = flights and any(
@@ -2008,7 +2187,7 @@ class EmiratesConnectorClient:
             inbound_seg = FlightSegment(
                 airline="EK",
                 airline_name="Emirates",
-                flight_no=flight_no,
+                flight_no=flight.get("inbound_flightNo", flight_no),
                 origin=flight.get("inbound_origin", destination),
                 destination=flight.get("inbound_destination", origin),
                 origin_city="",
