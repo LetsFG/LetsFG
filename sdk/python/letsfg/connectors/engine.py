@@ -426,20 +426,16 @@ _ECONOMY_ONLY_SOURCES: set[str] = {
 # Coverage NOT lost — Kiwi, Duffel GDS, and healthy OTAs still cover these airlines.
 _TEMPORARILY_DISABLED: set[str] = {
     # ── OTAs / aggregators (confirmed broken 2026-04-13 audit) ──
-    "yatra_ota",
+    "yatra_ota",          # GDPR block
     # ── Direct airlines (confirmed broken 2026-04-13 audit) ──
-    "airchina_direct",
-    "hainan_direct",
-    "play_direct",
-    "mea_direct",
-    "delta_direct",
-    "etihad_direct",
-    "airserbia_direct",
-    "nh_direct",
-    "aireuropa_direct",
-    "kuwaitairways_direct",
-    "elal_direct",
-    "asiana_direct",
+    "airchina_direct",    # Not tested
+    "hainan_direct",      # Not tested
+    "play_direct",        # Airline defunct
+    "delta_direct",       # Timeout
+    "etihad_direct",      # API changed ("Invalid Origin Airport Country")
+    "airserbia_direct",   # Browser form detection broken
+    "nh_direct",          # "no search data captured"
+    "asiana_direct",      # Returns 0 offers
 }
 
 # Map our cabin codes (M/W/C/F) to normalized cabin strings used in FlightSegment.
