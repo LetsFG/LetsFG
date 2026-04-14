@@ -3,12 +3,7 @@ LetsFG — Agent-native flight search & booking SDK.
 
 200 airline connectors run locally + enterprise GDS/NDC APIs via backend.
 
-**GitHub Star Required!**
-Before using, you must:
-1. Star https://github.com/LetsFG/LetsFG
-2. Run: letsfg star --github <your-username>
-
-Local search (FREE with star):
+Usage:
     from letsfg.local import search_local
     result = await search_local("SHA", "CTU", "2026-03-20")
 
@@ -32,7 +27,6 @@ from letsfg.client import (
     ErrorCode,
     ErrorCategory,
 )
-from letsfg.config import StarRequiredError
 from letsfg.models import (
     FlightOffer,
     FlightSearchResult,
@@ -48,13 +42,12 @@ __version__ = "2026.4.50"
 __all__ = [
     "LetsFG",
     "LetsFGError",
-    "BoostedTravel",      # deprecated alias
-    "BoostedTravelError", # deprecated alias,
+    "BoostedTravel",  # deprecated alias
+    "BoostedTravelError",  # deprecated alias
     "AuthenticationError",
     "PaymentRequiredError",
     "OfferExpiredError",
     "ValidationError",
-    "StarRequiredError",
     "ErrorCode",
     "ErrorCategory",
     "FlightOffer",
@@ -69,13 +62,17 @@ __all__ = [
     "configure_max_browsers",
 ]
 
+
 # Lazy imports for system/concurrency utilities
 def get_system_profile():
     """Detect system resources (RAM, CPU) and return optimal concurrency settings."""
     from letsfg.system_info import get_system_profile as _get
+
     return _get()
+
 
 def configure_max_browsers(n: int):
     """Set max concurrent browser processes (1-32). Call before search_local()."""
     from letsfg.connectors.browser import configure_max_browsers as _cfg
+
     _cfg(n)

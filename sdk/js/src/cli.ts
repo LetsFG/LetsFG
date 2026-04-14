@@ -253,47 +253,7 @@ async function cmdRegister(args: string[]) {
   console.log(`    Agent ID: ${result.agent_id}`);
   console.log(`    API Key:  ${result.api_key}`);
   console.log(`\n    Save your API key:`);
-  console.log(`    export LETSFG_API_KEY=${result.api_key}`);
-  console.log(`\n    Next: Star the repo and link your GitHub:`);
-  console.log(`    1. Star https://github.com/LetsFG/LetsFG`);
-  console.log(`    2. letsfg star --github <your-github-username>\n`);
-}
-
-async function cmdStar(args: string[]) {
-  const jsonOut = hasFlag(args, '--json') || hasFlag(args, '-j');
-  const apiKey = getFlag(args, '--api-key', '-k');
-  const baseUrl = getFlag(args, '--base-url');
-  const github = getFlag(args, '--github', '-g');
-
-  if (!github) {
-    console.error('Usage: letsfg star --github <your-github-username>');
-    process.exit(1);
-  }
-
-  const bt = new LetsFG({ apiKey, baseUrl });
-  const result = await bt.linkGithub(github) as Record<string, unknown>;
-
-  if (jsonOut) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-
-  const status = result.status;
-  if (status === 'verified') {
-    console.log(`\n  ✓ GitHub star verified! Unlimited access granted.`);
-    console.log(`    Username: ${result.github_username}`);
-    console.log(`\n    You're all set — search, unlock, and book for free.\n`);
-  } else if (status === 'already_verified') {
-    console.log(`\n  ✓ Already verified! You have unlimited access.`);
-    console.log(`    Username: ${result.github_username}\n`);
-  } else if (status === 'star_required') {
-    console.log(`\n  ✗ Star not found for '${github}'.`);
-    console.log(`    1. Star the repo: https://github.com/LetsFG/LetsFG`);
-    console.log(`    2. Run this command again.\n`);
-  } else {
-    console.error(`  ✗ Unexpected status: ${status}`);
-    process.exit(1);
-  }
+  console.log(`    export LETSFG_API_KEY=${result.api_key}\n`);
 }
 
 async function cmdSetupPayment(args: string[]) {
@@ -336,17 +296,8 @@ async function cmdMe(args: string[]) {
   console.log(`\n  Agent: ${p.agent_name} (${p.agent_id})`);
   console.log(`  Email: ${p.email}`);
   console.log(`  Tier:  ${p.tier}`);
-  const gh = p.github_username || '';
-  const starOk = p.github_star_verified || false;
-  if (starOk) {
-    console.log(`  GitHub:  ✓ ${gh} (star verified)`);
-  } else if (gh) {
-    console.log(`  GitHub:  ${gh} (star not yet verified — run: letsfg star --github ${gh})`);
-  } else {
-    console.log(`  GitHub:  Not linked — run: letsfg star --github <username>`);
-  }
   const access = p.access_granted || false;
-  console.log(`  Access:  ${access ? '✓ Granted (search, unlock, book)' : '✗ Not granted — star the repo to unlock'}`);
+  console.log(`  Access:  ${access ? '✓ Granted (search, unlock, book)' : '✗ Not granted'}`);
   console.log(`  Payment: ${p.payment_ready ? '✓ Ready' : '—'}`);
   console.log(`  Searches: ${u.total_searches || 0}`);
   console.log(`  Unlocks:  ${u.total_unlocks || 0}`);
@@ -360,13 +311,11 @@ const HELP = `
 LetsFG — Agent-native flight search & booking.
 
 Search 400+ airlines at raw airline prices — $20-50 cheaper than OTAs.
-100% FREE — just star our GitHub repo for unlimited access.
 
 Commands:
   search <origin> <dest> <date>   Search for flights (FREE)
   locations <query>               Resolve city name to IATA codes
-  star --github <username>        Link GitHub — star repo for free access
-  unlock <offer_id>               Unlock offer (FREE with GitHub star)
+  unlock <offer_id>               Unlock offer — confirms price, reserves 30min
   book <offer_id> --passenger ... Book flight (FREE after unlock)
   register --name ... --email ... Register new agent
   setup-payment                   Legacy payment setup
@@ -379,7 +328,6 @@ Options:
 
 Examples:
   letsfg register --name my-agent --email me@example.com
-  letsfg star --github octocat
   letsfg search GDN BER 2026-03-03 --sort price
   letsfg unlock off_xxx
   letsfg book off_xxx -p '{"id":"pas_xxx",...}' -e john@ex.com
@@ -405,9 +353,6 @@ async function main() {
         break;
       case 'register':
         await cmdRegister(args);
-        break;
-      case 'star':
-        await cmdStar(args);
         break;
       case 'setup-payment':
         await cmdSetupPayment(args);

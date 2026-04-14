@@ -165,11 +165,11 @@ letsfg search LHR JFK 2026-06-15 --cabin F    # first class
 letsfg search LHR JFK 2026-06-15 --cabin W    # premium economy
 ```
 
-Want to unlock and book? Star the repo for free access:
+Want to unlock and book? Just use your API key:
 
 ```bash
-# Star the repo on GitHub, then verify
-letsfg star --github your-username
+# Unlock (confirms live price, holds for 30 min — free)
+letsfg unlock off_xxx
 ```
 
 The CLI auto-registers behind the scenes and saves your API key to `~/.letsfg/config.json`. No manual steps.
@@ -289,7 +289,6 @@ for offer in result.offers[:5]:
 
 | Command | Description |
 |---------|-------------|
-| `letsfg star --github <username>` | **⭐ Verify GitHub star (required for free access)** |
 | `letsfg search <origin> <dest> <date>` | Search flights (free) |
 | `letsfg register` | Get your API key |
 | `letsfg recover --email <email>` | Recover lost API key via email |

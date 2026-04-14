@@ -7,20 +7,20 @@ Search is free. Booking charges the ticket price via Stripe (zero markup).
     from letsfg import LetsFG
 
     bt = LetsFG(api_key="trav_...")
-    
+
     # Link GitHub (one-time — star the repo first)
     bt.link_github("myusername")
-    
+
     # Setup payment (one-time — required before booking)
     bt.setup_payment(token="tok_visa")
-    
+
     # Search (FREE)
     flights = bt.search("LON", "BCN", "2026-04-01")
     print(flights.cheapest.summary())
-    
+
     # Unlock (FREE)
     unlock = bt.unlock(flights.cheapest.id)
-    
+
     # Book (ticket price charged via Stripe)
     booking = bt.book(
         offer_id=flights.cheapest.id,
@@ -61,6 +61,7 @@ _log = logging.getLogger(__name__)
 
 
 # ── Config file persistence (~/.letsfg/config.json) ───────────────────────
+
 
 def _config_dir() -> Path:
     """Return the LetsFG config directory, creating it if needed."""
@@ -108,14 +109,19 @@ def _auto_register(base_url: str | None = None) -> str:
     """Silently register an anonymous agent and save the key. Returns the API key."""
     url = (base_url or DEFAULT_BASE_URL).rstrip("/")
     hostname = platform.node() or "unknown"
-    body = json.dumps({
-        "agent_name": f"auto-{hostname[:40]}",
-        "email": "",
-    }).encode()
+    body = json.dumps(
+        {
+            "agent_name": f"auto-{hostname[:40]}",
+            "email": "",
+        }
+    ).encode()
     req = Request(
         f"{url}/api/v1/agents/register",
         data=body,
-        headers={"Content-Type": "application/json", "User-Agent": "LetsFG-Python-SDK/1.0.3"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "LetsFG-Python-SDK/1.0.3",
+        },
         method="POST",
     )
     try:
@@ -123,16 +129,19 @@ def _auto_register(base_url: str | None = None) -> str:
             result = json.loads(resp.read().decode())
         api_key = result.get("api_key", "")
         if api_key:
-            _save_config({
-                "api_key": api_key,
-                "agent_id": result.get("agent_id", ""),
-                "auto_registered": True,
-            })
+            _save_config(
+                {
+                    "api_key": api_key,
+                    "agent_id": result.get("agent_id", ""),
+                    "auto_registered": True,
+                }
+            )
             _log.info("Auto-registered agent %s", result.get("agent_id"))
         return api_key
     except Exception as e:
         _log.debug("Auto-registration failed: %s", e)
         return ""
+
 
 # ── Bookable connector registry ────────────────────────────────────────────
 # Maps source tags to their BookableConnector subclass.
@@ -159,6 +168,7 @@ def _get_bookable_connector(source: str):
         mod_name, cls_name = entry
         try:
             import importlib
+
             mod = importlib.import_module(mod_name)
             return getattr(mod, cls_name)
         except (ImportError, AttributeError):
@@ -167,6 +177,7 @@ def _get_bookable_connector(source: str):
     # 2. Fall back to generic checkout engine config
     try:
         from letsfg.connectors.checkout_engine import AIRLINE_CONFIGS
+
         if source in AIRLINE_CONFIGS:
             return _make_generic_connector(source)
     except ImportError:
@@ -177,7 +188,10 @@ def _get_bookable_connector(source: str):
 
 def _make_generic_connector(source: str):
     """Return a BookableConnector subclass backed by the generic engine."""
-    from letsfg.connectors.booking_base import BookableConnector, CheckoutProgress as _CP
+    from letsfg.connectors.booking_base import (
+        BookableConnector,
+        CheckoutProgress as _CP,
+    )
     from letsfg.connectors.checkout_engine import AIRLINE_CONFIGS, GenericCheckoutEngine
 
     config = AIRLINE_CONFIGS[source]
@@ -210,8 +224,10 @@ def _make_generic_connector(source: str):
 #   validation — fix the request and retry (bad input, unsupported route)
 #   business   — requires human decision (payment declined, fare expired, policy violation)
 
+
 class ErrorCode:
     """Machine-readable error codes returned in LetsFGError.error_code."""
+
     # ── Transient (safe to retry) ──
     SUPPLIER_TIMEOUT = "SUPPLIER_TIMEOUT"
     RATE_LIMITED = "RATE_LIMITED"
@@ -239,6 +255,7 @@ class ErrorCode:
 
 class ErrorCategory:
     """Error categories — tells agent whether to retry, fix input, or escalate."""
+
     TRANSIENT = "transient"
     VALIDATION = "validation"
     BUSINESS = "business"
@@ -295,7 +312,9 @@ def _infer_error_code(status_code: int, detail: str) -> str:
         return ErrorCode.SUPPLIER_TIMEOUT
     if status_code == 409:
         return ErrorCode.ALREADY_BOOKED
-    return ErrorCode.BOOKING_FAILED if status_code >= 500 else ErrorCode.INVALID_PARAMETER
+    return (
+        ErrorCode.BOOKING_FAILED if status_code >= 500 else ErrorCode.INVALID_PARAMETER
+    )
 
 
 class LetsFGError(Exception):
@@ -322,28 +341,34 @@ class LetsFGError(Exception):
         self.status_code = status_code
         self.response = response or {}
         self.error_code = error_code or self.response.get("error_code", "")
-        self.error_category = _CODE_TO_CATEGORY.get(self.error_code, ErrorCategory.BUSINESS)
+        self.error_category = _CODE_TO_CATEGORY.get(
+            self.error_code, ErrorCategory.BUSINESS
+        )
         self.is_retryable = self.error_category == ErrorCategory.TRANSIENT
         super().__init__(message)
 
 
 class AuthenticationError(LetsFGError):
     """API key is missing or invalid."""
+
     pass
 
 
 class PaymentRequiredError(LetsFGError):
     """Payment method not set up or payment declined."""
+
     pass
 
 
 class OfferExpiredError(LetsFGError):
     """Offer is no longer available — search again."""
+
     pass
 
 
 class ValidationError(LetsFGError):
     """Request parameters are invalid — fix input and retry."""
+
     pass
 
 
@@ -367,12 +392,22 @@ class LetsFG:
         timeout: int = 30,
         client_type: str | None = None,
     ):
-        self.base_url = (base_url or os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = (
+            base_url
+            or os.environ.get("LETSFG_BASE_URL")
+            or os.environ.get("BOOSTEDTRAVEL_BASE_URL")
+            or DEFAULT_BASE_URL
+        ).rstrip("/")
         self.timeout = timeout
         self._client_type = client_type or "python-sdk"
 
         # Key resolution order: explicit > env > config file > auto-register
-        key = api_key or os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY") or ""
+        key = (
+            api_key
+            or os.environ.get("LETSFG_API_KEY")
+            or os.environ.get("BOOSTEDTRAVEL_API_KEY")
+            or ""
+        )
         if not key:
             key = _saved_api_key()
         if not key:
@@ -429,19 +464,21 @@ class LetsFG:
         import asyncio
         from letsfg.local import search_local as _search
 
-        result_dict = asyncio.run(_search(
-            origin=origin,
-            destination=destination,
-            date_from=date_from,
-            return_date=return_date,
-            adults=adults,
-            children=children,
-            infants=infants,
-            cabin_class=cabin_class,
-            currency=currency,
-            limit=limit,
-            max_browsers=max_browsers,
-        ))
+        result_dict = asyncio.run(
+            _search(
+                origin=origin,
+                destination=destination,
+                date_from=date_from,
+                return_date=return_date,
+                adults=adults,
+                children=children,
+                infants=infants,
+                cabin_class=cabin_class,
+                currency=currency,
+                limit=limit,
+                max_browsers=max_browsers,
+            )
+        )
         return FlightSearchResult.from_dict(result_dict)
 
     # ── Core API methods (requires API key) ───────────────────────────────
@@ -523,28 +560,10 @@ class LetsFG:
             return data
         return [data] if data else []
 
-    def link_github(self, github_username: str) -> dict:
-        """
-        Link your GitHub account for free unlimited access.
-
-        Star https://github.com/LetsFG/LetsFG first, then call this
-        with your GitHub username. Once verified, you get free access
-        to unlock, book, and checkout — forever.
-
-        Args:
-            github_username: Your GitHub username.
-
-        Returns:
-            Dict with verification status and message.
-        """
-        self._require_api_key()
-        return self._post("/api/v1/agents/link-github", {"github_username": github_username})
-
     def unlock(self, offer_id: str) -> UnlockResult:
         """
         Unlock a flight offer — confirms live price and reserves for 30 minutes.
 
-        FREE with GitHub star (link your account first via link_github()).
         Required before booking.
 
         Args:
@@ -712,32 +731,36 @@ class LetsFG:
         connector_cls = _get_bookable_connector(source)
         if connector_cls is None:
             # No automated checkout — return URL-only progress
-            return CheckoutProgress.from_dict({
-                "status": "url_only",
-                "step": "started",
-                "step_index": 0,
-                "airline": offer.get("owner_airline", ""),
-                "source": source,
-                "offer_id": offer.get("id", ""),
-                "total_price": offer.get("price", 0.0),
-                "currency": offer.get("currency", "EUR"),
-                "booking_url": booking_url,
-                "message": (
-                    f"Automated checkout not available for {source}. "
-                    f"Use the booking URL to complete manually."
-                    + (f"\n\nBooking URL: {booking_url}" if booking_url else "")
-                ),
-                "can_complete_manually": bool(booking_url),
-            })
+            return CheckoutProgress.from_dict(
+                {
+                    "status": "url_only",
+                    "step": "started",
+                    "step_index": 0,
+                    "airline": offer.get("owner_airline", ""),
+                    "source": source,
+                    "offer_id": offer.get("id", ""),
+                    "total_price": offer.get("price", 0.0),
+                    "currency": offer.get("currency", "EUR"),
+                    "booking_url": booking_url,
+                    "message": (
+                        f"Automated checkout not available for {source}. "
+                        f"Use the booking URL to complete manually."
+                        + (f"\n\nBooking URL: {booking_url}" if booking_url else "")
+                    ),
+                    "can_complete_manually": bool(booking_url),
+                }
+            )
 
         connector = connector_cls()
-        result = asyncio.run(connector.start_checkout(
-            offer=offer,
-            passengers=passengers,
-            checkout_token=checkout_token,
-            api_key=self.api_key,
-            base_url=self.base_url,
-        ))
+        result = asyncio.run(
+            connector.start_checkout(
+                offer=offer,
+                passengers=passengers,
+                checkout_token=checkout_token,
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
+        )
         return CheckoutProgress.from_dict(result.to_dict())
 
     def me(self) -> AgentProfile:
@@ -781,7 +804,10 @@ class LetsFG:
         req = Request(
             f"{url}/api/v1/agents/register",
             data=data,
-            headers={"Content-Type": "application/json", "User-Agent": "LetsFG-Python-SDK/1.0.3"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "LetsFG-Python-SDK/1.0.3",
+            },
             method="POST",
         )
         try:
@@ -835,15 +861,25 @@ class LetsFG:
             code = err.get("error_code") or _infer_error_code(e.code, detail)
 
             if e.code == 401:
-                raise AuthenticationError(detail, status_code=401, response=err, error_code=code) from e
+                raise AuthenticationError(
+                    detail, status_code=401, response=err, error_code=code
+                ) from e
             elif e.code == 402:
-                raise PaymentRequiredError(detail, status_code=402, response=err, error_code=code) from e
+                raise PaymentRequiredError(
+                    detail, status_code=402, response=err, error_code=code
+                ) from e
             elif e.code == 410:
-                raise OfferExpiredError(detail, status_code=410, response=err, error_code=code) from e
+                raise OfferExpiredError(
+                    detail, status_code=410, response=err, error_code=code
+                ) from e
             elif e.code == 422:
-                raise ValidationError(detail, status_code=422, response=err, error_code=code) from e
+                raise ValidationError(
+                    detail, status_code=422, response=err, error_code=code
+                ) from e
             else:
-                raise LetsFGError(detail, status_code=e.code, response=err, error_code=code) from e
+                raise LetsFGError(
+                    detail, status_code=e.code, response=err, error_code=code
+                ) from e
         except URLError as e:
             raise LetsFGError(
                 f"Connection failed: {e.reason}",

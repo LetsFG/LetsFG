@@ -9,6 +9,7 @@ from typing import Any, Optional
 @dataclass
 class FlightSegment:
     """A single flight leg (e.g., GDN → MUC)."""
+
     airline: str
     airline_name: str
     flight_no: str
@@ -43,6 +44,7 @@ class FlightSegment:
 @dataclass
 class FlightRoute:
     """One direction (outbound or return) composed of segments."""
+
     segments: list[FlightSegment] = field(default_factory=list)
     total_duration_seconds: int = 0
     stopovers: int = 0
@@ -75,6 +77,7 @@ class FlightRoute:
 @dataclass
 class FlightOffer:
     """A single flight offer from letsfg."""
+
     id: str
     price: float
     currency: str
@@ -122,6 +125,7 @@ class FlightOffer:
 @dataclass
 class FlightSearchResult:
     """Full search result from letsfg."""
+
     search_id: str
     offer_request_id: str
     passenger_ids: list[str]
@@ -159,6 +163,7 @@ class FlightSearchResult:
 @dataclass
 class UnlockResult:
     """Result of unlocking a flight offer."""
+
     offer_id: str
     unlock_status: str  # "unlocked", "payment_failed"
     payment_charged: bool
@@ -193,6 +198,7 @@ class UnlockResult:
 @dataclass
 class Passenger:
     """Passenger details for booking."""
+
     id: str  # pas_xxx from search response
     given_name: str
     family_name: str
@@ -221,6 +227,7 @@ class Passenger:
 @dataclass
 class BookingResult:
     """Result of a flight booking."""
+
     booking_id: str
     status: str  # "confirmed", "failed", "pending"
     booking_type: str
@@ -265,18 +272,19 @@ class BookingResult:
 @dataclass
 class CheckoutProgress:
     """Progress report from automated airline checkout."""
+
     status: str  # "payment_page_reached", "in_progress", "failed", "error", "url_only"
-    step: str                          # Current checkout step
-    step_index: int                    # Numeric step (0-8)
-    airline: str                       # Airline name
-    source: str                        # Source tag (e.g., "ryanair_direct")
+    step: str  # Current checkout step
+    step_index: int  # Numeric step (0-8)
+    airline: str  # Airline name
+    source: str  # Source tag (e.g., "ryanair_direct")
     offer_id: str
-    total_price: float                 # Price shown on checkout page
+    total_price: float  # Price shown on checkout page
     currency: str
-    booking_url: str                   # Direct URL for manual completion
-    screenshot_b64: str                # Base64 screenshot of current state
+    booking_url: str  # Direct URL for manual completion
+    screenshot_b64: str  # Base64 screenshot of current state
     message: str
-    can_complete_manually: bool        # True if user can finish in browser
+    can_complete_manually: bool  # True if user can finish in browser
     elapsed_seconds: float
     details: dict
 
@@ -307,6 +315,7 @@ class CheckoutProgress:
 @dataclass
 class AgentProfile:
     """Agent's profile and usage stats."""
+
     agent_id: str
     agent_name: str
     email: str
@@ -314,8 +323,6 @@ class AgentProfile:
     payment_ready: bool
     usage: dict
     payment: Optional[dict] = None
-    github_username: str = ""
-    github_star_verified: bool = False
     access_granted: bool = False
 
     @classmethod
@@ -328,7 +335,5 @@ class AgentProfile:
             payment_ready=d.get("payment_ready", False),
             usage=d.get("usage", {}),
             payment=d.get("payment"),
-            github_username=d.get("github_username", ""),
-            github_star_verified=d.get("github_star_verified", False),
             access_granted=d.get("access_granted", False),
         )

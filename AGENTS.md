@@ -38,10 +38,8 @@ Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate price
 | Step | Cost | What You Get |
 |------|------|--------------|
 | **Search** | FREE | Price, times, duration, stops, airline names. Completely free, unlimited. |
-| **Unlock** | FREE | Confirms live price with airline. Locks offer for 30 min. Requires GitHub star. |
+| **Unlock** | FREE | Confirms live price with airline. Locks offer for 30 min. |
 | **Book** | Ticket price | Exact airline price + Stripe processing (2.9% + 30¢). Zero markup. |
-
-**GitHub star required:** Star the repo and verify via `letsfg star --github <username>` to unlock and book.
 
 ## How It Works (3 Steps)
 
@@ -74,12 +72,9 @@ Confirm the live price with the airline.
 2. Airline confirms **current live price** (may differ from search)
 3. Offer **reserved for 30 minutes** — you must book within this window
 
-**Requirements:** GitHub star verified via `letsfg star --github <username>`.
-
 **Key unlock details:**
 - Input: `offer_id` (from search results) — this is the only required parameter
-- Cost: FREE (requires verified GitHub star)
-- HTTP 403 → GitHub star not verified — run `letsfg star --github <username>`
+- Cost: FREE
 - HTTP 410 → Offer expired (airline sold the seats) — search again
 - The `confirmed_price` may differ from search price (airline prices change in real-time)
 - If 30-minute window expires without booking, search and unlock again (another fee)
@@ -95,8 +90,6 @@ try:
     unlocked = bt.unlock(flights.cheapest.id)
     print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
     print(f"Expires: {unlocked.offer_expires_at}")
-except PaymentRequiredError:
-    print("Star the repo first: letsfg star --github <username>")
 except OfferExpiredError:
     print("Offer expired — search again")
 ```
@@ -146,9 +139,6 @@ This gives you the `letsfg` CLI command. **Everything works immediately — no A
 ```bash
 # Search flights — completely free, no setup
 letsfg search LHR BCN 2026-06-15
-
-# Star the repo for unlock/book access
-letsfg star --github your-username
 
 # Round trip
 letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
