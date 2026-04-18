@@ -282,9 +282,9 @@ class SkyscannerConnectorClient:
             _sky_cabin = {"M": "economy", "W": "premiumeconomy", "C": "business", "F": "first"}
             cabin = _sky_cabin.get(req.cabin_class, "economy") if req.cabin_class else "economy"
             currency = req.currency or "EUR"
-            # Use .eu domain — less aggressive bot detection than .net
+            # Use .com domain — .eu has DNS issues in some regions
             url = (
-                f"https://www.skyscanner.eu/transport/flights/"
+                f"https://www.skyscanner.com/transport/flights/"
                 f"{origin}/{dest}/{date_str}/"
                 f"?adultsv2={req.adults or 1}"
                 f"&cabinclass={cabin}"
@@ -519,7 +519,7 @@ def _parse_skyscanner(data: dict, req: FlightSearchRequest) -> list[FlightOffer]
                 source_tier="free",
                 is_locked=False,
                 booking_url=(
-                    f"https://www.skyscanner.eu/transport/flights/"
+                    f"https://www.skyscanner.com/transport/flights/"
                     f"{req.origin.lower()}/{req.destination.lower()}/"
                 ),
             ))

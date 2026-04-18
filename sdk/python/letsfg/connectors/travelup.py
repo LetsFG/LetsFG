@@ -112,6 +112,8 @@ class TravelupConnectorClient:
                         continue
 
                     booking_dep = dep_date.strftime("%Y-%m-%d")
+                    # TravelUp uses path-based URLs with YYMMDD dates
+                    booking_dep_short = dep_date.strftime("%y%m%d")
                     segments = [FlightSegment(
                         airline="TravelUp",
                         flight_no="",
@@ -139,7 +141,7 @@ class TravelupConnectorClient:
                         inbound=None,
                         airlines=["TravelUp"],
                         owner_airline="TravelUp",
-                        booking_url=f"{_BASE}/en-gb/flights?from={req.origin}&to={req.destination}&departure={booking_dep}",
+                        booking_url=f"{_BASE}/en-gb/flight-search/{req.origin.lower()}/{req.destination.lower()}/{booking_dep_short}/?adults={req.adults or 1}&children={req.children or 0}&infants={req.infants or 0}&class=0",
                         is_locked=False,
                         source="travelup_ota",
                         source_tier="free",
@@ -152,6 +154,8 @@ class TravelupConnectorClient:
             logger.error("TravelUp error: %s", e)
             return self._empty(req)
 
+        _td = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
+        offers = [o for o in offers if o.outbound and o.outbound.segments and o.outbound.segments[0].departure.date() == _td]
         offers.sort(key=lambda o: o.price)
         elapsed = time.monotonic() - t0
         logger.info(
