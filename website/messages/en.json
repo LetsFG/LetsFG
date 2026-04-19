@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Find cheap flights. Say where you're going.",
+    "description": "Agent-native flight search. 180+ airlines, zero markup. Just tell us where you want to go."
+  },
+  "nav": {
+    "githubLabel": "Star LetsFG on GitHub",
+    "languageLabel": "Language / region"
+  },
+  "hero": {
+    "tagline": "Finding a flight shouldn't mean checking 47 websites. So we built something about it. No markup. No tracking. No price that goes up because you looked twice.",
+    "placeholder": "London to Barcelona next Friday",
+    "searchLabel": "Search flights"
+  },
+  "stats": {
+    "searches": "Searches run",
+    "savings": "Avg. saved vs Google Flights",
+    "markup": "0% markup. Always."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Terms",
+    "privacy": "Privacy"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tokyo",
+    "newYork": "New York",
+    "paris": "Paris",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "London to Barcelona next Friday",
+    "tokyo_query": "NYC to Tokyo in June, business class",
+    "newYork_query": "London to New York next month",
+    "paris_query": "Berlin to Paris this weekend",
+    "bali_query": "Amsterdam to Bali in July",
+    "dubai_query": "Warsaw to Dubai next week"
+  },
+  "features": {
+    "intro": "Built by a community of travelers. Finding a flight shouldn't mean checking 47 websites. So we built something about it. Made with ❤️ by travelers, for travelers.",
+    "join": "Join us.",
+    "open_source": "We're open source — the entire search technology running here is publicly available. If you use an AI agent like Claude Code or OpenClaw, it can pull the code and run searches for you.",
+    "contribute": "Know how to code or use Claude Code?",
+    "contribute_link": "Help build LetsFG →",
+    "share": "Share with friends. People power LetsFG — every search makes it faster for everyone. The more people, the better and faster the results.",
+    "star": "Don't have GitHub? That's fine — you can create an account in 10 seconds with Google. A star is just a way of saying you like it.",
+    "signature": "— The LetsFG Community"
+  }
+}

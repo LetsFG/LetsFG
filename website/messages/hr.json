@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Pronađi jeftine letove. Reci kamo ideš.",
+    "description": "Tražilica letova za AI agente. Preko 180 aviokompanija, nula provizije. Samo nam reci kamo želiš ići."
+  },
+  "nav": {
+    "githubLabel": "Daj zvjezdicu LetsFG-u na GitHubu",
+    "languageLabel": "Jezik / regija"
+  },
+  "hero": {
+    "tagline": "Traženje leta ne bi trebalo značiti pregledavanje 47 stranica. Zato smo ovo napravili. Bez provizije. Bez praćenja. Bez cijena koje rastu jer si pogledao dvaput.",
+    "placeholder": "Zagreb do Barcelone sljedeći petak",
+    "searchLabel": "Pretraži letove"
+  },
+  "stats": {
+    "searches": "Pretraga",
+    "savings": "Prosj. ušteda vs Google Flights",
+    "markup": "0% provizije. Uvijek."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Uvjeti",
+    "privacy": "Privatnost"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tokio",
+    "newYork": "New York",
+    "paris": "Pariz",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "Zagreb do Barcelone sljedeći petak",
+    "tokyo_query": "Zagreb do Tokija u lipnju, poslovna klasa",
+    "newYork_query": "Zagreb do New Yorka sljedeći mjesec",
+    "paris_query": "Berlin do Pariza ovaj vikend",
+    "bali_query": "Amsterdam do Balija u srpnju",
+    "dubai_query": "Zagreb do Dubaija sljedeći tjedan"
+  },
+  "features": {
+    "intro": "Napravljeno od strane zajednice putnika. Traženje leta ne bi trebalo značiti pregledavanje 47 stranica. Zato smo ovo napravili. S ❤️ od putnika, za putnike.",
+    "join": "Pridruži nam se.",
+    "open_source": "Mi smo open source — sva tehnologija pretraživanja je javno dostupna. Ako koristiš AI agenta poput Claude Code ili OpenClaw, on može dohvatiti kod i tražiti letove umjesto tebe.",
+    "contribute": "Znaš programirati ili koristiš Claude Code?",
+    "contribute_link": "Pomozi izgraditi LetsFG →",
+    "share": "Podijeli s prijateljima. LetsFG pokreću ljudi — svaka pretraga ubrzava sljedeću za sve. Više ljudi, bolji i brži rezultati.",
+    "star": "Nemaš GitHub? Nema problema — možeš napraviti račun u 10 sekundi s Googleom. Zvjezdica je samo način da kažeš da ti se sviđa.",
+    "signature": "— LetsFG zajednica"
+  }
+}

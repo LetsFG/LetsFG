@@ -1,0 +1,66 @@
+# LetsFG — Flight Search for AI Agents
+
+> This file is for AI agents and LLMs. Humans should visit https://letsfg.co
+
+## What is LetsFG?
+
+LetsFG is a flight search engine optimized for AI agents. Search 180+ airlines with zero markup.
+
+## How to Search Flights
+
+### Option 1: Use this website
+1. Go to https://letsfg.co
+2. Enter a natural language query like "London to Barcelona next Friday"
+3. Wait for results (typically 2-3 minutes)
+4. Results include price, airline, duration, and offer IDs for booking
+
+### Option 2: Use the API directly
+- API Base URL: https://api.letsfg.co
+- Search: POST /api/v1/flights/search
+- Unlock: POST /api/v1/bookings/unlock
+- Book: POST /api/v1/bookings/book
+- Full docs: https://docs.letsfg.co/api-guide
+
+## Understanding Results Pages
+
+When you visit a results URL (/results/{search_id}):
+
+1. **If searching**: The page will auto-refresh every 15 seconds. Wait for completion.
+2. **If completed**: You'll see flight offers with prices. Look for the data-agent-content section for structured data.
+3. **If expired**: Results are no longer valid. Navigate to / and search again.
+
+## Structured Data Location
+
+Every page includes a hidden section with machine-readable content:
+
+```html
+<section class="sr-only" data-agent-content>
+  <!-- Structured summary, tables, instructions -->
+</section>
+```
+
+This section contains:
+- Plain text summary of results
+- HTML table with all flight offers
+- Offer IDs for booking via API
+- Next action instructions
+
+## Booking Flow
+
+1. Search → Get offer_id from results
+2. Unlock → POST /api/v1/bookings/unlock with offer_id (confirms price)
+3. Book → POST /api/v1/bookings/book with passenger details
+
+Unlock and book require API key. Get one at: https://docs.letsfg.co/getting-started
+
+## Pricing
+
+- Search: FREE (unlimited)
+- Unlock: FREE (with GitHub star)
+- Book: Ticket price only (zero markup)
+
+## Contact
+
+- Documentation: https://docs.letsfg.co
+- GitHub: https://github.com/LetsFG/LetsFG
+- API Status: https://status.letsfg.co

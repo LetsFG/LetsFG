@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Encontre voos baratos. Diz-nos para onde vais.",
+    "description": "Pesquisa de voos para agentes IA. Mais de 180 companhias, zero comissão. Diz-nos simplesmente para onde queres ir."
+  },
+  "nav": {
+    "githubLabel": "Dá uma estrela ao LetsFG no GitHub",
+    "languageLabel": "Idioma / região"
+  },
+  "hero": {
+    "tagline": "Encontrar um voo não deveria exigir verificar 47 sites. Por isso criámos isto. Sem comissões. Sem rastreamento. Sem preços que sobem porque olhaste duas vezes.",
+    "placeholder": "Lisboa para Barcelona na próxima sexta",
+    "searchLabel": "Pesquisar voos"
+  },
+  "stats": {
+    "searches": "Pesquisas",
+    "savings": "Poupança média vs Google Flights",
+    "markup": "0% comissão. Sempre."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Termos",
+    "privacy": "Privacidade"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tóquio",
+    "newYork": "Nova Iorque",
+    "paris": "Paris",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "Lisboa para Barcelona na próxima sexta",
+    "tokyo_query": "Lisboa para Tóquio em junho, classe executiva",
+    "newYork_query": "Lisboa para Nova Iorque no próximo mês",
+    "paris_query": "Berlim para Paris neste fim de semana",
+    "bali_query": "Amesterdão para Bali em julho",
+    "dubai_query": "Lisboa para Dubai na próxima semana"
+  },
+  "features": {
+    "intro": "Criado por uma comunidade de viajantes. Encontrar um voo não deveria exigir verificar 47 sites. Por isso criámos isto. Com ❤️ de viajantes, para viajantes.",
+    "join": "Junta-te a nós.",
+    "open_source": "Somos open source — toda a tecnologia de pesquisa está disponível publicamente. Se usas um agente IA como Claude Code ou OpenClaw, ele pode obter o código e pesquisar voos por ti.",
+    "contribute": "Sabes programar ou usas Claude Code?",
+    "contribute_link": "Ajuda a construir o LetsFG →",
+    "share": "Partilha com amigos. O LetsFG funciona graças às pessoas — cada pesquisa torna a próxima mais rápida para todos. Mais pessoas, melhores e mais rápidos resultados.",
+    "star": "Não tens GitHub? Tranquilo — podes criar uma conta em 10 segundos com o Google. Uma estrela é só uma forma de dizer que gostaste.",
+    "signature": "— A comunidade LetsFG"
+  }
+}

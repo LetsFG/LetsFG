@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Hitta billiga flyg. Säg vart du ska.",
+    "description": "Flygsökning för AI-agenter. Över 180 flygbolag, noll påslag. Berätta bara vart du vill åka."
+  },
+  "nav": {
+    "githubLabel": "Ge LetsFG en stjärna på GitHub",
+    "languageLabel": "Språk / region"
+  },
+  "hero": {
+    "tagline": "Att hitta ett flyg borde inte innebära att kolla 47 webbplatser. Därför byggde vi det här. Inget påslag. Ingen spårning. Inga priser som stiger för att du tittade två gånger.",
+    "placeholder": "Stockholm till Barcelona nästa fredag",
+    "searchLabel": "Sök flyg"
+  },
+  "stats": {
+    "searches": "Sökningar",
+    "savings": "Genomsn. besparing vs Google Flights",
+    "markup": "0% påslag. Alltid."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Villkor",
+    "privacy": "Integritet"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tokyo",
+    "newYork": "New York",
+    "paris": "Paris",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "Stockholm till Barcelona nästa fredag",
+    "tokyo_query": "Stockholm till Tokyo i juni, business class",
+    "newYork_query": "Stockholm till New York nästa månad",
+    "paris_query": "Berlin till Paris den här helgen",
+    "bali_query": "Amsterdam till Bali i juli",
+    "dubai_query": "Stockholm till Dubai nästa vecka"
+  },
+  "features": {
+    "intro": "Byggt av en gemenskap av resenärer. Att hitta ett flyg borde inte innebära att kolla 47 webbplatser. Därför byggde vi det här. Med ❤️ av resenärer, för resenärer.",
+    "join": "Häng med.",
+    "open_source": "Vi är öppen källkod — all sökteknik är offentligt tillgänglig. Om du använder en AI-agent som Claude Code eller OpenClaw kan den hämta koden och söka flyg åt dig.",
+    "contribute": "Kan du koda eller använder du Claude Code?",
+    "contribute_link": "Hjälp till att bygga LetsFG →",
+    "share": "Dela med vänner. LetsFG drivs av människor — varje sökning gör nästa snabbare för alla. Fler människor, bättre och snabbare resultat.",
+    "star": "Har du inget GitHub? Det är lugnt — du kan skapa ett konto på 10 sekunder med Google. En stjärna är bara ett sätt att säga att du gillar det.",
+    "signature": "— LetsFG-gemenskapen"
+  }
+}
