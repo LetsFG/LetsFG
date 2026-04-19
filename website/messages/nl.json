@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Vind goedkope vluchten. Zeg waar je naartoe wilt.",
+    "description": "Vluchten zoeken voor AI-agents. Meer dan 180 airlines, nul opslag. Vertel ons gewoon waar je heen wilt."
+  },
+  "nav": {
+    "githubLabel": "Geef LetsFG een ster op GitHub",
+    "languageLabel": "Taal / regio"
+  },
+  "hero": {
+    "tagline": "Een vlucht vinden zou niet moeten betekenen dat je 47 websites afstruint. Daarom hebben we dit gebouwd. Geen opslag. Geen tracking. Geen prijzen die stijgen omdat je twee keer keek.",
+    "placeholder": "Amsterdam naar Barcelona volgende vrijdag",
+    "searchLabel": "Vluchten zoeken"
+  },
+  "stats": {
+    "searches": "Zoekopdrachten",
+    "savings": "Gem. besparing vs Google Flights",
+    "markup": "0% opslag. Altijd."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Voorwaarden",
+    "privacy": "Privacy"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tokio",
+    "newYork": "New York",
+    "paris": "Parijs",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "Amsterdam naar Barcelona volgende vrijdag",
+    "tokyo_query": "Amsterdam naar Tokio in juni, businessclass",
+    "newYork_query": "Amsterdam naar New York volgende maand",
+    "paris_query": "Berlijn naar Parijs dit weekend",
+    "bali_query": "Amsterdam naar Bali in juli",
+    "dubai_query": "Amsterdam naar Dubai volgende week"
+  },
+  "features": {
+    "intro": "Gebouwd door een community van reizigers. Een vlucht vinden zou niet moeten betekenen dat je 47 websites afstruint. Daarom hebben we dit gebouwd. Met ❤️ door reizigers, voor reizigers.",
+    "join": "Doe mee.",
+    "open_source": "We zijn open source — alle zoektechnologie is publiek beschikbaar. Als je een AI-agent zoals Claude Code of OpenClaw gebruikt, kan die de code ophalen en vluchten voor je zoeken.",
+    "contribute": "Kun je programmeren of gebruik je Claude Code?",
+    "contribute_link": "Help LetsFG bouwen →",
+    "share": "Deel het met vrienden. LetsFG draait op mensen — elke zoekopdracht maakt de volgende sneller voor iedereen. Meer mensen, betere en snellere resultaten.",
+    "star": "Geen GitHub? Prima — je kunt een account aanmaken in 10 seconden met Google. Een ster is gewoon een manier om te zeggen dat je het leuk vindt.",
+    "signature": "— De LetsFG-community"
+  }
+}

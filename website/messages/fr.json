@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Trouvez des vols pas chers. Dites où vous allez.",
+    "description": "Recherche de vols pour agents IA. Plus de 180 compagnies, zéro commission. Dites-nous simplement où vous voulez aller."
+  },
+  "nav": {
+    "githubLabel": "Mettez une étoile à LetsFG sur GitHub",
+    "languageLabel": "Langue / région"
+  },
+  "hero": {
+    "tagline": "Trouver un vol ne devrait pas nécessiter de vérifier 47 sites. C'est pourquoi on a créé ça. Sans commission. Sans tracking. Sans prix qui augmentent parce que vous avez regardé deux fois.",
+    "placeholder": "Paris à Barcelone vendredi prochain",
+    "searchLabel": "Rechercher des vols"
+  },
+  "stats": {
+    "searches": "Recherches",
+    "savings": "Économie moy. vs Google Flights",
+    "markup": "0% commission. Toujours."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Conditions",
+    "privacy": "Confidentialité"
+  },
+  "destinations": {
+    "barcelona": "Barcelone",
+    "tokyo": "Tokyo",
+    "newYork": "New York",
+    "paris": "Paris",
+    "bali": "Bali",
+    "dubai": "Dubaï",
+    "barcelona_query": "Paris à Barcelone vendredi prochain",
+    "tokyo_query": "Paris à Tokyo en juin, classe affaires",
+    "newYork_query": "Paris à New York le mois prochain",
+    "paris_query": "Berlin à Paris ce week-end",
+    "bali_query": "Amsterdam à Bali en juillet",
+    "dubai_query": "Paris à Dubaï la semaine prochaine"
+  },
+  "features": {
+    "intro": "Créé par une communauté de voyageurs. Trouver un vol ne devrait pas nécessiter de vérifier 47 sites. C'est pourquoi on a créé ça. Fait avec ❤️ par des voyageurs, pour des voyageurs.",
+    "join": "Rejoignez-nous.",
+    "open_source": "On est open source — toute la techno de recherche est publiquement disponible. Si vous utilisez un agent IA comme Claude Code ou OpenClaw, il peut récupérer le code et chercher des vols pour vous.",
+    "contribute": "Vous savez coder ou vous utilisez Claude Code ?",
+    "contribute_link": "Aidez à construire LetsFG →",
+    "share": "Partagez avec vos amis. LetsFG fonctionne grâce aux gens — chaque recherche rend la suivante plus rapide pour tout le monde. Plus de monde, de meilleurs résultats plus rapides.",
+    "star": "Pas de GitHub ? Pas de souci — vous pouvez créer un compte en 10 secondes avec Google. Une étoile, c'est juste une façon de dire que ça vous plaît.",
+    "signature": "— La communauté LetsFG"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Günstige Flüge finden. Sag wohin du willst.",
+    "description": "Flugsuche für KI-Agenten. Über 180 Airlines, null Aufschlag. Sag uns einfach wohin du willst."
+  },
+  "nav": {
+    "githubLabel": "Gib LetsFG einen Stern auf GitHub",
+    "languageLabel": "Sprache / Region"
+  },
+  "hero": {
+    "tagline": "Einen Flug zu finden sollte nicht bedeuten, 47 Websites abzuklappern. Deshalb haben wir das hier gebaut. Kein Aufschlag. Kein Tracking. Keine Preise die steigen, weil du zweimal hingeschaut hast.",
+    "placeholder": "Berlin nach Barcelona nächsten Freitag",
+    "searchLabel": "Flüge suchen"
+  },
+  "stats": {
+    "searches": "Suchanfragen",
+    "savings": "Ø Ersparnis vs Google Flights",
+    "markup": "0% Aufschlag. Immer."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "AGB",
+    "privacy": "Datenschutz"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tokio",
+    "newYork": "New York",
+    "paris": "Paris",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "Berlin nach Barcelona nächsten Freitag",
+    "tokyo_query": "Frankfurt nach Tokio im Juni, Business Class",
+    "newYork_query": "Berlin nach New York nächsten Monat",
+    "paris_query": "Berlin nach Paris dieses Wochenende",
+    "bali_query": "Amsterdam nach Bali im Juli",
+    "dubai_query": "Berlin nach Dubai nächste Woche"
+  },
+  "features": {
+    "intro": "Von einer Community aus Reisenden gebaut. Einen Flug zu finden sollte nicht bedeuten, 47 Websites abzuklappern. Deshalb haben wir das hier gebaut. Mit ❤️ von Reisenden, für Reisende.",
+    "join": "Mach mit.",
+    "open_source": "Wir sind Open Source — die gesamte Suchtechnologie ist öffentlich verfügbar. Wenn du einen KI-Agenten wie Claude Code oder OpenClaw nutzt, kann er den Code laden und für dich Flüge suchen.",
+    "contribute": "Kannst du coden oder nutzt du Claude Code?",
+    "contribute_link": "Hilf mit, LetsFG auszubauen →",
+    "share": "Teile es mit Freunden. LetsFG wird von Menschen angetrieben — jede Suche macht die nächste für alle schneller. Mehr Leute, bessere und schnellere Ergebnisse.",
+    "star": "Kein GitHub? Kein Problem — ein Konto erstellst du in 10 Sekunden mit Google. Ein Stern ist einfach eine Art zu sagen, dass es dir gefällt.",
+    "signature": "— Die LetsFG-Community"
+  }
+}

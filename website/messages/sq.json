@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Gjej fluturime të lira. Trego ku do të shkosh.",
+    "description": "Kërkim fluturimesh për agjentë AI. Mbi 180 linja ajrore, zero komision. Tregona thjesht ku dëshiron të shkosh."
+  },
+  "nav": {
+    "githubLabel": "Jepni një yll LetsFG-së në GitHub",
+    "languageLabel": "Gjuha / rajoni"
+  },
+  "hero": {
+    "tagline": "Gjetja e një fluturimi nuk duhet të nënkuptojë kontrollimin e 47 faqeve. Prandaj e ndërtuam këtë. Pa komision. Pa gjurmim. Pa çmime që rriten sepse shikove dy herë.",
+    "placeholder": "Tiranë drejt Barcelonës të premten e ardhshme",
+    "searchLabel": "Kërko fluturime"
+  },
+  "stats": {
+    "searches": "Kërkime",
+    "savings": "Kursim mesatar vs Google Flights",
+    "markup": "0% komision. Gjithmonë."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Kushtet",
+    "privacy": "Privatësia"
+  },
+  "destinations": {
+    "barcelona": "Barcelonë",
+    "tokyo": "Tokio",
+    "newYork": "Nju Jork",
+    "paris": "Paris",
+    "bali": "Bali",
+    "dubai": "Dubai",
+    "barcelona_query": "Tiranë drejt Barcelonës të premten e ardhshme",
+    "tokyo_query": "Tiranë drejt Tokios në qershor, klasa biznes",
+    "newYork_query": "Tiranë drejt Nju Jorkut muajin e ardhshëm",
+    "paris_query": "Berlin drejt Parisit këtë fundjavë",
+    "bali_query": "Amsterdam drejt Balit në korrik",
+    "dubai_query": "Tiranë drejt Dubait javën e ardhshme"
+  },
+  "features": {
+    "intro": "Ndërtuar nga një komunitet udhëtarësh. Gjetja e një fluturimi nuk duhet të nënkuptojë kontrollimin e 47 faqeve. Prandaj e ndërtuam këtë. Me ❤️ nga udhëtarë, për udhëtarë.",
+    "join": "Bashkohu me ne.",
+    "open_source": "Jemi burim i hapur — e gjithë teknologjia e kërkimit është e disponueshme publikisht. Nëse përdor një agjent AI si Claude Code ose OpenClaw, ai mund të marrë kodin dhe të kërkojë fluturime për ty.",
+    "contribute": "Di të programosh ose përdor Claude Code?",
+    "contribute_link": "Ndihmo të ndërtojmë LetsFG →",
+    "share": "Ndaje me miqtë. LetsFG funksionon falë njerëzve — çdo kërkim e bën më të shpejtë për të gjithë. Më shumë njerëz, rezultate më të mira dhe më të shpejta.",
+    "star": "Nuk ke GitHub? Asnjë problem — mund të krijosh një llogari në 10 sekonda me Google. Një yll është thjesht mënyra për të thënë që të pëlqen.",
+    "signature": "— Komuniteti LetsFG"
+  }
+}

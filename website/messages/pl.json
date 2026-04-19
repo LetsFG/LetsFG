@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "LetsFG — Znajdź tanie loty. Powiedz dokąd lecisz.",
+    "description": "Wyszukiwarka lotów stworzona dla AI. Ponad 180 linii lotniczych, zero prowizji. Po prostu powiedz dokąd chcesz lecieć."
+  },
+  "nav": {
+    "githubLabel": "Zostaw gwiazdkę na GitHubie",
+    "languageLabel": "Język / region"
+  },
+  "hero": {
+    "tagline": "Szukanie lotu nie powinno wymagać sprawdzania 47 stron. Dlatego to zbudowaliśmy. Bez prowizji. Bez śledzenia. Bez cen, które rosną bo spojrzałeś dwa razy.",
+    "placeholder": "Warszawa do Barcelony w przyszły piątek",
+    "searchLabel": "Szukaj lotów"
+  },
+  "stats": {
+    "searches": "Wyszukiwań",
+    "savings": "Śr. oszczędność vs Google Flights",
+    "markup": "0% prowizji. Zawsze."
+  },
+  "footer": {
+    "github": "GitHub",
+    "terms": "Regulamin",
+    "privacy": "Prywatność"
+  },
+  "destinations": {
+    "barcelona": "Barcelona",
+    "tokyo": "Tokio",
+    "newYork": "Nowy Jork",
+    "paris": "Paryż",
+    "bali": "Bali",
+    "dubai": "Dubaj",
+    "barcelona_query": "Warszawa do Barcelony w przyszły piątek",
+    "tokyo_query": "Warszawa do Tokio w czerwcu, klasa biznes",
+    "newYork_query": "Londyn do Nowego Jorku w przyszłym miesiącu",
+    "paris_query": "Berlin do Paryża w ten weekend",
+    "bali_query": "Amsterdam do Bali w lipcu",
+    "dubai_query": "Warszawa do Dubaju w przyszłym tygodniu"
+  },
+  "features": {
+    "intro": "Stworzone przez społeczność podróżników. Szukanie lotu nie powinno wymagać sprawdzania 47 stron. Dlatego to zbudowaliśmy. Z ❤️ od podróżników, dla podróżników.",
+    "join": "Dołącz do nas.",
+    "open_source": "Jesteśmy open source — cała technologia wyszukiwania jest publicznie dostępna. Jeśli korzystasz z agenta AI jak Claude Code czy OpenClaw, może on pobrać kod i szukać lotów za Ciebie.",
+    "contribute": "Umiesz programować albo korzystasz z Claude Code?",
+    "contribute_link": "Pomóż rozbudowywać LetsFG →",
+    "share": "Podziel się ze znajomymi. LetsFG napędzają ludzie — każde wyszukiwanie przyspiesza kolejne dla wszystkich. Im więcej osób, tym lepsze i szybsze wyniki.",
+    "star": "Nie masz GitHuba? Spoko — konto założysz w 10 sekund z Google. Gwiazdka to sposób żeby powiedzieć, że Ci się podoba.",
+    "signature": "— Społeczność LetsFG"
+  }
+}
