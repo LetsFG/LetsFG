@@ -588,7 +588,16 @@ export default function HomeSearchForm() {
             key={dest.code}
             type="button"
             className="lp-dest-card"
-            onClick={() => setQuery(dest.query)}
+            onClick={() => {
+              setQuery(dest.query)
+              setTimeout(() => {
+                const input = inputRef.current
+                if (input) {
+                  input.focus()
+                  input.setSelectionRange(dest.query.length, dest.query.length)
+                }
+              }, 0)
+            }}
             onMouseMove={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
               const x = ((e.clientX - r.left) / r.width  - 0.5) * 7
