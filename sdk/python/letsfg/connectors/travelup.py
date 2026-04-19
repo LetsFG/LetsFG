@@ -33,6 +33,33 @@ from .browser import get_httpx_proxy_url
 logger = logging.getLogger(__name__)
 
 _BASE = "https://www.travelup.com"
+_MONTH_NAMES = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+]
+
+
+def _build_travelup_url(
+    origin: str, dest: str, dep_date: datetime, ret_date: datetime | None = None,
+    adults: int = 1, children: int = 0, infants: int = 0,
+) -> str:
+    """Build a valid TravelUp search URL with the required SEO slug.
+
+    TravelUp uses path-based URLs that REQUIRE a slug or the page returns 404.
+    Format: /en-gb/flight-search/{orig}/{dest}/{depYYMMDD}/{retYYMMDD}/{slug}?params
+    """
+    dep_short = dep_date.strftime("%y%m%d")
+    # TravelUp only supports round-trip URLs — use dep+7d if no return
+    if ret_date is None:
+        ret_date = dep_date + timedelta(days=7)
+    ret_short = ret_date.strftime("%y%m%d")
+    month_name = _MONTH_NAMES[dep_date.month - 1]
+    slug = f"flying-from-{origin.lower()}-to-{dest.lower()}-in-{month_name}-{dep_date.year}"
+    return (
+        f"{_BASE}/en-gb/flight-search/{origin.lower()}/{dest.lower()}"
+        f"/{dep_short}/{ret_short}/{slug}"
+        f"?adults={adults}&children={children}&infants={infants}&class=0"
+    )
 _API_URL = "https://tup-flightsearch-api.azurewebsites.net/api/search/cheapest"
 _API_KEY = "9a9635e3240c41018ddadfa51bb378e4"
 
@@ -141,7 +168,12 @@ class TravelupConnectorClient:
                         inbound=None,
                         airlines=["TravelUp"],
                         owner_airline="TravelUp",
-                        booking_url=f"{_BASE}/en-gb/flight-search/{req.origin.lower()}/{req.destination.lower()}/{booking_dep_short}/?adults={req.adults or 1}&children={req.children or 0}&infants={req.infants or 0}&class=0",
+                        booking_url=_build_travelup_url(
+                            req.origin, req.destination, dep_date,
+                            adults=req.adults or 1,
+                            children=req.children or 0,
+                            infants=req.infants or 0,
+                        ),
                         is_locked=False,
                         source="travelup_ota",
                         source_tier="free",

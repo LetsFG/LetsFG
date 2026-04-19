@@ -29,6 +29,7 @@ Deploy (Cloud Run — NO --function flag):
 """
 
 import asyncio
+import hmac
 import logging
 import os
 import sys
@@ -59,7 +60,7 @@ def _verify_auth():
     if not WORKER_SECRET:
         return
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token or token != WORKER_SECRET:
+    if not token or not hmac.compare_digest(token, WORKER_SECRET):
         abort(401, "Unauthorized")
 
 
@@ -121,6 +122,7 @@ def _resolve_connector(connector_id: str):
     import importlib
     _patches = {
         "ryanair_direct": ("connector_patches.ryanair", "RyanairConnectorClient", 20.0),
+        "skyscanner_meta": ("connector_patches.skyscanner", "SkyscannerConnectorClient", 55.0),
         "indigo_direct": ("letsfg.connectors.indigo", "IndiGoConnectorClient", 170.0),
         # delta_direct: disabled — Kasada rejects SwiftShader/Xvfb fingerprint on Cloud Run.
         # Works locally (20 offers, 36.8s) but Cloud Run gets 429 on offer-api-prd.delta.com
@@ -644,6 +646,7 @@ _PROXY_ALWAYS: set[str] = {
     "flydubai_direct",       # Akamai/WAF blocks GCP IPs — works via residential
     "pegasus_direct",        # Akamai blocks from GCP IPs — needs residential proxy
     "chinasouthern_direct",  # GCP IPs geo-redirect to csair.com/us/en/ — needs EU residential proxy
+    "skyscanner_meta",       # PX blocks GCP IPs — needs residential proxy with sticky session
     # delta_direct: disabled (Kasada rejects SwiftShader/Xvfb fingerprint)
 }
 

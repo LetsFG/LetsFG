@@ -3,6 +3,7 @@
 # Pin to latest release — 2026.4.43
 letsfg==2026.4.43
 airportsdata>=20240101
+curl_cffi>=0.7.0
 flask>=3.0
 gunicorn>=22.0
 nodriver>=0.39

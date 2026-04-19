@@ -38,6 +38,7 @@ Deploy (Cloud Run — NO --function flag):
 """
 
 import asyncio
+import hmac
 import logging
 import os
 
@@ -61,7 +62,7 @@ def _verify_auth():
     if not WORKER_SECRET:
         return  # No auth in local dev
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token or token != WORKER_SECRET:
+    if not token or not hmac.compare_digest(token, WORKER_SECRET):
         abort(401, "Unauthorized")
 
 

@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 
 from letsfg.models import (
     AgentProfile,
@@ -516,7 +517,7 @@ class LetsFG:
             List of matching locations with IATA codes.
         """
         self._require_api_key()
-        data = self._get(f"/api/v1/flights/locations/{query}")
+        data = self._get(f"/api/v1/flights/locations/{quote(query, safe='')}")
         if isinstance(data, dict) and "locations" in data:
             return data["locations"]
         if isinstance(data, list):

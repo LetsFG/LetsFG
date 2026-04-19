@@ -1,15 +1,12 @@
 """
-Skyscanner connector — CDP Chrome + API response interception.
-
-Skyscanner is the world's #1 flight meta-search engine, aggregating from
-1200+ partners. Direct API access is blocked by PerimeterX, but loading
-the results page in a REAL Chrome browser fires the internal fps3/search API.
+Skyscanner connector - curl_cffi + radar API.
 
 Strategy:
-1.  Launch REAL system Chrome via CDP (not bundled Chromium) to bypass PerimeterX.
-2.  Navigate to Skyscanner search results URL.
-3.  Intercept the fps3/search (or similar) API response with flight data.
-4.  Parse itineraries from the JSON response.
+1.  Use curl_cffi with Chrome TLS impersonation to bypass PerimeterX.
+2.  Establish session: homepage -> search page (collects PX cookies).
+3.  POST to /g/radar/api/v2/web-unified-search/ with entity-based payload.
+4.  Poll via GET for progressive results.
+5.  Parse itineraries from the flat JSON response.
 """
 
 from __future__ import annotations
@@ -18,14 +15,13 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
-import shutil
-import subprocess
+import re
 import time
+import uuid
 from datetime import datetime, date as date_type
 from typing import Any, Optional
 
-from ..models.flights import (
+from letsfg.models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
@@ -35,12 +31,64 @@ from ..models.flights import (
 
 logger = logging.getLogger(__name__)
 
-# ── CDP Chrome singleton ──
-_DEBUG_PORT = 9452
-_USER_DATA_DIR = os.path.join(os.getcwd(), ".skyscanner_chrome_data")
-_browser = None
-_chrome_proc = None
-_pw_instance = None
+_CURRENCY_MARKET: dict[str, str] = {
+    "EUR": "UK",  # EU is not a valid Skyscanner market; UK has broadest EU coverage
+    "INR": "IN", "USD": "US", "GBP": "UK", "CAD": "CA", "AUD": "AU",
+    "NZD": "NZ", "JPY": "JP", "CNY": "CN", "KRW": "KR", "SGD": "SG",
+    "MYR": "MY", "THB": "TH", "IDR": "ID", "PHP": "PH", "VND": "VN",
+    "HKD": "HK", "AED": "AE", "SAR": "SA", "KWD": "KW", "BRL": "BR",
+    "MXN": "MX", "ARS": "AR", "ZAR": "ZA", "KES": "KE", "NGN": "NG",
+    "EGP": "EG", "TRY": "TR", "PLN": "PL", "CZK": "CZ", "HUF": "HU",
+    "RON": "RO", "BGN": "BG", "SEK": "SE", "NOK": "NO", "DKK": "DK",
+    "CHF": "CH",
+}
+
+_ENTITY_CACHE: dict[str, str] = {
+    "AGP": "95565095", "AKL": "95673805", "ALC": "95565083", "AMS": "95565044",
+    "ARN": "95673495", "ATH": "95673624", "ATL": "27541735", "AUH": "95673509",
+    "BCN": "95565085", "BEG": "95673488", "BER": "95673383", "BGY": "95565071",
+    "BJS": "27545090", "BKK": "27536671", "BLR": "95673351", "BNE": "95673551",
+    "BOG": "95673344", "BOM": "27539520", "BOS": "27539525", "BRE": "128668286",
+    "BRU": "27539565", "BSB": "95673410", "BUD": "95673439", "CAN": "128668169",
+    "CCU": "128668366", "CDG": "95565041", "CFU": "95674252", "CGK": "95673340",
+    "CHC": "95673841", "CHQ": "95674143", "CLJ": "95673885", "CNF": "95673408",
+    "CPH": "95673519", "CTA": "95673893", "CTS": "128668447", "CTU": "27540574",
+    "CUN": "95673718", "CWB": "95673436", "DBV": "95674145", "DEL": "95673498",
+    "DEN": "95673705", "DFW": "27536457", "DOH": "95673852", "DTW": "95673555",
+    "DUB": "95673529", "DUS": "27540831", "DXB": "27540839", "EDI": "95673668",
+    "EWR": "95565059", "EZE": "95673318", "FAO": "95673306", "FCO": "95565065",
+    "FLL": "27541669", "FRA": "27541706", "FUE": "95673312", "GDL": "95673440",
+    "GDN": "95673773", "GIG": "95673347", "GRU": "95673332", "GVA": "95674055",
+    "HAM": "27536295", "HEL": "95673700", "HER": "95674142", "HKG": "128668132",
+    "HND": "128667143", "IAD": "95673665", "IAH": "95673412", "IBZ": "95565093",
+    "ICN": "95673659", "IST": "27542903", "JED": "95673390", "JFK": "95565058",
+    "KIX": "128667802", "KRK": "95673613", "KTW": "95673614", "KUL": "27543923",
+    "LAX": "27536211", "LCA": "95674028", "LEJ": "95673741", "LGW": "95565051",
+    "LHR": "95565050", "LIM": "95673342", "LIS": "95565055", "LON": "27544008",
+    "LPA": "95673301", "MAA": "95673361", "MAD": "95565077", "MAN": "95673540",
+    "MCO": "95674009", "MEL": "27544894", "MEX": "39151418", "MIA": "27536644",
+    "MIL": "27544068", "MLE": "104120258", "MOW": "27539438", "MSP": "27540996",
+    "MUC": "95673491", "MXP": "95565070", "NAP": "95673535", "NRT": "128668889",
+    "NUE": "95673744", "NYC": "27537542", "OPO": "95566290", "ORD": "95673392",
+    "ORY": "95565040", "OSL": "27538634", "OTP": "95673426", "PAR": "27539733",
+    "PDX": "95673720", "PEK": "128668664", "PER": "128668924", "PHL": "27545954",
+    "PHX": "27540837", "PMI": "95565111", "PMO": "95673647", "POA": "95673477",
+    "POZ": "128667756", "PRG": "95673502", "PVG": "128667077", "REC": "95673454",
+    "RHO": "104120264", "RIX": "95673617", "ROM": "27539793", "RUH": "95673362",
+    "SAN": "27545066", "SCL": "104120223", "SEA": "27538444", "SEL": "27538638",
+    "SFO": "95673577", "SHA": "27546079", "SIN": "27546111", "SJC": "27546164",
+    "SKG": "95673847", "SOF": "95673503", "SPU": "95674071", "SSA": "95673396",
+    "STN": "95565052", "STR": "95673677", "SVQ": "95565089", "SYD": "27547097",
+    "TFS": "95673303", "TLL": "128667052", "TPA": "27544873", "TPE": "27547236",
+    "TYO": "27542089", "VCE": "27547373", "VIE": "95673444", "VLC": "95565090",
+    "VNO": "95673717", "WAW": "27547454", "WMI": "128667439", "WRO": "95674155",
+    "YOW": "27536667", "YUL": "95673384", "YVR": "27537411", "YYC": "95673531",
+    "YYZ": "95673353", "ZAG": "95673639", "ZRH": "95673856",
+}
+
+
+def _currency_to_market(currency: str) -> str:
+    return _CURRENCY_MARKET.get(currency.upper(), "UK")
 
 
 def _parse_dt(s: Any) -> datetime:
@@ -53,95 +101,12 @@ def _parse_dt(s: Any) -> datetime:
         return datetime(2000, 1, 1)
 
 
-async def _get_browser():
-    """Get or launch CDP Chrome browser (singleton)."""
-    global _browser, _chrome_proc, _pw_instance
-
-    # Reuse existing connection
-    if _browser:
-        try:
-            if _browser.is_connected():
-                return _browser
-        except Exception:
-            pass
-
-    from playwright.async_api import async_playwright
-    from .browser import (
-        find_chrome,
-        stealth_popen_kwargs,
-        proxy_chrome_args,
-        disable_background_networking_args,
-        _launched_procs,
-    )
-
-    # Try connecting to existing Chrome on the port first
-    pw = None
-    try:
-        pw = await async_playwright().start()
-        _browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_DEBUG_PORT}")
-        _pw_instance = pw
-        logger.info("Skyscanner: connected to existing Chrome on port %d", _DEBUG_PORT)
-        return _browser
-    except Exception:
-        if pw:
-            try:
-                await pw.stop()
-            except Exception:
-                pass
-
-    # Launch Chrome HEADED (no --headless) — PerimeterX detects headless Chrome
-    chrome = find_chrome()
-    os.makedirs(_USER_DATA_DIR, exist_ok=True)
-    args = [
-        chrome,
-        f"--remote-debugging-port={_DEBUG_PORT}",
-        f"--user-data-dir={_USER_DATA_DIR}",
-        "--no-first-run",
-        *proxy_chrome_args(),
-        *disable_background_networking_args(),
-        "--no-default-browser-check",
-        "--disable-blink-features=AutomationControlled",
-        "--disable-http2",
-        "--window-position=-2400,-2400",
-        "--window-size=1366,768",
-        "about:blank",
-    ]
-    _chrome_proc = subprocess.Popen(args, **stealth_popen_kwargs())
-    _launched_procs.append(_chrome_proc)
-    await asyncio.sleep(2.0)
-
-    pw = await async_playwright().start()
-    _pw_instance = pw
-    _browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_DEBUG_PORT}")
-    logger.info("Skyscanner: Chrome launched headed on CDP port %d (pid %d)", _DEBUG_PORT, _chrome_proc.pid)
-    return _browser
-
-
-async def _reset_chrome_profile():
-    """Kill Chrome and wipe user-data-dir to clear PerimeterX-flagged sessions."""
-    global _browser, _chrome_proc
-    try:
-        if _browser:
-            await _browser.close()
-    except Exception:
-        pass
-    _browser = None
-    if _chrome_proc:
-        try:
-            _chrome_proc.terminate()
-        except Exception:
-            pass
-        _chrome_proc = None
-    if os.path.isdir(_USER_DATA_DIR):
-        try:
-            shutil.rmtree(_USER_DATA_DIR)
-            logger.info("Skyscanner: deleted stale Chrome profile %s", _USER_DATA_DIR)
-        except Exception as e:
-            logger.warning("Skyscanner: failed to delete Chrome profile: %s", e)
+_SKY_CABIN = {"M": "economy", "W": "premiumeconomy", "C": "business", "F": "first"}
+_SKY_CABIN_API = {"M": "ECONOMY", "W": "PREMIUM_ECONOMY", "C": "BUSINESS", "F": "FIRST"}
 
 
 class SkyscannerConnectorClient:
-    """Skyscanner — meta-search, Playwright + API interception."""
+    """Skyscanner - meta-search, curl_cffi + radar API."""
 
     def __init__(self, timeout: float = 55.0):
         self.timeout = timeout
@@ -152,22 +117,34 @@ class SkyscannerConnectorClient:
     async def search_flights(
         self, req: FlightSearchRequest
     ) -> FlightSearchResponse:
-        t0 = time.monotonic()
+        ob_result = await self._search_ow(req)
+        if req.return_from and ob_result.total_results > 0:
+            ib_req = req.model_copy(update={
+                "origin": req.destination, "destination": req.origin,
+                "date_from": req.return_from, "return_from": None,
+            })
+            ib_result = await self._search_ow(ib_req)
+            if ib_result.total_results > 0:
+                ob_result.offers = self._combine_rt(ob_result.offers, ib_result.offers, req)
+                ob_result.total_results = len(ob_result.offers)
+        return ob_result
 
+    async def _search_ow(
+        self, req: FlightSearchRequest
+    ) -> FlightSearchResponse:
+        t0 = time.monotonic()
         for attempt in range(2):
             try:
                 offers = await self._do_search(req)
                 if offers is not None:
-                    offers.sort(
-                        key=lambda o: o.price if o.price > 0 else float("inf")
-                    )
+                    offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
                     elapsed = time.monotonic() - t0
                     logger.info(
-                        "SKYSCANNER %s→%s: %d offers in %.1fs",
+                        "SKYSCANNER %s->%s: %d offers in %.1fs",
                         req.origin, req.destination, len(offers), elapsed,
                     )
                     h = hashlib.md5(
-                        f"skyscanner{req.origin}{req.destination}{req.date_from}".encode()
+                        f"skyscanner{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
                     ).hexdigest()[:12]
                     return FlightSearchResponse(
                         search_id=f"fs_ss_{h}",
@@ -179,113 +156,186 @@ class SkyscannerConnectorClient:
                     )
             except Exception as e:
                 logger.warning("SKYSCANNER attempt %d failed: %s", attempt, e)
-
         return self._empty(req)
 
     async def _do_search(
         self, req: FlightSearchRequest
     ) -> list[FlightOffer] | None:
-        from .browser import inject_stealth_js, auto_block_if_proxied
+        import os
+        from curl_cffi.requests import AsyncSession
 
-        api_responses: list[dict] = []
-        px_blocked = False
+        d = req.date_from
+        origin = req.origin.upper()
+        dest = req.destination.upper()
+        cabin = _SKY_CABIN.get(req.cabin_class, "economy") if req.cabin_class else "economy"
+        cabin_api = _SKY_CABIN_API.get(req.cabin_class, "ECONOMY") if req.cabin_class else "ECONOMY"
+        currency = req.currency or "EUR"
+        market = _currency_to_market(currency)
+        date_str = f"{d.year % 100:02d}{d.month:02d}{d.day:02d}"
 
-        async def on_response(response):
-            nonlocal px_blocked
-            url = response.url
-            # PerimeterX block detection
-            if response.status == 403 or "captcha" in url.lower() or "challenge" in url.lower():
-                px_blocked = True
-                return
-            # Skyscanner uses multiple API patterns for search results
-            hit = (
-                "fps3/search" in url
-                or "flights/live/search" in url
-                or "flights/indicative" in url
-                or ("graphql" in url and "flight" in url.lower())
-            )
-            if not hit:
-                return
+        # Prefer SKYSCANNER_PROXY directly (bypass local relay which doesn't support curl_cffi CONNECT)
+        proxy_url = os.environ.get("SKYSCANNER_PROXY", "").strip() or os.environ.get("LETSFG_PROXY", "").strip() or None
+        # Skip local relay — curl_cffi handles authenticated proxies natively
+        if proxy_url and "127.0.0.1" in proxy_url:
+            proxy_url = os.environ.get("SKYSCANNER_PROXY", "").strip() or None
+        # Use sticky session so all requests share the same exit IP (PX ties cookies to IP)
+        if proxy_url and "@" in proxy_url:
+            sid = f"sky{uuid.uuid4().hex[:8]}"
+            proxy_url = proxy_url.replace("@", f"_session-{sid}@", 1)
+            logger.debug("SKYSCANNER: using sticky session %s", sid)
+
+        async with AsyncSession(impersonate="chrome136", proxy=proxy_url) as session:
+            # 1. Homepage - establish PX cookies on .net
             try:
-                if response.status == 200:
-                    body = await response.text()
-                    if len(body) > 5000:
-                        data = json.loads(body)
-                        # fps3 returns {content: {results: {itineraries: {...}}}}
-                        content = data.get("content") or data.get("data") or data
-                        results = content.get("results") or content
-                        if (
-                            results.get("itineraries")
-                            or results.get("legs")
-                            or results.get("quotes")
-                        ):
-                            api_responses.append(data)
-            except Exception:
-                pass
+                await session.get(
+                    "https://www.skyscanner.net/",
+                    headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "en-GB,en;q=0.9",
+                    },
+                    timeout=15,
+                )
+            except Exception as e:
+                logger.warning("SKYSCANNER: homepage failed: %s", e)
+                return None
 
-        try:
-            browser = await _get_browser()
-            ctx = await browser.new_context(
-                viewport={"width": 1366, "height": 768},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/131.0.0.0 Safari/537.36"
-                ),
-            )
-            page = await ctx.new_page()
-            await inject_stealth_js(page)
-            await auto_block_if_proxied(page)
-            page.on("response", on_response)
+            # Check entity ID cache first — skip search page if both known
+            origin_eid = _ENTITY_CACHE.get(origin, "")
+            dest_eid = _ENTITY_CACHE.get(dest, "")
 
-            # Skyscanner URL pattern: /transport/flights/{origin}/{dest}/{YYMMDD}/
-            # Round-trip: /transport/flights/{origin}/{dest}/{YYMMDD}/{YYMMDD_ret}/
-            d = req.date_from
-            date_str = f"{d.year % 100:02d}{d.month:02d}{d.day:02d}"
-            origin = req.origin.lower()
-            dest = req.destination.lower()
-            date_path = f"{date_str}/"
-            if req.return_from:
-                rd = req.return_from
-                ret_str = f"{rd.year % 100:02d}{rd.month:02d}{rd.day:02d}"
-                date_path = f"{date_str}/{ret_str}/"
-            url = (
+            # 2. Search page - get SSR data with entity IDs + more cookies
+            search_url = (
                 f"https://www.skyscanner.net/transport/flights/"
-                f"{origin}/{dest}/{date_path}"
+                f"{origin.lower()}/{dest.lower()}/{date_str}/"
                 f"?adultsv2={req.adults or 1}"
-                f"&cabinclass=economy"
-                f"&ref=home"
+                f"&cabinclass={cabin}"
+                f"&currency={currency}"
+                f"&locale=en-GB"
+                f"&market={market}"
             )
+            try:
+                r_page = await session.get(
+                    search_url,
+                    headers={
+                        "Accept": "text/html",
+                        "Referer": "https://www.skyscanner.net/",
+                    },
+                    timeout=20,
+                )
+                if r_page.status_code == 200 and (not origin_eid or not dest_eid):
+                    o, d = _extract_entity_ids(r_page.text, origin, dest)
+                    if o:
+                        origin_eid = o
+                        _ENTITY_CACHE[origin] = o
+                    if d:
+                        dest_eid = d
+                        _ENTITY_CACHE[dest] = d
+            except Exception as e:
+                logger.debug("SKYSCANNER: search page failed: %s", e)
 
-            await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+            if not origin_eid or not dest_eid:
+                logger.warning("SKYSCANNER: could not resolve entity IDs for %s->%s", origin, dest)
+                return None
 
-            # Wait for API responses — Skyscanner progressively loads results
-            for _ in range(10):
-                await page.wait_for_timeout(3000)
-                if api_responses or px_blocked:
-                    if api_responses:
-                        # Give time for progressive loading
-                        await page.wait_for_timeout(8000)
+            # Get traveller_context cookie
+            try:
+                tc = session.cookies.get("traveller_context", "", domain="www.skyscanner.net")
+            except Exception:
+                tc = ""
+            funnel_id = str(uuid.uuid4())
+
+            # 3. POST to radar API
+            payload = {
+                "cabinClass": cabin_api,
+                "childAges": [],
+                "adults": req.adults or 1,
+                "legs": [{
+                    "legOrigin": {"@type": "entity", "entityId": origin_eid},
+                    "legDestination": {"@type": "entity", "entityId": dest_eid},
+                    "dates": {
+                        "@type": "date",
+                        "year": str(d.year),
+                        "month": f"{d.month:02d}",
+                        "day": f"{d.day:02d}",
+                    },
+                }],
+            }
+
+            radar_headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Origin": "https://www.skyscanner.net",
+                "Referer": search_url,
+                "x-skyscanner-channelid": "website",
+                "x-skyscanner-currency": currency,
+                "x-skyscanner-locale": "en-GB",
+                "x-skyscanner-market": market,
+                "x-skyscanner-viewid": funnel_id,
+                "x-skyscanner-trustedfunnelid": funnel_id,
+                "x-skyscanner-traveller-context": tc or funnel_id,
+                "x-skyscanner-combined-results-rail": "true",
+                "x-skyscanner-skip-accommodation-carhire": "true",
+                "x-skyscanner-consent-adverts": "false",
+            }
+
+            try:
+                r_api = await session.post(
+                    "https://www.skyscanner.net/g/radar/api/v2/web-unified-search/",
+                    json=payload,
+                    headers=radar_headers,
+                    timeout=20,
+                )
+            except Exception as e:
+                logger.warning("SKYSCANNER: radar API POST failed: %s", e)
+                return None
+
+            if r_api.status_code != 200:
+                logger.warning("SKYSCANNER: radar API status %d: %s", r_api.status_code, r_api.text[:200])
+                return None
+
+            data = r_api.json()
+            all_offers = _parse_radar(data, req)
+
+            # 4. Poll for more results if status is "incomplete"
+            ctx = data.get("context", {})
+            session_id = ctx.get("sessionId", "")
+            status = ctx.get("status", "")
+
+            poll_count = 0
+            max_polls = 4
+            seen_ids = {o.id for o in all_offers}
+
+            while status == "incomplete" and session_id and poll_count < max_polls:
+                poll_count += 1
+                await asyncio.sleep(2.0)
+                poll_url = f"https://www.skyscanner.net/g/radar/api/v2/web-unified-search/{session_id}"
+                try:
+                    r_poll = await session.get(
+                        poll_url,
+                        headers=radar_headers,
+                        timeout=20,
+                    )
+                except Exception as e:
+                    logger.debug("SKYSCANNER: poll %d failed: %s", poll_count, e)
                     break
 
-            await page.close()
-            await ctx.close()
-        except Exception as e:
-            logger.error("SKYSCANNER browser error: %s", e)
-            return None
+                if r_poll.status_code != 200:
+                    break
 
-        if px_blocked:
-            logger.warning("SKYSCANNER: PerimeterX blocked, resetting profile")
-            await _reset_chrome_profile()
-            return None
+                poll_data = r_poll.json()
+                new_offers = _parse_radar(poll_data, req)
+                for o in new_offers:
+                    if o.id not in seen_ids:
+                        seen_ids.add(o.id)
+                        all_offers.append(o)
 
-        if not api_responses:
-            logger.warning("SKYSCANNER: no flight API response captured")
-            return None
+                ctx = poll_data.get("context", {})
+                session_id = ctx.get("sessionId", "")
+                status = ctx.get("status", "")
 
-        # Use the largest (most complete) response
-        best = max(api_responses, key=lambda d: len(json.dumps(d)))
-        return _parse_skyscanner(best, req)
+            logger.info("SKYSCANNER: %d total offers after %d polls", len(all_offers), poll_count)
+            all_offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+            return all_offers
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         return FlightSearchResponse(
@@ -297,153 +347,96 @@ class SkyscannerConnectorClient:
             total_results=0,
         )
 
+    @staticmethod
+    def _combine_rt(
+        ob: list[FlightOffer], ib: list[FlightOffer], req,
+    ) -> list[FlightOffer]:
+        combos: list[FlightOffer] = []
+        for o in ob[:15]:
+            for i in ib[:10]:
+                price = round(o.price + i.price, 2)
+                cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
+                combos.append(FlightOffer(
+                    id=f"rt_ss_{cid}", price=price, currency=o.currency,
+                    outbound=o.outbound, inbound=i.outbound,
+                    airlines=list(dict.fromkeys(o.airlines + i.airlines)),
+                    owner_airline=o.owner_airline,
+                    booking_url=o.booking_url, is_locked=False,
+                    source=o.source, source_tier=o.source_tier,
+                ))
+        combos.sort(key=lambda c: c.price)
+        return combos[:20]
 
-def _parse_skyscanner(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
-    """Parse Skyscanner fps3/search response into FlightOffer list.
 
-    Structure: data.content.results.{itineraries, legs, segments, carriers, places}
-    Itineraries reference leg IDs, legs reference segment IDs, etc.
-    """
-    content = data.get("content") or data.get("data") or data
-    results = content.get("results") or content
-    sort_data = content.get("sortingOptions") or {}
+def _extract_entity_ids(html: str, origin_iata: str, dest_iata: str) -> tuple[str, str]:
+    """Extract Skyscanner entity IDs from SSR __internal JSON."""
+    origin_eid = ""
+    dest_eid = ""
+    try:
+        m = re.search(r'"originId"\s*:\s*"?(\d+)"?', html)
+        if m:
+            origin_eid = m.group(1)
+        m = re.search(r'"destinationId"\s*:\s*"?(\d+)"?', html)
+        if m:
+            dest_eid = m.group(1)
+        if not origin_eid:
+            m = re.search(r'"origin"\s*:\s*\{[^}]*"entityId"\s*:\s*"(\d+)"', html)
+            if m:
+                origin_eid = m.group(1)
+        if not dest_eid:
+            m = re.search(r'"destination"\s*:\s*\{[^}]*"entityId"\s*:\s*"(\d+)"', html)
+            if m:
+                dest_eid = m.group(1)
+    except Exception as e:
+        logger.debug("SKYSCANNER: entity ID extraction error: %s", e)
+    return origin_eid, dest_eid
 
-    # Build lookup maps
-    legs_map: dict[str, dict] = {}
-    for lid, leg in (results.get("legs") or {}).items():
-        legs_map[lid] = leg
 
-    segments_map: dict[str, dict] = {}
-    for sid, seg in (results.get("segments") or {}).items():
-        segments_map[sid] = seg
-
-    carriers_map: dict[str, dict] = {}
-    for cid, carrier in (results.get("carriers") or {}).items():
-        carriers_map[cid] = carrier
-
-    places_map: dict[str, dict] = {}
-    for pid, place in (results.get("places") or {}).items():
-        places_map[pid] = place
-
+def _parse_radar(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
+    """Parse Skyscanner radar API v2 response into FlightOffer list."""
     target_cur = req.currency or "EUR"
     offers: list[FlightOffer] = []
 
-    itineraries = results.get("itineraries") or {}
-    for itin_id, itin in itineraries.items():
+    itineraries = data.get("itineraries", {})
+    results = itineraries.get("results", [])
+
+    for result in results:
         try:
-            # Price — look in pricingOptions
-            pricing_opts = itin.get("pricingOptions") or []
-            if not pricing_opts:
-                continue
-            best_price = None
-            for po in pricing_opts:
-                p = po.get("price") or {}
-                amount = p.get("amount")
-                if amount is not None:
-                    # Skyscanner prices are in micros or as strings
-                    amt = float(str(amount).replace(",", ""))
-                    if best_price is None or amt < best_price:
-                        best_price = amt
-            if not best_price or best_price <= 0:
+            price_obj = result.get("price", {})
+            raw_price = price_obj.get("raw")
+            if not raw_price or raw_price <= 0:
                 continue
 
-            # Leg IDs
-            leg_ids = itin.get("legIds") or []
-            if not leg_ids:
+            legs = result.get("legs", [])
+            if not legs:
                 continue
 
-            # Build outbound from first leg
-            out_leg = legs_map.get(leg_ids[0], {})
-            seg_ids = out_leg.get("segmentIds") or []
-            flight_segments: list[FlightSegment] = []
-
-            for sid in seg_ids:
-                seg = segments_map.get(sid, {})
-                carrier_id = str(seg.get("marketingCarrierId") or seg.get("operatingCarrierId", ""))
-                carrier_info = carriers_map.get(carrier_id, {})
-                carrier_name = carrier_info.get("name", carrier_id)
-
-                origin_id = str(seg.get("originPlaceId", ""))
-                dest_id = str(seg.get("destinationPlaceId", ""))
-                origin_place = places_map.get(origin_id, {})
-                dest_place = places_map.get(dest_id, {})
-
-                flight_segments.append(FlightSegment(
-                    airline=carrier_info.get("iata", carrier_id),
-                    airline_name=carrier_name,
-                    flight_no=f"{carrier_info.get('iata', carrier_id)}{seg.get('marketingFlightNumber', '')}",
-                    origin=origin_place.get("iata", req.origin),
-                    destination=dest_place.get("iata", req.destination),
-                    departure=_parse_dt(seg.get("departureDateTime") or seg.get("departure")),
-                    arrival=_parse_dt(seg.get("arrivalDateTime") or seg.get("arrival")),
-                ))
-
-            if not flight_segments:
+            outbound = _build_route(legs[0], req)
+            if not outbound or not outbound.segments:
                 continue
 
-            total_dur = (out_leg.get("durationInMinutes") or 0) * 60
-            stopovers = out_leg.get("stopCount", max(0, len(flight_segments) - 1))
-            outbound = FlightRoute(
-                segments=flight_segments,
-                total_duration_seconds=total_dur,
-                stopovers=stopovers,
-            )
-
-            # Build inbound (if round-trip)
             inbound = None
-            if len(leg_ids) > 1:
-                ret_leg = legs_map.get(leg_ids[1], {})
-                ret_seg_ids = ret_leg.get("segmentIds") or []
-                ret_segments: list[FlightSegment] = []
-                for sid in ret_seg_ids:
-                    seg = segments_map.get(sid, {})
-                    cid = str(seg.get("marketingCarrierId", ""))
-                    ci = carriers_map.get(cid, {})
-                    oid = str(seg.get("originPlaceId", ""))
-                    did = str(seg.get("destinationPlaceId", ""))
-                    ret_segments.append(FlightSegment(
-                        airline=ci.get("iata", cid),
-                        airline_name=ci.get("name", cid),
-                        flight_no=f"{ci.get('iata', cid)}{seg.get('marketingFlightNumber', '')}",
-                        origin=places_map.get(oid, {}).get("iata", req.destination),
-                        destination=places_map.get(did, {}).get("iata", req.origin),
-                        departure=_parse_dt(seg.get("departureDateTime") or seg.get("departure")),
-                        arrival=_parse_dt(seg.get("arrivalDateTime") or seg.get("arrival")),
-                    ))
-                if ret_segments:
-                    inbound = FlightRoute(
-                        segments=ret_segments,
-                        total_duration_seconds=(ret_leg.get("durationInMinutes") or 0) * 60,
-                        stopovers=ret_leg.get("stopCount", max(0, len(ret_segments) - 1)),
-                    )
+            if len(legs) > 1:
+                inbound = _build_route(legs[1], req)
 
             all_airlines = list(dict.fromkeys(
-                s.airline for s in flight_segments if s.airline
+                s.airline for s in outbound.segments if s.airline
             ))
-            h = hashlib.md5(
-                f"ss_{itin_id}_{best_price}".encode()
-            ).hexdigest()[:10]
+            if inbound:
+                all_airlines.extend(
+                    s.airline for s in inbound.segments
+                    if s.airline and s.airline not in all_airlines
+                )
 
-            # Build proper Skyscanner deeplink with dates
-            d = req.date_from
-            _date_str = f"{d.year % 100:02d}{d.month:02d}{d.day:02d}"
-            _booking_url = (
-                f"https://www.skyscanner.net/transport/flights/"
-                f"{req.origin.lower()}/{req.destination.lower()}/{_date_str}"
-            )
-            if req.return_from:
-                rd = req.return_from
-                _ret_str = f"{rd.year % 100:02d}{rd.month:02d}{rd.day:02d}"
-                _booking_url += f"/{_ret_str}"
-            _booking_url += f"/?adults={req.adults or 1}&cabinclass=economy&preferdirects=true"
-            if req.return_from:
-                _booking_url += "&rtn=1"
+            itin_id = result.get("id", "")
+            h = hashlib.md5(f"ss_{itin_id}_{raw_price}".encode()).hexdigest()[:10]
+            formatted = price_obj.get("formatted", f"{target_cur} {raw_price:.2f}")
 
             offers.append(FlightOffer(
                 id=f"ss_{h}",
-                price=best_price,
+                price=raw_price,
                 currency=target_cur,
-                price_formatted=f"{target_cur} {best_price:.2f}",
+                price_formatted=formatted,
                 outbound=outbound,
                 inbound=inbound,
                 airlines=all_airlines,
@@ -451,9 +444,59 @@ def _parse_skyscanner(data: dict, req: FlightSearchRequest) -> list[FlightOffer]
                 source="skyscanner_meta",
                 source_tier="free",
                 is_locked=False,
-                booking_url=_booking_url,
+                booking_url=(
+                    f"https://www.skyscanner.net/transport/flights/"
+                    f"{req.origin.lower()}/{req.destination.lower()}/"
+                ),
             ))
         except Exception as e:
             logger.warning("SKYSCANNER: parse itinerary failed: %s", e)
 
     return offers
+
+
+def _build_route(leg: dict, req: FlightSearchRequest) -> FlightRoute | None:
+    """Build a FlightRoute from a radar leg object."""
+    segments_data = leg.get("segments", [])
+    if not segments_data:
+        return None
+
+    flight_segments: list[FlightSegment] = []
+    for seg in segments_data:
+        mkt_carrier = seg.get("marketingCarrier", {})
+        carrier_code = mkt_carrier.get("displayCode", "")
+        carrier_name = mkt_carrier.get("name", "")
+
+        seg_origin = seg.get("origin", {})
+        seg_dest = seg.get("destination", {})
+
+        origin_city = ""
+        dest_city = ""
+        parent = seg_origin.get("parent", {})
+        if parent:
+            origin_city = parent.get("name", "")
+        parent = seg_dest.get("parent", {})
+        if parent:
+            dest_city = parent.get("name", "")
+
+        flight_segments.append(FlightSegment(
+            airline=carrier_code,
+            airline_name=carrier_name,
+            flight_no=f"{carrier_code}{seg.get('flightNumber', '')}",
+            origin=seg_origin.get("flightPlaceId", seg_origin.get("displayCode", "")),
+            destination=seg_dest.get("flightPlaceId", seg_dest.get("displayCode", "")),
+            origin_city=origin_city,
+            destination_city=dest_city,
+            departure=_parse_dt(seg.get("departure")),
+            arrival=_parse_dt(seg.get("arrival")),
+            duration_seconds=(seg.get("durationInMinutes") or 0) * 60,
+        ))
+
+    total_dur = (leg.get("durationInMinutes") or 0) * 60
+    stopovers = leg.get("stopCount", max(0, len(flight_segments) - 1))
+
+    return FlightRoute(
+        segments=flight_segments,
+        total_duration_seconds=total_dur,
+        stopovers=stopovers,
+    )

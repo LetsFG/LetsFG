@@ -27,6 +27,7 @@ import os
 import time
 import urllib.request
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -791,7 +792,7 @@ async def _search_local(
         "ethiopian_direct", "kenyaairways_direct",
         "etihad_direct", "finnair_direct",
         "evaair_direct", "aireuropa_direct", "saa_direct", "kuwaitairways_direct",
-        "elal_direct", "emirates_direct", "royalairmaroc_direct",
+        "elal_direct", "royalairmaroc_direct",
         # FIXED and re-enabled:
         # nh_direct, asiana_direct, hainan_direct — 2026-04-14
         # airserbia_direct — GraphQL capture fixed, 2026-04-14
@@ -799,6 +800,7 @@ async def _search_local(
         # delta_direct — Akamai warm-up fix, 2026-04-18
         # mea_direct — 9 offers with proxy, 2026-04-17
         # airchina_direct — interceptor + SPA fix, 15 offers, 2026-04-18
+        # emirates_direct — 4 offers MXP->JFK, 31 DXB->LHR, 2026-04-18
     }
     before_disabled = len(filtered)
     filtered = [
@@ -1031,10 +1033,33 @@ async def _report_telemetry(
         logger.warning("Telemetry send failed: %s", exc)
 
 
+# ── Allowed callback domains ────────────────────────────────────────────────
+
+_ALLOWED_CALLBACK_DOMAINS = {
+    ".run.app",        # Cloud Run services
+    "localhost",       # Local dev
+    "127.0.0.1",       # Local dev
+}
+
+
+def _validate_callback_url(url: str) -> None:
+    """Validate callback URL against allowed domains to prevent SSRF."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https", "http"):
+        raise ValueError(f"Invalid callback URL scheme: {parsed.scheme}")
+    hostname = parsed.hostname or ""
+    if hostname in ("localhost", "127.0.0.1"):
+        return
+    if any(hostname.endswith(domain) for domain in _ALLOWED_CALLBACK_DOMAINS):
+        return
+    raise ValueError(f"Callback URL domain not allowed: {hostname}")
+
+
 # ── Callback ────────────────────────────────────────────────────────────────
 
 async def _send_callback(url: str, meta: dict, result: dict) -> None:
     """POST search results back to the workflow engine."""
+    _validate_callback_url(url)
     payload = {"meta": meta, "result": result}
     headers = {"Content-Type": "application/json"}
     if CALLBACK_SECRET:

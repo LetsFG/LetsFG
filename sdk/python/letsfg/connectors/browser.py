@@ -460,6 +460,125 @@ async def auto_block_if_proxied(page) -> None:
     await page.route("**/*", _aggressive_block_handler)
 
 
+# ── CDP-based URL blocking (undetectable by anti-bot) ──────────────────────────
+
+# URL patterns for Network.setBlockedURLs (CDP glob syntax: * = wildcard)
+_CDP_BLOCKED_URL_PATTERNS: list[str] = [
+    # Chrome background data hogs
+    "*optimizationguide-pa.googleapis.com*",
+    "*edgedl.me.gvt1.com*",
+    "*safebrowsing.googleapis.com*",
+    "*clients2.googleusercontent.com*",
+    "*update.googleapis.com*",
+    "*content-autofill.googleapis.com*",
+    "*clientservices.googleapis.com*",
+    "*accounts.google.com*",
+    # Analytics / tracking / ads
+    "*google-analytics.com*",
+    "*googletagmanager.com*",
+    "*googlesyndication.com*",
+    "*googleadservices.com*",
+    "*doubleclick.net*",
+    "*facebook.net*",
+    "*facebook.com/tr*",
+    "*hotjar.com*",
+    "*clarity.ms*",
+    "*fullstory.com*",
+    "*mixpanel.com*",
+    "*segment.com*",
+    "*amplitude.com*",
+    "*heapanalytics.com*",
+    "*sentry.io*",
+    "*intercom.io*",
+    "*criteo.com*",
+    "*taboola.com*",
+    "*outbrain.com*",
+    "*adnxs.com*",
+    "*adsrvr.org*",
+    "*amazon-adsystem.com*",
+    "*ads.linkedin.com*",
+    "*ads.twitter.com*",
+    "*bat.bing.com*",
+    "*tr.snapchat.com*",
+    "*tiktok.com/i18n*",
+    "*drift.com*",
+    "*crisp.chat*",
+    "*tawk.to*",
+    "*zendesk.com/embeddable*",
+    "*appsflyer.com*",
+    "*branch.io*",
+    "*bugsnag.com*",
+    "*rollbar.com*",
+]
+
+
+async def apply_cdp_url_blocking(page) -> bool:
+    """Block analytics/tracking URLs via CDP Network.setBlockedURLs.
+
+    Unlike ``page.route()``, this is **undetectable** by anti-bot systems
+    (Akamai, PerimeterX, Cloudflare) because blocking happens inside
+    Chrome's network stack with no JavaScript roundtrip.
+
+    Safe to call on every page regardless of WAF protection level.
+    Returns True if blocking was applied, False if CDP session unavailable.
+    """
+    try:
+        client = await page.context.new_cdp_session(page)
+        await client.send("Network.setBlockedURLs", {
+            "urls": _CDP_BLOCKED_URL_PATTERNS,
+        })
+        await client.send("Network.enable")
+        return True
+    except Exception:
+        return False
+
+
+# ── Auto-blocking on page creation (env-var gated) ─────────────────────────────
+
+_AUTO_BLOCK_RESOURCES = os.environ.get(
+    "LETSFG_AUTO_BLOCK_RESOURCES", ""
+).strip() in ("1", "true")
+
+
+def _wrap_context_for_blocking(ctx):
+    """Wrap a BrowserContext so new pages auto-apply CDP URL blocking."""
+    if getattr(ctx, "_auto_block_wrapped", False):
+        return
+    _orig_new_page = ctx.new_page
+
+    async def _new_page_with_blocking(**kwargs):
+        page = await _orig_new_page(**kwargs)
+        await apply_cdp_url_blocking(page)
+        return page
+
+    ctx.new_page = _new_page_with_blocking
+    ctx._auto_block_wrapped = True
+
+
+def _wrap_browser_for_blocking(browser):
+    """Wrap browser so all contexts/pages get auto CDP URL blocking.
+
+    Applied when ``LETSFG_AUTO_BLOCK_RESOURCES=1`` is set. Uses CDP
+    Network.setBlockedURLs (undetectable) instead of page.route (detectable).
+    """
+    if getattr(browser, "_auto_block_wrapped", False):
+        return browser
+
+    for ctx in browser.contexts:
+        _wrap_context_for_blocking(ctx)
+
+    _orig_new_context = browser.new_context
+
+    async def _new_context_with_blocking(**kwargs):
+        ctx = await _orig_new_context(**kwargs)
+        _wrap_context_for_blocking(ctx)
+        return ctx
+
+    browser.new_context = _new_context_with_blocking
+    browser._auto_block_wrapped = True
+    return browser
+
+
 # ── Anti-bot stealth injection ──────────────────────────────────────────────────
 
 _STEALTH_INIT_SCRIPT = """\
@@ -699,6 +818,21 @@ def stealth_position_arg() -> list[str]:
     return ["--headless=new", "--disable-http2", "--window-position=-2400,-2400"]
 
 
+def bandwidth_saving_args() -> list[str]:
+    """Chrome args to block images and web fonts at the engine level.
+
+    Saves ~20-30% proxy bandwidth per page load. Images are never needed
+    for flight search scraping. Web fonts fall back to system fonts.
+
+    These are Blink engine-level flags — zero overhead, undetectable by
+    anti-bot systems (unlike page.route interception).
+    """
+    return [
+        "--blink-settings=imagesEnabled=false",
+        "--disable-remote-fonts",
+    ]
+
+
 def disable_background_networking_args() -> list[str]:
     """
     Chrome args to disable ALL background networking.
@@ -880,6 +1014,8 @@ async def connect_cdp(port: int):
     pw = await async_playwright().start()
     _launched_pw_instances.append(pw)
     browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+    if _AUTO_BLOCK_RESOURCES:
+        _wrap_browser_for_blocking(browser)
     return browser
 
 
@@ -907,6 +1043,8 @@ async def get_or_launch_cdp(
         browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
         _launched_pw_instances.append(pw)
         logger.info("Connected to existing Chrome on port %d", port)
+        if _AUTO_BLOCK_RESOURCES:
+            _wrap_browser_for_blocking(browser)
         return browser, None
     except Exception:
         if pw:
@@ -925,6 +1063,8 @@ async def get_or_launch_cdp(
     pw = await async_playwright().start()
     _launched_pw_instances.append(pw)
     browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+    if _AUTO_BLOCK_RESOURCES:
+        _wrap_browser_for_blocking(browser)
     return browser, proc
 
 
@@ -974,6 +1114,8 @@ async def launch_headed_browser(
         browser = await pw.chromium.launch(**launch_kw)
     logger.info("Browser launched (channel=%s, headless=%s, proxy=%s)",
                 channel, headless, bool(proxy))
+    if _AUTO_BLOCK_RESOURCES:
+        _wrap_browser_for_blocking(browser)
     return browser
 
 
