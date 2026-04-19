@@ -494,14 +494,44 @@ export default function HomeSearchForm() {
   useEffect(() => {
     const el = rowRef.current
     if (!el) return
-    let isDown = false, startX = 0, scrollLeft = 0
-    const onDown = (e: PointerEvent) => { isDown = true; startX = e.pageX - el.offsetLeft; scrollLeft = el.scrollLeft; el.setPointerCapture(e.pointerId) }
-    const onUp = (e: PointerEvent) => { isDown = false; el.releasePointerCapture(e.pointerId) }
-    const onMove = (e: PointerEvent) => { if (!isDown) return; e.preventDefault(); el.scrollLeft = scrollLeft - (e.pageX - el.offsetLeft - startX) }
+    let isDown = false, startX = 0, scrollLeft = 0, hasDragged = false
+    const onDown = (e: PointerEvent) => {
+      isDown = true
+      hasDragged = false
+      startX = e.pageX - el.offsetLeft
+      scrollLeft = el.scrollLeft
+      el.setPointerCapture(e.pointerId)
+    }
+    const onUp = (e: PointerEvent) => {
+      isDown = false
+      el.releasePointerCapture(e.pointerId)
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!isDown) return
+      const dx = e.pageX - el.offsetLeft - startX
+      if (Math.abs(dx) > 4) {
+        hasDragged = true
+        e.preventDefault()
+        el.scrollLeft = scrollLeft - dx
+      }
+    }
+    const onClick = (e: MouseEvent) => {
+      if (hasDragged) {
+        e.stopPropagation()
+        e.preventDefault()
+        hasDragged = false
+      }
+    }
     el.addEventListener('pointerdown', onDown)
     el.addEventListener('pointerup', onUp)
     el.addEventListener('pointermove', onMove)
-    return () => { el.removeEventListener('pointerdown', onDown); el.removeEventListener('pointerup', onUp); el.removeEventListener('pointermove', onMove) }
+    el.addEventListener('click', onClick, true)
+    return () => {
+      el.removeEventListener('pointerdown', onDown)
+      el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('click', onClick, true)
+    }
   }, [])
 
   const handleSearch = async (event: FormEvent) => {
