@@ -1628,6 +1628,45 @@ input {
   color: rgba(0, 0, 0, 0.35);
 }
 
+/* Input wrapper for ghost text overlay */
+.lp-sf-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.lp-sf-input-wrap .lp-sf-input {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* Ghost text suggestion overlay */
+.lp-sf-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  white-space: pre;
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: inherit;
+  padding-right: 12px;
+  overflow: hidden;
+}
+
+.lp-sf-ghost-hidden {
+  visibility: hidden;
+}
+
+.lp-sf-ghost-suggestion {
+  color: rgba(0, 0, 0, 0.30);
+}
+
 .lp-sf-button {
   flex-shrink: 0;
   width: 52px;
