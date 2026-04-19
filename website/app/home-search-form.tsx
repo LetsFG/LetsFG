@@ -318,6 +318,26 @@ function getSuggestion(query: string, locale: string): string {
     return fullName.slice(completionStart)
   }
   
+  // Helper to get trailing partial word from query (after last space/comma)
+  const getTrailingPartial = (): string => {
+    const trimmed = query.trimEnd()
+    const lastSep = Math.max(trimmed.lastIndexOf(' '), trimmed.lastIndexOf(','))
+    if (lastSep === -1) return trimmed.toLowerCase()
+    return trimmed.slice(lastSep + 1).trim().toLowerCase()
+  }
+  
+  // Helper to find keyword completion - checks if partial is prefix of any keyword
+  const getKeywordCompletion = (partial: string, keywords: string[]): string | null => {
+    if (!partial || partial.length < 2) return null
+    const lowerPartial = partial.toLowerCase()
+    for (const kw of keywords) {
+      if (kw.toLowerCase().startsWith(lowerPartial) && kw.toLowerCase() !== lowerPartial) {
+        return kw.slice(partial.length)
+      }
+    }
+    return null
+  }
+  
   // Stage 1: Just typing origin (no "to" yet)
   if (!parsed.toKeyword && parsed.origin) {
     const match = findBestMatch(parsed.origin, locale)
@@ -348,32 +368,103 @@ function getSuggestion(query: string, locale: string): string {
       }
     }
     
-    // Destination complete, now check subsequent stages
-    const destMatch = parsed.destMatch
-    const destComplete = destMatch && normalizeForSearch(parsed.destination).length >= normalizeForSearch(getAirportName(destMatch, locale)).length
-    
     // Stage 4: Need outbound date
     if (!parsed.hasOutboundDate) {
       return ' ' + generateDateSuggestion(locale)
     }
     
-    // Stage 5: Have outbound date, suggest return
+    // Stage 5: Have outbound date, suggest return (or complete partial return keyword)
     if (parsed.hasOutboundDate && !parsed.hasReturnKeyword && !parsed.hasReturnDate) {
+      const trailing = getTrailingPartial()
+      const returnKeywords = RETURN_KEYWORDS[locale] || RETURN_KEYWORDS.en
+      const completion = getKeywordCompletion(trailing, returnKeywords)
+      if (completion !== null) {
+        // User is typing return keyword - complete it + add date
+        const returnDate = generateReturnSuggestion(locale)
+        // returnDate is like ", returning on May 5th" - extract just the date part
+        const dateMatch = returnDate.match(/\d+/)
+        if (dateMatch) {
+          const months = MONTH_NAMES[locale] || MONTH_NAMES.en
+          const futureDate = new Date()
+          futureDate.setDate(futureDate.getDate() + 7 + Math.floor(Math.random() * 54) + 3 + Math.floor(Math.random() * 12))
+          const month = months[futureDate.getMonth()]
+          const day = futureDate.getDate()
+          return completion + ' ' + month + ' ' + day
+        }
+        return completion
+      }
+      // Check if query ends with comma or space (ready for return keyword)
+      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
+      if (endsWithSep) {
+        // Suggest full return phrase but without leading comma/space
+        const returnKw = returnKeywords[0]
+        const months = MONTH_NAMES[locale] || MONTH_NAMES.en
+        const futureDate = new Date()
+        futureDate.setDate(futureDate.getDate() + 7 + Math.floor(Math.random() * 54) + 3 + Math.floor(Math.random() * 12))
+        const month = months[futureDate.getMonth()]
+        const day = futureDate.getDate()
+        if (query.endsWith(', ') || query.endsWith(' ')) {
+          return returnKw + ' ' + month + ' ' + day
+        }
+        return ' ' + returnKw + ' ' + month + ' ' + day
+      }
       return generateReturnSuggestion(locale)
     }
     
-    // Stage 6: Have return, suggest direct
+    // Stage 6: Have return, suggest direct (or complete partial direct keyword)
     if ((parsed.hasReturnDate || parsed.hasReturnKeyword) && !parsed.hasDirectKeyword) {
+      const trailing = getTrailingPartial()
+      const directKeywords = DIRECT_KEYWORDS[locale] || DIRECT_KEYWORDS.en
+      const completion = getKeywordCompletion(trailing, directKeywords)
+      if (completion !== null) {
+        return completion
+      }
+      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
+      if (endsWithSep) {
+        const directKw = directKeywords[0]
+        if (query.endsWith(', ') || query.endsWith(' ')) {
+          return directKw
+        }
+        return ' ' + directKw
+      }
       return generateDirectSuggestion(locale)
     }
     
-    // Stage 7: Have direct, suggest class
+    // Stage 7: Have direct, suggest class (or complete partial class keyword)
     if (parsed.hasDirectKeyword && !parsed.hasClassKeyword) {
+      const trailing = getTrailingPartial()
+      const classKeywords = CLASS_KEYWORDS[locale] || CLASS_KEYWORDS.en
+      const completion = getKeywordCompletion(trailing, classKeywords)
+      if (completion !== null) {
+        return completion
+      }
+      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
+      if (endsWithSep) {
+        const classKw = classKeywords[Math.floor(Math.random() * classKeywords.length)]
+        if (query.endsWith(', ') || query.endsWith(' ')) {
+          return classKw
+        }
+        return ' ' + classKw
+      }
       return generateClassSuggestion(locale)
     }
     
-    // Stage 8: Have class, suggest time
+    // Stage 8: Have class, suggest time (or complete partial time keyword)
     if (parsed.hasClassKeyword && !parsed.hasTimeKeyword) {
+      const trailing = getTrailingPartial()
+      const timeKeywords = TIME_KEYWORDS[locale] || TIME_KEYWORDS.en
+      const completion = getKeywordCompletion(trailing, timeKeywords)
+      if (completion !== null) {
+        return completion
+      }
+      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
+      if (endsWithSep) {
+        const timeKw = timeKeywords[Math.floor(Math.random() * timeKeywords.length)]
+        if (query.endsWith(', ') || query.endsWith(' ')) {
+          return timeKw
+        }
+        return ' ' + timeKw
+      }
       return generateTimeSuggestion(locale)
     }
   }
