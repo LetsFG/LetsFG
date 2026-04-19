@@ -333,6 +333,7 @@ def search(
     max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
     mode: Optional[str] = typer.Option(None, "--mode", "-m", help="Search mode: 'fast' (OTAs + key airlines, 20-40s) or default (all 200+ connectors)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show pipeline diagnostics (per-source offer counts at each filter stage)"),
 ):
     """Search for flights — FREE, no API key required. Runs 180 airline connectors on your machine."""
     import asyncio
@@ -340,8 +341,11 @@ def search(
     import warnings
     from letsfg.local import search_local
 
-    # Only show errors in CLI mode — suppress connector warning noise
-    logging.basicConfig(level=logging.ERROR, stream=sys.stderr, format="%(message)s")
+    # In verbose mode, show INFO from engine pipeline; otherwise only errors
+    if verbose:
+        logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(name)s: %(message)s")
+    else:
+        logging.basicConfig(level=logging.ERROR, stream=sys.stderr, format="%(message)s")
 
     # Suppress asyncio transport warnings from Playwright subprocess cleanup
     warnings.filterwarnings("ignore", category=ResourceWarning, message=".*unclosed transport.*")
