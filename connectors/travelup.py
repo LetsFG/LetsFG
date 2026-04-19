@@ -33,6 +33,33 @@ from .browser import get_httpx_proxy_url
 logger = logging.getLogger(__name__)
 
 _BASE = "https://www.travelup.com"
+_MONTH_NAMES = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+]
+
+
+def _build_travelup_url(
+    origin: str, dest: str, dep_date: datetime, ret_date: datetime | None = None,
+    adults: int = 1, children: int = 0, infants: int = 0,
+) -> str:
+    """Build a valid TravelUp search URL with the required SEO slug.
+
+    TravelUp uses path-based URLs that REQUIRE a slug or the page returns 404.
+    Format: /en-gb/flight-search/{orig}/{dest}/{depYYMMDD}/{retYYMMDD}/{slug}?params
+    """
+    dep_short = dep_date.strftime("%y%m%d")
+    # TravelUp only supports round-trip URLs — use dep+7d if no return
+    if ret_date is None:
+        ret_date = dep_date + timedelta(days=7)
+    ret_short = ret_date.strftime("%y%m%d")
+    month_name = _MONTH_NAMES[dep_date.month - 1]
+    slug = f"flying-from-{origin.lower()}-to-{dest.lower()}-in-{month_name}-{dep_date.year}"
+    return (
+        f"{_BASE}/en-gb/flight-search/{origin.lower()}/{dest.lower()}"
+        f"/{dep_short}/{ret_short}/{slug}"
+        f"?adults={adults}&children={children}&infants={infants}&class=0"
+    )
 _API_URL = "https://tup-flightsearch-api.azurewebsites.net/api/search/cheapest"
 _API_KEY = "9a9635e3240c41018ddadfa51bb378e4"
 
@@ -112,6 +139,8 @@ class TravelupConnectorClient:
                         continue
 
                     booking_dep = dep_date.strftime("%Y-%m-%d")
+                    # TravelUp uses path-based URLs with YYMMDD dates
+                    booking_dep_short = dep_date.strftime("%y%m%d")
                     segments = [FlightSegment(
                         airline="TravelUp",
                         flight_no="",
@@ -139,7 +168,13 @@ class TravelupConnectorClient:
                         inbound=None,
                         airlines=["TravelUp"],
                         owner_airline="TravelUp",
-                        booking_url=f"{_BASE}/en-gb/flights?from={req.origin}&to={req.destination}&departure={booking_dep}",
+                        booking_url=_build_travelup_url(
+                            req.origin, req.destination, dep_date,
+                            ret_date=req.return_from if req.return_from else None,
+                            adults=req.adults or 1,
+                            children=req.children or 0,
+                            infants=req.infants or 0,
+                        ),
                         is_locked=False,
                         source="travelup_ota",
                         source_tier="free",
@@ -152,6 +187,8 @@ class TravelupConnectorClient:
             logger.error("TravelUp error: %s", e)
             return self._empty(req)
 
+        _td = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
+        offers = [o for o in offers if o.outbound and o.outbound.segments and o.outbound.segments[0].departure.date() == _td]
         offers.sort(key=lambda o: o.price)
         elapsed = time.monotonic() - t0
         logger.info(
@@ -178,12 +215,22 @@ class TravelupConnectorClient:
             for i in ib[:10]:
                 price = round(o.price + i.price, 2)
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
+                # Rebuild URL with actual inbound departure date
+                ib_dep = i.outbound.segments[0].departure if i.outbound and i.outbound.segments else None
+                rt_url = _build_travelup_url(
+                    req.origin, req.destination,
+                    o.outbound.segments[0].departure,
+                    ret_date=ib_dep,
+                    adults=req.adults or 1,
+                    children=req.children or 0,
+                    infants=req.infants or 0,
+                ) if o.outbound and o.outbound.segments else o.booking_url
                 combos.append(FlightOffer(
                     id=f"rt_tvup_{cid}", price=price, currency=o.currency,
                     outbound=o.outbound, inbound=i.outbound,
                     airlines=list(dict.fromkeys(o.airlines + i.airlines)),
                     owner_airline=o.owner_airline,
-                    booking_url=o.booking_url, is_locked=False,
+                    booking_url=rt_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
                 ))
         combos.sort(key=lambda c: c.price)

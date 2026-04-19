@@ -170,6 +170,7 @@ class TravelupConnectorClient:
                         owner_airline="TravelUp",
                         booking_url=_build_travelup_url(
                             req.origin, req.destination, dep_date,
+                            ret_date=req.return_from if req.return_from else None,
                             adults=req.adults or 1,
                             children=req.children or 0,
                             infants=req.infants or 0,
@@ -214,12 +215,22 @@ class TravelupConnectorClient:
             for i in ib[:10]:
                 price = round(o.price + i.price, 2)
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
+                # Rebuild URL with actual inbound departure date
+                ib_dep = i.outbound.segments[0].departure if i.outbound and i.outbound.segments else None
+                rt_url = _build_travelup_url(
+                    req.origin, req.destination,
+                    o.outbound.segments[0].departure,
+                    ret_date=ib_dep,
+                    adults=req.adults or 1,
+                    children=req.children or 0,
+                    infants=req.infants or 0,
+                ) if o.outbound and o.outbound.segments else o.booking_url
                 combos.append(FlightOffer(
                     id=f"rt_tvup_{cid}", price=price, currency=o.currency,
                     outbound=o.outbound, inbound=i.outbound,
                     airlines=list(dict.fromkeys(o.airlines + i.airlines)),
                     owner_airline=o.owner_airline,
-                    booking_url=o.booking_url, is_locked=False,
+                    booking_url=rt_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
                 ))
         combos.sort(key=lambda c: c.price)
