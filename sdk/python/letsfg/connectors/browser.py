@@ -51,60 +51,98 @@ _current_connector: contextvars.ContextVar[str] = contextvars.ContextVar(
 # Connectors that work WITHOUT proxy (open APIs, no geo-block, no bot protection).
 # These get direct connections, saving ~40-60% of total proxy bandwidth.
 _NO_PROXY_SOURCES: frozenset[str] = frozenset({
-    # ── Direct airline APIs (public, no geo-restriction) ──
-    "ryanair_direct",
-    "aegean_direct",
-    "airbaltic_direct",
-    "flyarystan_direct",
-    "flysafair_direct",
-    "arajet_direct",
-    "spring_direct",
-    "airpeace_direct",
-    "airindiaexpress_direct",
-    "olympicair_direct",
-    "skyexpress_direct",
+    # ── EveryMundo airTRFX / Sputnik airlines (public fare APIs, no WAF) ──
+    "aegean_direct",           # httpx — EveryMundo airTRFX
+    "aerlingus_direct",        # httpx — EveryMundo Sputnik
+    "aircanada_direct",        # httpx — EveryMundo airTRFX
+    "airfrance_direct",        # httpx — EveryMundo Sputnik
+    "airnewzealand_direct",    # httpx — EveryMundo airTRFX
+    "airgreenland_direct",     # curl_cffi — EveryMundo __NEXT_DATA__
+    "airniugini_direct",       # curl_cffi — EveryMundo __NEXT_DATA__
+    "airseychelles_direct",    # curl_cffi — EveryMundo __NEXT_DATA__
+    "azerbaijanairlines_direct",  # internal — EveryMundo Sputnik
+    "azoresairlines_direct",   # curl_cffi — EveryMundo __NEXT_DATA__
+    "caribbeanairlines_direct",   # curl_cffi — EveryMundo __NEXT_DATA__
+    "chinaairlines_direct",    # internal — EveryMundo Sputnik
+    "cyprusairways_direct",    # curl_cffi — EveryMundo __NEXT_DATA__
+    "elal_direct",             # internal — EveryMundo Sputnik (EM-API-Key)
+    "ethiopian_direct",        # httpx — EveryMundo airTRFX
+    "flair_direct",            # curl_cffi — EveryMundo airTRFX
+    "flyadeal_direct",         # internal — EveryMundo Sputnik
+    "kenyaairways_direct",     # httpx — EveryMundo Sputnik
+    "omanair_direct",          # httpx — EveryMundo Sputnik
+    "philippineairlines_direct",  # httpx — EveryMundo airTRFX
+    "rex_direct",              # curl_cffi — EveryMundo airTRFX
+    "royalairmaroc_direct",    # httpx — EveryMundo airTRFX
+    "rwandair_direct",         # curl_cffi — EveryMundo __NEXT_DATA__
+    "saa_direct",              # httpx — EveryMundo airTRFX (__NEXT_DATA__)
+    "skyairline_direct",       # curl_cffi — EveryMundo __NEXT_DATA__
+    "srilankan_direct",        # internal — EveryMundo Sputnik
+    "starlux_direct",          # curl_cffi — EveryMundo __NEXT_DATA__
+    "tap_direct",              # httpx + curl_cffi — EveryMundo Sputnik
+    "thai_direct",             # httpx — EveryMundo airTRFX
+    "vietnamairlines_direct",  # httpx — EveryMundo Sputnik
+    "wingo_direct",            # httpx — EveryMundo airTRFX
 
-    # ── Small regional carriers (minimal/no bot protection) ──
-    "aircairo_direct",
-    "transnusa_direct",
-    "superairjet_direct",
-    "solomonairlines_direct",
-    "samoaairways_direct",
-    "linkairways_direct",
-    "pngair_direct",
-    "aircalin_direct",
-    "airvanuatu_direct",
-    "airtahitinui_direct",
-    "airgreenland_direct",
-    "airniugini_direct",
-    "airnorth_direct",
-    "airseychelles_direct",
-    "caribbeanairlines_direct",
-    "pngair_direct",
-    "rex_direct",
+    # ── Navitaire / Radixx / Crane IBE airlines (public token + search APIs) ──
+    "akasa_direct",            # curl_cffi — Navitaire public token
+    "arajet_direct",           # httpx — Radixx PSS calendar
+    "airpeace_direct",         # httpx — Crane IBE HTML
+    "flyarystan_direct",       # httpx — Crane IBE HTML
+    "jazeera_direct",          # curl_cffi — Navitaire/dotREZ REST
+    "pia_direct",              # httpx — Crane IBE (pia-ports.hosting.aero)
+    "spicejet_direct",         # curl_cffi — Navitaire public token
+
+    # ── Sabre / public fare APIs (no bot protection) ──
+    "biman_direct",            # httpx — Sabre DX GraphQL
+    "flysafair_direct",        # httpx — Sabre EzyCommerce
+    "nokair_direct",           # httpx — Sabre EzyCommerce
+    "sas_direct",              # httpx — public BFF datepicker (no auth)
+
+    # ── Other open public APIs (httpx/curl_cffi, no WAF) ──
+    "airarabia_direct",        # httpx — FeaturedOffers (static api-key)
+    "airbaltic_direct",        # curl_cffi — public /api/fsf/outbound calendar
+    "airindiaexpress_direct",  # httpx — public API (subscription key)
+    "cathay_direct",           # curl_cffi — open-search API (no auth)
+    "icelandair_direct",       # curl_cffi — public Next.js pages (currently empty)
+    "jejuair_direct",          # httpx — public sec.jejuair.net REST
+    "malaysia_direct",         # httpx — public lowFares endpoint
+    "olympicair_direct",       # curl_cffi — public low-fare calendar JSON
+    "qantas_direct",           # httpx — public market-pricing GraphQL
+    "ryanair_direct",          # httpx — public REST API
+    "salamair_direct",         # curl_cffi — public session + flights
+    "skyexpress_direct",       # curl_cffi — public low-fare calendar JSON
+    "spring_direct",           # httpx — public en.ch.com REST
+    "virginaustralia_direct",  # httpx — public JSON feed
+    "flybondi_direct",         # curl_cffi + PW fallback — open SSR pages
+
+    # ── Small regionals (browser for rendering only, no WAF) ──
+    "aircairo_direct",         # CDP form fill — no WAF
+    "airnorth_direct",         # curl_cffi — .NET antiforgery + form POST
+    "linkairways_direct",      # Playwright — ASP.NET WebForms (no WAF)
+    "pngair_direct",           # curl_cffi — VARS PSS AJAX
+    "samoaairways_direct",     # Playwright — TFLite form (no WAF)
+    "solomonairlines_direct",  # requests — Next.js RSC pages (no protection)
+    "superairjet_direct",      # CDP — JS rendering only (no WAF)
+    "transnusa_direct",        # CDP — real Chrome bypasses Turnstile
+    "iwantthatflight_direct",  # curl_cffi — static HTML scraping (AU aggregator)
+
+    # ── Dead stubs / offline (no HTTP calls, return empty) ──
+    "aircalin_direct",         # DNS dead
+    "airtahitinui_direct",     # booking engine TBD
+    "airvanuatu_direct",       # DNS dead
 
     # ── API-key-authenticated services (proxy not needed) ──
-    "kiwi_connector",
-    "serpapi_google_meta",
-    "etraveli_meta",
-    "cleartrip_ota",
-    "hopper_ota",
+    "kiwi_connector",          # httpx — public GraphQL (api.skypicker.com)
+    "serpapi_google",           # httpx — API-key authenticated (SerpAPI)
+    "etraveli_ota",            # internal — direct GraphQL POST (gotogate.com)
+    "cleartrip_ota",           # httpx — public JSON endpoint
+    "hopper_direct",           # httpx — Commerce API (cookie bootstrap)
+    "rehlat_ota",              # httpx — direct API calls (no browser)
+    "travelstart_ota",         # httpx — direct POST /server/searchFlight/
 
-    # ── Airlines with open APIs (no residential IP needed) ──
-    "nokair_direct",
-    "jejuair_direct",
-    "biman_direct",
-    "rwandair_direct",
-    "salamair_direct",
-    "cyprusairways_direct",
-    "azoresairlines_direct",
-    "flybondi_direct",
-    "skyairline_direct",
-    "starlux_direct",
-    "flair_direct",
-
-    # ── Nodriver connectors (own anti-bot bypass, proxy hurts) ──
-    "nh_direct",
+    # ── Nodriver connector (own anti-bot bypass, no proxy wired) ──
+    "nh_direct",               # nodriver + Playwright — handles Akamai internally
 })
 
 
