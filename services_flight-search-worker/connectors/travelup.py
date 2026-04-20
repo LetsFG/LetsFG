@@ -1,25 +1,29 @@
 """
-TravelUp connector — UK OTA with consolidator fares (direct API).
+TravelUp connector — UK OTA with consolidator fares (browser DOM scraping).
 
 TravelUp.com is a UK-based OTA that sources fares from multiple consolidators
-and GDS backends. Uses their flight-search API with a date-range cheapest-fare
-endpoint to retrieve pricing for nearby dates.
+and GDS backends. Their cheapest-fare calendar API returns stale/indicative
+prices that differ significantly from actual checkout prices.
 
-Strategy (direct API):
-1. Call tup-flightsearch-api.azurewebsites.net/api/search/cheapest with api-key.
-2. Query the target date ±3 days to get multiple price points.
-3. Parse results → FlightOffers.
+Strategy (browser DOM scraping):
+1. Launch patchright browser (handles Cloudflare Turnstile).
+2. Navigate to TravelUp search results page (round-trip URL).
+3. Wait for .fjs_item flight cards to appear (~5-10 s).
+4. Extract price, airline, flight ID, times from DOM.
+5. Parse flight ID for segment routing details.
+6. Close browser + cleanup.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import os
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Optional
-
-import httpx
 
 from ..models.flights import (
     FlightOffer,
@@ -28,7 +32,12 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import get_httpx_proxy_url
+from .browser import (
+    acquire_browser_slot,
+    release_browser_slot,
+    get_default_proxy,
+    proxy_is_configured,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +69,59 @@ def _build_travelup_url(
         f"/{dep_short}/{ret_short}/{slug}"
         f"?adults={adults}&children={children}&infants={infants}&class=0"
     )
-_API_URL = "https://tup-flightsearch-api.azurewebsites.net/api/search/cheapest"
-_API_KEY = "9a9635e3240c41018ddadfa51bb378e4"
+
+
+# ── Segment regex for flight-ID parsing ─────────────────────────────────────
+# Flight ID format: {origin3}{airline2}{flightno}{cabin}{dest3}{baggage}-...-
+# e.g. lhrhu7964economycsx1-pcs-csxhu7964economyhak1-pcs-
+_SEG_RE = re.compile(
+    r"([a-z]{3})([a-z0-9]{2})(\d+)(economy|premiumeconomy|business|first)([a-z]{3})"
+)
+
+# ── JS executed inside the page to extract flight card data ──────────────────
+_JS_EXTRACT = """() => {
+    const items = document.querySelectorAll('.fjs_item');
+    return [...items].map(item => {
+        const box = item.querySelector('.flightBox');
+        const priceSpan = item.querySelector('.flightPrice span');
+        const flightId = box ? box.getAttribute('data-flight-id') : null;
+
+        const extractJourney = (container) => {
+            if (!container) return null;
+            const airlineImg = container.querySelector('img[alt]');
+            const spans = [...container.querySelectorAll('span')];
+            const timeSpans = spans.filter(s => s.className === 'time');
+            const destSpans = spans.filter(s => s.className === 'destination');
+            const dateSpans = spans.filter(s => s.className === 'date');
+            const durationSpan = container.querySelector('.journey_details_mobile');
+            const stopsSpan = spans.find(s => /stop|direct/i.test(s.textContent) && !s.className);
+
+            return {
+                airline: airlineImg ? airlineImg.alt : null,
+                airlineCode: airlineImg ? (airlineImg.src.match(/\\/([A-Z0-9]{2})\\.png/)?.[1] || null) : null,
+                depTime: timeSpans[0] ? timeSpans[0].textContent.trim() : null,
+                arrTime: timeSpans[1] ? timeSpans[1].textContent.trim() : null,
+                depAirport: destSpans[0] ? destSpans[0].textContent.trim() : null,
+                arrAirport: destSpans[1] ? destSpans[1].textContent.trim() : null,
+                depDate: dateSpans[0] ? dateSpans[0].textContent.trim() : null,
+                arrDate: dateSpans[1] ? dateSpans[1].textContent.trim() : null,
+                duration: durationSpan ? durationSpan.textContent.trim() : null,
+                stops: stopsSpan ? stopsSpan.textContent.trim() : null,
+            };
+        };
+
+        return {
+            price: priceSpan ? priceSpan.textContent.trim() : null,
+            flightId: flightId,
+            outbound: extractJourney(item.querySelector('.outbound_flight')),
+            inbound: extractJourney(item.querySelector('.inbound_flight')),
+        };
+    });
+}"""
 
 
 class TravelupConnectorClient:
-    """TravelUp — UK OTA, direct API for cheapest fares."""
+    """TravelUp — UK OTA, browser DOM scraping for real checkout prices."""
 
     def __init__(self, timeout: float = 55.0):
         self.timeout = timeout
@@ -74,168 +130,326 @@ class TravelupConnectorClient:
         pass
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
-        ob_result = await self._search_ow(req)
-        if req.return_from and ob_result.total_results > 0:
-            ib_req = req.model_copy(update={"origin": req.destination, "destination": req.origin, "date_from": req.return_from, "return_from": None})
-            ib_result = await self._search_ow(ib_req)
-            if ib_result.total_results > 0:
-                ob_result.offers = self._combine_rt(ob_result.offers, ib_result.offers, req)
-                ob_result.total_results = len(ob_result.offers)
-        return ob_result
-
-    async def _search_ow(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
-        target = req.date_from
-        date_str = target.strftime("%Y-%m-%d")
+        dt = req.date_from if isinstance(req.date_from, datetime) else datetime.combine(req.date_from, datetime.min.time())
+        ret_dt = None
+        if req.return_from:
+            ret_dt = req.return_from if isinstance(req.return_from, datetime) else datetime.combine(req.return_from, datetime.min.time())
 
-        # Query a ±3-day window around the target date to get multiple price points
-        ds = (target - timedelta(days=3)).strftime("%Y-%m-%d")
-        de = (target + timedelta(days=3)).strftime("%Y-%m-%d")
+        url = _build_travelup_url(
+            req.origin, req.destination, dt,
+            ret_date=ret_dt,
+            adults=req.adults or 1,
+            children=req.children or 0,
+            infants=req.infants or 0,
+        )
 
-        headers = {
-            "api-key": _API_KEY,
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-        }
-        params = {
-            "di": req.origin,
-            "ai": req.destination,
-            "ap": str(req.adults or 1),
-            "cp": str(req.children or 0),
-            "ip": str(req.infants or 0),
-            "c": {"M": "1", "W": "2", "C": "3", "F": "4"}.get(req.cabin_class or "M", "1"),  # cabin class
-            "sm": "2",  # search mode
-            "l": "en-GB",
-            "ds": ds,
-            "de": de,
-            "rf": "false",  # one-way
-            "d": "0",
-        }
-
-        offers: list[FlightOffer] = []
-        try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, proxy=get_httpx_proxy_url(),
-            ) as client:
-                resp = await client.get(_API_URL, headers=headers, params=params)
-                if resp.status_code != 200:
-                    logger.warning("TravelUp API %d for %s→%s", resp.status_code, req.origin, req.destination)
-                    return self._empty(req)
-
-                data = resp.json()
-                results = data.get("r", [])
-                if not isinstance(results, list):
-                    return self._empty(req)
-
-                for item in results:
-                    price = item.get("cf")
-                    dep_date_str = item.get("dd", "")
-                    if not price or price <= 0 or not dep_date_str:
-                        continue
-
-                    try:
-                        dep_date = datetime.strptime(dep_date_str, "%Y-%m-%d")
-                    except ValueError:
-                        continue
-
-                    booking_dep = dep_date.strftime("%Y-%m-%d")
-                    # TravelUp uses path-based URLs with YYMMDD dates
-                    booking_dep_short = dep_date.strftime("%y%m%d")
-                    segments = [FlightSegment(
-                        airline="TravelUp",
-                        flight_no="",
+        for attempt in range(2):
+            try:
+                offers = await self._do_search(url, req, dt, ret_dt, attempt)
+                if offers is not None:
+                    offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
+                    elapsed = time.monotonic() - t0
+                    logger.info(
+                        "TravelUp %s→%s: %d offers in %.1fs (browser)",
+                        req.origin, req.destination, len(offers), elapsed,
+                    )
+                    h = hashlib.md5(
+                        f"travelup{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+                    ).hexdigest()[:12]
+                    return FlightSearchResponse(
+                        search_id=f"fs_{h}",
                         origin=req.origin,
                         destination=req.destination,
-                        departure=dep_date,
-                        arrival=dep_date,
-                        duration_seconds=0,
-                    )]
-                    route = FlightRoute(
-                        segments=segments,
-                        total_duration_seconds=0,
-                        stopovers=0,
+                        currency=offers[0].currency if offers else "GBP",
+                        offers=offers,
+                        total_results=len(offers),
                     )
-                    oid = hashlib.md5(
-                        f"tvup_{req.origin}{req.destination}{booking_dep}{price}".encode()
-                    ).hexdigest()[:12]
+            except Exception as e:
+                logger.warning("TravelUp attempt %d failed: %s", attempt, e)
 
-                    offers.append(FlightOffer(
-                        id=f"tvup_{oid}",
-                        price=round(float(price), 2),
-                        currency="GBP",
-                        price_formatted=f"from {price:.2f} GBP",
-                        outbound=route,
-                        inbound=None,
-                        airlines=["TravelUp"],
-                        owner_airline="TravelUp",
-                        booking_url=_build_travelup_url(
-                            req.origin, req.destination, dep_date,
-                            ret_date=req.return_from if req.return_from else None,
-                            adults=req.adults or 1,
-                            children=req.children or 0,
-                            infants=req.infants or 0,
-                        ),
-                        is_locked=False,
-                        source="travelup_ota",
-                        source_tier="free",
-                        conditions={"price_type": "indicative", "note": "Starting-from price; actual fare may differ at checkout"},
-                    ))
+        return self._empty(req)
 
-        except httpx.HTTPError as e:
-            logger.error("TravelUp HTTP error: %s", e)
-            return self._empty(req)
-        except Exception as e:
-            logger.error("TravelUp error: %s", e)
-            return self._empty(req)
+    async def _do_search(
+        self, url: str, req: FlightSearchRequest, dt: datetime,
+        ret_dt: datetime | None, attempt: int,
+    ) -> list[FlightOffer] | None:
+        from patchright.async_api import async_playwright
 
-        _td = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
-        offers = [o for o in offers if o.outbound and o.outbound.segments and o.outbound.segments[0].departure.date() == _td]
-        offers.sort(key=lambda o: o.price)
-        elapsed = time.monotonic() - t0
-        logger.info(
-            "TravelUp %s→%s: %d offers in %.1fs (API)",
-            req.origin, req.destination, len(offers), elapsed,
-        )
+        browser = None
+        context = None
+        pw_instance = None
 
-        sh = hashlib.md5(f"travelup{req.origin}{req.destination}{date_str}{req.return_from or ''}".encode()).hexdigest()[:12]
-        return FlightSearchResponse(
-            search_id=f"fs_{sh}",
-            origin=req.origin,
-            destination=req.destination,
-            currency=offers[0].currency if offers else "GBP",
-            offers=offers,
-            total_results=len(offers),
-        )
+        try:
+            await acquire_browser_slot()
+
+            pw_instance = await async_playwright().start()
+
+            launch_kwargs: dict = {
+                "headless": False,
+                "args": ["--window-position=-2400,-2400", "--window-size=1366,800"],
+            }
+            if proxy_is_configured():
+                session_id = f"tup{int(time.time())}{attempt}"
+                launch_kwargs["proxy"] = {
+                    "server": "http://gate.decodo.com:10001",
+                    "username": f"{os.environ.get('DECODO_USER', '')}-session-{session_id}",
+                    "password": os.environ.get("DECODO_PASS", ""),
+                }
+            else:
+                proxy = get_default_proxy()
+                if proxy:
+                    launch_kwargs["proxy"] = proxy
+
+            browser = await pw_instance.chromium.launch(**launch_kwargs)
+            context = await browser.new_context(
+                viewport={"width": 1366, "height": 800},
+                locale="en-GB",
+            )
+            page = await context.new_page()
+
+            logger.info("TravelUp: navigating to %s", url[:120])
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+            # Handle Cloudflare Turnstile — patchright auto-solves, just wait
+            for _ in range(20):
+                try:
+                    title = (await page.title()).lower()
+                except Exception:
+                    await asyncio.sleep(1)
+                    continue
+                if "just a moment" not in title and "checking" not in title:
+                    break
+                await asyncio.sleep(1)
+
+            # Wait for flight result cards
+            try:
+                await page.wait_for_selector(".fjs_item", timeout=30000)
+            except Exception:
+                logger.warning("TravelUp: no .fjs_item elements appeared")
+                return None
+
+            await asyncio.sleep(1)  # let more cards render
+
+            raw = await page.evaluate(_JS_EXTRACT)
+            if not raw:
+                return None
+
+            return self._parse_cards(raw, req, dt, ret_dt)
+
+        finally:
+            try:
+                if context:
+                    await context.close()
+            except Exception:
+                pass
+            try:
+                if browser:
+                    await browser.close()
+            except Exception:
+                pass
+            try:
+                if pw_instance:
+                    await pw_instance.stop()
+            except Exception:
+                pass
+            release_browser_slot()
+
+    # ------------------------------------------------------------------
+    # Card parsing
+    # ------------------------------------------------------------------
+
+    def _parse_cards(
+        self, raw: list[dict], req: FlightSearchRequest,
+        dt: datetime, ret_dt: datetime | None,
+    ) -> list[FlightOffer]:
+        offers: list[FlightOffer] = []
+        seen_ids: set[str] = set()
+
+        for card in raw:
+            try:
+                price_str = card.get("price", "")
+                if not price_str:
+                    continue
+                price = float(re.sub(r"[^\d.]", "", price_str))
+                if price <= 0:
+                    continue
+
+                currency = "GBP" if "£" in price_str else "EUR" if "€" in price_str else "USD" if "$" in price_str else "GBP"
+
+                flight_id = card.get("flightId") or ""
+                if flight_id in seen_ids:
+                    continue
+                seen_ids.add(flight_id)
+
+                # Parse segments from flight ID
+                all_segs = self._parse_flight_id(flight_id)
+
+                ob_data = card.get("outbound")
+                ib_data = card.get("inbound")
+
+                ob_stop_count = self._parse_stops(ob_data.get("stops") if ob_data else None)
+                ib_stop_count = self._parse_stops(ib_data.get("stops") if ib_data else None)
+                ob_seg_count = ob_stop_count + 1
+                ib_seg_count = ib_stop_count + 1
+
+                ob_segs = all_segs[:ob_seg_count]
+                ib_segs = all_segs[ob_seg_count: ob_seg_count + ib_seg_count]
+
+                ob_route = self._build_route(ob_data, ob_segs, dt) if ob_data else None
+                ib_route = self._build_route(ib_data, ib_segs, ret_dt or dt) if ib_data else None
+
+                if not ob_route:
+                    continue
+
+                airlines: list[str] = []
+                for jd in (ob_data, ib_data):
+                    if jd and jd.get("airlineCode"):
+                        code = jd["airlineCode"]
+                        if code not in airlines:
+                            airlines.append(code)
+
+                airline_names: list[str] = []
+                for jd in (ob_data, ib_data):
+                    if jd and jd.get("airline"):
+                        name = jd["airline"]
+                        if name not in airline_names:
+                            airline_names.append(name)
+
+                oid = hashlib.md5(f"tvup_{flight_id}_{price}".encode()).hexdigest()[:12]
+
+                offers.append(FlightOffer(
+                    id=f"tvup_{oid}",
+                    price=round(price, 2),
+                    currency=currency,
+                    price_formatted=f"{price:.2f} {currency}",
+                    outbound=ob_route,
+                    inbound=ib_route if req.return_from else None,
+                    airlines=airlines or ["XX"],
+                    owner_airline=airlines[0] if airlines else "XX",
+                    booking_url=_build_travelup_url(
+                        req.origin, req.destination, dt,
+                        ret_date=ret_dt,
+                        adults=req.adults or 1,
+                        children=req.children or 0,
+                        infants=req.infants or 0,
+                    ),
+                    is_locked=False,
+                    source="travelup_ota",
+                    source_tier="protocol",
+                ))
+            except Exception as e:
+                logger.debug("TravelUp: failed to parse card: %s", e)
+                continue
+
+        return offers[:30]
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _combine_rt(
-        ob: list[FlightOffer], ib: list[FlightOffer], req,
-    ) -> list[FlightOffer]:
-        combos: list[FlightOffer] = []
-        for o in ob[:15]:
-            for i in ib[:10]:
-                price = round(o.price + i.price, 2)
-                cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
-                # Rebuild URL with actual inbound departure date
-                ib_dep = i.outbound.segments[0].departure if i.outbound and i.outbound.segments else None
-                rt_url = _build_travelup_url(
-                    req.origin, req.destination,
-                    o.outbound.segments[0].departure,
-                    ret_date=ib_dep,
-                    adults=req.adults or 1,
-                    children=req.children or 0,
-                    infants=req.infants or 0,
-                ) if o.outbound and o.outbound.segments else o.booking_url
-                combos.append(FlightOffer(
-                    id=f"rt_tvup_{cid}", price=price, currency=o.currency,
-                    outbound=o.outbound, inbound=i.outbound,
-                    airlines=list(dict.fromkeys(o.airlines + i.airlines)),
-                    owner_airline=o.owner_airline,
-                    booking_url=rt_url, is_locked=False,
-                    source=o.source, source_tier=o.source_tier,
+    def _parse_flight_id(flight_id: str) -> list[dict]:
+        if not flight_id:
+            return []
+        segments: list[dict] = []
+        for m in _SEG_RE.finditer(flight_id.lower()):
+            segments.append({
+                "origin": m.group(1).upper(),
+                "airline": m.group(2).upper(),
+                "flight_no": m.group(3).lstrip("0") or "0",
+                "cabin": m.group(4),
+                "destination": m.group(5).upper(),
+            })
+        return segments
+
+    @staticmethod
+    def _parse_stops(stops_text: str | None) -> int:
+        if not stops_text:
+            return 0
+        m = re.search(r"(\d+)\s*stop", stops_text, re.I)
+        return int(m.group(1)) if m else 0
+
+    @staticmethod
+    def _parse_duration(dur: str | None) -> int:
+        if not dur:
+            return 0
+        m = re.search(r"(\d+)h\s*(\d+)m", dur)
+        if m:
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60
+        m = re.search(r"(\d+)h", dur)
+        return int(m.group(1)) * 3600 if m else 0
+
+    @staticmethod
+    def _parse_display_dt(time_str: str | None, date_str: str | None, ref_year: int) -> datetime:
+        h, mi = 0, 0
+        if time_str:
+            clean = re.sub(r"\+\d+$", "", time_str.strip())
+            parts = clean.split(":")
+            if len(parts) == 2:
+                try:
+                    h, mi = int(parts[0]), int(parts[1])
+                except ValueError:
+                    pass
+        if date_str:
+            try:
+                parsed = datetime.strptime(f"{date_str.strip()} {ref_year}", "%d %b %Y")
+                return parsed.replace(hour=h, minute=mi)
+            except ValueError:
+                pass
+        return datetime(ref_year, 1, 1, h, mi)
+
+    def _build_route(
+        self, journey: dict, seg_defs: list[dict], ref_dt: datetime,
+    ) -> FlightRoute | None:
+        if not journey:
+            return None
+
+        duration_secs = self._parse_duration(journey.get("duration"))
+        stops = self._parse_stops(journey.get("stops"))
+        year = ref_dt.year
+
+        dep_dt = self._parse_display_dt(journey.get("depTime"), journey.get("depDate"), year)
+        arr_dt = self._parse_display_dt(
+            re.sub(r"\+\d+$", "", journey.get("arrTime") or ""),
+            journey.get("arrDate"),
+            year,
+        )
+
+        airline_code = journey.get("airlineCode") or "XX"
+        airline_name = journey.get("airline") or ""
+
+        flight_segments: list[FlightSegment] = []
+        if seg_defs:
+            for i, sd in enumerate(seg_defs):
+                flight_segments.append(FlightSegment(
+                    airline=sd["airline"],
+                    airline_name=airline_name if sd["airline"] == airline_code else "",
+                    flight_no=f"{sd['airline']}{sd['flight_no']}",
+                    origin=sd["origin"],
+                    destination=sd["destination"],
+                    departure=dep_dt if i == 0 else dep_dt,
+                    arrival=arr_dt if i == len(seg_defs) - 1 else dep_dt,
+                    duration_seconds=duration_secs // max(len(seg_defs), 1) if duration_secs else 0,
+                    cabin_class=sd.get("cabin", "economy"),
                 ))
-        combos.sort(key=lambda c: c.price)
-        return combos[:20]
+        else:
+            flight_segments.append(FlightSegment(
+                airline=airline_code,
+                airline_name=airline_name,
+                flight_no="",
+                origin=(journey.get("depAirport") or "").upper(),
+                destination=(journey.get("arrAirport") or "").upper(),
+                departure=dep_dt,
+                arrival=arr_dt,
+                duration_seconds=duration_secs or 0,
+            ))
+
+        return FlightRoute(
+            segments=flight_segments,
+            total_duration_seconds=duration_secs or 0,
+            stopovers=stops,
+        )
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(f"travelup{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()).hexdigest()[:12]
