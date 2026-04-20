@@ -1458,10 +1458,12 @@ class MultiProvider:
             # Check if we have rich telemetry captured by _search_connector_generic
             if provider in self._connector_telemetry:
                 tel = self._connector_telemetry[provider]
-                # Skip 'cancelled' connectors — they never ran, just got
-                # killed by the global timeout while queued for a browser
-                # slot. Reporting them as failures poisons the health dashboard.
-                if tel.error_category == "cancelled":
+                # Skip connectors that never actually ran — reporting them
+                # as failures poisons the health dashboard:
+                # - 'cancelled': killed by the global timeout while queued
+                # - 'slot_timeout': waited for a browser slot and gave up
+                # Neither says anything about the connector's health.
+                if tel.error_category in ("cancelled", "slot_timeout"):
                     continue
                 connector_results.append({
                     "connector": tel.connector,
