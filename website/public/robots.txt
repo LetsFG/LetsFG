@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# AI agents: see /llms.txt for machine-readable instructions
+# API docs: https://api.letsfg.co/docs
+
+Sitemap: https://letsfg.co/sitemap.xml

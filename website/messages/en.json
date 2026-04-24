@@ -8,14 +8,14 @@
     "languageLabel": "Language / region"
   },
   "hero": {
-    "tagline": "Finding a flight shouldn't mean checking 47 websites. So we built something about it. No markup. No tracking. No price that goes up because you looked twice.",
+    "tagline": "Finding a flight shouldn't mean checking 47 websites. So we built this. No markup. No tracking. No prices jumping because you looked twice.",
     "placeholder": "London to Barcelona next Friday",
     "searchLabel": "Search flights"
   },
   "stats": {
     "searches": "Searches run",
     "savings": "Avg. saved vs Google Flights",
-    "markup": "0% markup. Always."
+    "airlines": "Websites checked per search"
   },
   "footer": {
     "github": "GitHub",

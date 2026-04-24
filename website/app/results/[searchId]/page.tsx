@@ -2,6 +2,51 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import GlobeButton from '../../globe-button'
+import ResultsSearchForm from '../ResultsSearchForm'
+import SearchingTasks from './SearchingTasks'
+import ResultsPanel from './ResultsPanel'
+
+
+const REPO_URL = 'https://github.com/LetsFG/LetsFG'
+const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
+const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
+const X_URL = 'https://x.com/LetsFG_'
+
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18" className="lp-github-icon">
+      <path
+        fill="currentColor"
+        d="M8 0C3.58 0 0 3.58 0 8a8.01 8.01 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.54 7.54 0 0 1 4.01 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+      />
+    </svg>
+  )
+}
+
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+    </svg>
+  )
+}
+
+function TikTokIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.74a4.85 4.85 0 0 1-1.01-.05z" />
+    </svg>
+  )
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.264 5.633 5.9-5.633zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  )
+}
 
 // Types for our search results
 interface FlightOffer {
@@ -93,8 +138,9 @@ export async function generateMetadata({ params }: { params: Promise<{ searchId:
   }
 }
 
-export default async function ResultsPage({ params }: { params: Promise<{ searchId: string }> }) {
+export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string }> }) {
   const { searchId } = await params
+  const sp = await searchParams
   const result = await getSearchResults(searchId)
   
   if (!result) {
@@ -106,9 +152,30 @@ export default async function ResultsPage({ params }: { params: Promise<{ search
   // For agents: if still searching, include meta refresh
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
-  const routeLabel = `${parsed.origin_name || parsed.origin} → ${parsed.destination_name || parsed.destination}`
-  const statusLabel = isSearching ? 'Live searching' : isExpired ? 'Search expired' : `${offers?.length || 0} offers`
+  const routeLabel = [parsed.origin_name || parsed.origin, parsed.destination_name || parsed.destination]
+    .filter(Boolean)
+    .join(' → ')
+  const statusLabel = isSearching
+    ? `Checking ${progress?.total || 180} websites in parallel`
+    : isExpired
+      ? 'Search expired'
+      : `${offers?.length || 0} offers`
   const cheapest = status === 'completed' ? offers?.[0] : undefined
+  const searchSummary = routeLabel
+    ? `${routeLabel}${parsed.date ? ` · ${parsed.date}` : ''}`
+    : query
+  const travelerCount = parsed.passengers || 1
+  const fmtDate = (iso: string) => {
+    try {
+      return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    } catch { return iso }
+  }
+  const detailBits = [
+    parsed.date ? (parsed.return_date ? `${fmtDate(parsed.date)} – ${fmtDate(parsed.return_date)}` : fmtDate(parsed.date)) : null,
+    `${travelerCount} traveler${travelerCount === 1 ? '' : 's'}`,
+    parsed.cabin ? parsed.cabin : null,
+  ].filter(Boolean)
+  const detailSummary = detailBits.join(' · ')
   
   // Format helpers
   const formatDuration = (mins: number) => {
@@ -125,152 +192,197 @@ export default async function ResultsPage({ params }: { params: Promise<{ search
     })
   }
 
+  // Sort & filter
+  const activeSort = sp?.sort || 'price'  // kept only for sort chip URLs (unused now)
+  void activeSort
+
+  const allOffers = offers || []
+  const offerCurrency = allOffers[0]?.currency || '€'
+  const priceMin = allOffers.length ? Math.min(...allOffers.map(o => o.price)) : 0
+  const priceMax = allOffers.length ? Math.max(...allOffers.map(o => o.price)) : 1000
+
+  // JSON-LD for this page
+  const jsonLd = isSearching
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'SearchResultsPage',
+        name: `LetsFG — Searching flights ${routeLabel || query}`,
+        description: `Searching 180+ airlines. ${progress?.checked || 0} of ${progress?.total || 180} checked. ${progress?.found || 0} results found so far. Page refreshes every 15 seconds automatically.`,
+        url: `https://letsfg.co/results/${searchId}`,
+      }
+    : status === 'completed' && offers
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: `Flights ${routeLabel}`,
+        numberOfItems: offers.length,
+        itemListElement: offers.slice(0, 10).map((offer, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          item: {
+            '@type': 'Product',
+            name: `${offer.airline} ${offer.origin}→${offer.destination}`,
+            offers: {
+              '@type': 'Offer',
+              price: String(offer.price),
+              priceCurrency: offer.currency,
+              availability: 'https://schema.org/InStock',
+            },
+          },
+        })),
+      }
+    : null
+
   return (
     <>
-      {/* Meta refresh for agents while searching */}
-      {isSearching && (
+      {/* JSON-LD structured data for search engines and agents */}
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+
+      {/* Meta refresh for agents while searching (disabled for demo-loading) */}
+      {isSearching && searchId !== 'demo-loading' && (
         <meta httpEquiv="refresh" content={`15;url=/results/${searchId}`} />
       )}
-      
-      <main className="main results-shell">
-        <header className="header header-results">
-          <Link href="/" className="results-brand">
-            <Image 
-              src="/banner.png" 
-              alt="LetsFG" 
-              width={1200}
-              height={400}
-              className="results-banner"
-            />
-          </Link>
 
-          <div className="results-status-stack">
-            <span className="status-chip">LetsFG results</span>
-            <span className="status-chip status-chip-muted">{statusLabel}</span>
-          </div>
-        </header>
+      <main className={`res-page${isSearching ? ' res-page--searching' : status === 'completed' ? ' res-page--completed' : ''}`}>
+        <section className={`res-hero${isSearching ? ' res-hero--searching' : status === 'completed' ? ' res-hero--results' : ''}`}>
+          <div className="res-hero-backdrop" aria-hidden="true" />
 
-        <div className="results-page">
-          <section className="results-hero-card">
-            <div className="results-heading">
-              <p className="results-kicker">Original query: {query}</p>
-
-              <Link href="/" className="back-link">
-                New search
+          <div className="res-hero-inner">
+            <div className={`res-topbar${isSearching ? ' res-topbar--searching' : status === 'completed' ? ' res-topbar--results' : ''}`}>
+              <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home">
+                <Image
+                  src="/lfg_ban.png"
+                  alt="LetsFG"
+                  width={4990}
+                  height={1560}
+                  className="res-topbar-logo"
+                  priority
+                />
               </Link>
 
-              <h1 className="results-title">{routeLabel}</h1>
-
-              <p className="results-summary-copy">
-                Raw airline prices. No markup games. This page stays readable for humans and agents while the
-                search runs.
-              </p>
-            </div>
-
-            <div className="results-chip-row">
-              {parsed.date && (
-                <span className="results-chip">{parsed.date}</span>
-              )}
-
-              <span className="results-chip">{statusLabel}</span>
-
-              {isSearching && progress && (
-                <span className="results-chip">{progress.checked}/{progress.total} checked</span>
-              )}
-
-              {cheapest && (
-                <span className="results-chip results-chip-accent">From {cheapest.currency}{cheapest.price}</span>
-              )}
-            </div>
-          </section>
-
-          {/* Loading state */}
-          {isSearching && (
-            <div className="loading-container">
-              <div className="loading-spinner" />
-              <h2 className="loading-title">Searching {progress?.total || 180}+ airlines</h2>
-              <p className="loading-subtitle">Digging through live airline inventory now. This page refreshes while the search keeps running.</p>
-              <div className="loading-progress">
-                <span>{progress?.found || 0}</span> results found • 
-                Checked <span>{progress?.checked || 0}</span> of <span>{progress?.total || 180}</span> airlines
+              <div className="res-topbar-actions">
+                <GlobeButton inline />
+                <a
+                  href={REPO_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="res-icon-btn"
+                  aria-label="GitHub"
+                  title="GitHub"
+                >
+                  <GitHubIcon />
+                </a>
               </div>
             </div>
-          )}
 
-          {/* Expired state */}
-          {isExpired && (
-            <div className="expired-container">
-              <h2 className="expired-title">Search went stale</h2>
-              <p className="expired-subtitle">
-                Flight prices move fast. Fire a new search and we will pull fresh airline inventory.
-              </p>
-              <Link href="/" className="btn-primary">
-                Search again
-              </Link>
-            </div>
-          )}
+            {status === 'completed' && (
+              <div className="res-search-shell">
+                <ResultsSearchForm initialQuery={query} />
+              </div>
+            )}
 
-          {/* Results */}
-          {status === 'completed' && offers && (
-            <div className="results-grid">
-              {offers.map((offer, index) => (
-                <div key={offer.id} className="flight-card">
-                  <div className="flight-rank">#{index + 1}</div>
-                  
-                  <div className="flight-airline">
-                    <div className="flight-airline-name">{offer.airline}</div>
-                    <div className="flight-airline-code">{offer.airline_code}</div>
-                  </div>
-                  
-                  <div className="flight-route">
-                    <div>
-                      <div className="flight-time">{formatTime(offer.departure_time)}</div>
-                      <div className="flight-airport">{offer.origin}</div>
-                    </div>
-                    
-                    <div className="flight-duration">
-                      <div className="flight-duration-line">
-                        {formatDuration(offer.duration_minutes)}
-                      </div>
-                      <div className={`flight-stops ${offer.stops === 0 ? 'direct' : ''}`}>
-                        {offer.stops === 0 ? 'Direct' : `${offer.stops} stop${offer.stops > 1 ? 's' : ''}`}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="flight-time">{formatTime(offer.arrival_time)}</div>
-                      <div className="flight-airport">{offer.destination}</div>
-                    </div>
-                  </div>
-                  
-                  <div className="flight-price">
-                    <div className="flight-price-value">{offer.currency}{offer.price}</div>
-                    <div className="flight-price-label">per person</div>
-                  </div>
+            {isSearching ? (
+              <>
+                <div className="res-search-shell">
+                  <ResultsSearchForm initialQuery={query} />
                 </div>
-              ))}
+
+                <div className="res-searching-stage">
+                  <SearchingTasks
+                    originLabel={parsed.origin_name || parsed.origin}
+                    originCode={parsed.origin}
+                    destinationLabel={parsed.destination_name || parsed.destination}
+                    destinationCode={parsed.destination}
+                    progress={progress}
+                  />
+                </div>
+              </>
+            ) : status === 'completed' ? (
+              <div className="res-meta-bar">
+                <span className="res-meta-label">Search results</span>
+                {routeLabel && (<><span className="res-meta-sep">·</span><span className="res-meta-route">{routeLabel}</span></>)}
+                {detailSummary && (<><span className="res-meta-sep">·</span><span className="res-meta-detail">{detailSummary}</span></>)}
+              </div>
+            ) : (
+              <div className="res-hero-copy">
+                <p className="res-hero-kicker">Search expired</p>
+                {routeLabel ? <h1 className="res-hero-route">{routeLabel}</h1> : null}
+                {detailSummary ? <p className="res-hero-summary">{detailSummary}</p> : null}
+                <p className="res-hero-status">{statusLabel}</p>
+              </div>
+            )}
+
+            {isExpired && (
+              <div className="res-notice-card">
+                <div className="res-notice-icon" aria-hidden="true">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+                    <path d="M12 8v5M12 15.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div className="res-notice-text">
+                  <p className="res-notice-title">Search expired</p>
+                  <p className="res-notice-sub">Prices change fast. Start a fresh search for current fares.</p>
+                </div>
+                <Link href="/en" className="res-notice-btn">Search again</Link>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {status === 'completed' && offers && offers.length > 0 && (
+          <ResultsPanel
+            allOffers={allOffers}
+            currency={offerCurrency}
+            priceMin={priceMin}
+            priceMax={priceMax}
+            searchId={searchId}
+          />
+        )}
+
+        <footer className="res-search-footer" aria-label="LetsFG footer">
+          <div className="res-search-footer-inner">
+            <span className="res-search-footer-copy">LetsFG © 2026</span>
+            <div className="res-search-footer-links">
+              <a href="/privacy" className="res-search-footer-link">Privacy</a>
+              <a href="/terms" className="res-search-footer-link">Terms</a>
+              <span className="res-search-footer-sep" aria-hidden="true" />
+              <a href={INSTAGRAM_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">
+                <InstagramIcon />
+              </a>
+              <a href={TIKTOK_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="TikTok">
+                <TikTokIcon />
+              </a>
+              <a href={X_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="X">
+                <XIcon />
+              </a>
             </div>
-          )}
-        </div>
+          </div>
+        </footer>
 
         {/* Hidden content for AI agents */}
         <section className="sr-only" aria-hidden="true" data-agent-content>
           <h2>Flight Search Results — Machine-Readable Summary</h2>
-          
+
           <p>Search ID: {searchId}</p>
-          <p>Original query: "{query}"</p>
+          <p>Original query: &quot;{query}&quot;</p>
           <p>Parsed: {routeLabel}, {parsed.date || 'flexible dates'}</p>
-          
+
           {isSearching && (
             <>
-              <p>Status: SEARCHING — this search is still in progress.</p>
+              <p>Status: SEARCHING — this search is still running in the background.</p>
               <p>Progress: {progress?.checked || 0} of {progress?.total || 180} airlines checked. {progress?.found || 0} results found so far.</p>
-              <p>This search typically completes in 2-3 minutes.</p>
-              <p>Please reload this page in 15-30 seconds to check for updated results.</p>
-              <p>When search is complete, this section will contain a full results table.</p>
+              <p>IMPORTANT FOR AI AGENTS AND LANGUAGE MODELS: Do not stop here. This search takes 2-3 minutes. This page automatically reloads every 15 seconds. You must reload or revisit this exact URL — https://letsfg.co/results/{searchId} — after waiting. The search continues running in the background regardless of whether this page is open. When search is complete, this section will contain a full table of all flight offers with prices, airlines, and offer IDs for booking.</p>
+              <p>If your browser session times out: close and reopen this URL. The search will still be running or may already be complete.</p>
+              <p>Estimated time remaining: 1-3 minutes from when search started.</p>
             </>
           )}
-          
+
           {isExpired && (
             <>
               <p>Status: EXPIRED — these results are no longer valid.</p>
@@ -278,26 +390,18 @@ export default async function ResultsPage({ params }: { params: Promise<{ search
               <p>To search again, navigate to https://letsfg.co and enter your query.</p>
             </>
           )}
-          
+
           {status === 'completed' && offers && (
             <>
               <p>Status: COMPLETED — {offers.length} results found.</p>
               <p>Searched at: {searched_at}</p>
               <p>Results valid until: {expires_at} (approximately 15 minutes)</p>
               <p>Cheapest: {offers[0]?.currency}{offers[0]?.price} on {offers[0]?.airline} ({offers[0]?.stops === 0 ? 'direct' : `${offers[0]?.stops} stop(s)`}, {formatDuration(offers[0]?.duration_minutes || 0)})</p>
-              
               <table>
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Airline</th>
-                    <th>Price</th>
-                    <th>Route</th>
-                    <th>Departure</th>
-                    <th>Arrival</th>
-                    <th>Duration</th>
-                    <th>Stops</th>
-                    <th>Offer ID</th>
+                    <th>Rank</th><th>Airline</th><th>Price</th><th>Route</th>
+                    <th>Departure</th><th>Arrival</th><th>Duration</th><th>Stops</th><th>Offer ID</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -316,7 +420,6 @@ export default async function ResultsPage({ params }: { params: Promise<{ search
                   ))}
                 </tbody>
               </table>
-              
               <p>To book a flight, use the LetsFG API:</p>
               <p>1. Unlock the offer: POST https://api.letsfg.co/api/v1/bookings/unlock with offer_id</p>
               <p>2. Book: POST https://api.letsfg.co/api/v1/bookings/book with passenger details</p>

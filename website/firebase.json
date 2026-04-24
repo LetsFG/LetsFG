@@ -1,0 +1,20 @@
+{
+  "hosting": {
+    "site": "letsfg-preview-sms-caller",
+    "public": "firebase-hosting",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "letsfg-website-preview",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}
