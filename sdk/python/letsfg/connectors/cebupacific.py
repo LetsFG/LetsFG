@@ -33,7 +33,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import find_chrome, proxy_chrome_args, bandwidth_saving_args
+from .browser import find_chrome, proxy_chrome_args, bandwidth_saving_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +175,7 @@ class CebuPacificConnectorClient:
         # in the default context inherits Chrome's full browser properties.
         context = browser.contexts[0]
         page = context.pages[0] if context.pages else await context.new_page()
+        await auto_block_if_proxied(page)
 
         try:
             captured_data: dict = {}
@@ -234,6 +235,21 @@ class CebuPacificConnectorClient:
                 await asyncio.wait_for(api_event.wait(), timeout=remaining)
             except asyncio.TimeoutError:
                 logger.warning("CebuPacific: timed out waiting for SOAR availability")
+
+                # One retry: re-open the same deep-link once in case the first
+                # navigation only solved anti-bot/cookie state.
+                try:
+                    api_event.clear()
+                    await page.goto(
+                        search_url,
+                        wait_until="load",
+                        timeout=int(self.timeout * 1000),
+                    )
+                    retry_remaining = max(12, int(self.timeout * 0.5))
+                    await asyncio.wait_for(api_event.wait(), timeout=retry_remaining)
+                    logger.info("CebuPacific: availability captured on retry navigation")
+                except asyncio.TimeoutError:
+                    logger.warning("CebuPacific: retry navigation also timed out")
 
             data = captured_data.get("availability")
             if data:

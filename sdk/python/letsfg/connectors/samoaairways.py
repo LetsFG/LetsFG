@@ -30,7 +30,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import acquire_browser_slot, release_browser_slot, patchright_bandwidth_args
+from .browser import acquire_browser_slot, release_browser_slot, patchright_bandwidth_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,7 @@ class SamoaAirwaysConnectorClient:
                 locale="en-US",
             )
             page = await context.new_page()
+            await auto_block_if_proxied(page)
 
             search_data: dict = {}
 

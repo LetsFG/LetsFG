@@ -406,38 +406,75 @@ class SouthwestConnectorClient:
         }
 
         proxies = _get_curl_proxies()
+        retryable_statuses = {429, 500, 502, 503, 504}
 
         # Try primary endpoint, then mobile endpoint
         for url in [_SEARCH_URL, _MOBILE_SEARCH_URL]:
-            try:
-                r = sess.post(url, json=body, headers=headers, timeout=15, proxies=proxies)
-            except Exception as e:
-                logger.debug("Southwest: API request to %s failed: %s", url, e)
-                continue
+            for attempt in range(2):
+                try:
+                    r = sess.post(
+                        url,
+                        json=body,
+                        headers=headers,
+                        timeout=15,
+                        proxies=proxies,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "Southwest: API request to %s failed on attempt %d: %s",
+                        url,
+                        attempt + 1,
+                        e,
+                    )
+                    if attempt == 0:
+                        time.sleep(0.6)
+                        continue
+                    break
 
-            if r.status_code != 200:
-                logger.warning("Southwest: API %s returned HTTP %d", url, r.status_code)
-                continue
+                if r.status_code != 200:
+                    logger.warning(
+                        "Southwest: API %s returned HTTP %d on attempt %d",
+                        url,
+                        r.status_code,
+                        attempt + 1,
+                    )
+                    if r.status_code in retryable_statuses and attempt == 0:
+                        time.sleep(0.8)
+                        continue
+                    break
 
-            try:
-                data = r.json()
-            except Exception:
-                logger.debug("Southwest: API %s returned non-JSON response", url)
-                continue
+                try:
+                    data = r.json()
+                except Exception:
+                    logger.debug(
+                        "Southwest: API %s returned non-JSON response on attempt %d",
+                        url,
+                        attempt + 1,
+                    )
+                    if attempt == 0:
+                        time.sleep(0.6)
+                        continue
+                    break
 
-            # Validate response has flight data
-            shopping = (
-                data.get("flightShoppingPage")
-                or data.get("data", {}).get("searchResults")
-            )
-            if shopping:
-                logger.info("Southwest: API %s returned valid data", url)
-                return data
+                # Validate response has flight data
+                shopping = (
+                    data.get("flightShoppingPage")
+                    or data.get("data", {}).get("searchResults")
+                )
+                if shopping:
+                    logger.info("Southwest: API %s returned valid data", url)
+                    return data
 
-            # Check if it looks like a valid but empty response
-            if isinstance(data, dict) and data.get("success") is True:
-                logger.debug("Southwest: API %s returned success but no flight data", url)
-                return data
+                # Check if it looks like a valid but empty response
+                if isinstance(data, dict) and data.get("success") is True:
+                    logger.debug(
+                        "Southwest: API %s returned success but no flight data",
+                        url,
+                    )
+                    return data
+
+                if attempt == 0:
+                    time.sleep(0.6)
 
         return None
 

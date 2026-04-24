@@ -196,6 +196,14 @@ class LHGroupBaseConnector:
         origin_slug = IATA_TO_SLUG.get(req.origin)
         dest_slug = IATA_TO_SLUG.get(req.destination)
         if not origin_slug or not dest_slug:
+            logger.warning(
+                "%s: missing route slug mapping origin=%s(%s) destination=%s(%s)",
+                self.AIRLINE_NAME,
+                req.origin,
+                origin_slug,
+                req.destination,
+                dest_slug,
+            )
             return self._empty(req)
 
         url = f"{_BASE_URL}/flight-{origin_slug}-{dest_slug}"

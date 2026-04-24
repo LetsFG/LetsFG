@@ -28,7 +28,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import acquire_browser_slot, release_browser_slot, patchright_bandwidth_args
+from .browser import acquire_browser_slot, release_browser_slot, patchright_bandwidth_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +122,10 @@ class DespegarConnectorClient:
 
         offers: list[FlightOffer] = []
         search_data: dict = {}
+        search_statuses: list[int] = []
+        page_title = ""
+        page_url = ""
+        page_blocked = False
         date_str = req.date_from.strftime("%Y-%m-%d")
 
         # Build search URL
@@ -152,6 +156,7 @@ class DespegarConnectorClient:
                 )
 
                 page = context.pages[0] if context.pages else await context.new_page()
+                await auto_block_if_proxied(page)
 
                 # Anti-detection
                 await page.add_init_script(
@@ -164,6 +169,7 @@ class DespegarConnectorClient:
                     url = response.url
                     if "flights-busquets/api/v1/web/search" in url:
                         try:
+                            search_statuses.append(response.status)
                             if response.status == 200:
                                 data = await response.json()
                                 if "items" in data and len(data.get("items", [])) > 0:
@@ -175,24 +181,75 @@ class DespegarConnectorClient:
                 page.on("response", capture_response)
 
                 # Navigate to homepage first to establish session
-                await page.goto("https://www.despegar.com.ar/", wait_until="domcontentloaded", timeout=20000)
+                await page.goto("https://www.despegar.com.ar/", wait_until="networkidle", timeout=30000)
+                await asyncio.sleep(3)
+
+                # DataDome is less likely to challenge after basic interaction + consent.
+                await page.mouse.move(240, 180)
                 await asyncio.sleep(1)
+                try:
+                    cookie_btn = await page.query_selector(
+                        'button:has-text("Aceptar"), button:has-text("Accept"), '
+                        '[class*="accept" i], [id*="accept" i]'
+                    )
+                    if cookie_btn:
+                        await cookie_btn.click(timeout=2000)
+                        await asyncio.sleep(1)
+                except Exception:
+                    pass
 
                 # Navigate to search
                 logger.debug("Despegar navigating to: %s", search_url)
-                await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(search_url, wait_until="domcontentloaded", timeout=45000)
 
                 # Wait for search API response
-                for _ in range(20):  # Up to 20 seconds
+                for _ in range(25):  # Up to 25 seconds
                     await asyncio.sleep(1)
                     if search_data and len(search_data.get("items", [])) > 0:
                         break
+
+                page_url = page.url
+                page_title = await page.title()
+                page_text = await page.evaluate("() => document.body?.innerText?.slice(0, 1500) || ''")
+                page_blocked = any(token in page_text.lower() for token in ("datadome", "captcha", "blocked", "verify"))
 
                 await context.close()
 
             # Parse results
             if search_data:
                 offers = self._parse_search_response(search_data, req, date_str)
+                if not offers:
+                    items = search_data.get("items", [])
+                    first = items[0] if items else {}
+                    inner = first.get("item", {}) if isinstance(first, dict) else {}
+                    logger.warning(
+                        "Despegar parse-empty %s->%s item_keys=%s inner_item_keys=%s",
+                        req.origin,
+                        req.destination,
+                        sorted(first.keys())[:20] if isinstance(first, dict) else [],
+                        sorted(inner.keys())[:20] if isinstance(inner, dict) else [],
+                    )
+                if not offers:
+                    items = search_data.get("items", [])
+                    first = items[0] if items else {}
+                    inner = first.get("item", {}) if isinstance(first, dict) else {}
+                    logger.warning(
+                        "Despegar parse-empty %s->%s item_keys=%s inner_item_keys=%s",
+                        req.origin,
+                        req.destination,
+                        sorted(first.keys())[:20] if isinstance(first, dict) else [],
+                        sorted(inner.keys())[:20] if isinstance(inner, dict) else [],
+                    )
+            else:
+                logger.warning(
+                    "Despegar empty search %s->%s title=%r url=%r blocked=%s search_statuses=%s",
+                    req.origin,
+                    req.destination,
+                    page_title,
+                    page_url,
+                    page_blocked,
+                    search_statuses[-5:],
+                )
 
         except Exception as e:
             logger.warning("Despegar browser error: %s", e)

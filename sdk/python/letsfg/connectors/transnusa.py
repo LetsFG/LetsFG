@@ -65,63 +65,82 @@ _browser = None
 _pw_instance = None
 _chrome_proc: Optional[subprocess.Popen] = None
 _context = None
+_browser_lock: Optional[asyncio.Lock] = None
+
+
+def _get_lock() -> asyncio.Lock:
+    global _browser_lock
+    if _browser_lock is None:
+        _browser_lock = asyncio.Lock()
+    return _browser_lock
 
 
 async def _get_browser():
     """Get or launch persistent Chrome browser for TransNusa."""
     global _browser, _pw_instance, _chrome_proc, _context
-
-    # Check existing connection
-    if _browser is not None:
-        try:
-            if _browser.is_connected():
-                return _browser
-        except Exception:
-            pass
-
-    from playwright.async_api import async_playwright
-
-    # Try connecting to existing Chrome on port
-    pw = None
-    try:
-        pw = await async_playwright().start()
-        _browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_DEBUG_PORT}")
-        _pw_instance = pw
-        logger.info("TransNusa: connected to existing Chrome on port %d", _DEBUG_PORT)
-        return _browser
-    except Exception:
-        if pw:
+    lock = _get_lock()
+    async with lock:
+        # Check existing connection
+        if _browser is not None:
             try:
-                await pw.stop()
+                if _browser.is_connected():
+                    return _browser
             except Exception:
                 pass
 
-    # Launch Chrome HEADED (Cloudflare blocks headless)
-    chrome = find_chrome()
-    os.makedirs(_USER_DATA_DIR, exist_ok=True)
-    args = [
-        chrome,
-        f"--remote-debugging-port={_DEBUG_PORT}",
-        f"--user-data-dir={_USER_DATA_DIR}",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-blink-features=AutomationControlled",
-        "--disable-http2",
-        "--window-position=-2400,-2400",
-        "--window-size=1366,768",
-        *bandwidth_saving_args(),
-        *disable_background_networking_args(),
-        "about:blank",
-    ]
-    _chrome_proc = subprocess.Popen(args, **stealth_popen_kwargs())
-    _launched_procs.append(_chrome_proc)
-    await asyncio.sleep(2)
+        from playwright.async_api import async_playwright
 
-    pw = await async_playwright().start()
-    _pw_instance = pw
-    _browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_DEBUG_PORT}")
-    logger.info("TransNusa: Chrome launched headed on CDP port %d (pid %d)", _DEBUG_PORT, _chrome_proc.pid)
-    return _browser
+        # Try connecting to existing Chrome on port
+        pw = None
+        try:
+            pw = await async_playwright().start()
+            _browser = await pw.chromium.connect_over_cdp(
+                f"http://127.0.0.1:{_DEBUG_PORT}"
+            )
+            _pw_instance = pw
+            logger.info(
+                "TransNusa: connected to existing Chrome on port %d", _DEBUG_PORT
+            )
+            return _browser
+        except Exception:
+            if pw:
+                try:
+                    await pw.stop()
+                except Exception:
+                    pass
+
+        # Launch Chrome HEADED (Cloudflare blocks headless)
+        chrome = find_chrome()
+        os.makedirs(_USER_DATA_DIR, exist_ok=True)
+        args = [
+            chrome,
+            f"--remote-debugging-port={_DEBUG_PORT}",
+            f"--user-data-dir={_USER_DATA_DIR}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-http2",
+            "--window-position=-2400,-2400",
+            "--window-size=1366,768",
+            *bandwidth_saving_args(),
+            *disable_background_networking_args(),
+            "about:blank",
+        ]
+        _chrome_proc = subprocess.Popen(args, **stealth_popen_kwargs())
+        _launched_procs.append(_chrome_proc)
+        await asyncio.sleep(3.5)
+
+        pw = await async_playwright().start()
+        _pw_instance = pw
+        _browser = await pw.chromium.connect_over_cdp(
+            f"http://127.0.0.1:{_DEBUG_PORT}"
+        )
+        logger.info(
+            "TransNusa: Chrome launched headed on CDP port %d (pid %d)",
+            _DEBUG_PORT,
+            _chrome_proc.pid,
+        )
+        return _browser
 
 
 async def _get_context():
@@ -168,7 +187,7 @@ async def _reset_chrome_profile():
             shutil.rmtree(_USER_DATA_DIR)
             logger.info("TransNusa: deleted stale Chrome profile %s", _USER_DATA_DIR)
         except Exception as e:
-            logger.warning("TransNusa: failed to delete Chrome profile: %s", e)
+            logger.debug("TransNusa: profile cleanup skipped: %s", e)
 
 
 class TransNusaConnectorClient:
@@ -246,7 +265,14 @@ class TransNusaConnectorClient:
                 await page.goto(_IBE_URL, wait_until="domcontentloaded", timeout=30000)
 
                 # Wait for Cloudflare challenge to complete
-                await self._wait_for_cf_pass(page)
+                passed_cf = await self._wait_for_cf_pass(page, max_wait=30.0)
+                if not passed_cf:
+                    # One soft retry often helps after challenge cookies are set.
+                    try:
+                        await page.reload(wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
+                    passed_cf = await self._wait_for_cf_pass(page, max_wait=18.0)
 
                 if cf_blocked:
                     logger.warning("TransNusa: Cloudflare blocked, resetting profile")
@@ -259,7 +285,7 @@ class TransNusaConnectorClient:
                 title = await page.title()
                 logger.info("TransNusa: page title: %s, URL: %s", title, page.url)
 
-                if "just a moment" in title.lower() or "challenge" in title.lower():
+                if ("just a moment" in title.lower() or "challenge" in title.lower()) and not passed_cf:
                     logger.warning("TransNusa: still on Cloudflare challenge page")
                     await _reset_chrome_profile()
                     return self._empty(req)
@@ -327,16 +353,26 @@ class TransNusaConnectorClient:
             logger.error("TransNusa browser launch error: %s", e)
             return self._empty(req)
 
-    async def _wait_for_cf_pass(self, page, max_wait: float = 15.0) -> None:
+    async def _wait_for_cf_pass(self, page, max_wait: float = 15.0) -> bool:
         """Wait for Cloudflare turnstile challenge to complete."""
         deadline = time.monotonic() + max_wait
         while time.monotonic() < deadline:
             title = await page.title()
             if "just a moment" not in title.lower() and "challenge" not in title.lower():
                 logger.info("TransNusa: Cloudflare challenge passed")
-                return
+                return True
+
+            # Some variants keep a generic title while the IBE form is already ready.
+            try:
+                if await page.locator("input[placeholder*='From'], #departureAirport").first.count() > 0:
+                    logger.info("TransNusa: IBE form detected while challenge title persists")
+                    return True
+            except Exception:
+                pass
+
             await asyncio.sleep(1)
         logger.warning("TransNusa: Cloudflare challenge did not pass within %.0fs", max_wait)
+        return False
 
     async def _fill_search_form(self, page, req: FlightSearchRequest) -> bool:
         """Fill the Crane IBE search form."""

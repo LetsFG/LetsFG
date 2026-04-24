@@ -39,6 +39,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .browser import auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,7 @@ class EskyConnectorClient:
                 locale="pl-PL",
             )
             page = await ctx.new_page()
+            await auto_block_if_proxied(page)
             page.on("response", on_response)
 
             # Navigate to eSky.pl homepage

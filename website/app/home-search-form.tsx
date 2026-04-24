@@ -202,6 +202,15 @@ function PlaneIcon() {
   )
 }
 
+function SearchIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" className="lp-sf-icon" fill="none">
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2.2" />
+      <path d="M16 16l4 4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 interface ParsedQuery {
   origin: string | null
   originMatch: Airport | null
@@ -472,13 +481,26 @@ function getSuggestion(query: string, locale: string): string {
   return ''
 }
 
-export default function HomeSearchForm() {
+// Set to true to skip the API call and go straight to the loading UI demo
+const DEMO_LOADING = true
+
+interface HomeSearchFormProps {
+  initialQuery?: string
+  compact?: boolean
+  autoFocus?: boolean
+}
+
+export default function HomeSearchForm({
+  initialQuery = '',
+  compact = false,
+  autoFocus = true,
+}: HomeSearchFormProps = {}) {
   const router = useRouter()
   const params = useParams()
   const locale = (params?.locale as string) || 'en'
   const td = useTranslations('destinations')
   const th = useTranslations('hero')
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [suggestion, setSuggestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -509,11 +531,12 @@ export default function HomeSearchForm() {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDown) return
       const dx = e.pageX - startX
-      totalDrag += Math.abs(dx)
+      // Track peak displacement from origin (not accumulated), so small wobbles don't block clicks
+      totalDrag = Math.max(totalDrag, Math.abs(dx))
       el.scrollLeft = scrollLeft - dx
     }
     const onClick = (e: MouseEvent) => {
-      // Block click if user dragged more than 5px total
+      // Block click if user dragged more than 5px from the start position
       if (totalDrag > 5) e.stopPropagation()
     }
     el.addEventListener('mousedown', onMouseDown)
@@ -528,11 +551,20 @@ export default function HomeSearchForm() {
     }
   }, [])
 
+  useEffect(() => {
+    setQuery(initialQuery)
+  }, [initialQuery])
+
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault()
     if (!query.trim()) return
 
     setIsLoading(true)
+
+    if (DEMO_LOADING) {
+      router.push('/results/demo-loading')
+      return
+    }
 
     try {
       const response = await fetch('/api/search', {
@@ -540,11 +572,7 @@ export default function HomeSearchForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query.trim() }),
       })
-
-      if (!response.ok) {
-        throw new Error('Search failed')
-      }
-
+      if (!response.ok) throw new Error('Search failed')
       const data = await response.json()
       router.push(`/results/${data.search_id}`)
     } catch (error) {
@@ -570,10 +598,29 @@ export default function HomeSearchForm() {
   }
 
   return (
-    <div className="lp-sf-wrap">
+    <div className={`lp-sf-wrap${compact ? ' lp-sf-wrap--compact' : ''}`}>
+      {!compact && (
+        <div className="lp-sf-disclosure" aria-hidden="false">
+          <span className="lp-sf-legal" tabIndex={0} role="note">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M7 6v4M7 4.5v.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            <span className="lp-sf-legal-tip" role="tooltip">
+              By searching, you authorise AI agents to act on your behalf — they connect to airline
+              websites and search for flights as you instructed. You are the one directing these
+              agents. LetsFG provides the automation; you are responsible for the searches you initiate.
+            </span>
+          </span>
+        </div>
+      )}
+
       <form onSubmit={handleSearch} className="lp-sf-form">
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
+            <span className="lp-sf-leading" aria-hidden="true">
+              <SearchIcon />
+            </span>
             <input
               ref={inputRef}
               id="trip-query"
@@ -584,7 +631,7 @@ export default function HomeSearchForm() {
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
-              autoFocus
+              autoFocus={autoFocus}
               autoComplete="off"
               spellCheck={false}
             />
@@ -606,42 +653,46 @@ export default function HomeSearchForm() {
         </div>
       </form>
 
-      <div className="lp-dest-row" ref={rowRef} aria-label="Popular destinations">
-        {DESTINATIONS.map((dest) => (
-          <button
-            key={dest.code}
-            type="button"
-            className="lp-dest-card"
-            onClick={() => {
-              setQuery(dest.query)
-              setTimeout(() => {
-                const input = inputRef.current
-                if (input) {
-                  input.focus()
-                  input.setSelectionRange(dest.query.length, dest.query.length)
-                }
-              }, 0)
-            }}
-            onMouseMove={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              const x = ((e.clientX - r.left) / r.width  - 0.5) * 7
-              const y = ((e.clientY - r.top)  / r.height - 0.5) * 5
-              e.currentTarget.style.setProperty('--mx', `${x}px`)
-              e.currentTarget.style.setProperty('--my', `${y}px`)
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.setProperty('--mx', '0px')
-              e.currentTarget.style.setProperty('--my', '0px')
-            }}
-          >
-            <img src={dest.img} alt={dest.city} className="lp-dest-img" draggable={false} />
-            <div className="lp-dest-overlay" />
-            <img src={dest.flag} alt="" className="lp-dest-flag" draggable={false} />
-            <span className="lp-dest-city">{dest.city}</span>
-            <span className="lp-dest-code">{dest.code}</span>
-          </button>
-        ))}
-      </div>
+      {!compact && (
+        <div className="lp-dest-row" aria-label="Popular destinations">
+          <div className="lp-dest-track" ref={rowRef}>
+            {DESTINATIONS.map((dest) => (
+              <button
+                key={dest.code}
+                type="button"
+                className="lp-dest-card"
+                onClick={() => {
+                  setQuery(dest.query)
+                  setTimeout(() => {
+                    const input = inputRef.current
+                    if (input) {
+                      input.focus()
+                      input.setSelectionRange(dest.query.length, dest.query.length)
+                    }
+                  }, 0)
+                }}
+                onMouseMove={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  const x = ((e.clientX - r.left) / r.width - 0.5) * 7
+                  const y = ((e.clientY - r.top) / r.height - 0.5) * 5
+                  e.currentTarget.style.setProperty('--mx', `${x}px`)
+                  e.currentTarget.style.setProperty('--my', `${y}px`)
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.setProperty('--mx', '0px')
+                  e.currentTarget.style.setProperty('--my', '0px')
+                }}
+              >
+                <img src={dest.img} alt={dest.city} className="lp-dest-img" draggable={false} />
+                <div className="lp-dest-overlay" />
+                <img src={dest.flag} alt="" className="lp-dest-flag" draggable={false} />
+                <span className="lp-dest-city">{dest.city}</span>
+                <span className="lp-dest-code">{dest.code}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

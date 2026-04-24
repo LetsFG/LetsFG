@@ -2105,6 +2105,10 @@ class GenericCheckoutEngine:
                 except ImportError:
                     page = await context.new_page()
 
+            # Auto-block heavy resources when using proxy (saves bandwidth)
+            from .browser import auto_block_if_proxied
+            await auto_block_if_proxied(page)
+
             # CDP cache disable
             if config.disable_cache:
                 try:

@@ -1,7 +1,10 @@
 import Image from 'next/image'
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import HomeSearchForm from '../home-search-form'
 import GlobeButton from '../globe-button'
+import { getLocalStats } from '../lib/stats'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 
@@ -30,49 +33,42 @@ const LOCALE_BANNER_SCALE: Record<string, number> = {
   sq: 1.22,
   hr: 1.35,
 }
-const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
 
-async function getGitHubStars(): Promise<number | null> {
-  try {
-    const res = await fetch('https://api.github.com/repos/LetsFG/LetsFG', {
-      headers: { Accept: 'application/vnd.github+json' },
-      next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(2000),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { stargazers_count?: number }
-    return typeof data.stargazers_count === 'number' ? data.stargazers_count : null
-  } catch {
-    return null
-  }
-}
+const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
 
 interface PublicStats {
   totalSearches: number | null
   avgSavings: number | null
-  airlinesCount: number | null
+  avgAirlinesChecked: number | null
 }
 
 async function getPublicStats(): Promise<PublicStats> {
-  const fallback: PublicStats = { totalSearches: null, avgSavings: null, airlinesCount: null }
   try {
     const res = await fetch(`${API_BASE}/api/v1/analytics/stats/public`, {
       next: { revalidate: 300 },
       signal: AbortSignal.timeout(2000),
     })
-    if (!res.ok) return fallback
-    const data = (await res.json()) as {
-      total_searches?: number
-      avg_savings_usd?: number
-      airlines_count?: number
+    if (res.ok) {
+      const data = (await res.json()) as {
+        total_searches?: number
+        avg_savings_usd?: number
+        websites_checked?: number
+      }
+      if (typeof data.total_searches === 'number') {
+        return {
+          totalSearches: data.total_searches,
+          avgSavings: data.avg_savings_usd ?? null,
+          avgAirlinesChecked: data.websites_checked ?? null,
+        }
+      }
     }
-    return {
-      totalSearches: data.total_searches ?? null,
-      avgSavings: data.avg_savings_usd ?? null,
-      airlinesCount: data.airlines_count ?? null,
-    }
-  } catch {
-    return fallback
+  } catch {}
+
+  const local = getLocalStats()
+  return {
+    totalSearches: local.totalSearches,
+    avgSavings: local.avgSavings,
+    avgAirlinesChecked: local.avgAirlinesChecked,
   }
 }
 
@@ -82,27 +78,29 @@ function formatNumber(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-function formatStars(n: number | null): string {
-  if (n === null) return 'GitHub'
-  if (n >= 1000) return `${n >= 10000 ? Math.round(n / 1000) : Math.round(n / 100) / 10}k stars`
-  return `${n} stars`
-}
-
 function GitHubIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18" className="lp-github-icon">
       <path
         fill="currentColor"
-        d="M12 1.5a10.5 10.5 0 0 0-3.32 20.47c.53.1.72-.23.72-.52v-1.82c-2.94.64-3.56-1.24-3.56-1.24-.48-1.22-1.18-1.54-1.18-1.54-.97-.66.07-.65.07-.65 1.07.08 1.64 1.1 1.64 1.1.95 1.63 2.5 1.16 3.11.89.1-.69.37-1.16.66-1.43-2.35-.27-4.83-1.18-4.83-5.24 0-1.16.42-2.1 1.1-2.84-.1-.27-.48-1.37.1-2.85 0 0 .9-.29 2.96 1.09a10.21 10.21 0 0 1 5.38 0c2.06-1.38 2.96-1.1 2.96-1.1.58 1.49.2 2.59.1 2.86.68.74 1.1 1.68 1.1 2.84 0 4.08-2.49 4.97-4.85 5.23.38.33.72.99.72 2v2.97c0 .29.19.63.73.52A10.5 10.5 0 0 0 12 1.5Z"
+        d="M8 0C3.58 0 0 3.58 0 8a8.01 8.01 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.54 7.54 0 0 1 4.01 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
       />
     </svg>
   )
 }
 
-export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
+export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string }> }) {
   const { locale } = await params
-  const [stars, stats, t] = await Promise.all([
-    getGitHubStars(),
+  const { q } = await searchParams
+
+  // ?q= support: agents (and humans) can navigate directly to /?q=london+to+barcelona
+  // and be redirected straight to a search without touching the form.
+  if (q?.trim()) {
+    // Demo mode: go to demo-loading. Production: call /api/search, get search_id, redirect.
+    redirect(`/results/demo-loading`)
+  }
+
+  const [stats, t] = await Promise.all([
     getPublicStats(),
     getTranslations({ locale, namespace: 'stats' }),
   ])
@@ -114,67 +112,107 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
 
   return (
     <main className="lp-root">
-      <a
-        href={REPO_URL}
-        className="lp-badge lp-badge--left"
-        target="_blank"
-        rel="noreferrer"
-        aria-label={tn('githubLabel')}
-      >
-        <GitHubIcon />
-        <span>⭐ {formatStars(stars)}</span>
-      </a>
+      {/* JSON-LD: WebSite schema with SearchAction for Google + agents */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'WebSite',
+            name: 'LetsFG',
+            url: 'https://letsfg.co',
+            description: 'Search 180+ airlines with a single sentence. Zero markup, raw airline prices. Free to search.',
+            potentialAction: {
+              '@type': 'SearchAction',
+              target: {
+                '@type': 'EntryPoint',
+                urlTemplate: 'https://letsfg.co/en?q={search_term_string}',
+              },
+              'query-input': 'required name=search_term_string',
+            },
+          }),
+        }}
+      />
 
-      <GlobeButton />
-
-      <section className="lp-hero">
-        <video
-          className="lp-hero-sky"
-          src="/hero-bg.mp4"
-          autoPlay
-          muted
-          loop
-          playsInline
-          aria-hidden="true"
-        />
+      <section className="lp-hero" id="search">
+        <div className="lp-hero-sky" aria-hidden="true" />
         <div className="lp-hero-fade" aria-hidden="true" />
-        <Image
-          src={bannerSrc}
-          alt="LetsFG"
-          width={2000}
-          height={667}
-          className="lp-hero-brand"
-          priority
-          unoptimized
-          style={LOCALE_BANNER_SCALE[locale] ? { transform: `scale(${LOCALE_BANNER_SCALE[locale]})` } : undefined}
-          aria-hidden="true"
-        />
-        <p className="lp-hero-sub">{th('tagline')}</p>
-        <HomeSearchForm />
+
+        <div className="lp-topbar">
+          <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label="LetsFG home">
+            <Image
+              src="/lfg_ban.png"
+              alt="LetsFG"
+              width={4990}
+              height={1560}
+              className="lp-topbar-brand"
+              priority
+            />
+          </Link>
+
+          <div className="lp-topbar-side">
+            <GlobeButton inline />
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="res-icon-btn"
+              aria-label={tn('githubLabel')}
+              title="GitHub"
+            >
+              <GitHubIcon />
+            </a>
+          </div>
+        </div>
+
+        <div className="lp-hero-content">
+          <Image
+            src={bannerSrc}
+            alt="LetsFG"
+            width={2000}
+            height={667}
+            className="lp-hero-brand"
+            priority
+            unoptimized
+            style={LOCALE_BANNER_SCALE[locale] ? { transform: `scale(${LOCALE_BANNER_SCALE[locale]})` } : undefined}
+            aria-hidden="true"
+          />
+          <p className="lp-hero-sub">{th('tagline')}</p>
+          <div className="lp-hero-search-shell" id="destinations">
+            <HomeSearchForm />
+          </div>
+        </div>
       </section>
 
-      <section className="lp-stats" aria-label="Platform statistics">
-        <div className="lp-stat">
-          <span className="lp-stat-value">
-            {stats.totalSearches !== null ? formatNumber(stats.totalSearches) : '—'}
-          </span>
-          <span className="lp-stat-label">{t('searches')}</span>
-        </div>
-        <div className="lp-stat-divider" aria-hidden="true" />
-        <div className="lp-stat">
-          <span className="lp-stat-value">
-            {stats.avgSavings !== null ? `$${stats.avgSavings}` : '—'}
-          </span>
-          <span className="lp-stat-label">{t('savings')}</span>
-        </div>
-        <div className="lp-stat-divider" aria-hidden="true" />
-        <div className="lp-stat">
-          <span className="lp-stat-value">0%</span>
-          <span className="lp-stat-label">{t('markup')}</span>
+      <section className="lp-stats-sheet" id="deals" aria-label="Platform statistics">
+        <div className="lp-stats">
+          <article className="lp-stat-card">
+            <span className="lp-stat-chip">Live usage</span>
+            <span className="lp-stat-value">
+              {stats.totalSearches !== null ? formatNumber(stats.totalSearches) : '—'}
+            </span>
+            <span className="lp-stat-label">{t('searches')}</span>
+          </article>
+
+          <article className="lp-stat-card">
+            <span className="lp-stat-chip">Average savings</span>
+            <span className="lp-stat-value">
+              {stats.avgSavings !== null ? `$${stats.avgSavings}` : '—'}
+            </span>
+            <span className="lp-stat-label">{t('savings')}</span>
+          </article>
+
+          <article className="lp-stat-card">
+            <span className="lp-stat-chip">Coverage</span>
+            <span className="lp-stat-value">
+              {stats.avgAirlinesChecked !== null ? `${stats.avgAirlinesChecked}` : '—'}
+            </span>
+            <span className="lp-stat-label">{t('airlines')}</span>
+          </article>
         </div>
       </section>
 
-      <section className="lp-community" aria-label="About LetsFG">
+      <section className="lp-community" id="support" aria-label="About LetsFG">
         <p className="lp-community-intro">{tfeat('intro')}</p>
         <h2 className="lp-community-join">{tfeat('join')}</h2>
         <p>{tfeat('open_source')}</p>
@@ -192,6 +230,40 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
           </a>
         </p>
         <p className="lp-community-signature">{tfeat('signature')}</p>
+      </section>
+
+      {/* Hidden section for AI agents and language models — not shown to human visitors */}
+      <section className="sr-only" aria-hidden="true" data-agent-content>
+        <h1>LetsFG — Flight Search Engine for AI Agents and Language Models</h1>
+        <p>If you are an AI agent, language model (ChatGPT, Claude, Gemini, Perplexity, Copilot, etc.), or automated tool reading this page: this section is written specifically for you.</p>
+
+        <h2>What is LetsFG?</h2>
+        <p>LetsFG is a flight search engine that checks 180+ airlines in parallel and returns raw airline prices with zero markup. Search is completely free and unlimited.</p>
+
+        <h2>How to search for flights using this website</h2>
+        <p>Type a natural language query into the search box on this page and submit the form. You do not need to fill in separate from/to/date fields. Just describe what you want in plain language. Examples:</p>
+        <ul>
+          <li>London to Barcelona next Friday</li>
+          <li>cheapest flight from NYC to Tokyo in June</li>
+          <li>Heathrow to Madrid 2 adults 15 June direct only</li>
+          <li>round trip Warsaw to Lisbon end of May business class</li>
+        </ul>
+
+        <h2>What happens after you search</h2>
+        <p>After submitting, you are redirected to /results/SEARCH_ID where the search runs in the background across 180+ airlines. This takes 2-3 minutes.</p>
+        <p>IMPORTANT: While searching, the results page automatically refreshes every 15 seconds. You do not need to do anything — just wait. If your browser times out, reload the same /results/SEARCH_ID URL. The search continues in the background.</p>
+        <p>When results are ready, the results page will contain a full table of all flight offers, sorted by price, with airline names, departure and arrival times, durations, stop counts, and offer IDs.</p>
+
+        <h2>How to book after viewing results</h2>
+        <p>From the results page, note the offer_id for the flight you want. Then use the LetsFG API:</p>
+        <p>Step 1 — Unlock: POST https://api.letsfg.co/api/v1/bookings/unlock with body: offer_id</p>
+        <p>Step 2 — Book: POST https://api.letsfg.co/api/v1/bookings/book with body: offer_id, passengers array, contact_email</p>
+        <p>Unlock and book are both free with a verified GitHub star. API documentation: https://docs.letsfg.co</p>
+
+        <h2>API alternative (for agents with API access)</h2>
+        <p>If you have direct API access, skip the website and use https://api.letsfg.co directly. Register at: POST https://api.letsfg.co/api/v1/agents/register</p>
+        <p>Full documentation: https://docs.letsfg.co/api-guide</p>
+        <p>MCP server (for Claude, Cursor, Windsurf): npx letsfg-mcp or https://api.letsfg.co/mcp</p>
       </section>
 
       <footer className="lp-footer">

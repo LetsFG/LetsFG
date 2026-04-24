@@ -13,6 +13,7 @@ Strategy (direct API — no browser required):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -87,18 +88,43 @@ class AzerbaijanairlinesConnectorClient:
         return FlightSearchResponse(search_id=f"fs_{h}", origin=req.origin, destination=req.destination, currency=offers[0].currency if offers else "USD", offers=offers, total_results=len(offers))
 
     async def _call_sputnik(self, payload: dict) -> list[dict]:
-        try:
-            from curl_cffi.requests import AsyncSession
-            async with AsyncSession(impersonate="chrome") as s:
-                r = await s.post(_SPUTNIK_URL, json=payload, headers=_HEADERS, timeout=self.timeout)
-            if r.status_code != 200:
-                logger.warning("Azerbaijan Airlines sputnik: %d %s", r.status_code, r.text[:200])
-                return []
-            data = r.json()
-            return data if isinstance(data, list) else []
-        except Exception as e:
-            logger.error("Azerbaijan Airlines sputnik error: %s", e)
-            return []
+        from curl_cffi.requests import AsyncSession
+
+        retryable_statuses = {429, 500, 502, 503, 504}
+        for attempt in range(3):
+            try:
+                async with AsyncSession(impersonate="chrome") as s:
+                    r = await s.post(
+                        _SPUTNIK_URL,
+                        json=payload,
+                        headers=_HEADERS,
+                        timeout=self.timeout,
+                    )
+
+                if r.status_code == 200:
+                    data = r.json()
+                    return data if isinstance(data, list) else []
+
+                logger.warning(
+                    "Azerbaijan Airlines sputnik: status=%d attempt=%d body=%s",
+                    r.status_code,
+                    attempt + 1,
+                    r.text[:200],
+                )
+                if r.status_code not in retryable_statuses or attempt == 2:
+                    return []
+            except Exception as e:
+                logger.warning(
+                    "Azerbaijan Airlines sputnik attempt %d failed: %s",
+                    attempt + 1,
+                    e,
+                )
+                if attempt == 2:
+                    return []
+
+            await asyncio.sleep(1.0 * (2**attempt))
+
+        return []
 
     def _build_offer(self, fare: dict, req: FlightSearchRequest) -> FlightOffer | None:
         ps = fare.get("priceSpecification", {})

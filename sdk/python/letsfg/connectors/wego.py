@@ -44,6 +44,7 @@ from .browser import (
     acquire_browser_slot,
     release_browser_slot,
     block_all_heavy_resources,
+    auto_block_if_proxied,
 )
 
 logger = logging.getLogger(__name__)
@@ -439,6 +440,7 @@ class WegoConnectorClient:
                 locale="en-US",
             )
             page = await context.new_page()
+            await auto_block_if_proxied(page)
 
             # ── API response interception ──
             # Capture Wego's flight data API responses as they stream in.

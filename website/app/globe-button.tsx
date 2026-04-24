@@ -25,7 +25,7 @@ function EarthIcon() {
   )
 }
 
-export default function GlobeButton() {
+export default function GlobeButton({ inline = false }: { inline?: boolean } = {}) {
   const router = useRouter()
   const params = useParams()
   const currentLocale = (params?.locale as string) || 'en'
@@ -58,7 +58,7 @@ export default function GlobeButton() {
   const currentLang = LANGUAGES.find(l => l.code === currentLocale) ?? LANGUAGES[0]
 
   return (
-    <div ref={ref} className="lp-globe-wrap">
+    <div ref={ref} className={`lp-globe-wrap${inline ? ' lp-globe-wrap--inline' : ''}`}>
       <button
         className={`lp-globe-btn${open ? ' lp-globe-btn--open' : ''}`}
         aria-label="Language / region"
