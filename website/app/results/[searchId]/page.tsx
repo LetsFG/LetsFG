@@ -200,7 +200,9 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
   const activeSort = sp?.sort || 'price'  // kept only for sort chip URLs (unused now)
   void activeSort
 
-  const allOffers = offers || []
+  const allOffers = Array.from(
+    new Map((offers || []).map(o => [o.id, o])).values()
+  )
   const offerCurrency = allOffers[0]?.currency || '€'
   const priceMin = allOffers.length ? Math.min(...allOffers.map(o => o.price)) : 0
   const priceMax = allOffers.length ? Math.max(...allOffers.map(o => o.price)) : 1000
