@@ -13,6 +13,7 @@
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/react-fontawesome": "^3.3.0",
     "@swc/helpers": "^0.5.21",
+    "firebase-admin": "^13.8.0",
     "lucide-react": "^1.8.0",
     "next": "^16.2.4",
     "next-intl": "^4.9.1",
