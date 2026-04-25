@@ -393,49 +393,20 @@ async function SearchContent({ query, sid, started }: { query: string; sid?: str
 
   // Poll FSW for up to 25s
   const result = await pollFSW(searchId, 25_000)
-  const refreshUrl = `${SITE_URL}/results?q=${encodeURIComponent(query)}&sid=${searchId}`
 
-  // Still searching — show loading state with meta-refresh
+  // Still searching — redirect to the dedicated [searchId] page which has live polling
+  // (router.refresh() there works correctly because searchId is stable in the URL)
   if (!result) {
-    return (
-      <>
-        {/* Meta refresh: bots and no-JS clients will re-fetch after 20s */}
-        <meta httpEquiv="refresh" content={`20;url=/results?q=${encodeURIComponent(query)}&sid=${searchId}&started=${started || Date.now().toString()}`} />
-
-        <main className="res-page res-page--searching">
-          <section className="res-hero res-hero--searching">
-            <div className="res-hero-backdrop" aria-hidden="true" />
-            <div className="res-hero-inner">
-              <PageTopbar query={query} />
-              <div className="res-search-shell">
-                <ResultsSearchForm initialQuery={query} />
-              </div>
-          <div className="res-searching-stage">
-              <SearchingTasks
-                originLabel={parsed.origin_name || parsed.origin}
-                originCode={parsed.origin}
-                destinationLabel={parsed.destination_name || parsed.destination}
-                destinationCode={parsed.destination}
-                searchedAt={started ? new Date(parseInt(started)).toISOString() : undefined}
-              />
-            </div>
-            </div>
-          </section>
-
-          <section className="sr-only" aria-hidden="true" data-agent-content>
-            <p>Status: SEARCHING — this search is still in progress (search_id: {searchId}).</p>
-            <p>IMPORTANT FOR AI AGENTS: This page refreshes automatically every 20 seconds. You can also re-fetch this URL: {refreshUrl}</p>
-          </section>
-
-          <PageFooter />
-        </main>
-      </>
-    )
+    const startedTs = started || Date.now().toString()
+    redirect(`/results/${searchId}?started=${startedTs}`)
   }
 
   // Results ready
   const rawOffers = result.offers || []
-  const allOffers = rawOffers.map((o, i) => normalizeOffer(o, i))
+  // Deduplicate by ID — FSW can return the same offer from multiple connectors
+  const allOffers = Array.from(
+    new Map(rawOffers.map((o, i) => normalizeOffer(o, i)).map(o => [o.id, o])).values()
+  )
   const offerCurrency = allOffers[0]?.currency || 'EUR'
   const priceMin = allOffers.length ? Math.min(...allOffers.map(o => o.price)) : 0
   const priceMax = allOffers.length ? Math.max(...allOffers.map(o => o.price)) : 1000
