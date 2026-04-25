@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 
 interface Props {
+  searchId?: string
   originLabel?: string
   originCode?: string
   destinationLabel?: string
@@ -657,6 +658,7 @@ function StepIcon({ state }: { state: StepState }) {
 }
 
 export default function SearchingTasks({
+  searchId,
   originLabel,
   originCode,
   destinationLabel,
@@ -674,14 +676,37 @@ export default function SearchingTasks({
   )
   const [airlineIdx, setAirlineIdx] = useState(0)
 
-  // Advance elapsed time at 100ms ticks, anchored to absolute search start time
+  // Advance elapsed anchored to the real search start time.
+  // Also persists startedAt in sessionStorage so state survives manual browser refreshes.
   useEffect(() => {
-    const epochMs = searchedAt ? new Date(searchedAt).getTime() : Date.now()
+    const SS_KEY = searchId ? `lfg_st_${searchId}` : null
+    let epochMs: number
+
+    if (searchedAt) {
+      epochMs = new Date(searchedAt).getTime()
+      // Authoritative server-provided time — always save/overwrite
+      if (SS_KEY) sessionStorage.setItem(SS_KEY, searchedAt)
+    } else if (SS_KEY) {
+      const stored = sessionStorage.getItem(SS_KEY)
+      if (stored) {
+        epochMs = new Date(stored).getTime()
+      } else {
+        // First load, no server time — record now as best estimate
+        epochMs = Date.now()
+        sessionStorage.setItem(SS_KEY, new Date(epochMs).toISOString())
+      }
+    } else {
+      epochMs = Date.now()
+    }
+
+    // Correct elapsed immediately (important after a manual refresh)
+    setElapsed(Math.max(0, (Date.now() - epochMs) / 1000))
+
     const id = setInterval(() => {
       setElapsed((Date.now() - epochMs) / 1000)
     }, 100)
     return () => clearInterval(id)
-  }, [searchedAt])
+  }, [searchedAt, searchId])
 
   // Simulated counter: real progress when available, otherwise easeOutCubic over 130s
   const simChecked = useMemo(() => {

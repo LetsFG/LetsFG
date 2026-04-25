@@ -7,6 +7,7 @@ import GlobeButton from '../../globe-button'
 import ResultsSearchForm from '../ResultsSearchForm'
 import SearchingTasks from './SearchingTasks'
 import ResultsPanel from './ResultsPanel'
+import SearchPoller from './SearchPoller'
 
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
@@ -246,11 +247,10 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         />
       )}
 
-      {/* Meta refresh for agents while searching (disabled for demo-loading) */}
-      {isSearching && searchId !== 'demo-loading' && (() => {
-        const anchor = searched_at || sp?.started || new Date().toISOString()
-        return <meta httpEquiv="refresh" content={`15;url=/results/${searchId}?started=${encodeURIComponent(anchor)}`} />
-      })()}
+      {/* Client-side polling replaces <meta http-equiv="refresh"> so SearchingTasks never unmounts */}
+      {isSearching && searchId !== 'demo-loading' && (
+        <SearchPoller searchId={searchId} isSearching={isSearching} />
+      )}
 
       <main className={`res-page${isSearching ? ' res-page--searching' : status === 'completed' ? ' res-page--completed' : ''}`}>
         <section className={`res-hero${isSearching ? ' res-hero--searching' : status === 'completed' ? ' res-hero--results' : ''}`}>
@@ -304,6 +304,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
                     destinationCode={parsed.destination}
                     progress={progress}
                     searchedAt={searched_at || sp?.started}
+                    searchId={searchId}
                   />
                 </div>
               </>
