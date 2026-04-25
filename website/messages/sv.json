@@ -90,6 +90,7 @@
     "departureTime": "Avg\u00e5ngstid",
     "outbound": "utresa",
     "returnTime": "Returtid",
+    "flightTime": "Flygtid",
     "airlines": "Flygbolag",
     "amenities": "Bekv\u00e4mligheter",
     "sort": "Sortera:",

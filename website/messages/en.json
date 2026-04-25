@@ -90,6 +90,7 @@
     "departureTime": "Departure time",
     "outbound": "outbound",
     "returnTime": "Return time",
+    "flightTime": "Flight time",
     "airlines": "Airlines",
     "amenities": "Amenities",
     "sort": "Sort:",

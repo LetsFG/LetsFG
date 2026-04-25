@@ -155,6 +155,7 @@ export default function CheckoutPanel({ offer }: Props) {
     },
   ], [t])
   const unlockFee = Math.max(3, offer.price * 0.01)
+  const unlockFee = Math.max(3, offer.price * 0.01)
   const showShareOption = unlockFee < 20 // only when 1% cut < $20 (ticket < $2000)
 
   const [step, setStep] = useState<CheckoutStep>({ type: 'locked' })

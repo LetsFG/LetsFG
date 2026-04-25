@@ -90,6 +90,7 @@
     "departureTime": "Orario di partenza",
     "outbound": "andata",
     "returnTime": "Orario di ritorno",
+    "flightTime": "Durata del volo",
     "airlines": "Compagnie aeree",
     "amenities": "Servizi",
     "sort": "Ordina:",

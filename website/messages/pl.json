@@ -90,6 +90,7 @@
     "departureTime": "Godzina odlotu",
     "outbound": "wylot",
     "returnTime": "Godzina powrotu",
+    "flightTime": "Czas lotu",
     "airlines": "Linie lotnicze",
     "amenities": "Udogodnienia",
     "sort": "Sortuj:",

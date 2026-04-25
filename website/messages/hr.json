@@ -90,6 +90,7 @@
     "departureTime": "Vrijeme polaska",
     "outbound": "odlaz",
     "returnTime": "Vrijeme povratka",
+    "flightTime": "Trajanje leta",
     "airlines": "Zrakoplovne kompanije",
     "amenities": "Pogodnosti",
     "sort": "Sortiraj:",

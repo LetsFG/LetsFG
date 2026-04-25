@@ -167,6 +167,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
   const [priceRange, setPriceRange] = useState<[number, number]>([priceMin, priceMax])
   const [depRange, setDepRange] = useState<[number, number]>([0, 1439])
   const [retRange, setRetRange] = useState<[number, number]>([0, 1439])
+  const [durationRange, setDurationRange] = useState<[number, number]>([0, Infinity])
   const [airlinesOpen, setAirlinesOpen] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -193,6 +194,16 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     return [...map.entries()].sort((a, b) => a[1] - b[1]).map(([airline, minPrice]) => ({ airline, minPrice }))
   }, [allOffers])
 
+  const durationBounds = useMemo(() => {
+    if (!allOffers.length) return { min: 0, max: 1440 }
+    let min = Infinity, max = 0
+    for (const o of allOffers) {
+      if (o.duration_minutes < min) min = o.duration_minutes
+      if (o.duration_minutes > max) max = o.duration_minutes
+    }
+    return { min, max }
+  }, [allOffers])
+
   // ── Filtered + sorted offers ──────────────────────────────────────────────
   const displayOffers = useMemo(() => {
     let list = allOffers.filter(o => {
@@ -211,6 +222,8 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
       // Return time (arrival as proxy — only meaningful for roundtrips)
       const arr = isoToMins(o.arrival_time)
       if (arr < retRange[0] || arr > retRange[1]) return false
+      // Duration
+      if (o.duration_minutes < durationRange[0] || o.duration_minutes > durationRange[1]) return false
       return true
     })
     if (sort === 'duration') list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
@@ -234,6 +247,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     setPriceRange([priceMin, priceMax])
     setDepRange([0, 1439])
     setRetRange([0, 1439])
+    setDurationRange([0, Infinity])
     setVisibleCount(20)
   }, [priceMin, priceMax])
 
@@ -241,6 +255,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     || priceRange[0] > priceMin || priceRange[1] < priceMax
     || depRange[0] > 0 || depRange[1] < 1439
     || retRange[0] > 0 || retRange[1] < 1439
+    || durationRange[0] > durationBounds.min || durationRange[1] < durationBounds.max
 
   const fmt = (p: number) => `${currency}${Math.round(p)}`
 
@@ -339,6 +354,18 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
             low={retRange[0]} high={retRange[1]}
             onChange={(lo, hi) => setRetRange([lo, hi])}
             formatLabel={minsToLabel}
+          />
+        </div>
+
+        {/* Flight duration */}
+        <div className="rf-filter-section">
+          <div className="rf-filter-heading"><span>{t('flightTime')}</span></div>
+          <DualRange
+            min={durationBounds.min} max={durationBounds.max}
+            low={Math.max(durationBounds.min, isFinite(durationRange[0]) ? durationRange[0] : durationBounds.min)}
+            high={Math.min(durationBounds.max, isFinite(durationRange[1]) ? durationRange[1] : durationBounds.max)}
+            onChange={(lo, hi) => setDurationRange([lo, hi])}
+            formatLabel={fmtDuration}
           />
         </div>
 

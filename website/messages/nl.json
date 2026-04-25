@@ -90,6 +90,7 @@
     "departureTime": "Vertrektijd",
     "outbound": "heenvlucht",
     "returnTime": "Retourtijd",
+    "flightTime": "Vluchttijd",
     "airlines": "Luchtvaartmaatschappijen",
     "amenities": "Voorzieningen",
     "sort": "Sorteren:",

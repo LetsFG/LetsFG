@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const fswRes = await fetch(${FSW_URL}/web-search, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': Bearer  },
-      body: JSON.stringify({ origin, destination, date_from: dateFrom, return_date: returnDate, adults, currency, limit: 30, mode: 'fast' }),
+      body: JSON.stringify({ origin, destination, date_from: dateFrom, return_date: returnDate, adults, currency, limit: 200, mode: 'fast' }),
       signal: AbortSignal.timeout(10_000),
     })
 
