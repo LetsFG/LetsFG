@@ -790,6 +790,78 @@ export function parseNLQuery(query: string): ParsedQuery {
     return undefined
   }
 
+  // ── Implicit round-trip scanner ───────────────────────────────────────────
+  // Finds up to 2 distinct date expressions in left-to-right order.
+  // Used when no explicit return keyword (e.g. "May 1st, May 6th", "May 1-6", "1 May - 6 May").
+  function scanTwoDates(text: string): [string, string] | null {
+    const cleaned = stripAccents(text.toLowerCase())
+      .replace(/\b(?:on|le|am|el|il|em|dne|den|dia|på|na|the)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+
+    const hits: Array<{ pos: number; date: string }> = []
+
+    const addHit = (pos: number, mIdx: number, day: number) => {
+      if (mIdx < 0 || mIdx > 11 || day < 1 || day > 31) return
+      const d = new Date(today.getFullYear(), mIdx, day)
+      if (d < today) d.setFullYear(today.getFullYear() + 1)
+      hits.push({ pos, date: toLocalDateStr(d) })
+    }
+
+    let m: RegExpExecArray | null
+
+    // Same-month range: "May 1-6", "May 1–6"
+    const smRange1Re = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]{3,})\s+(\d{1,2})\s*[-–]\s*(\d{1,2})(?!\d)/g
+    while ((m = smRange1Re.exec(cleaned)) !== null) {
+      const mIdx = matchMonth(m[1])
+      const d1 = parseInt(m[2]), d2 = parseInt(m[3])
+      if (mIdx !== null && d1 < d2) {
+        addHit(m.index, mIdx, d1)
+        addHit(m.index + m[0].length - 1, mIdx, d2)
+      }
+    }
+
+    // Same-month range reversed: "1-6 May", "1–6 May"
+    const smRange2Re = /(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]{3,})/g
+    while ((m = smRange2Re.exec(cleaned)) !== null) {
+      const mIdx = matchMonth(m[3])
+      const d1 = parseInt(m[1]), d2 = parseInt(m[2])
+      if (mIdx !== null && d1 < d2) {
+        addHit(m.index, mIdx, d1)
+        addHit(m.index + m[0].length - 1, mIdx, d2)
+      }
+    }
+
+    // "<month> <day>" e.g. "May 1st", "May 6th"
+    const mdRe = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]{3,})\s+(\d{1,2})(?:st|nd|rd|th|er|ème|eme|[.º])?(?!\d)/g
+    while ((m = mdRe.exec(cleaned)) !== null) {
+      const mIdx = matchMonth(m[1])
+      if (mIdx !== null) addHit(m.index, mIdx, parseInt(m[2]))
+    }
+
+    // "<day> <month>" e.g. "1st May", "6 May"
+    const dmRe = /(\d{1,2})(?:st|nd|rd|th|er|ème|eme|[.º])?\.?\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]{3,})/g
+    while ((m = dmRe.exec(cleaned)) !== null) {
+      const mIdx = matchMonth(m[2])
+      if (mIdx !== null) addHit(m.index, mIdx, parseInt(m[1]))
+    }
+
+    // Sort by position, deduplicate (merge hits within 8 chars)
+    hits.sort((a, b) => a.pos - b.pos)
+    const deduped: string[] = []
+    let lastPos = -20
+    for (const h of hits) {
+      if (h.pos >= lastPos + 8) {
+        deduped.push(h.date)
+        lastPos = h.pos
+      }
+    }
+
+    if (deduped.length >= 2 && deduped[0] !== deduped[1] && deduped[1] >= deduped[0]) {
+      return [deduped[0], deduped[1]]
+    }
+    return null
+  }
+
   // ── 4. Extract outbound date ─────────────────────────────────────────────
   result.date = extractDate(outboundRaw)
 
@@ -803,6 +875,11 @@ export function parseNLQuery(query: string): ParsedQuery {
   // ── 5. Extract return date ───────────────────────────────────────────────
   if (returnRaw) {
     result.return_date = extractDate(returnRaw)
+  } else {
+    // No explicit return keyword — scan for two date expressions (implicit round-trip)
+    // Handles: "May 1st, May 6th" / "May 1-6" / "1 May - 6 May" / "May 1 to May 6"
+    const pair = scanTwoDates(outboundRaw)
+    if (pair) result.return_date = pair[1]
   }
 
   // ── 6. Extract cabin class + direct filter from full query ───────────────
