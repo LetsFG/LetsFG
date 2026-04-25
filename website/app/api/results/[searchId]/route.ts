@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
-import { cacheOffers, cacheSearchResult, getCachedSearchResult } from '../../../../lib/offer-cache'
+import { cacheOffers } from '../../../../lib/offer-cache'
+import { saveSearchResult, loadSearchResult } from '../../../../lib/firestore'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -235,16 +236,16 @@ export async function GET(
       cache: 'no-store',
     })
 
-    // FSW has expired / forgotten this search — serve from our own cache
+    // FSW has expired / forgotten this search — serve from Firestore
     if (res.status === 404) {
-      const cached = getCachedSearchResult(searchId)
+      const cached = await loadSearchResult(searchId)
       if (cached) return NextResponse.json(cached)
       return NextResponse.json({ error: 'Search not found' }, { status: 404 })
     }
 
     if (!res.ok) {
-      // On other FSW errors also try the cache before giving up
-      const cached = getCachedSearchResult(searchId)
+      // On other FSW errors also try Firestore before giving up
+      const cached = await loadSearchResult(searchId)
       if (cached) return NextResponse.json(cached)
       return NextResponse.json({ error: 'Search service error' }, { status: 502 })
     }
@@ -276,9 +277,11 @@ export async function GET(
       expires_at: new Date(now.getTime() + (data.expires_in_seconds ?? 1200) * 1000).toISOString(),
     }
 
-    // Persist completed results for 30 min so the URL stays usable after FSW expiry
+    // Persist completed results to Firestore (30 min TTL) so the URL stays
+    // usable after FSW expires the search — works across Cloud Run instances
+    // and browser sessions / devices.
     if (data.status === 'completed' && normalized.length > 0) {
-      cacheSearchResult(searchId, result as Record<string, unknown>)
+      saveSearchResult(searchId, result as Record<string, unknown>).catch(() => {})
     }
 
     return NextResponse.json(result)
