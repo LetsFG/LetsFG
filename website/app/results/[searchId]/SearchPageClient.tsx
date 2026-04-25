@@ -129,6 +129,35 @@ export default function SearchPageClient({
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
 
+  const CACHE_KEY = `lfg_result_${searchId}`
+
+  // If the server returned 'searching' (search not done yet / expired on FSW),
+  // immediately check sessionStorage for a previously cached completed result.
+  useEffect(() => {
+    if (initialStatus !== 'searching') return
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY)
+      if (!raw) return
+      const cached = JSON.parse(raw)
+      if (cached.status === 'completed' && Array.isArray(cached.offers) && cached.offers.length > 0) {
+        setStatus('completed')
+        setOffers(dedup(cached.offers))
+      }
+    } catch { /* private mode or parse error — ignore */ }
+  }, [searchId, initialStatus, CACHE_KEY])
+
+  // When search completes, persist results to sessionStorage so revisiting
+  // the URL is instant even if FSW has expired the search.
+  useEffect(() => {
+    if (status !== 'completed' || offers.length === 0) return
+    try {
+      sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+        status: 'completed',
+        offers: offers.slice(0, 150), // cap size; 150 offers ≈ 150 KB
+      }))
+    } catch { /* storage full or unavailable */ }
+  }, [status, searchId, offers, CACHE_KEY])
+
   // Client-side poll — replaces SearchPoller + router.refresh().
   // SearchingTasks stays mounted throughout the search; its animation state is
   // never lost because we never touch the server component during the search.
