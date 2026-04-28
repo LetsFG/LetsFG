@@ -8,6 +8,8 @@ import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FlightSegment {
+  airline?: string
+  airline_code?: string
   origin: string
   origin_name: string
   destination: string
@@ -39,6 +41,8 @@ interface FlightOffer {
   currency: string
   airline: string
   airline_code: string
+  flight_number?: string
+  is_combo?: boolean
   origin: string
   origin_name: string
   destination: string
@@ -74,6 +78,64 @@ function isoToMins(iso: string) {
 
 function minsToLabel(m: number) {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+function extractIataFromFlightNo(flightNo: string) {
+  const match = flightNo.match(/^([A-Z]{2}|[A-Z]\d|\d[A-Z])/i)
+  return match ? match[1].toUpperCase() : ''
+}
+
+interface OfferCarrier {
+  name: string
+  code: string
+}
+
+function getOfferCarriers(offer: FlightOffer): OfferCarrier[] {
+  const carriers: OfferCarrier[] = []
+  const seen = new Set<string>()
+
+  const addCarrier = (name: unknown, code: unknown, flightNumber?: unknown) => {
+    const normalizedName = typeof name === 'string' ? name.trim() : ''
+    const normalizedCode = typeof code === 'string' ? code.trim().toUpperCase() : ''
+    const fallbackCode = typeof flightNumber === 'string' ? extractIataFromFlightNo(flightNumber) : ''
+    const resolvedCode = normalizedCode || fallbackCode || normalizedName.slice(0, 2).toUpperCase() || '??'
+    const resolvedName = normalizedName || resolvedCode || 'Unknown'
+    const key = `${resolvedName.toLowerCase()}|${resolvedCode}`
+
+    if (!resolvedName || seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    carriers.push({
+      name: resolvedName,
+      code: resolvedCode,
+    })
+  }
+
+  addCarrier(offer.airline, offer.airline_code, offer.flight_number)
+
+  for (const segment of offer.segments || []) {
+    addCarrier(segment.airline, segment.airline_code, segment.flight_number)
+  }
+
+  addCarrier(offer.inbound?.airline, offer.inbound?.airline_code)
+
+  for (const segment of offer.inbound?.segments || []) {
+    addCarrier(segment.airline, segment.airline_code, segment.flight_number)
+  }
+
+  return carriers.length > 0 ? carriers : [{ name: offer.airline, code: offer.airline_code }]
+}
+
+function getOfferAirlineLabel(offer: FlightOffer) {
+  return getOfferCarriers(offer).map((carrier) => carrier.name).join(' + ')
+}
+
+function getSegmentAirlineLabel(segment: FlightSegment, fallbackAirline: string) {
+  return typeof segment.airline === 'string' && segment.airline.trim().length > 0
+    ? segment.airline.trim()
+    : fallbackAirline
 }
 
 // ── Airline logo with IATA-code fallback ──────────────────────────────────────
@@ -199,8 +261,10 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
   const airlineOptions = useMemo(() => {
     const map = new Map<string, number>()
     for (const o of allOffers) {
-      const cur = map.get(o.airline) ?? Infinity
-      if (o.price < cur) map.set(o.airline, o.price)
+      for (const carrier of getOfferCarriers(o)) {
+        const cur = map.get(carrier.name) ?? Infinity
+        if (o.price < cur) map.set(carrier.name, o.price)
+      }
     }
     return [...map.entries()].sort((a, b) => a[1] - b[1]).map(([airline, minPrice]) => ({ airline, minPrice }))
   }, [allOffers])
@@ -224,7 +288,10 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
         if (!stopsFilter.includes(key)) return false
       }
       // Airlines
-      if (airlinesFilter.length > 0 && !airlinesFilter.includes(o.airline)) return false
+      if (airlinesFilter.length > 0) {
+        const offerCarriers = new Set(getOfferCarriers(o).map((carrier) => carrier.name))
+        if (!airlinesFilter.some((airline) => offerCarriers.has(airline))) return false
+      }
       // Price range
       if (o.price < priceRange[0] || o.price > priceRange[1]) return false
       // Departure time
@@ -564,6 +631,8 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
         <div className="rf-list">
           {visibleOffers.map((offer, index) => {
             const isExpanded = expandedId === offer.id
+            const offerCarriers = getOfferCarriers(offer)
+            const airlineLabel = getOfferAirlineLabel(offer)
             const viaCode = offer.segments?.[0]?.destination
             const stopsLabel = offer.stops === 0
               ? t('direct')
@@ -575,10 +644,19 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
             return (
               <div key={offer.id} className={`rf-card${sort === 'price' && index === 0 ? ' rf-card--best' : ''}${isExpanded ? ' rf-card--expanded' : ''}`}>
                 <div className="rf-card-row">
-                  <div className="rf-airline">
-                    <AirlineLogo code={offer.airline_code} name={offer.airline} />
-                    <div className="rf-airline-copy">
-                      <div className="rf-airline-name">{offer.airline}</div>
+                  <div className={`rf-airline${offerCarriers.length > 1 ? ' rf-airline--multi' : ''}`}>
+                    <div className={`rf-airline-logos${offerCarriers.length > 1 ? ' rf-airline-logos--multi' : ''}`}>
+                      {offerCarriers.map((carrier) => (
+                        <AirlineLogo key={`${carrier.code}-${carrier.name}`} code={carrier.code} name={carrier.name} />
+                      ))}
+                    </div>
+                    <div className={`rf-airline-copy${offerCarriers.length > 1 ? ' rf-airline-copy--multi' : ''}`}>
+                      <div
+                        className={`rf-airline-name${offerCarriers.length > 1 ? ' rf-airline-name--multi' : ''}`}
+                        title={offerCarriers.length > 1 ? airlineLabel : undefined}
+                      >
+                        {airlineLabel}
+                      </div>
                       {isUnlocked && sourceLabel && (
                         <div className="rf-source-pill">Deal from {sourceLabel}</div>
                       )}
@@ -685,7 +763,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                     className="rf-book-btn"
                     onClick={() => trackSearchSessionEvent(searchId, 'offer_selected', {
                       offer_id: offer.id,
-                      airline: offer.airline,
+                      airline: airlineLabel,
                       currency: offer.currency,
                       price: offer.price,
                       google_flights_price: offer.google_flights_price ?? null,
@@ -693,7 +771,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                       source: 'website-results-panel',
                       source_path: searchId ? `/results/${searchId}` : '/results',
                       selected_offer_id: offer.id,
-                      selected_offer_airline: offer.airline,
+                      selected_offer_airline: airlineLabel,
                       selected_offer_currency: offer.currency,
                       selected_offer_price: offer.price,
                       selected_offer_google_flights_price: offer.google_flights_price,
@@ -740,7 +818,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                             <div className="rf-leg">
                               <div className="rf-leg-header">
                                 <span className="rf-leg-num">{t('leg', { number: si + 1 })}</span>
-                                <span className="rf-leg-flight">{seg.flight_number} · {offer.airline}</span>
+                                <span className="rf-leg-flight">{seg.flight_number} · {getSegmentAirlineLabel(seg, offer.airline)}</span>
                               </div>
                               <div className="rf-leg-body">
                                 <div className="rf-leg-spine" />

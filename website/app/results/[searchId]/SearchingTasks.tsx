@@ -658,9 +658,9 @@ function StepIcon({ state }: { state: StepState }) {
 }
 
 // ── Module-level persistence ────────────────────────────────────────────────
-// These Maps live outside the component and survive React remounts.
-// When router.refresh() causes RSC reconciliation that remounts SearchingTasks,
-// useState initializers re-run but these Maps retain their values.
+// These Maps survive remounts, but they must only be read after hydration.
+// Reading Date.now(), sessionStorage, or mutable module caches during the
+// initial render can make the server HTML differ from the first client render.
 const _epochMap = new Map<string, number>() // searchId → search-start ms
 const _simFloor = new Map<string, number>() // searchId → highest simChecked displayed
 
@@ -706,11 +706,9 @@ export default function SearchingTasks({
   const originName = originLabel || originCode || 'Origin'
   const destinationName = destinationLabel || destinationCode || 'Destination'
 
-  // resolveEpochMs reads from _epochMap first (survives remounts), then sessionStorage (survives
-  // hard reloads), then searchedAt prop — so elapsed is always correct from frame 0.
-  const [elapsed, setElapsed] = useState<number>(() =>
-    Math.max(0, (Date.now() - resolveEpochMs(searchId, searchedAt)) / 1000)
-  )
+  // Keep the first render deterministic so SSR and hydration produce identical markup.
+  const [elapsed, setElapsed] = useState(0)
+  const [simFloor, setSimFloor] = useState(0)
   const [airlineIdx, setAirlineIdx] = useState(0)
 
   // Keep elapsed ticking and persist the epoch to sessionStorage (for hard-reload recovery).
@@ -726,8 +724,14 @@ export default function SearchingTasks({
     return () => clearInterval(id)
   }, [searchedAt, searchId])
 
+  // Restore the highest displayed simulated count after hydration only.
+  useEffect(() => {
+    if (!searchId) return
+    setSimFloor(_simFloor.get(searchId) ?? 0)
+  }, [searchId])
+
   // Simulated counter: real progress when available, otherwise easeOutCubic over 130s.
-  // _simFloor (module-level) ensures the number never drops, even across React remounts.
+  // simFloor ensures the number never drops, even across React remounts.
   const simChecked = useMemo(() => {
     const real = progress?.checked
     const tNorm = Math.min(elapsed / 130, 1)
@@ -736,11 +740,14 @@ export default function SearchingTasks({
     const next = real !== undefined && real > 0
       ? Math.min(Math.max(real, simVal), TOTAL)
       : simVal
-    const floor = searchId ? (_simFloor.get(searchId) ?? 0) : 0
-    const result = Math.max(floor, next)
-    if (searchId) _simFloor.set(searchId, result)
-    return result
-  }, [elapsed, progress, TOTAL, searchId])
+    return Math.max(simFloor, next)
+  }, [elapsed, progress, TOTAL, simFloor])
+
+  useEffect(() => {
+    if (!searchId) return
+    _simFloor.set(searchId, simChecked)
+    setSimFloor((current) => current >= simChecked ? current : simChecked)
+  }, [searchId, simChecked])
 
   // Phase driven by elapsed time, spread across typical 90–150s search
   // 0→Searching (0–30s) · 1→Comparing (30–75s) · 2→Sorting (75–120s) · 3→Almost there (120s+)

@@ -2928,11 +2928,35 @@ body:has(.res-page) {
   min-width: 0;
 }
 
+.rf-airline.rf-airline--multi {
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.rf-airline-logos {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rf-airline-logos--multi {
+  padding-right: 2px;
+}
+
 .rf-airline-copy {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+}
+
+.rf-airline-copy--multi {
+  width: 100%;
+  padding-top: 0;
 }
 
 .rf-airline-badge {
@@ -2970,6 +2994,11 @@ body:has(.res-page) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rf-airline-name--multi {
+  display: block;
+  max-width: 100%;
 }
 
 .rf-source-pill {
@@ -4372,12 +4401,27 @@ body:has(.res-page) {
 }
 
 @media (max-width: 640px) {
+  .res-page--searching {
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+
   .res-hero {
     padding: 0 16px 34px;
   }
 
   .res-hero--searching {
-    padding-bottom: 22px;
+    flex: 0 0 auto;
+    overflow: visible;
+    align-items: flex-start;
+    padding-bottom: 18px;
+  }
+
+  .res-hero--searching .res-hero-inner {
+    width: 100%;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    gap: 12px;
   }
 
   .res-topbar {
@@ -4443,6 +4487,7 @@ body:has(.res-page) {
   .res-searching-stage {
     width: 100%;
     padding-top: 0;
+    align-items: stretch;
   }
 
   .st-card {
@@ -4637,12 +4682,12 @@ body:has(.res-page) {
 
   .st-card {
     width: 100%;
-    border-radius: 28px;
+    border-radius: 24px;
     overflow: hidden;
   }
 
   .st-body {
-    padding: 18px 12px 14px;
+    padding: 18px 14px 16px;
   }
 
   .st-header-row {
@@ -4651,9 +4696,10 @@ body:has(.res-page) {
   }
 
   .st-title {
-    font-size: clamp(0.85rem, 5.5vw, 2.2rem);
-    white-space: nowrap;
+    font-size: clamp(1.22rem, 6.6vw, 1.72rem);
+    white-space: normal;
     letter-spacing: -0.04em;
+    line-height: 0.96;
   }
 
   .st-title-accent {
@@ -4664,10 +4710,11 @@ body:has(.res-page) {
   }
 
   .st-subtitle {
-    font-size: 0.82rem;
+    font-size: 0.84rem;
     white-space: normal;
     max-width: 100%;
     overflow: hidden;
+    line-height: 1.45;
   }
 
   /* Keep scene horizontal on mobile — just scaled down */
@@ -4928,6 +4975,10 @@ body:has(.res-page) {
     grid-area: airline;
     align-items: center;
     min-width: 0;
+  }
+
+  .rf-airline-logos {
+    gap: 4px;
   }
 
   .rf-airline-name {

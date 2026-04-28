@@ -469,7 +469,6 @@ function SearchFallback({ query }: { query: string }) {
           </div>
         </div>
       </section>
-      <PageFooter />
     </main>
   )
 }

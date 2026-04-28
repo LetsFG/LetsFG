@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 import Image from 'next/image'
 import GlobeButton from '../../globe-button'
 import ResultsSearchForm from '../ResultsSearchForm'
-import SearchingTasks from './SearchingTasks'
 import ResultsPanel from './ResultsPanel'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
@@ -16,6 +16,7 @@ const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
 const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
 const X_URL = 'https://x.com/LetsFG_'
 const SESSION_RESULT_CACHE_LIMIT = 500
+const SearchingTasks = dynamic(() => import('./SearchingTasks'), { ssr: false })
 
 function GitHubIcon() {
   return (
@@ -420,26 +421,28 @@ export default function SearchPageClient({
         />
       )}
 
-      <footer className="res-search-footer" aria-label="LetsFG footer">
-        <div className="res-search-footer-inner">
-          <span className="res-search-footer-copy">{t('copyright')}</span>
-          <div className="res-search-footer-links">
-            <a href="/privacy" className="res-search-footer-link">{t('privacy')}</a>
-            <a href="/terms" className="res-search-footer-link">{t('terms')}</a>
-            <a href="mailto:contact@letsfg.co" className="res-search-footer-link">{t('support')}</a>
-            <span className="res-search-footer-sep" aria-hidden="true" />
-            <a href={INSTAGRAM_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">
-              <InstagramIcon />
-            </a>
-            <a href={TIKTOK_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="TikTok">
-              <TikTokIcon />
-            </a>
-            <a href={X_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="X">
-              <XIcon />
-            </a>
+      {!isSearching && (
+        <footer className="res-search-footer" aria-label="LetsFG footer">
+          <div className="res-search-footer-inner">
+            <span className="res-search-footer-copy">{t('copyright')}</span>
+            <div className="res-search-footer-links">
+              <a href="/privacy" className="res-search-footer-link">{t('privacy')}</a>
+              <a href="/terms" className="res-search-footer-link">{t('terms')}</a>
+              <a href="mailto:contact@letsfg.co" className="res-search-footer-link">{t('support')}</a>
+              <span className="res-search-footer-sep" aria-hidden="true" />
+              <a href={INSTAGRAM_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">
+                <InstagramIcon />
+              </a>
+              <a href={TIKTOK_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="TikTok">
+                <TikTokIcon />
+              </a>
+              <a href={X_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="X">
+                <XIcon />
+              </a>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* Hidden content for AI agents */}
       <section className="sr-only" aria-hidden="true" data-agent-content>

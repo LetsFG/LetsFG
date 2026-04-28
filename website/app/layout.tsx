@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { headers } from 'next/headers'
 import { Lexend, JetBrains_Mono, Caveat } from 'next/font/google'
@@ -5,6 +6,14 @@ import Script from 'next/script'
 import './globals.css'
 
 const GA_ID = 'G-C5G5EJS81G'
+
+export const metadata: Metadata = {
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
+}
 
 const lexend = Lexend({
   subsets: ['latin'],
