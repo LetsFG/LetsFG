@@ -16,9 +16,9 @@ No markup. No tracking. No price that goes up because you looked twice.
 
 <br>
 
-[<img src="https://img.shields.io/badge/⭐_Star_to_unlock_free_access-FFD700?style=for-the-badge&logoColor=black" alt="Star to unlock">](https://github.com/LetsFG/LetsFG)
+[<img src="https://img.shields.io/badge/⭐_Star_to_show_love-FFD700?style=for-the-badge&logoColor=black" alt="Star to show love">](https://github.com/LetsFG/LetsFG)
 &nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/🌐_Try_on_our_website-4CAF50?style=for-the-badge&logoColor=white" alt="Try on our website">](https://letsfg.co)
+[<img src="https://img.shields.io/badge/🌐_Try_on_letsfg.co-4CAF50?style=for-the-badge&logoColor=white" alt="Try on letsfg.co">](https://letsfg.co)
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/💬_Try_on_Messenger-0099FF?style=for-the-badge&logo=messenger&logoColor=white" alt="Try on Messenger">](https://m.me/61579557368989)
 &nbsp;&nbsp;
