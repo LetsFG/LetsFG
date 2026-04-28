@@ -21,9 +21,7 @@ No markup. No tracking. No price that goes up because you looked twice.
 [<img src="https://img.shields.io/badge/🌐_Try_on_letsfg.co-4CAF50?style=for-the-badge&logoColor=white" alt="Try on letsfg.co">](https://letsfg.co/en)
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/💬_Try_on_Messenger-0099FF?style=for-the-badge&logo=messenger&logoColor=white" alt="Try on Messenger">](https://m.me/61579557368989)
-
 <br>
-
 [<img src="https://img.shields.io/badge/📸_Try_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Try on Instagram">](https://ig.me/m/letsfg_)
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/📦_pip_install_letsfg-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="pip install">](https://pypi.org/project/letsfg/)
