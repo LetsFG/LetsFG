@@ -33,6 +33,19 @@ interface InboundLeg {
   segments?: FlightSegment[]
 }
 
+interface OfferAncillary {
+  included?: boolean
+  price?: number
+  currency?: string
+  description?: string
+}
+
+interface OfferAncillaries {
+  cabin_bag?: OfferAncillary
+  checked_bag?: OfferAncillary
+  seat_selection?: OfferAncillary
+}
+
 interface FlightOffer {
   id: string
   price: number
@@ -53,6 +66,7 @@ interface FlightOffer {
   stops: number
   segments?: FlightSegment[]
   inbound?: InboundLeg
+  ancillaries?: OfferAncillaries
 }
 
 interface SourceMetaResponse {
@@ -136,6 +150,35 @@ function getSegmentAirlineLabel(segment: FlightSegment, fallbackAirline: string)
   return typeof segment.airline === 'string' && segment.airline.trim().length > 0
     ? segment.airline.trim()
     : fallbackAirline
+}
+
+function hasIncludedAncillary(ancillary?: OfferAncillary) {
+  return ancillary?.included === true
+}
+
+function hasPaidAncillary(ancillary?: OfferAncillary) {
+  return typeof ancillary?.price === 'number' && ancillary.price > 0
+}
+
+function fmtOfferPrice(amount: number, currency: string) {
+  return `${currency}${Math.round(amount)}`
+}
+
+function getOfferTotalWithAncillary(offer: FlightOffer, ancillary?: OfferAncillary) {
+  if (!ancillary || ancillary.included === true) {
+    return null
+  }
+
+  if (typeof ancillary.price !== 'number' || ancillary.price <= 0) {
+    return null
+  }
+
+  const ancillaryCurrency = ancillary.currency || offer.currency
+  if (ancillaryCurrency !== offer.currency) {
+    return null
+  }
+
+  return withFee(offer.price, offer.currency) + ancillary.price
 }
 
 // ── Airline logo with IATA-code fallback ──────────────────────────────────────
@@ -235,6 +278,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
   const [sort, setSort] = useState<'price' | 'duration'>('price')
   const [stopsFilter, setStopsFilter] = useState<string[]>([])          // [] = all
   const [airlinesFilter, setAirlinesFilter] = useState<string[]>([])    // [] = all
+  const [amenityFilters, setAmenityFilters] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState<[number, number]>([priceMin, priceMax])
   const [depRange, setDepRange] = useState<[number, number]>([0, 1439])
   const [retRange, setRetRange] = useState<[number, number]>([0, 1439])
@@ -269,6 +313,28 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     return [...map.entries()].sort((a, b) => a[1] - b[1]).map(([airline, minPrice]) => ({ airline, minPrice }))
   }, [allOffers])
 
+  const amenityStats = useMemo(() => {
+    const stats = {
+      checked_included: 0,
+      checked_fee_known: 0,
+      seat_fee_known: 0,
+    }
+
+    for (const offer of allOffers) {
+      if (hasIncludedAncillary(offer.ancillaries?.checked_bag)) {
+        stats.checked_included += 1
+      }
+      if (hasPaidAncillary(offer.ancillaries?.checked_bag)) {
+        stats.checked_fee_known += 1
+      }
+      if (hasPaidAncillary(offer.ancillaries?.seat_selection)) {
+        stats.seat_fee_known += 1
+      }
+    }
+
+    return stats
+  }, [allOffers])
+
   const durationBounds = useMemo(() => {
     if (!allOffers.length) return { min: 0, max: 1440 }
     let min = Infinity, max = 0
@@ -292,6 +358,10 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
         const offerCarriers = new Set(getOfferCarriers(o).map((carrier) => carrier.name))
         if (!airlinesFilter.some((airline) => offerCarriers.has(airline))) return false
       }
+      // Ancillaries
+      if (amenityFilters.includes('checked_included') && !hasIncludedAncillary(o.ancillaries?.checked_bag)) return false
+      if (amenityFilters.includes('checked_fee_known') && !hasPaidAncillary(o.ancillaries?.checked_bag)) return false
+      if (amenityFilters.includes('seat_fee_known') && !hasPaidAncillary(o.ancillaries?.seat_selection)) return false
       // Price range
       if (o.price < priceRange[0] || o.price > priceRange[1]) return false
       // Departure time
@@ -310,7 +380,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
       list = [...list].sort((a, b) => a.price - b.price)
     }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, priceRange, depRange, retRange, sort])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
@@ -427,9 +497,19 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     })
   }, [searchId])
 
+  const toggleAmenity = useCallback((key: string) => {
+    setAmenityFilters(prev => prev.includes(key) ? prev.filter((value) => value !== key) : [...prev, key])
+    setVisibleCount(20)
+    trackSearchSessionEvent(searchId, 'filters_changed', { filter: 'amenity', value: key }, {
+      source: 'website-results-panel',
+      source_path: searchId ? `/results/${searchId}` : '/results',
+    })
+  }, [searchId])
+
   const clearAll = useCallback(() => {
     setStopsFilter([])
     setAirlinesFilter([])
+    setAmenityFilters([])
     setPriceRange([priceMin, priceMax])
     setDepRange([0, 1439])
     setRetRange([0, 1439])
@@ -450,7 +530,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     })
   }, [searchId])
 
-  const hasActiveFilters = stopsFilter.length > 0 || airlinesFilter.length > 0
+  const hasActiveFilters = stopsFilter.length > 0 || airlinesFilter.length > 0 || amenityFilters.length > 0
     || priceRange[0] > priceMin || priceRange[1] < priceMax
     || depRange[0] > 0 || depRange[1] < 1439
     || retRange[0] > 0 || retRange[1] < 1439
@@ -462,6 +542,12 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     { key: '0', label: t('direct') },
     { key: '1', label: t('oneStop') },
     { key: '2plus', label: t('twoPlus') },
+  ]
+
+  const amenityOptions = [
+    { key: 'checked_included', label: t('checkedBagIncludedFilter'), count: amenityStats.checked_included },
+    { key: 'checked_fee_known', label: t('checkedBagFeeFilter'), count: amenityStats.checked_fee_known },
+    { key: 'seat_fee_known', label: t('seatFeeFilter'), count: amenityStats.seat_fee_known },
   ]
 
   return (
@@ -588,11 +674,22 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
           })}
         </div>
 
-        {/* Amenities placeholder */}
+        {/* Amenities */}
         <div className="rf-filter-section rf-filter-section--last">
-          <div className="rf-filter-heading rf-filter-heading--muted">
+          <div className="rf-filter-heading">
             <span>{t('amenities')}</span>
           </div>
+          {amenityOptions.map(({ key, label, count }) => {
+            if (count === 0) return null
+            const active = amenityFilters.includes(key)
+            return (
+              <button key={key} className={`rf-filter-row${active ? ' rf-filter-row--on' : ''}`}
+                onClick={() => toggleAmenity(key)}>
+                <span className={`rf-filter-check${active ? ' rf-filter-check--on' : ''}`} aria-hidden="true" />
+                <span className="rf-filter-label">{label}</span>
+              </button>
+            )
+          })}
         </div>
       </aside>
 
@@ -634,6 +731,22 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
             const offerCarriers = getOfferCarriers(offer)
             const airlineLabel = getOfferAirlineLabel(offer)
             const viaCode = offer.segments?.[0]?.destination
+            const checkedBag = offer.ancillaries?.checked_bag
+            const seatSelection = offer.ancillaries?.seat_selection
+            const ancillaryBadges = [
+              hasIncludedAncillary(checkedBag)
+                ? t('checkedBagIncluded')
+                : hasPaidAncillary(checkedBag)
+                  ? t('checkedBagFee', { price: fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency) })
+                  : null,
+              hasIncludedAncillary(seatSelection)
+                ? t('seatSelectionIncluded')
+                : hasPaidAncillary(seatSelection)
+                  ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency) })
+                  : null,
+            ].filter((value): value is string => Boolean(value))
+            const checkedBagTotal = getOfferTotalWithAncillary(offer, checkedBag)
+            const seatSelectionTotal = getOfferTotalWithAncillary(offer, seatSelection)
             const stopsLabel = offer.stops === 0
               ? t('direct')
               : viaCode
@@ -659,6 +772,13 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                       </div>
                       {isUnlocked && sourceLabel && (
                         <div className="rf-source-pill">Deal from {sourceLabel}</div>
+                      )}
+                      {ancillaryBadges.length > 0 && (
+                        <div className="rf-pill-row">
+                          {ancillaryBadges.map((label) => (
+                            <div key={label} className="rf-source-pill rf-source-pill--neutral">{label}</div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -750,6 +870,16 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                   <div className="rf-price-wrap">
                     <span className="rf-price">{offer.currency}{Math.round(withFee(offer.price, offer.currency))}</span>
                     <span className="rf-price-sub">{t('perPerson')}</span>
+                    {(checkedBagTotal || seatSelectionTotal) && (
+                      <div className="rf-price-notes">
+                        {checkedBagTotal && (
+                          <span className="rf-price-note">{t('withCheckedBag', { price: fmtOfferPrice(checkedBagTotal, offer.currency) })}</span>
+                        )}
+                        {seatSelectionTotal && (
+                          <span className="rf-price-note">{t('withSeatSelection', { price: fmtOfferPrice(seatSelectionTotal, offer.currency) })}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <a

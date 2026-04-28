@@ -3018,6 +3018,18 @@ body:has(.res-page) {
   text-overflow: ellipsis;
 }
 
+.rf-source-pill--neutral {
+  background: rgba(20, 45, 60, 0.05);
+  color: rgba(20, 45, 60, 0.72);
+  border-color: rgba(20, 45, 60, 0.1);
+}
+
+.rf-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .rf-route {
   display: flex;
   align-items: center;
@@ -3152,6 +3164,20 @@ body:has(.res-page) {
   font-size: 0.7rem;
   color: rgba(20, 45, 60, 0.36);
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.rf-price-notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.rf-price-note {
+  font-size: 0.68rem;
+  color: rgba(20, 45, 60, 0.46);
+  font-weight: 600;
   white-space: nowrap;
 }
 

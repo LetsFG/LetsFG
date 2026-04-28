@@ -55,6 +55,19 @@ export interface TrustedTripLeg {
   currency?: string
 }
 
+export interface TrustedAncillary {
+  included?: boolean
+  price?: number
+  currency?: string
+  description?: string
+}
+
+export interface TrustedAncillaries {
+  cabin_bag?: TrustedAncillary
+  checked_bag?: TrustedAncillary
+  seat_selection?: TrustedAncillary
+}
+
 export interface TrustedOffer {
   id: string
   price: number
@@ -77,6 +90,7 @@ export interface TrustedOffer {
   is_combo?: boolean
   booking_options?: TrustedBookingOption[]
   trip_breakdown?: TrustedTripLeg[]
+  ancillaries?: TrustedAncillaries
 }
 
 export interface PublicOffer extends Omit<TrustedOffer, 'booking_url' | 'booking_options'> {
@@ -259,6 +273,264 @@ function parseLegacyPriceAndCurrency(value: unknown): {
 
 function parseStringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseBooleanLike(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value
+  }
+
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) {
+    return undefined
+  }
+
+  if (
+    normalized === 'true'
+    || normalized === 'yes'
+    || normalized === 'included'
+    || normalized === 'free'
+    || normalized === 'included_in_ticket'
+    || normalized === 'included in ticket'
+    || normalized === 'allowed'
+    || normalized === 'available'
+    || normalized.includes('included')
+    || normalized.includes('free')
+  ) {
+    return true
+  }
+
+  if (
+    normalized === 'false'
+    || normalized === 'no'
+    || normalized === 'not included'
+    || normalized === 'paid'
+    || normalized === 'extra'
+    || normalized.includes('not included')
+    || normalized.includes('extra fee')
+  ) {
+    return false
+  }
+
+  return undefined
+}
+
+function mergeAncillary(current: TrustedAncillary | undefined, next: TrustedAncillary): TrustedAncillary {
+  const merged: TrustedAncillary = {
+    included: current?.included,
+    price: current?.price,
+    currency: current?.currency,
+    description: current?.description,
+  }
+
+  if (typeof next.included === 'boolean') {
+    merged.included = next.included
+  }
+
+  if (typeof next.price === 'number') {
+    if (typeof merged.price !== 'number' || next.price < merged.price) {
+      merged.price = next.price
+    }
+  }
+
+  if (typeof next.currency === 'string' && next.currency.trim().length > 0) {
+    merged.currency = next.currency
+  }
+
+  if (typeof next.description === 'string' && next.description.trim().length > 0) {
+    if (!merged.description || next.description.trim().length < merged.description.trim().length) {
+      merged.description = next.description
+    }
+  }
+
+  return merged
+}
+
+function parseAncillaryValue(value: unknown, defaultCurrency: string): TrustedAncillary | undefined {
+  if (value == null) {
+    return undefined
+  }
+
+  if (typeof value === 'boolean') {
+    return { included: value }
+  }
+
+  if (typeof value === 'number') {
+    const price = parsePriceValue(value)
+    if (price == null) {
+      return undefined
+    }
+    return {
+      included: price <= 0,
+      price,
+      currency: defaultCurrency,
+    }
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    if (!normalized) {
+      return undefined
+    }
+
+    const parsedBoolean = parseBooleanLike(normalized)
+    const legacy = parseLegacyPriceAndCurrency(normalized)
+    if (typeof legacy.price === 'number') {
+      return {
+        included: legacy.price <= 0,
+        price: legacy.price,
+        currency: legacy.currency || defaultCurrency,
+        description: normalized,
+      }
+    }
+
+    if (typeof parsedBoolean === 'boolean') {
+      return {
+        included: parsedBoolean,
+        description: normalized,
+      }
+    }
+
+    return {
+      description: normalized,
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce<TrustedAncillary | undefined>((current, entry) => {
+      const parsed = parseAncillaryValue(entry, defaultCurrency)
+      return parsed ? mergeAncillary(current, parsed) : current
+    }, undefined)
+  }
+
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const directPriceCandidates = [
+    value.price,
+    value.amount,
+    value.cost,
+    value.value,
+    value.total,
+    value.fee,
+    value.min_price,
+    value.minPrice,
+    value.from,
+  ]
+
+  let price: number | undefined
+  let currency: string | undefined
+  for (const candidate of directPriceCandidates) {
+    if (typeof candidate === 'number') {
+      price = parsePriceValue(candidate)
+      currency = defaultCurrency
+      break
+    }
+    if (typeof candidate === 'string') {
+      const parsed = parseLegacyPriceAndCurrency(candidate)
+      if (typeof parsed.price === 'number') {
+        price = parsed.price
+        currency = parsed.currency || defaultCurrency
+        break
+      }
+    }
+  }
+
+  const explicitIncluded = parseBooleanLike(
+    value.included
+    ?? value.free
+    ?? value.is_included
+    ?? value.isIncluded
+    ?? value.available,
+  )
+
+  const description = parseStringValue(value.label)
+    || parseStringValue(value.description)
+    || parseStringValue(value.text)
+    || parseStringValue(value.name)
+    || parseStringValue(value.summary)
+
+  if (typeof explicitIncluded !== 'boolean' && typeof price !== 'number' && !description) {
+    return undefined
+  }
+
+  return {
+    included: explicitIncluded ?? (typeof price === 'number' ? price <= 0 : undefined),
+    price,
+    currency: currency || (typeof price === 'number' ? defaultCurrency : undefined),
+    description,
+  }
+}
+
+function getAncillaryTarget(key: string): keyof TrustedAncillaries | undefined {
+  const normalized = key.trim().toLowerCase()
+  if (!normalized) {
+    return undefined
+  }
+
+  const seatLike = normalized.includes('seat') || normalized.includes('seating')
+  if (seatLike) {
+    return 'seat_selection'
+  }
+
+  const cabinLike = normalized.includes('cabin') || normalized.includes('carry') || normalized.includes('hand') || normalized.includes('personal')
+  const bagLike = normalized.includes('bag') || normalized.includes('baggage') || normalized.includes('luggage')
+  if (cabinLike && bagLike) {
+    return 'cabin_bag'
+  }
+
+  const checkedLike = normalized.includes('checked') || normalized.includes('hold') || normalized.includes('drop')
+  if (checkedLike && bagLike) {
+    return 'checked_bag'
+  }
+
+  if (bagLike && /(^|[_\-\s])(1|20kg|23kg|25kg|32kg)([_\-\s]|$)/i.test(normalized)) {
+    return 'checked_bag'
+  }
+
+  return undefined
+}
+
+function buildAncillaries(raw: any): TrustedAncillaries | undefined {
+  const defaultCurrency = parseStringValue(raw.currency) || 'EUR'
+  const ancillaries: TrustedAncillaries = {}
+
+  const assign = (target: keyof TrustedAncillaries, value: unknown) => {
+    const parsed = parseAncillaryValue(value, defaultCurrency)
+    if (!parsed) {
+      return
+    }
+    ancillaries[target] = mergeAncillary(ancillaries[target], parsed)
+  }
+
+  const bagsPrice = raw.bags_price ?? raw.bagsPrice
+  if (isRecord(bagsPrice)) {
+    for (const [key, value] of Object.entries(bagsPrice)) {
+      const target = getAncillaryTarget(key) || 'checked_bag'
+      assign(target, value)
+    }
+  }
+
+  if (isRecord(raw.conditions)) {
+    for (const [key, value] of Object.entries(raw.conditions)) {
+      const target = getAncillaryTarget(key)
+      if (!target) {
+        continue
+      }
+      assign(target, value)
+    }
+  }
+
+  return Object.keys(ancillaries).length > 0 ? ancillaries : undefined
 }
 
 function getRouteSummary(route: any, fallbackAirlineName: string, fallbackAirlineCode: string): Omit<TrustedTripLeg, 'leg' | 'price' | 'currency'> {
@@ -793,6 +1065,7 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
     is_combo: isCombo,
     booking_options: bookingOptions,
     trip_breakdown: tripBreakdown,
+    ancillaries: buildAncillaries(raw),
   })
 }
 
