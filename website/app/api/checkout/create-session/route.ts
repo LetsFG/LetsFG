@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStripe, toStripeAmount } from '../../../../lib/stripe'
 import { calculateFee } from '../../../../lib/pricing'
+import { getSessionUid } from '../../../../lib/session-uid'
+import { getTrustedOffer } from '../../../../lib/trusted-offer'
 
 /**
  * POST /api/checkout/create-session
@@ -10,29 +12,43 @@ import { calculateFee } from '../../../../lib/pricing'
  * and the searchId so the verify endpoint can link payment → unlock.
  */
 export async function POST(req: NextRequest) {
-  const uid = req.cookies.get('lfg_uid')?.value
+  const uid = getSessionUid(req)
   if (!uid) {
     return NextResponse.json({ error: 'No session cookie' }, { status: 400 })
   }
 
-  let offerId: string, searchId: string, price: number, currency: string
+  let offerId: string, searchId: string
   try {
-    ;({ offerId, searchId, price, currency } = await req.json())
+    ;({ offerId, searchId } = await req.json())
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  if (!offerId || !searchId || typeof price !== 'number' || !currency) {
+  if (!offerId || !searchId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const fee = calculateFee(price, currency)
-  const unitAmount = toStripeAmount(fee, currency)
+  const trustedOffer = await getTrustedOffer(offerId, searchId)
+  if (!trustedOffer) {
+    return NextResponse.json({ error: 'Offer not found for this search' }, { status: 404 })
+  }
 
-  // Determine the site origin for redirect URLs
-  const origin =
-    req.headers.get('origin') ||
-    (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://letsfg.co')
+  const fee = calculateFee(trustedOffer.price, trustedOffer.currency)
+  const unitAmount = toStripeAmount(fee, trustedOffer.currency)
+
+  // Only trust the configured site URL, or a same-host origin in local/dev.
+  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://letsfg.co'
+  const requestOrigin = req.headers.get('origin')
+  let origin = configuredSiteUrl
+  if (requestOrigin) {
+    try {
+      if (new URL(requestOrigin).host === new URL(configuredSiteUrl).host) {
+        origin = requestOrigin
+      }
+    } catch {
+      origin = configuredSiteUrl
+    }
+  }
 
   try {
     const stripe = getStripe()
@@ -41,11 +57,11 @@ export async function POST(req: NextRequest) {
       line_items: [
         {
           price_data: {
-            currency: currency.toLowerCase(),
+            currency: trustedOffer.currency.toLowerCase(),
             product_data: {
               name: 'LetsFG search unlock',
               description:
-                'Unlock all offers in this search. One-time — revisit any offer in the same search for free.',
+                'Unlock all offers in this search permanently on this browser. One-time — revisit any offer in the same search for free.',
             },
             unit_amount: unitAmount,
           },

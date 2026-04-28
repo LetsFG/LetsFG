@@ -700,6 +700,7 @@ export default function SearchingTasks({
   progress,
   searchedAt,
 }: Props) {
+  const [infoOpen, setInfoOpen] = useState(false)
   const TOTAL = progress?.total || 198
   const t = useTranslations('SearchingTasks')
   const originName = originLabel || originCode || 'Origin'
@@ -796,7 +797,27 @@ export default function SearchingTasks({
     <div className="st-card">
       <div className="st-body">
         <div className="st-header-row">
-          <span className="st-pill">{t('pill')}</span>
+          <span className="st-pill st-pill--pioneer">
+            {t('pillFirstSearch')}
+            <button
+              type="button"
+              className="st-info-btn"
+              aria-expanded={infoOpen}
+              aria-label="Learn more"
+              onClick={() => setInfoOpen(v => !v)}
+            >
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" width="13" height="13">
+                <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="7.25" y="7" width="1.5" height="4.5" rx="0.75" fill="currentColor" />
+                <rect x="7.25" y="4.5" width="1.5" height="1.5" rx="0.75" fill="currentColor" />
+              </svg>
+            </button>
+          </span>
+          {infoOpen && (
+            <p className="st-info-popover">
+              {t('pillInfoBody')}
+            </p>
+          )}
         </div>
 
         <div className="st-copy">

@@ -20,7 +20,8 @@
   "footer": {
     "github": "GitHub",
     "terms": "Kushtet",
-    "privacy": "Privatësia"
+    "privacy": "Privatësia",
+    "support": "Support"
   },
   "destinations": {
     "barcelona": "Barcelonë",
@@ -48,6 +49,8 @@
   },
   "SearchingTasks": {
     "pill": "Po k\u00ebrkojm\u00eb fluturime",
+    "pillFirstSearch": "First to search — unlocking for others",
+    "pillInfoBody": "No one searched this route in the last 5 minutes, so your agent is scanning every airline from scratch. Once done, this route is cached — the next person gets instant results.",
     "titlePre": "Po gjejm\u00eb ",
     "titleAccent": "rrug\u00ebn m\u00eb t\u00eb mir\u00eb",
     "titlePost": " p\u00ebr udh\u00ebtimine tuaj",
@@ -76,6 +79,7 @@
     "travelers": "udh\u00ebtar\u00eb",
     "privacy": "Privat\u00ebsia",
     "terms": "Kushtet",
+    "support": "Support",
     "copyright": "LetsFG \u00a9 2026"
   },
   "ResultsPanel": {

@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import SearchPageClient from './SearchPageClient'
 
@@ -43,38 +44,33 @@ interface SearchResult {
   expires_at?: string
 }
 
-const API_BASE = process.env.API_URL || 'http://localhost:3000'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
+
+async function getApiBase(): Promise<string> {
+  const explicitBase = process.env.API_URL?.trim()
+  if (explicitBase) {
+    return explicitBase.replace(/\/$/, '')
+  }
+
+  const headerList = await headers()
+  const host = headerList.get('x-forwarded-host') || headerList.get('host')
+  if (host) {
+    const proto = headerList.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https')
+    return `${proto}://${host}`
+  }
+
+  return SITE_URL
+}
 
 // Single-shot fetch — used only for generateMetadata (fast, no blocking)
 async function getSearchResults(searchId: string): Promise<SearchResult | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/results/${searchId}`, { cache: 'no-store' })
+    const apiBase = await getApiBase()
+    const res = await fetch(`${apiBase}/api/results/${searchId}`, { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
   } catch {
     return null
-  }
-}
-
-// Blocking poll — used by the page itself. Loops every 5 s until the search
-// completes or the deadline is reached. This makes the page render full HTML
-// with all offers server-side, so ChatGPT / any no-JS client reads real results.
-// Humans get the same HTML with our UI on top. JS polling in SearchPageClient
-// stays as a fallback but is never needed for a completed search.
-async function pollUntilDone(
-  searchId: string,
-  maxWaitMs = 270_000, // 270 s — Cloud Run website service is set to 300 s timeout
-): Promise<SearchResult | null> {
-  const deadline = Date.now() + maxWaitMs
-  while (true) {
-    const result = await getSearchResults(searchId)
-    if (!result) return null                    // 404 — search doesn't exist
-    if (result.status !== 'searching') return result // completed or expired
-
-    const remaining = deadline - Date.now()
-    if (remaining <= 5_000) return result       // timed out — return as-is (JS takes over)
-
-    await new Promise(r => setTimeout(r, 5_000))
   }
 }
 
@@ -117,10 +113,9 @@ export async function generateMetadata({ params }: { params: Promise<{ searchId:
 export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string; started?: string }> }) {
   const { searchId } = await params
   const sp = await searchParams
-  // Block server-side until the search completes (or 8 min timeout).
-  // This ensures the HTML delivered to the client — human or bot — always
-  // contains the full offer table, not a loading skeleton.
-  const result = await pollUntilDone(searchId)
+  // Render immediately with the current snapshot and let SearchPageClient poll.
+  // Blocking here traps users on loading.tsx while the server waits.
+  const result = await getSearchResults(searchId)
 
   if (!result) {
     notFound()

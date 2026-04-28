@@ -2160,7 +2160,7 @@ body:has(.res-page) {
    background on the <body> itself so there's never a dark flash between
    route transitions, even during the React Suspense gap before any
    .res-page element reaches the DOM. */
-body.results-body {
+.results-body-wrap {
   background: #ffffff;
   color: #0f0f0f;
 }
@@ -2181,6 +2181,7 @@ body.results-body {
 
 /* ── Completed results: full-page sky background, fades to white at bottom ── */
 .res-page--completed {
+  background-color: #c3dce8; /* sky-blue fallback while image loads — prevents black flash */
   background-image:
     linear-gradient(to bottom, transparent 72%, #ffffff 100%),
     url('/chatgpt-sky-bg.png');
@@ -2404,6 +2405,28 @@ body.results-body {
   border-color: rgba(255, 255, 255, 0.42);
   color: #ffffff;
   transform: translateY(-1px);
+}
+
+/* GitHub button with star count — overrides fixed square size */
+.res-icon-btn--gh {
+  width: auto;
+  padding: 0 14px;
+  gap: 6px;
+}
+
+.res-gh-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.res-gh-star {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .res-topbar-actions .lp-globe-btn {
@@ -2905,6 +2928,13 @@ body.results-body {
   min-width: 0;
 }
 
+.rf-airline-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .rf-airline-badge {
   flex-shrink: 0;
   display: inline-flex;
@@ -2937,6 +2967,23 @@ body.results-body {
   font-size: 0.9rem;
   font-weight: 700;
   color: #142d3e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rf-source-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(15, 109, 83, 0.08);
+  color: #0f6d53;
+  border: 1px solid rgba(15, 109, 83, 0.14);
+  font-size: 0.66rem;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4021,6 +4068,56 @@ body.results-body {
   border: 1px solid rgba(255, 122, 42, 0.18);
 }
 
+/* Pioneer variant — shown when user is first to search this route */
+.st-pill--pioneer {
+  background: rgba(255, 122, 42, 0.08);
+  color: #cf641f;
+  border: 1px solid rgba(255, 122, 42, 0.22);
+  gap: 7px;
+  padding-right: 10px;
+}
+
+.st-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(207, 100, 31, 0.35);
+  background: transparent;
+  color: #cf641f;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.st-info-btn:hover {
+  background: rgba(207, 100, 31, 0.12);
+  border-color: rgba(207, 100, 31, 0.55);
+}
+
+.st-info-popover {
+  width: 100%;
+  background: rgba(255, 247, 240, 0.96);
+  border: 1px solid rgba(255, 122, 42, 0.2);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(20, 45, 60, 0.75);
+  line-height: 1.55;
+  text-align: center;
+  margin: 0;
+  animation: st-popover-in 0.18s ease;
+}
+
+@keyframes st-popover-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .st-live-pill {
   background: rgba(245, 250, 253, 0.92);
   color: rgba(20, 45, 60, 0.58);
@@ -5096,6 +5193,31 @@ body.results-body {
   font-weight: 500;
 }
 
+.ck-flight-routes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.ck-flight-route-block .ck-flight-route {
+  margin-bottom: 0;
+}
+
+.ck-flight-route-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.ck-flight-route-date {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.58);
+}
+
 /* ── Route display ─────────────────────────────────────────────────── */
 .ck-flight-route {
   display: flex;
@@ -5282,6 +5404,13 @@ body.results-body {
   color: #166534;
   opacity: 0.8;
   margin-top: 2px;
+}
+
+.ck-unlocked-source {
+  margin-top: 6px;
+  color: #166534;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 /* ── Checkout card ─────────────────────────────────────────────────── */
@@ -5475,6 +5604,18 @@ body.results-body {
 /* ── Upload section ────────────────────────────────────────────────── */
 .ck-share-upload {
   margin-top: 4px;
+}
+
+/* ── Share intent section ──────────────────────────────────────────── */
+.ck-share-intent {
+  margin-top: 4px;
+}
+
+.ck-share-intent-desc {
+  font-size: 0.84rem;
+  color: rgba(20, 45, 60, 0.7);
+  line-height: 1.6;
+  margin: 0 0 14px;
 }
 
 .ck-share-platform-header {
@@ -5701,6 +5842,66 @@ body.results-body {
   color: #142d3c;
 }
 
+.ck-leg-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.ck-leg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(20, 45, 60, 0.09);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.ck-leg-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ck-leg-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #0a4d68;
+}
+
+.ck-leg-airline {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #142d3c;
+}
+
+.ck-leg-route {
+  font-size: 0.76rem;
+  color: rgba(20, 45, 60, 0.58);
+}
+
+.ck-leg-price-wrap {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.ck-leg-price {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #142d3c;
+}
+
+.ck-leg-price--muted {
+  color: rgba(20, 45, 60, 0.48);
+  font-weight: 600;
+}
+
 .ck-book-price-row {
   display: flex;
   align-items: baseline;
@@ -5736,6 +5937,57 @@ body.results-body {
   cursor: pointer;
   transition: opacity 0.15s, transform 0.12s, box-shadow 0.15s;
   text-decoration: none;
+}
+
+.ck-book-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ck-book-action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ck-book-action-meta {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.ck-book-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ck-book-action-title {
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0a4d68;
+}
+
+.ck-book-action-subtitle {
+  font-size: 0.75rem;
+  color: rgba(20, 45, 60, 0.56);
+}
+
+.ck-book-action-site {
+  font-size: 0.76rem;
+  color: #0f6d53;
+  font-weight: 700;
+}
+
+.ck-book-action-price {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #142d3c;
 }
 
 .ck-book-btn--locked {
@@ -5878,3 +6130,68 @@ body.results-body {
     gap: 8px;
   }
 }
+
+/* ── Cache hit reveal ────────────────────────────────────────────────────────── */
+
+.cache-reveal-wrapper {
+  position: relative;
+}
+
+.cache-reveal-content--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cache-hit-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #fff9f5 0%, #fff 60%);
+  border-top: 1px solid rgba(255, 122, 42, 0.12);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+  min-height: 260px;
+}
+
+.cache-hit-overlay--hiding {
+  opacity: 0;
+  transform: translateY(-18px);
+  pointer-events: none;
+}
+
+.cache-hit-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.cache-hit-bolt {
+  filter: drop-shadow(0 4px 12px rgba(244, 122, 28, 0.35));
+  animation: bolt-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bolt-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%       { transform: scale(1.1); opacity: 0.85; }
+}
+
+.cache-hit-headline {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #132432;
+  margin: 0;
+}
+
+.cache-hit-sub {
+  font-size: 0.88rem;
+  color: rgba(20, 45, 60, 0.58);
+  margin: 0;
+  font-weight: 500;
+}
+

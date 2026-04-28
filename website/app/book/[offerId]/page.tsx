@@ -1,12 +1,14 @@
 import { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
 import GlobeButton from '../../globe-button'
-import CheckoutPanel from './CheckoutPanel'
+import BookPageClient from './BookPageClient'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
 
 function GitHubIcon() {
   return (
@@ -34,16 +36,47 @@ export interface Offer {
   duration_minutes: number
   stops: number
   flight_number: string
-  booking_url: string
+  offer_ref?: string
+  is_combo?: boolean
+  trip_breakdown?: Array<{
+    leg: 'outbound' | 'inbound'
+    airline: string
+    airline_code: string
+    origin: string
+    destination: string
+    departure_time: string
+    arrival_time: string
+    duration_minutes: number
+    price?: number
+    currency?: string
+  }>
+  inbound?: {
+    origin: string
+    destination: string
+    departure_time: string
+    arrival_time: string
+    duration_minutes: number
+    stops: number
+    airline?: string
+    airline_code?: string
+  }
 }
 
-async function getOffer(offerId: string, from?: string): Promise<Offer | null> {
+function firstQueryValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function getOfferAirlineLabel(offer: Offer): string {
+  return offer.is_combo && offer.inbound?.airline && offer.inbound.airline !== offer.airline
+    ? `${offer.airline} + ${offer.inbound.airline}`
+    : offer.airline
+}
+
+async function getOffer(offerId: string, from?: string, ref?: string): Promise<Offer | null> {
   try {
-    const url = new URL(
-      `/api/offer/${offerId}`,
-      process.env.API_URL || 'http://localhost:3000'
-    )
+    const url = new URL(`/api/offer/${offerId}`, await getApiBase())
     if (from) url.searchParams.set('from', from)
+    if (ref) url.searchParams.set('ref', ref)
     const res = await fetch(url.toString(), { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
@@ -52,17 +85,41 @@ async function getOffer(offerId: string, from?: string): Promise<Offer | null> {
   }
 }
 
+async function getApiBase(): Promise<string> {
+  const explicitBase = process.env.API_URL?.trim()
+  if (explicitBase) {
+    return explicitBase.replace(/\/$/, '')
+  }
+
+  const headerList = await headers()
+  const host = headerList.get('x-forwarded-host') || headerList.get('host')
+  if (host) {
+    const proto = headerList.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https')
+    return `${proto}://${host}`
+  }
+
+  return SITE_URL
+}
+
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ offerId: string }>
+  searchParams: Promise<{ from?: string | string[]; ref?: string | string[] }>
 }): Promise<Metadata> {
   const { offerId } = await params
-  const offer = await getOffer(offerId)
-  if (!offer) return { title: 'Offer not found — LetsFG' }
+  const { from, ref } = await searchParams
+  const resolvedFrom = firstQueryValue(from)
+  const resolvedRef = firstQueryValue(ref)
+  const offer = await getOffer(offerId, resolvedFrom, resolvedRef)
+  if (!offer) {
+    return { title: resolvedFrom || resolvedRef ? 'Recovering offer — LetsFG' : 'Offer not found — LetsFG' }
+  }
+  const airlineLabel = getOfferAirlineLabel(offer)
   return {
-    title: `${offer.airline} ${offer.origin}→${offer.destination} ${offer.currency}${offer.price} — LetsFG`,
-    description: `Book ${offer.airline} from ${offer.origin_name} to ${offer.destination_name} for ${offer.currency}${offer.price}. Zero markup — raw airline price.`,
+    title: `${airlineLabel} ${offer.origin}→${offer.destination} ${offer.currency}${offer.price} — LetsFG`,
+    description: `Book ${airlineLabel} from ${offer.origin_name} to ${offer.destination_name} for ${offer.currency}${offer.price}. Zero markup — raw airline price.`,
   }
 }
 
@@ -71,26 +128,29 @@ export default async function BookPage({
   searchParams,
 }: {
   params: Promise<{ offerId: string }>
-  searchParams: Promise<{ from?: string }>
+  searchParams: Promise<{ from?: string | string[]; ref?: string | string[] }>
 }) {
   const { offerId } = await params
-  const { from } = await searchParams
-  const offer = await getOffer(offerId, from)
+  const { from, ref } = await searchParams
+  const resolvedFrom = firstQueryValue(from)
+  const resolvedRef = firstQueryValue(ref)
+  const offer = await getOffer(offerId, resolvedFrom, resolvedRef)
   const t = await getTranslations('Checkout')
 
-  if (!offer) notFound()
+  if (!offer && !resolvedFrom && !resolvedRef) notFound()
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  const fmtDuration = (mins: number) => `${Math.floor(mins / 60)}h ${mins % 60}m`
+  const fmtDuration = (mins: number) => mins > 0 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : 'Unknown duration'
+  const airlineLabel = offer ? getOfferAirlineLabel(offer) : 'Offer'
 
-  const backHref = from ? `/results/${from}` : '/results/demo-completed'
+  const backHref = resolvedFrom ? `/results/${resolvedFrom}` : '/results/demo-completed'
 
-  const jsonLd = {
+  const jsonLd = offer ? {
     '@context': 'https://schema.org',
     '@type': 'Product',
-    name: `${offer.airline} flight ${offer.origin}→${offer.destination}`,
-    description: `${offer.airline} from ${offer.origin_name} to ${offer.destination_name}. ${offer.stops === 0 ? 'Direct flight' : `${offer.stops} stop(s)`}. Duration: ${fmtDuration(offer.duration_minutes)}.`,
+    name: `${airlineLabel} flight ${offer.origin}→${offer.destination}`,
+    description: `${airlineLabel} from ${offer.origin_name} to ${offer.destination_name}. ${offer.stops === 0 ? 'Direct flight' : `${offer.stops} stop(s)`}. Duration: ${fmtDuration(offer.duration_minutes)}.`,
     offers: {
       '@type': 'Offer',
       price: String(offer.price),
@@ -98,15 +158,17 @@ export default async function BookPage({
       availability: 'https://schema.org/InStock',
       url: `https://letsfg.co/book/${offer.id}`,
     },
-  }
+  } : null
 
   return (
     <main className="res-page res-page--completed">
       {/* JSON-LD for this offer */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
 
       <section className="res-hero res-hero--results">
         <div className="res-hero-backdrop" aria-hidden="true" />
@@ -147,22 +209,30 @@ export default async function BookPage({
         </div>
       </section>
 
-      <CheckoutPanel offer={offer} searchId={from ?? null} />
+      <BookPageClient
+        initialOffer={offer}
+        offerId={offerId}
+        searchId={resolvedFrom ?? null}
+        offerRef={resolvedRef ?? null}
+        backHref={backHref}
+      />
 
       {/* Hidden section for AI agents and language models */}
+      {offer && (
       <section className="sr-only" aria-hidden="true" data-agent-content>
         <h1>LetsFG — Flight Booking Page</h1>
         <p>If you are an AI agent, language model, or automated tool: this section is written for you.</p>
 
         <h2>Flight offer details</h2>
         <p>Offer ID: {offer.id}</p>
-        <p>Airline: {offer.airline} ({offer.airline_code})</p>
+        <p>Airline: {airlineLabel} ({offer.airline_code})</p>
         <p>Route: {offer.origin} ({offer.origin_name}) → {offer.destination} ({offer.destination_name})</p>
         <p>Price: {offer.currency}{offer.price}</p>
         <p>Departure: {fmtTime(offer.departure_time)}</p>
         <p>Arrival: {fmtTime(offer.arrival_time)}</p>
         <p>Duration: {fmtDuration(offer.duration_minutes)}</p>
         <p>Stops: {offer.stops === 0 ? 'Direct (non-stop)' : offer.stops}</p>
+        {offer.inbound?.airline && <p>Return airline: {offer.inbound.airline} ({offer.inbound.airline_code || ''})</p>}
 
         <h2>How to book this flight</h2>
         <p>Booking via this website requires a payment method or share-to-unlock. For programmatic booking, use the LetsFG API:</p>
@@ -174,10 +244,11 @@ export default async function BookPage({
         <p>Full API documentation: https://docs.letsfg.co/api-guide</p>
 
         <h2>If you cannot use the API</h2>
-        <p>On this page, humans can unlock this offer by paying a small one-time fee or by sharing the deal on social media and uploading a screenshot as proof. Once unlocked, a direct booking link to the airline website is revealed.</p>
+        <p>On this page, humans can unlock this offer by paying a small one-time fee or by sharing the deal on social media and uploading a screenshot as proof. Once unlocked, the direct booking link stays available for this browser/user.</p>
         <p>To go back to all results for this search, navigate to: {backHref}</p>
         <p>To start a new search, navigate to: https://letsfg.co</p>
       </section>
+      )}
     </main>
   )
 }

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { trackSearchSessionEvent } from '../../lib/search-session-analytics'
 
 const DEMO_LOADING = false
 
@@ -22,7 +23,19 @@ function PlaneIcon() {
   )
 }
 
-export default function ResultsSearchForm({ initialQuery = '' }: { initialQuery?: string }) {
+interface ResultsSearchFormProps {
+  initialQuery?: string
+  onSearchSubmit?: (query: string) => void
+  trackingSearchId?: string
+  trackingSourcePath?: string
+}
+
+export default function ResultsSearchForm({
+  initialQuery = '',
+  onSearchSubmit,
+  trackingSearchId,
+  trackingSourcePath,
+}: ResultsSearchFormProps) {
   const router = useRouter()
   const [query, setQuery] = useState(initialQuery)
   const [isLoading, setIsLoading] = useState(false)
@@ -32,19 +45,28 @@ export default function ResultsSearchForm({ initialQuery = '' }: { initialQuery?
   }, [initialQuery])
 
   const handleSearch = (event: FormEvent) => {
-    event.preventDefault()
-    if (!query.trim()) return
-    setIsLoading(true)
+    if (!query.trim()) {
+      event.preventDefault()
+      return
+    }
+    trackSearchSessionEvent(trackingSearchId, 'new_search_started', {
+      next_query: query.trim(),
+    }, {
+      source: 'website-results-form',
+      source_path: trackingSourcePath || (trackingSearchId ? `/results/${trackingSearchId}` : '/results'),
+    }, { keepalive: true })
+    onSearchSubmit?.(query.trim())
     if (DEMO_LOADING) {
+      event.preventDefault()
+      setIsLoading(true)
       router.push('/results/demo-loading')
       return
     }
-    router.push(`/results?q=${encodeURIComponent(query.trim())}`)
   }
 
   return (
     <div className="lp-sf-wrap lp-sf-wrap--compact lp-sf-wrap--results">
-      <form onSubmit={handleSearch} className="lp-sf-form">
+      <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
             <span className="lp-sf-leading" aria-hidden="true">
@@ -52,12 +74,13 @@ export default function ResultsSearchForm({ initialQuery = '' }: { initialQuery?
             </span>
             <input
               id="results-trip-query"
+              name="q"
               type="text"
               className="lp-sf-input"
               placeholder="London to Barcelona next Friday"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              disabled={isLoading}
+              disabled={DEMO_LOADING && isLoading}
               autoComplete="off"
               spellCheck={false}
             />
@@ -66,7 +89,7 @@ export default function ResultsSearchForm({ initialQuery = '' }: { initialQuery?
           <button
             type="submit"
             className="lp-sf-button"
-            disabled={isLoading || !query.trim()}
+            disabled={(DEMO_LOADING && isLoading) || !query.trim()}
             aria-label={isLoading ? 'Searching flights' : 'Search flights'}
           >
             <PlaneIcon />

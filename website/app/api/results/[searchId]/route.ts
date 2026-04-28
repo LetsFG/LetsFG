@@ -1,6 +1,8 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { cacheOffers } from '../../../../lib/offer-cache'
-import { saveSearchResult, loadSearchResult } from '../../../../lib/firestore'
+import { cacheCompletedSearchResult, getCachedSearchResult } from '../../../../lib/results-cache'
+import { normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
+import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -148,8 +150,6 @@ function normalizeOffer(raw: any, idx: number): any {
     duration_minutes: durationMins,
     stops: ob.stopovers ?? Math.max(0, segs.length - 1),
     segments: normSegs.length > 1 ? normSegs : undefined,
-    source: raw.source,
-    booking_url: raw.booking_url,
     inbound,
   }
 }
@@ -236,28 +236,71 @@ export async function GET(
       cache: 'no-store',
     })
 
-    // FSW has expired / forgotten this search — serve from Firestore
     if (res.status === 404) {
-      const cached = await loadSearchResult(searchId)
-      if (cached) return NextResponse.json(cached)
-      return NextResponse.json({ error: 'Search not found' }, { status: 404 })
+      const cachedResult = getCachedSearchResult(searchId)
+      if (cachedResult) {
+        return NextResponse.json(cachedResult)
+      }
+
+      return NextResponse.json({
+        search_id: searchId,
+        status: 'expired',
+        parsed: {},
+        offers: [],
+        total_results: 0,
+      })
     }
 
     if (!res.ok) {
-      // On other FSW errors also try Firestore before giving up
-      const cached = await loadSearchResult(searchId)
-      if (cached) return NextResponse.json(cached)
       return NextResponse.json({ error: 'Search service error' }, { status: 502 })
     }
 
     const data = await res.json()
     const rawOffers: any[] = data.offers || []
-    const normalized = rawOffers.map((o: any, i: number) => normalizeOffer(o, i))
+    const trustedOffers = rawOffers.map((offer: any, idx: number) => normalizeTrustedOffer(offer, idx))
+    const normalized = trustedOffers.map((offer) => toPublicOffer(offer))
 
     // Cache completed offers so /api/offer/[offerId] can find them without
     // needing to hit FSW again (which may route to a different instance).
     if (data.status === 'completed' && normalized.length > 0) {
-      cacheOffers(normalized)
+      cacheOffers(trustedOffers, searchId)
+
+      const cheapestPrice = Math.min(...normalized.map((offer) => offer.price))
+      const googleFlightsPrices = normalized
+        .map((offer) => typeof offer.google_flights_price === 'number' ? offer.google_flights_price : null)
+        .filter((price): price is number => price !== null)
+      const googleFlightsPrice = googleFlightsPrices.length > 0 ? Math.min(...googleFlightsPrices) : undefined
+      const diff = typeof googleFlightsPrice === 'number'
+        ? Math.round((googleFlightsPrice - cheapestPrice) * 100) / 100
+        : undefined
+
+      await upsertSearchSessionServer({
+        search_id: searchId,
+        source: 'website-results-api',
+        source_path: `/api/results/${searchId}`,
+        status: 'completed',
+        results_count: normalized.length,
+        cheapest_price: cheapestPrice,
+        google_flights_price: googleFlightsPrice,
+        value: typeof diff === 'number' ? (Math.abs(diff) < 0.005 ? 0 : diff) : undefined,
+        savings_vs_google_flights: typeof diff === 'number' ? Math.max(0, diff) : undefined,
+        results_preview: normalized.slice(0, 10).map((offer) => ({
+          id: offer.id,
+          airline: offer.airline,
+          price: offer.price,
+          currency: offer.currency,
+          google_flights_price: offer.google_flights_price,
+          stops: offer.stops,
+          duration_minutes: offer.duration_minutes,
+        })),
+        event: {
+          type: 'results_materialized',
+          at: new Date().toISOString(),
+          data: {
+            offers_returned: normalized.length,
+          },
+        },
+      })
     }
 
     const now = new Date()
@@ -265,10 +308,14 @@ export async function GET(
     const result = {
       search_id: searchId,
       status: data.status,
+      query: data.query,
       parsed: {
         origin: data.origin,
+        origin_name: data.origin_name || data.origin,
         destination: data.destination,
+        destination_name: data.destination_name || data.destination,
         date: data.date_from,
+        return_date: data.return_date || undefined,
       },
       offers: normalized,
       total_results: normalized.length,
@@ -277,11 +324,17 @@ export async function GET(
       expires_at: new Date(now.getTime() + (data.expires_in_seconds ?? 1200) * 1000).toISOString(),
     }
 
-    // Persist completed results to Firestore (30 min TTL) so the URL stays
-    // usable after FSW expires the search — works across Cloud Run instances
-    // and browser sessions / devices.
-    if (data.status === 'completed' && normalized.length > 0) {
-      saveSearchResult(searchId, result as Record<string, unknown>).catch(() => {})
+    if (result.status === 'completed') {
+      cacheCompletedSearchResult({
+        search_id: result.search_id,
+        status: 'completed',
+        query: result.query,
+        parsed: result.parsed,
+        offers: result.offers,
+        total_results: result.total_results,
+        searched_at: result.searched_at,
+        expires_at: result.expires_at,
+      })
     }
 
     return NextResponse.json(result)

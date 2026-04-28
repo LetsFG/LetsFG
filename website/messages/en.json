@@ -20,7 +20,8 @@
   "footer": {
     "github": "GitHub",
     "terms": "Terms",
-    "privacy": "Privacy"
+    "privacy": "Privacy",
+    "support": "Support"
   },
   "destinations": {
     "barcelona": "Barcelona",
@@ -48,6 +49,8 @@
   },
   "SearchingTasks": {
     "pill": "Searching the skies",
+    "pillFirstSearch": "First to search — unlocking for others",
+    "pillInfoBody": "No one searched this route in the last 5 minutes, so your agent is scanning every airline from scratch. Once done, this route is cached — the next person gets instant results.",
     "titlePre": "Finding the ",
     "titleAccent": "best path",
     "titlePost": " for your trip",
@@ -76,6 +79,7 @@
     "travelers": "travelers",
     "privacy": "Privacy",
     "terms": "Terms",
+    "support": "Support",
     "copyright": "LetsFG \u00a9 2026"
   },
   "ResultsPanel": {
@@ -128,18 +132,21 @@
     "unlockFor": "Unlock for {fee}",
     "oneTime": "One-time",
     "shareToUnlock": "or share to unlock for free",
-    "shareDesc": "Share this deal anywhere \u2014 post it, send it to a friend, or DM someone. Just upload a screenshot to show us, and you're in.",
-    "screenshotInvalid": "Screenshot not valid \u2014 please try again with a clear screenshot.",
+    "shareDesc": "Share LetsFG (website, profile, or GitHub) on social media or send it to a friend, then upload a screenshot below.",
+    "screenshotInvalid": "Screenshot not valid — please take a clear screenshot and try again.",
     "change": "Change",
     "submitVerification": "Submit for verification",
     "verifyingTitle": "Checking your screenshot...",
-    "verifySub": "Our AI is reviewing your share. This takes a few seconds.",
+    "verifySub": "Our AI is verifying your share. This takes a few seconds.",
     "bookTicket": "Book your ticket",
     "airlineTicket": "Airline ticket",
     "letsfgFee": "LetsFG fee",
     "total": "Total",
     "directAirlinePrice": "Direct airline price \u00b7 no markup",
     "bookOn": "Book on {airline}",
+    "unlockBookingLink": "Unlock booking link",
+    "unlockOutboundBookingLink": "Unlock outbound booking link",
+    "unlockReturnBookingLink": "Unlock return booking link",
     "unlockFirst": "Unlock first to reveal the booking link",
     "rawAirlinePrice": "Raw airline price",
     "secureCheckout": "Secure checkout",

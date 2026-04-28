@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import HomeSearchForm from '../home-search-form'
 import GlobeButton from '../globe-button'
-import { getLocalStats } from '../lib/stats'
+import { getGitHubStars, formatStars } from '../../lib/github-stars'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 
@@ -46,7 +46,7 @@ async function getPublicStats(): Promise<PublicStats> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/analytics/stats/public`, {
       next: { revalidate: 300 },
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(4000),
     })
     if (res.ok) {
       const data = (await res.json()) as {
@@ -64,12 +64,8 @@ async function getPublicStats(): Promise<PublicStats> {
     }
   } catch {}
 
-  const local = getLocalStats()
-  return {
-    totalSearches: local.totalSearches,
-    avgSavings: local.avgSavings,
-    avgAirlinesChecked: local.avgAirlinesChecked,
-  }
+  // API unavailable — show dashes rather than misleading zeros
+  return { totalSearches: null, avgSavings: null, avgAirlinesChecked: null }
 }
 
 function formatNumber(n: number): string {
@@ -99,9 +95,10 @@ export default async function Home({ params, searchParams }: { params: Promise<{
     redirect(`/results?q=${encodeURIComponent(q.trim())}`)
   }
 
-  const [stats, t] = await Promise.all([
+  const [stats, t, githubStars] = await Promise.all([
     getPublicStats(),
     getTranslations({ locale, namespace: 'stats' }),
+    getGitHubStars(),
   ])
   const tn = await getTranslations({ locale, namespace: 'nav' })
   const tf = await getTranslations({ locale, namespace: 'footer' })
@@ -155,11 +152,14 @@ export default async function Home({ params, searchParams }: { params: Promise<{
               href={REPO_URL}
               target="_blank"
               rel="noreferrer"
-              className="res-icon-btn"
+              className={githubStars !== null ? 'res-icon-btn res-icon-btn--gh' : 'res-icon-btn'}
               aria-label={tn('githubLabel')}
               title="GitHub"
             >
               <GitHubIcon />
+              {githubStars !== null && (
+                <span className="res-gh-stars"><span className="res-gh-star" aria-hidden="true">⭐</span>{formatStars(githubStars)}</span>
+              )}
             </a>
           </div>
         </div>
@@ -269,6 +269,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         <a href={REPO_URL} className="lp-footer-link" target="_blank" rel="noreferrer">{tf('github')}</a>
         <a href="/terms" className="lp-footer-link">{tf('terms')}</a>
         <a href="/privacy" className="lp-footer-link">{tf('privacy')}</a>
+        <a href="mailto:contact@letsfg.co" className="lp-footer-link">{tf('support')}</a>
         <span className="lp-footer-sep" aria-hidden="true" />
         <a href="https://www.instagram.com/letsfg_" className="lp-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>

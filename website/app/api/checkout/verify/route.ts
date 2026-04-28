@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStripe } from '../../../../lib/stripe'
-import { saveUnlock } from '../../../../lib/firestore'
+import { getSessionUid } from '../../../../lib/session-uid'
+import { setUnlockCookie } from '../../../../lib/unlock-cookie'
+import { createUnlockToken } from '../../../../lib/unlock-token'
 
 /**
  * POST /api/checkout/verify
  *
  * Called by the client after Stripe redirects back with ?stripe_session=...
  * Verifies with Stripe that the payment succeeded, confirms the session belongs
- * to the current user (cookie check), then records the unlock in Firestore.
+ * to the current user (cookie check), then records the unlock in a signed cookie.
  */
 export async function POST(req: NextRequest) {
-  const uid = req.cookies.get('lfg_uid')?.value
+  const uid = getSessionUid(req)
   if (!uid) {
     return NextResponse.json({ unlocked: false, error: 'No session' }, { status: 400 })
   }
@@ -30,6 +32,10 @@ export async function POST(req: NextRequest) {
     const stripe = getStripe()
     const session = await stripe.checkout.sessions.retrieve(stripeSessionId)
 
+    if (session.mode !== 'payment' || session.status !== 'complete') {
+      return NextResponse.json({ unlocked: false, error: 'Checkout incomplete' }, { status: 400 })
+    }
+
     // Security: ensure this Stripe session was created for THIS user.
     // An attacker who knows someone else's stripe_session cannot use it to unlock
     // their own account because the metadata uid won't match their cookie.
@@ -46,10 +52,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ unlocked: false, error: 'Missing search ID' }, { status: 500 })
     }
 
-    // Record the unlock — persists to Firestore (or local Map in dev)
-    await saveUnlock(uid, searchId)
-
-    return NextResponse.json({ unlocked: true, searchId })
+    const response = NextResponse.json({
+      unlocked: true,
+      searchId,
+      unlockToken: createUnlockToken(uid, searchId),
+    })
+    setUnlockCookie(response, req, searchId)
+    return response
   } catch (err) {
     console.error('[checkout] verify error:', err)
     return NextResponse.json({ unlocked: false, error: 'Stripe error' }, { status: 500 })

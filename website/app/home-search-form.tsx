@@ -556,14 +556,16 @@ export default function HomeSearchForm({
   }, [initialQuery])
 
   const handleSearch = (event: FormEvent) => {
-    event.preventDefault()
-    if (!query.trim()) return
-    setIsLoading(true)
+    if (!query.trim()) {
+      event.preventDefault()
+      return
+    }
     if (DEMO_LOADING) {
+      event.preventDefault()
+      setIsLoading(true)
       router.push('/results/demo-loading')
       return
     }
-    router.push(`/results?q=${encodeURIComponent(query.trim())}`)
   }
 
   // Update suggestion when query changes
@@ -600,7 +602,7 @@ export default function HomeSearchForm({
         </div>
       )}
 
-      <form onSubmit={handleSearch} className="lp-sf-form">
+      <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
             <span className="lp-sf-leading" aria-hidden="true">
@@ -609,13 +611,14 @@ export default function HomeSearchForm({
             <input
               ref={inputRef}
               id="trip-query"
+              name="q"
               type="text"
               className="lp-sf-input"
               placeholder={th('placeholder')}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isLoading}
+              disabled={DEMO_LOADING && isLoading}
               autoFocus={autoFocus}
               autoComplete="off"
               spellCheck={false}
@@ -630,7 +633,7 @@ export default function HomeSearchForm({
           <button
             type="submit"
             className="lp-sf-button"
-            disabled={isLoading || !query.trim()}
+            disabled={(DEMO_LOADING && isLoading) || !query.trim()}
             aria-label={isLoading ? 'Searching flights' : 'Search flights'}
           >
             <PlaneIcon />

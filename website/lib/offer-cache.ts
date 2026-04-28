@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
 /**
  * Module-level offer cache for the Next.js server process.
  *
@@ -6,32 +9,89 @@
  * avoiding a second FSW round-trip that could land on a different Cloud Run
  * instance (which would have no in-memory search state).
  *
- * For full search result persistence across instances/restarts, see lib/firestore.ts.
+ * This cache is intentionally process-local and website-only. Search reuse is
+ * owned by flight-search-worker, not by the website.
  */
 
-const _cache = new Map<string, { offer: Record<string, unknown>; expiresAt: number }>()
-const OFFER_TTL_MS = 20 * 60 * 1000
-const TTL_MS = OFFER_TTL_MS // alias kept for any existing call-sites
+type OfferCacheEntry = { offer: Record<string, unknown>; expiresAt: number; searchId?: string }
 
-export function cacheOffers(offers: Record<string, unknown>[]): void {
-  const expiresAt = Date.now() + OFFER_TTL_MS
-  for (const offer of offers) {
-    const id = offer.id as string | undefined
-    if (id) _cache.set(id, { offer, expiresAt })
-  }
-  // Opportunistic cleanup of expired entries
-  const now = Date.now()
-  for (const [key, entry] of _cache) {
-    if (now > entry.expiresAt) _cache.delete(key)
+const _cache = new Map<string, OfferCacheEntry>()
+const OFFER_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const TTL_MS = OFFER_TTL_MS // alias kept for any existing call-sites
+const PERSISTED_CACHE_FILE = path.join(process.cwd(), '.next', 'cache', 'letsfg-offers.json')
+
+let persistedLoaded = false
+
+function loadPersistedCache(): void {
+  if (persistedLoaded) return
+  persistedLoaded = true
+
+  try {
+    const raw = fs.readFileSync(PERSISTED_CACHE_FILE, 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, OfferCacheEntry>
+    const now = Date.now()
+    for (const [offerId, entry] of Object.entries(parsed || {})) {
+      if (!entry || typeof entry !== 'object') continue
+      if (typeof entry.expiresAt !== 'number' || entry.expiresAt <= now) continue
+      if (!entry.offer || typeof entry.offer !== 'object') continue
+      _cache.set(offerId, entry)
+    }
+  } catch {
+    // Ignore missing or malformed persisted cache.
   }
 }
 
-export function getCachedOffer(offerId: string): Record<string, unknown> | null {
+function persistCache(): void {
+  try {
+    fs.mkdirSync(path.dirname(PERSISTED_CACHE_FILE), { recursive: true })
+    const now = Date.now()
+    const serialized: Record<string, OfferCacheEntry> = {}
+    for (const [offerId, entry] of _cache) {
+      if (entry.expiresAt > now) {
+        serialized[offerId] = entry
+      }
+    }
+    fs.writeFileSync(PERSISTED_CACHE_FILE, JSON.stringify(serialized), 'utf8')
+  } catch {
+    // Ignore persistence failures and continue with in-memory cache.
+  }
+}
+
+function pruneExpiredEntries(now = Date.now()): void {
+  let changed = false
+  for (const [key, entry] of _cache) {
+    if (now > entry.expiresAt) {
+      _cache.delete(key)
+      changed = true
+    }
+  }
+  if (changed) {
+    persistCache()
+  }
+}
+
+export function cacheOffers<T extends { id?: string }>(offers: T[], searchId?: string): void {
+  loadPersistedCache()
+  const expiresAt = Date.now() + OFFER_TTL_MS
+  for (const offer of offers) {
+    const id = offer.id
+    if (id) _cache.set(id, { offer: offer as Record<string, unknown>, expiresAt, searchId })
+  }
+  pruneExpiredEntries()
+  persistCache()
+}
+
+export function getCachedOffer<T = Record<string, unknown>>(offerId: string, searchId?: string): T | null {
+  loadPersistedCache()
   const entry = _cache.get(offerId)
   if (!entry) return null
   if (Date.now() > entry.expiresAt) {
     _cache.delete(offerId)
+    persistCache()
     return null
   }
-  return entry.offer
+  if (searchId && entry.searchId && entry.searchId !== searchId) {
+    return null
+  }
+  return entry.offer as T
 }

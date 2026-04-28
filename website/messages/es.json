@@ -20,7 +20,8 @@
   "footer": {
     "github": "GitHub",
     "terms": "Términos",
-    "privacy": "Privacidad"
+    "privacy": "Privacidad",
+    "support": "Support"
   },
   "destinations": {
     "barcelona": "Barcelona",
@@ -48,6 +49,8 @@
   },
   "SearchingTasks": {
     "pill": "Explorando el cielo",
+    "pillFirstSearch": "First to search — unlocking for others",
+    "pillInfoBody": "No one searched this route in the last 5 minutes, so your agent is scanning every airline from scratch. Once done, this route is cached — the next person gets instant results.",
     "titlePre": "Encontrando la ",
     "titleAccent": "mejor ruta",
     "titlePost": " para tu viaje",
@@ -76,6 +79,7 @@
     "travelers": "viajeros",
     "privacy": "Privacidad",
     "terms": "T\u00e9rminos",
+    "support": "Support",
     "copyright": "LetsFG \u00a9 2026"
   },
   "ResultsPanel": {

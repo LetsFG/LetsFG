@@ -1,23 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkUnlock } from '../../../lib/firestore'
+import { hasActiveUnlock, setUnlockCookie } from '../../../lib/unlock-cookie'
+import { getSessionUid } from '../../../lib/session-uid'
+import { hasValidUnlockToken } from '../../../lib/unlock-token'
+
+function jsonNoStore(body: { unlocked: boolean }) {
+  return NextResponse.json(body, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    },
+  })
+}
 
 /**
  * GET /api/unlock-status?searchId=...
  *
- * Returns whether the current user (identified by their httpOnly lfg_uid cookie)
+ * Returns whether the current user (identified by their httpOnly session cookie)
  * has an active unlock for the given searchId.
  */
 export async function GET(req: NextRequest) {
-  const uid = req.cookies.get('lfg_uid')?.value
+  const uid = getSessionUid(req)
   if (!uid) {
-    return NextResponse.json({ unlocked: false })
+    return jsonNoStore({ unlocked: false })
   }
 
   const searchId = req.nextUrl.searchParams.get('searchId')
   if (!searchId) {
-    return NextResponse.json({ unlocked: false })
+    return jsonNoStore({ unlocked: false })
   }
 
-  const unlocked = await checkUnlock(uid, searchId)
-  return NextResponse.json({ unlocked })
+  const unlockedByCookie = hasActiveUnlock(req, searchId)
+  const unlockedByToken = !unlockedByCookie && hasValidUnlockToken(req, searchId)
+  const response = jsonNoStore({ unlocked: unlockedByCookie || unlockedByToken })
+
+  if (unlockedByToken) {
+    setUnlockCookie(response, req, searchId)
+  }
+
+  return response
 }

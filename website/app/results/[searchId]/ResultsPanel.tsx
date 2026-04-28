@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { getAirlineLogoUrl } from '../../airlineLogos'
 import { withFee } from '../../../lib/pricing'
+import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FlightSegment {
@@ -33,6 +34,8 @@ interface InboundLeg {
 interface FlightOffer {
   id: string
   price: number
+  google_flights_price?: number
+  offer_ref?: string
   currency: string
   airline: string
   airline_code: string
@@ -46,6 +49,11 @@ interface FlightOffer {
   stops: number
   segments?: FlightSegment[]
   inbound?: InboundLeg
+}
+
+interface SourceMetaResponse {
+  booking_site?: string
+  booking_site_summary?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -173,6 +181,8 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [visibleCount, setVisibleCount] = useState(20)
+  const [isUnlocked, setIsUnlocked] = useState(false)
+  const [revealedSources, setRevealedSources] = useState<Record<string, string>>({})
 
   // ── Sidebar stats (always based on all offers) ────────────────────────────
   const stopsStats = useMemo(() => {
@@ -220,27 +230,135 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
       // Departure time
       const dep = isoToMins(o.departure_time)
       if (dep < depRange[0] || dep > depRange[1]) return false
-      // Return time (arrival as proxy — only meaningful for roundtrips)
-      const arr = isoToMins(o.arrival_time)
+      // Return departure time for RT, outbound arrival for OW
+      const arr = isoToMins(o.inbound?.departure_time ?? o.arrival_time)
       if (arr < retRange[0] || arr > retRange[1]) return false
       // Duration
       if (o.duration_minutes < durationRange[0] || o.duration_minutes > durationRange[1]) return false
       return true
     })
-    if (sort === 'duration') list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
+    if (sort === 'duration') {
+      list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
+    } else {
+      list = [...list].sort((a, b) => a.price - b.price)
+    }
     return list
   }, [allOffers, stopsFilter, airlinesFilter, priceRange, depRange, retRange, sort])
+
+  const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
+
+  const refreshUnlockState = useCallback(async () => {
+    if (!searchId) {
+      setIsUnlocked(false)
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/unlock-status?searchId=${encodeURIComponent(searchId)}`, {
+        cache: 'no-store',
+      })
+      if (!res.ok) return
+      const data = await res.json() as { unlocked?: boolean }
+      setIsUnlocked(Boolean(data.unlocked))
+    } catch {
+      // Ignore transient unlock-status failures.
+    }
+  }, [searchId])
+
+  useEffect(() => {
+    if (!searchId) return
+
+    void refreshUnlockState()
+
+    const handlePageShow = () => {
+      void refreshUnlockState()
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshUnlockState()
+      }
+    }
+
+    window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [refreshUnlockState, searchId])
+
+  useEffect(() => {
+    if (!searchId || !isUnlocked || visibleOffers.length === 0) return
+
+    const pendingOffers = visibleOffers.filter((offer) => !revealedSources[offer.id])
+    if (pendingOffers.length === 0) return
+
+    let cancelled = false
+
+    void Promise.all(pendingOffers.map(async (offer) => {
+      try {
+        const params = new URLSearchParams({
+          from: searchId,
+          view: 'source-meta',
+        })
+        if (offer.offer_ref) {
+          params.set('ref', offer.offer_ref)
+        }
+
+        const res = await fetch(`/api/offer/${encodeURIComponent(offer.id)}?${params.toString()}`, {
+          cache: 'no-store',
+        })
+        if (!res.ok) return null
+
+        const data = await res.json() as SourceMetaResponse
+        const label = typeof data.booking_site_summary === 'string' && data.booking_site_summary.trim().length > 0
+          ? data.booking_site_summary.trim()
+          : typeof data.booking_site === 'string' && data.booking_site.trim().length > 0
+            ? data.booking_site.trim()
+            : ''
+
+        return label ? { offerId: offer.id, label } : null
+      } catch {
+        return null
+      }
+    })).then((results) => {
+      if (cancelled) return
+
+      const nextSources: Record<string, string> = {}
+      for (const result of results) {
+        if (!result) continue
+        nextSources[result.offerId] = result.label
+      }
+
+      if (Object.keys(nextSources).length > 0) {
+        setRevealedSources((current) => ({ ...current, ...nextSources }))
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isUnlocked, revealedSources, searchId, visibleOffers])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const toggleStop = useCallback((key: string) => {
     setStopsFilter(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key])
     setVisibleCount(20)
-  }, [])
+    trackSearchSessionEvent(searchId, 'filters_changed', { filter: 'stops', value: key }, {
+      source: 'website-results-panel',
+      source_path: searchId ? `/results/${searchId}` : '/results',
+    })
+  }, [searchId])
 
   const toggleAirline = useCallback((airline: string) => {
     setAirlinesFilter(prev => prev.includes(airline) ? prev.filter(a => a !== airline) : [...prev, airline])
     setVisibleCount(20)
-  }, [])
+    trackSearchSessionEvent(searchId, 'filters_changed', { filter: 'airline', value: airline }, {
+      source: 'website-results-panel',
+      source_path: searchId ? `/results/${searchId}` : '/results',
+    })
+  }, [searchId])
 
   const clearAll = useCallback(() => {
     setStopsFilter([])
@@ -250,7 +368,20 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
     setRetRange([0, 1439])
     setDurationRange([0, Infinity])
     setVisibleCount(20)
-  }, [priceMin, priceMax])
+    trackSearchSessionEvent(searchId, 'filters_changed', { filter: 'clear_all' }, {
+      source: 'website-results-panel',
+      source_path: searchId ? `/results/${searchId}` : '/results',
+    })
+  }, [priceMax, priceMin, searchId])
+
+  const handleSortChange = useCallback((nextSort: 'price' | 'duration') => {
+    setSort(nextSort)
+    setVisibleCount(20)
+    trackSearchSessionEvent(searchId, 'sort_changed', { sort: nextSort }, {
+      source: 'website-results-panel',
+      source_path: searchId ? `/results/${searchId}` : '/results',
+    })
+  }, [searchId])
 
   const hasActiveFilters = stopsFilter.length > 0 || airlinesFilter.length > 0
     || priceRange[0] > priceMin || priceRange[1] < priceMax
@@ -286,8 +417,8 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
         </button>
         <div className="rf-mobile-sort">
           <span className="rf-bar-label">{t('sort')}</span>
-          <button className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`} onClick={() => { setSort('price'); setVisibleCount(20) }}>{t('sortPrice')}</button>
-          <button className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`} onClick={() => { setSort('duration'); setVisibleCount(20) }}>{t('sortDuration')}</button>
+          <button className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price')}>{t('sortPrice')}</button>
+          <button className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('duration')}>{t('sortDuration')}</button>
         </div>
       </div>
       {/* ── Filter sidebar ─────────────────────────────────────────────────── */}
@@ -416,13 +547,13 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
             <span className="rf-bar-label">{t('sort')}</span>
             <button
               className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`}
-              onClick={() => { setSort('price'); setVisibleCount(20) }}
+              onClick={() => handleSortChange('price')}
             >
               {t('sortPrice')}
             </button>
             <button
               className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`}
-              onClick={() => { setSort('duration'); setVisibleCount(20) }}
+              onClick={() => handleSortChange('duration')}
             >
               {t('sortDuration')}
             </button>
@@ -431,7 +562,7 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
 
         {/* Flight list */}
         <div className="rf-list">
-          {displayOffers.slice(0, visibleCount).map((offer, index) => {
+          {visibleOffers.map((offer, index) => {
             const isExpanded = expandedId === offer.id
             const viaCode = offer.segments?.[0]?.destination
             const stopsLabel = offer.stops === 0
@@ -439,13 +570,19 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
               : viaCode
                 ? `${offer.stops} stop · via ${viaCode}`
                 : `${offer.stops} stop${offer.stops > 1 ? 's' : ''}`
+            const sourceLabel = revealedSources[offer.id]
 
             return (
               <div key={offer.id} className={`rf-card${sort === 'price' && index === 0 ? ' rf-card--best' : ''}${isExpanded ? ' rf-card--expanded' : ''}`}>
                 <div className="rf-card-row">
                   <div className="rf-airline">
                     <AirlineLogo code={offer.airline_code} name={offer.airline} />
-                    <div className="rf-airline-name">{offer.airline}</div>
+                    <div className="rf-airline-copy">
+                      <div className="rf-airline-name">{offer.airline}</div>
+                      {isUnlocked && sourceLabel && (
+                        <div className="rf-source-pill">Deal from {sourceLabel}</div>
+                      )}
+                    </div>
                   </div>
 
                   {offer.inbound ? (
@@ -537,7 +674,31 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                     <span className="rf-price-sub">{t('perPerson')}</span>
                   </div>
 
-                  <a href={`/book/${offer.id}${searchId ? `?from=${searchId}` : ''}`} className="rf-book-btn">
+                  <a
+                    href={(() => {
+                      const params = new URLSearchParams()
+                      if (searchId) params.set('from', searchId)
+                      if (offer.offer_ref) params.set('ref', offer.offer_ref)
+                      const query = params.toString()
+                      return `/book/${offer.id}${query ? `?${query}` : ''}`
+                    })()}
+                    className="rf-book-btn"
+                    onClick={() => trackSearchSessionEvent(searchId, 'offer_selected', {
+                      offer_id: offer.id,
+                      airline: offer.airline,
+                      currency: offer.currency,
+                      price: offer.price,
+                      google_flights_price: offer.google_flights_price ?? null,
+                    }, {
+                      source: 'website-results-panel',
+                      source_path: searchId ? `/results/${searchId}` : '/results',
+                      selected_offer_id: offer.id,
+                      selected_offer_airline: offer.airline,
+                      selected_offer_currency: offer.currency,
+                      selected_offer_price: offer.price,
+                      selected_offer_google_flights_price: offer.google_flights_price,
+                    }, { keepalive: true })}
+                  >
                     {t('select')}
                     <ArrowIcon />
                   </a>
@@ -547,7 +708,16 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
                   <>
                     <button
                       className="rf-details-btn"
-                      onClick={() => setExpandedId(isExpanded ? null : offer.id)}
+                      onClick={() => {
+                        setExpandedId(isExpanded ? null : offer.id)
+                        trackSearchSessionEvent(searchId, 'details_toggled', {
+                          offer_id: offer.id,
+                          open: !isExpanded,
+                        }, {
+                          source: 'website-results-panel',
+                          source_path: searchId ? `/results/${searchId}` : '/results',
+                        })
+                      }}
                     >
                       {isExpanded ? t('hideDetails') : t('flightDetails')}
                       <ChevronIcon open={isExpanded} />
@@ -609,7 +779,15 @@ export default function ResultsPanel({ allOffers, currency, priceMin, priceMax, 
             <div className="rf-load-more">
               <button
                 className="rf-load-more-btn"
-                onClick={() => setVisibleCount(c => c + 20)}
+                onClick={() => {
+                  setVisibleCount(c => c + 20)
+                  trackSearchSessionEvent(searchId, 'show_more', {
+                    next_visible_count: Math.min(displayOffers.length, visibleCount + 20),
+                  }, {
+                    source: 'website-results-panel',
+                    source_path: searchId ? `/results/${searchId}` : '/results',
+                  })
+                }}
               >
                 {t('showMore', { count: Math.min(20, displayOffers.length - visibleCount) })}
                 <span className="rf-load-more-total">{t('remaining', { count: displayOffers.length - visibleCount })}</span>

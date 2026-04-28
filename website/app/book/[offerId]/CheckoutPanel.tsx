@@ -5,10 +5,12 @@ import { useTranslations } from 'next-intl'
 import { getAirlineLogoUrl } from '../../airlineLogos'
 import { calculateFee, withFee } from '../../../lib/pricing'
 import type { Offer } from './page'
+import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 
 interface Props {
   offer: Offer
   searchId: string | null
+  offerRef: string | null
 }
 
 type CheckoutStep =
@@ -17,8 +19,8 @@ type CheckoutStep =
   | { type: 'locked' }
   | { type: 'paying' }             // waiting for Stripe redirect
   | { type: 'share-select' }
-  | { type: 'share-upload'; platform: Platform }
-  | { type: 'share-verifying'; platform: Platform }
+  | { type: 'share-upload'; platform: Platform }     // screenshot upload
+  | { type: 'share-verifying'; platform: Platform }  // verifying screenshot with AI
   | { type: 'share-rejected'; platform: Platform }
   | { type: 'unlocked'; via: 'payment' | 'share' | 'existing' }
 
@@ -28,7 +30,28 @@ interface Platform {
   instructions: string[]
 }
 
-const PLATFORMS: Platform[] = []  // replaced by getPlatforms(t) inside component
+interface BookingOption {
+  leg: 'outbound' | 'inbound'
+  airline: string
+  airline_code: string
+  booking_url: string
+  booking_site?: string
+  price?: number
+  currency?: string
+  origin?: string
+  destination?: string
+  departure_time?: string
+  arrival_time?: string
+}
+
+type TripBreakdownLeg = NonNullable<Offer['trip_breakdown']>[number]
+
+interface SplitBookingLeg extends TripBreakdownLeg {
+  booking_url?: string
+  booking_site?: string
+}
+
+
 
 
 const PLATFORM_ICONS: Record<string, React.ReactNode> = {
@@ -57,6 +80,16 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   ),
+  whatsapp: (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+    </svg>
+  ),
+  telegram: (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+    </svg>
+  ),
 }
 
 function fmtTime(iso: string) {
@@ -80,6 +113,65 @@ function fmtDate(iso: string) {
 
 function fmtFee(fee: number, currency: string) {
   return `${currency}${fee < 10 ? fee.toFixed(2) : Math.round(fee)}`
+}
+
+function fmtMoney(amount: number, currency: string) {
+  return `${currency}${amount.toFixed(2).replace(/\.00$/, '')}`
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+const UNLOCK_TOKEN_STORAGE_PREFIX = 'lfg_unlock_token:'
+const UNLOCK_TOKEN_HEADER_NAME = 'x-letsfg-unlock-token'
+
+function getUnlockTokenStorageKey(searchId: string) {
+  return `${UNLOCK_TOKEN_STORAGE_PREFIX}${searchId}`
+}
+
+function readStoredUnlockToken(searchId: string | null): string | null {
+  if (!searchId) return null
+
+  try {
+    return window.localStorage.getItem(getUnlockTokenStorageKey(searchId))
+  } catch {
+    return null
+  }
+}
+
+function persistUnlockToken(searchId: string | null, unlockToken: string | undefined) {
+  if (!searchId || !unlockToken) return
+
+  try {
+    window.localStorage.setItem(getUnlockTokenStorageKey(searchId), unlockToken)
+  } catch {
+    // Ignore storage failures and keep the in-memory flow working.
+  }
+}
+
+async function fetchLatestOfferRef(searchId: string, offerId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/results/${encodeURIComponent(searchId)}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
+    if (!res.ok) {
+      return null
+    }
+
+    const data = await res.json() as {
+      offers?: Array<{ id?: string; offer_ref?: string }>
+    }
+    const matchedOffer = data.offers?.find((candidate) => candidate.id === offerId)
+    return typeof matchedOffer?.offer_ref === 'string' && matchedOffer.offer_ref.length > 0
+      ? matchedOffer.offer_ref
+      : null
+  } catch {
+    return null
+  }
 }
 
 function LockIcon() {
@@ -129,7 +221,7 @@ function AirlineLogo({ code, name }: { code: string; name: string }) {
   )
 }
 
-export default function CheckoutPanel({ offer, searchId }: Props) {
+export default function CheckoutPanel({ offer, searchId, offerRef }: Props) {
   const t = useTranslations('Checkout')
   const platforms = useMemo<Platform[]>(() => [
     {
@@ -159,16 +251,340 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
     },
   ], [t])
   const fee = calculateFee(offer.price, offer.currency)
-  const showShareOption = fee < 20 // only when fee < ~$20 (ticket < ~$2000)
+  const showShareOption = true
+  const tripBreakdown = useMemo<TripBreakdownLeg[]>(() => {
+    if (offer.trip_breakdown?.length) {
+      return offer.trip_breakdown
+    }
+    if (!offer.inbound) {
+      return []
+    }
+    return [
+      {
+        leg: 'outbound',
+        airline: offer.airline,
+        airline_code: offer.airline_code,
+        origin: offer.origin,
+        destination: offer.destination,
+        departure_time: offer.departure_time,
+        arrival_time: offer.arrival_time,
+        duration_minutes: offer.duration_minutes,
+      },
+      {
+        leg: 'inbound',
+        airline: offer.inbound.airline || offer.airline,
+        airline_code: offer.inbound.airline_code || offer.airline_code,
+        origin: offer.inbound.origin,
+        destination: offer.inbound.destination,
+        departure_time: offer.inbound.departure_time,
+        arrival_time: offer.inbound.arrival_time,
+        duration_minutes: offer.inbound.duration_minutes,
+      },
+    ]
+  }, [offer])
+  const summaryLegs = useMemo<TripBreakdownLeg[]>(() => {
+    if (tripBreakdown.length) {
+      return tripBreakdown
+    }
+    return [
+      {
+        leg: 'outbound',
+        airline: offer.airline,
+        airline_code: offer.airline_code,
+        origin: offer.origin,
+        destination: offer.destination,
+        departure_time: offer.departure_time,
+        arrival_time: offer.arrival_time,
+        duration_minutes: offer.duration_minutes,
+      },
+    ]
+  }, [offer, tripBreakdown])
+  const summaryDates = useMemo(() => {
+    const seen = new Set<string>()
+    const dates: string[] = []
+    for (const leg of summaryLegs) {
+      const label = fmtDate(leg.departure_time)
+      if (!seen.has(label)) {
+        seen.add(label)
+        dates.push(label)
+      }
+    }
+    return dates
+  }, [summaryLegs])
+  const summaryAirline = offer.is_combo && offer.inbound?.airline && offer.inbound.airline !== offer.airline
+    ? `${offer.airline} + ${offer.inbound.airline}`
+    : offer.airline
+  const displayFlightNumber = offer.flight_number && offer.flight_number !== offer.airline_code
+    ? offer.flight_number
+    : ''
 
   // Start in 'checking' — we always verify unlock status on mount.
   const [step, setStep] = useState<CheckoutStep>({ type: 'checking' })
+  const [bookingUrl, setBookingUrl] = useState<string | null>(null)
+  const [bookingSite, setBookingSite] = useState<string | null>(null)
+  const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([])
+  const [bookingLinkStatus, setBookingLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [shareError, setShareError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const bookingLinkTrackedRef = useRef(false)
+  const splitBookingLegs = useMemo<SplitBookingLeg[]>(() => {
+    if (tripBreakdown.length <= 1 || (!offer.is_combo && bookingOptions.length === 0)) {
+      return []
+    }
+
+    const bookingOptionByLeg = new Map(bookingOptions.map((option) => [option.leg, option]))
+
+    return tripBreakdown.map((leg) => {
+      const option = bookingOptionByLeg.get(leg.leg)
+      return {
+        ...leg,
+        price: leg.price ?? option?.price,
+        currency: leg.currency ?? option?.currency ?? offer.currency,
+        booking_url: option?.booking_url,
+        booking_site: option?.booking_site,
+      }
+    })
+  }, [bookingOptions, offer.currency, offer.is_combo, tripBreakdown])
 
   const isUnlocked = step.type === 'unlocked'
   const isLoading = step.type === 'checking' || step.type === 'verifying-payment'
+
+  const getLegTitle = useCallback((leg: 'outbound' | 'inbound') => (
+    leg === 'outbound' ? 'Flight there' : 'Flight back'
+  ), [])
+
+  const getLegButtonLabel = useCallback((leg: 'outbound' | 'inbound', airline: string) => (
+    leg === 'outbound' ? `Book flight there on ${airline}` : `Book return flight on ${airline}`
+  ), [])
+
+  const getLegStops = useCallback((leg: TripBreakdownLeg | BookingOption) => (
+    leg.leg === 'inbound' ? offer.inbound?.stops ?? 0 : offer.stops
+  ), [offer.inbound?.stops, offer.stops])
+
+  const getLegCityLabel = useCallback((leg: TripBreakdownLeg, endpoint: 'origin' | 'destination') => {
+    const code = endpoint === 'origin' ? leg.origin : leg.destination
+    if (code === offer.origin) return offer.origin_name
+    if (code === offer.destination) return offer.destination_name
+    return code
+  }, [offer.destination, offer.destination_name, offer.origin, offer.origin_name])
+
+  const getLockedLegButtonLabel = useCallback((leg: 'outbound' | 'inbound') => (
+    leg === 'outbound' ? t('unlockOutboundBookingLink') : t('unlockReturnBookingLink')
+  ), [t])
+
+  const getLegRouteLabel = useCallback((leg: TripBreakdownLeg | BookingOption) => {
+    const departureDate = leg.departure_time ? fmtDate(leg.departure_time) : ''
+    const departureTime = leg.departure_time ? fmtTime(leg.departure_time) : '--:--'
+    const arrivalTime = leg.arrival_time
+      ? fmtTime(leg.arrival_time)
+      : '--:--'
+    const route = `${leg.origin || '--'} ${departureTime} -> ${leg.destination || '--'} ${arrivalTime}`
+    return departureDate ? `${departureDate} · ${route}` : route
+  }, [])
+
+  const checkUnlockStatus = useCallback(async (): Promise<boolean> => {
+    if (!searchId) return false
+
+    const unlockToken = readStoredUnlockToken(searchId)
+
+    try {
+      const res = await fetch(`/api/unlock-status?searchId=${encodeURIComponent(searchId)}`, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: unlockToken ? { [UNLOCK_TOKEN_HEADER_NAME]: unlockToken } : undefined,
+      })
+      if (!res.ok) {
+        return false
+      }
+
+      const data = await res.json() as { unlocked?: boolean }
+      return data.unlocked === true
+    } catch {
+      return false
+    }
+  }, [searchId])
+
+  const loadBookingLink = useCallback(async (): Promise<boolean> => {
+    if (!searchId) return false
+
+    setBookingLinkStatus('loading')
+    try {
+      const unlockToken = readStoredUnlockToken(searchId)
+      // Resolve offer_ref: use the one on the offer, or fetch a fresh one if missing.
+      let resolvedOfferRef = offer.offer_ref || offerRef || undefined
+      if (!resolvedOfferRef) {
+        const snapshotParams = new URLSearchParams({ from: searchId })
+        if (offerRef) {
+          snapshotParams.set('ref', offerRef)
+        }
+        try {
+          const offerRes = await fetch(
+            `/api/offer/${encodeURIComponent(offer.id)}?${snapshotParams.toString()}`,
+            {
+              cache: 'no-store',
+              credentials: 'same-origin',
+            },
+          )
+          if (offerRes.ok) {
+            const offerData = await offerRes.json() as { offer_ref?: string }
+            resolvedOfferRef = offerData.offer_ref
+          }
+        } catch {
+          // Best-effort — proceed without offer_ref
+        }
+      }
+
+      const params = new URLSearchParams({
+        from: searchId,
+        view: 'booking-link',
+      })
+      if (resolvedOfferRef) {
+        params.set('ref', resolvedOfferRef)
+      }
+      let res = await fetch(
+        `/api/offer/${encodeURIComponent(offer.id)}?${params.toString()}`,
+        {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: unlockToken ? { [UNLOCK_TOKEN_HEADER_NAME]: unlockToken } : undefined,
+        },
+      )
+
+      if (!res.ok && res.status === 404) {
+        const latestOfferRef = await fetchLatestOfferRef(searchId, offer.id)
+        if (latestOfferRef && latestOfferRef !== resolvedOfferRef) {
+          resolvedOfferRef = latestOfferRef
+          const retryParams = new URLSearchParams({
+            from: searchId,
+            view: 'booking-link',
+          })
+          retryParams.set('ref', latestOfferRef)
+          res = await fetch(
+            `/api/offer/${encodeURIComponent(offer.id)}?${retryParams.toString()}`,
+            {
+              cache: 'no-store',
+              credentials: 'same-origin',
+              headers: unlockToken ? { [UNLOCK_TOKEN_HEADER_NAME]: unlockToken } : undefined,
+            },
+          )
+        }
+      }
+
+      if (!res.ok) {
+        setBookingUrl(null)
+        setBookingSite(null)
+        setBookingLinkStatus('error')
+        return false
+      }
+
+      const data = await res.json() as {
+        booking_url?: string
+        booking_site?: string
+        booking_site_summary?: string
+        booking_options?: unknown[]
+      }
+      const options = Array.isArray(data.booking_options)
+        ? data.booking_options.filter((option: unknown): option is BookingOption => {
+            if (!option || typeof option !== 'object') return false
+            const candidate = option as Record<string, unknown>
+            return (
+              (candidate.leg === 'outbound' || candidate.leg === 'inbound')
+              && typeof candidate.airline === 'string'
+              && typeof candidate.airline_code === 'string'
+              && typeof candidate.booking_url === 'string'
+              && candidate.booking_url.length > 0
+              && (candidate.booking_site === undefined || typeof candidate.booking_site === 'string')
+            )
+          })
+        : []
+      const primaryBookingUrl = typeof data.booking_url === 'string' ? data.booking_url : ''
+      const primaryBookingSite = typeof data.booking_site_summary === 'string' && data.booking_site_summary.trim().length > 0
+        ? data.booking_site_summary.trim()
+        : typeof data.booking_site === 'string' && data.booking_site.trim().length > 0
+          ? data.booking_site.trim()
+          : ''
+
+      if (!primaryBookingUrl && options.length === 0) {
+        setBookingUrl(null)
+        setBookingSite(null)
+        setBookingOptions([])
+        setBookingLinkStatus('error')
+        return false
+      }
+
+      setBookingUrl(primaryBookingUrl || options[0].booking_url)
+      setBookingSite(primaryBookingSite || options[0]?.booking_site || null)
+      setBookingOptions(options)
+      setBookingLinkStatus('idle')
+      if (!bookingLinkTrackedRef.current) {
+        bookingLinkTrackedRef.current = true
+        trackSearchSessionEvent(searchId, 'booking_link_ready', {
+          offer_id: offer.id,
+        }, {
+          source: 'website-checkout',
+          source_path: `/book/${offer.id}`,
+        })
+      }
+      return true
+    } catch {
+      setBookingUrl(null)
+      setBookingSite(null)
+      setBookingOptions([])
+      setBookingLinkStatus('error')
+      return false
+    }
+  }, [offer.id, offer.offer_ref, offerRef, searchId])
+
+  const loadUnlockedBookingLink = useCallback(async (): Promise<boolean> => {
+    for (const delayMs of [0, 200, 600, 1200]) {
+      if (delayMs > 0) {
+        await wait(delayMs)
+      }
+
+      if (!(await checkUnlockStatus())) {
+        continue
+      }
+
+      if (await loadBookingLink()) {
+        return true
+      }
+    }
+
+    return false
+  }, [checkUnlockStatus, loadBookingLink])
+
+  useEffect(() => {
+    trackSearchSessionEvent(searchId, 'checkout_opened', {
+      offer_id: offer.id,
+      airline: offer.airline,
+      currency: offer.currency,
+      price: offer.price,
+    }, {
+      source: 'website-checkout',
+      source_path: `/book/${offer.id}`,
+      selected_offer_id: offer.id,
+      selected_offer_airline: offer.airline,
+      selected_offer_currency: offer.currency,
+      selected_offer_price: offer.price,
+    })
+  }, [offer.airline, offer.currency, offer.id, offer.price, searchId])
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      trackSearchSessionEvent(searchId, 'pagehide_checkout', {
+        offer_id: offer.id,
+        step: step.type,
+      }, {
+        source: 'website-checkout',
+        source_path: `/book/${offer.id}`,
+      }, { beacon: true })
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    return () => window.removeEventListener('pagehide', handlePageHide)
+  }, [offer.id, searchId, step.type])
 
   // ── On mount: verify payment redirect OR check stored unlock ────────────
   useEffect(() => {
@@ -181,12 +597,22 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
       fetch('/api/checkout/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ stripeSessionId: stripeSession }),
       })
         .then(r => r.json())
-        .then((data: { unlocked: boolean }) => {
+        .then(async (data: { unlocked: boolean; unlockToken?: string }) => {
           if (data.unlocked) {
+            persistUnlockToken(searchId, data.unlockToken)
             setStep({ type: 'unlocked', via: 'payment' })
+            trackSearchSessionEvent(searchId, 'payment_verified', {
+              offer_id: offer.id,
+            }, {
+              source: 'website-checkout',
+              source_path: `/book/${offer.id}`,
+              revenue: fee,
+            })
+            await loadUnlockedBookingLink()
             // Clean the stripe_session param from the URL without a reload
             const url = new URL(window.location.href)
             url.searchParams.delete('stripe_session')
@@ -205,19 +631,36 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
     }
 
     // Server-side unlock check — always authoritative
-    fetch(`/api/unlock-status?searchId=${encodeURIComponent(searchId)}`)
-      .then(r => r.json())
-      .then((data: { unlocked: boolean }) => {
-        setStep(data.unlocked
-          ? { type: 'unlocked', via: 'existing' }
-          : { type: 'locked' }
-        )
+    checkUnlockStatus()
+      .then(async (unlocked) => {
+        if (unlocked) {
+          setStep({ type: 'unlocked', via: 'existing' })
+          trackSearchSessionEvent(searchId, 'existing_unlock', {
+            offer_id: offer.id,
+          }, {
+            source: 'website-checkout',
+            source_path: `/book/${offer.id}`,
+          })
+          await loadUnlockedBookingLink()
+          return
+        }
+        setStep({ type: 'locked' })
       })
       .catch(() => setStep({ type: 'locked' }))
-  }, [searchId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [checkUnlockStatus, loadUnlockedBookingLink, offer.id, fee, searchId])
 
   // ── Pay via Stripe ───────────────────────────────────────────────────────
   const handlePay = useCallback(async () => {
+    trackSearchSessionEvent(searchId, 'payment_attempted', {
+      offer_id: offer.id,
+      airline: offer.airline,
+      currency: offer.currency,
+      price: offer.price,
+    }, {
+      source: 'website-checkout',
+      source_path: `/book/${offer.id}`,
+      potential_revenue: fee,
+    })
     setStep({ type: 'paying' })
     try {
       const res = await fetch('/api/checkout/create-session', {
@@ -226,8 +669,6 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
         body: JSON.stringify({
           offerId: offer.id,
           searchId: searchId ?? '',
-          price: offer.price,
-          currency: offer.currency,
         }),
       })
       const data = await res.json()
@@ -239,40 +680,110 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
     } catch {
       setStep({ type: 'locked' })
     }
-  }, [offer, searchId])
+  }, [fee, offer, searchId])
 
   const handleSelectPlatform = useCallback((platform: Platform) => {
+    trackSearchSessionEvent(searchId, 'share_selected', {
+      platform: platform.id,
+      offer_id: offer.id,
+    }, {
+      source: 'website-checkout',
+      source_path: `/book/${offer.id}`,
+    })
+    setShareError(null)
     setStep({ type: 'share-upload', platform })
     setUploadedFile(null)
     setPreviewUrl(null)
-  }, [])
+  }, [offer.id, searchId])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setShareError(null)
     setUploadedFile(file)
     setPreviewUrl(URL.createObjectURL(file))
   }, [])
 
-  const handleVerify = useCallback(() => {
+  const handlePaste = useCallback((e: React.ClipboardEvent | ClipboardEvent) => {
+    const items = (e as React.ClipboardEvent).clipboardData?.items
+      ?? (e as ClipboardEvent).clipboardData?.items
+    if (!items) return
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (!file) continue
+        e.preventDefault()
+        setShareError(null)
+        setUploadedFile(file)
+        setPreviewUrl(URL.createObjectURL(file))
+        break
+      }
+    }
+  }, [])
+
+  const handleVerify = useCallback(async () => {
     if (!uploadedFile || step.type !== 'share-upload') return
     const platform = step.platform
+    trackSearchSessionEvent(searchId, 'share_verification_submitted', {
+      platform: platform.id,
+      offer_id: offer.id,
+    }, {
+      source: 'website-checkout',
+      source_path: `/book/${offer.id}`,
+    })
+    setShareError(null)
     setStep({ type: 'share-verifying', platform })
-    // Simulate AI verification — 75% chance of success in demo
-    setTimeout(() => {
-      if (Math.random() > 0.25) {
+    try {
+      const form = new FormData()
+      form.append('searchId', searchId ?? '')
+      form.append('image', uploadedFile)
+      const res = await fetch('/api/checkout/verify-share', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      let data: { unlocked?: boolean; error?: string; unlockToken?: string } = {}
+      try {
+        data = await res.json()
+      } catch {
+        data = {}
+      }
+      if (data.unlocked) {
+        persistUnlockToken(searchId, data.unlockToken)
+        setShareError(null)
         setStep({ type: 'unlocked', via: 'share' })
+        trackSearchSessionEvent(searchId, 'share_unlocked', {
+          platform: platform.id,
+          offer_id: offer.id,
+        }, {
+          source: 'website-checkout',
+          source_path: `/book/${offer.id}`,
+        })
+        await loadUnlockedBookingLink()
       } else {
+        setShareError(data.error ?? null)
         setStep({ type: 'share-rejected', platform })
       }
-    }, 3200)
-  }, [uploadedFile, step])
+    } catch {
+      setShareError('Verification failed. Please try again.')
+      setStep({ type: 'share-rejected', platform })
+    }
+  }, [loadUnlockedBookingLink, offer.id, searchId, step, uploadedFile])
 
   const handleRetryShare = useCallback(() => {
+    setShareError(null)
     setStep({ type: 'share-select' })
     setUploadedFile(null)
     setPreviewUrl(null)
   }, [])
+
+  // ── Global paste listener (Ctrl+V anywhere on the page) ─────────────────
+  useEffect(() => {
+    if (step.type !== 'share-upload') return
+    const onPaste = (e: ClipboardEvent) => handlePaste(e)
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [step.type, handlePaste])
 
   return (
     <div className="ck-page">
@@ -283,8 +794,8 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
           <div className="ck-flight-header">
             <AirlineLogo code={offer.airline_code} name={offer.airline} />
             <div className="ck-flight-airline">
-              <span className="ck-airline-name">{offer.airline}</span>
-              <span className="ck-flight-num">{offer.flight_number}</span>
+              <span className="ck-airline-name">{summaryAirline}</span>
+              {displayFlightNumber && <span className="ck-flight-num">{displayFlightNumber}</span>}
             </div>
             <div className="ck-flight-price-badge">
               <span className="ck-flight-price">{offer.currency}{Math.round(withFee(offer.price, offer.currency))}</span>
@@ -292,37 +803,58 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
             </div>
           </div>
 
-          <div className="ck-flight-route">
-            <div className="ck-endpoint">
-              <span className="ck-time">{fmtTime(offer.departure_time)}</span>
-              <span className="ck-iata">{offer.origin}</span>
-              <span className="ck-city">{offer.origin_name}</span>
-            </div>
+          <div className="ck-flight-routes">
+            {summaryLegs.map((leg) => {
+              const stops = getLegStops(leg)
+              const durationLabel = leg.duration_minutes > 0 ? fmtDuration(leg.duration_minutes) : '--'
+              const arrivalLabel = leg.duration_minutes > 0 || leg.arrival_time !== leg.departure_time
+                ? fmtTime(leg.arrival_time)
+                : '--:--'
 
-            <div className="ck-path">
-              <span className="ck-duration">{fmtDuration(offer.duration_minutes)}</span>
-              <div className="ck-path-line">
-                <span className="ck-path-dot" />
-                <span className="ck-path-track" />
-                {offer.stops === 0 && <span className="ck-direct-label">Direct</span>}
-                {offer.stops > 0 && <span className="ck-stop-dot" />}
-                <span className="ck-path-track" />
-                <span className="ck-path-dot" />
-              </div>
-              {offer.stops > 0 && (
-                <span className="ck-stops-label">{offer.stops} stop{offer.stops > 1 ? 's' : ''}</span>
-              )}
-            </div>
+              return (
+                <div className="ck-flight-route-block" key={`${leg.leg}-${leg.departure_time}-${leg.arrival_time}`}>
+                  {summaryLegs.length > 1 && (
+                    <div className="ck-flight-route-topline">
+                      <span className="ck-leg-label">{getLegTitle(leg.leg)}</span>
+                      <span className="ck-flight-route-date">{fmtDate(leg.departure_time)}</span>
+                    </div>
+                  )}
 
-            <div className="ck-endpoint ck-endpoint--right">
-              <span className="ck-time">{fmtTime(offer.arrival_time)}</span>
-              <span className="ck-iata">{offer.destination}</span>
-              <span className="ck-city">{offer.destination_name}</span>
-            </div>
+                  <div className="ck-flight-route">
+                    <div className="ck-endpoint">
+                      <span className="ck-time">{fmtTime(leg.departure_time)}</span>
+                      <span className="ck-iata">{leg.origin}</span>
+                      <span className="ck-city">{getLegCityLabel(leg, 'origin')}</span>
+                    </div>
+
+                    <div className="ck-path">
+                      <span className="ck-duration">{durationLabel}</span>
+                      <div className="ck-path-line">
+                        <span className="ck-path-dot" />
+                        <span className="ck-path-track" />
+                        {stops === 0 && <span className="ck-direct-label">Direct</span>}
+                        {stops > 0 && <span className="ck-stop-dot" />}
+                        <span className="ck-path-track" />
+                        <span className="ck-path-dot" />
+                      </div>
+                      {stops > 0 && (
+                        <span className="ck-stops-label">{stops} stop{stops > 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+
+                    <div className="ck-endpoint ck-endpoint--right">
+                      <span className="ck-time">{arrivalLabel}</span>
+                      <span className="ck-iata">{leg.destination}</span>
+                      <span className="ck-city">{getLegCityLabel(leg, 'destination')}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           <div className="ck-flight-meta">
-            <span>{fmtDate(offer.departure_time)}</span>
+            <span>{summaryDates.join(' · ')}</span>
             <span className="ck-meta-dot">·</span>
             <span>{t('onePassenger')}</span>
             <span className="ck-meta-dot">·</span>
@@ -354,6 +886,9 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
               <div className="ck-unlocked-sub">
                 {t('bookingLinkReady')}
               </div>
+              {bookingSite && (
+                <div className="ck-unlocked-source">Deal from {bookingSite}</div>
+              )}
             </div>
           </div>
         )}
@@ -428,19 +963,22 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
                         </div>
                         {step.type === 'share-rejected' && (
                           <div className="ck-share-rejected">
-                            <span>⚠</span> {t('screenshotInvalid')}
+                            <span>⚠</span> {shareError ?? t('screenshotInvalid')}
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Upload step */}
+                    {/* Screenshot upload step */}
                     {step.type === 'share-upload' && (
                       <div className="ck-share-upload">
                         <div className="ck-share-platform-header">
                           <span className="ck-platform-icon">{PLATFORM_ICONS[step.platform.id]}</span>
                           <span className="ck-share-platform-name">{step.platform.label}</span>
-                          <button className="ck-share-back" onClick={() => setStep({ type: 'share-select' })}>
+                          <button className="ck-share-back" onClick={() => {
+                            setShareError(null)
+                            setStep({ type: 'share-select' })
+                          }}>
                             {t('change')}
                           </button>
                         </div>
@@ -455,6 +993,7 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
                           className={`ck-upload-zone${previewUrl ? ' ck-upload-zone--filled' : ''}`}
                           onClick={() => fileInputRef.current?.click()}
                           onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
+                          onPaste={handlePaste}
                           role="button"
                           tabIndex={0}
                           aria-label={t('uploadAriaLabel')}
@@ -533,22 +1072,177 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
                 </div>
               </div>
 
-              {isUnlocked ? (
+              {splitBookingLegs.length > 0 ? (
+                <div className="ck-book-actions">
+                  {splitBookingLegs.map((leg) => {
+                    const legPrice = typeof leg.price === 'number' ? leg.price : null
+                    const hasBookingUrl = typeof leg.booking_url === 'string' && leg.booking_url.length > 0
+
+                    return (
+                      <div className="ck-book-action-card" key={`${leg.leg}-${leg.airline}-${leg.departure_time}`}>
+                        <div className="ck-book-action-meta">
+                          <div className="ck-book-action-copy">
+                            <span className="ck-book-action-title">{getLegTitle(leg.leg)}</span>
+                            <span className="ck-leg-airline">{leg.airline}</span>
+                            <span className="ck-book-action-subtitle">{getLegRouteLabel(leg)}</span>
+                            {leg.booking_site && (
+                              <span className="ck-book-action-site">Book via {leg.booking_site}</span>
+                            )}
+                          </div>
+                          <span className={`ck-book-action-price${legPrice !== null ? '' : ' ck-leg-price--muted'}`}>
+                            {legPrice !== null ? fmtMoney(legPrice, leg.currency || offer.currency) : 'Included in total'}
+                          </span>
+                        </div>
+
+                        {isUnlocked ? (
+                          hasBookingUrl ? (
+                            <a
+                              href={leg.booking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ck-book-btn ck-book-btn--active"
+                              onClick={() => trackSearchSessionEvent(searchId, 'booking_link_opened', {
+                                offer_id: offer.id,
+                                airline: leg.airline,
+                                leg: leg.leg,
+                              }, {
+                                source: 'website-checkout',
+                                source_path: `/book/${offer.id}`,
+                                decision: 'booking_link_opened',
+                              }, { keepalive: true })}
+                            >
+                              {getLegButtonLabel(leg.leg, leg.airline)}
+                              <ArrowIcon />
+                            </a>
+                          ) : (
+                            <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
+                              {bookingLinkStatus === 'loading' ? t('processing') : getLegButtonLabel(leg.leg, leg.airline)}
+                            </button>
+                          )
+                        ) : (
+                          <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
+                            <LockIcon />
+                            {getLockedLegButtonLabel(leg.leg)}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : tripBreakdown.length > 1 && (
+                <div className="ck-leg-breakdown">
+                  {tripBreakdown.map((leg) => (
+                    <div className="ck-leg-row" key={`${leg.leg}-${leg.airline}-${leg.departure_time}`}>
+                      <div className="ck-leg-copy">
+                        <span className="ck-leg-label">{getLegTitle(leg.leg)}</span>
+                        <span className="ck-leg-airline">{leg.airline}</span>
+                        <span className="ck-leg-route">{getLegRouteLabel(leg)}</span>
+                      </div>
+                      <div className="ck-leg-price-wrap">
+                        <span className={`ck-leg-price${typeof leg.price === 'number' ? '' : ' ck-leg-price--muted'}`}>
+                          {typeof leg.price === 'number'
+                            ? fmtMoney(leg.price, leg.currency || offer.currency)
+                            : 'Included in total'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {splitBookingLegs.length > 0 ? null : isUnlocked && bookingOptions.length > 0 ? (
+                <div className="ck-book-actions">
+                  {bookingOptions.map((option) => (
+                    <div className="ck-book-action-card" key={`${option.leg}-${option.airline}-${option.booking_url}`}>
+                      {(option.origin || option.destination) && (
+                        <div className="ck-book-action-meta">
+                          <div className="ck-book-action-copy">
+                            <span className="ck-book-action-title">{getLegTitle(option.leg)}</span>
+                            <span className="ck-book-action-subtitle">{getLegRouteLabel(option)}</span>
+                            {option.booking_site && (
+                              <span className="ck-book-action-site">Book via {option.booking_site}</span>
+                            )}
+                          </div>
+                          {typeof option.price === 'number' && (
+                            <span className="ck-book-action-price">{fmtMoney(option.price, option.currency || offer.currency)}</span>
+                          )}
+                        </div>
+                      )}
+                      <a
+                        href={option.booking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ck-book-btn ck-book-btn--active"
+                        onClick={() => trackSearchSessionEvent(searchId, 'booking_link_opened', {
+                          offer_id: offer.id,
+                          airline: option.airline,
+                          leg: option.leg,
+                        }, {
+                          source: 'website-checkout',
+                          source_path: `/book/${offer.id}`,
+                          decision: 'booking_link_opened',
+                        }, { keepalive: true })}
+                      >
+                        {getLegButtonLabel(option.leg, option.airline)}
+                        <ArrowIcon />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              ) : isUnlocked && bookingUrl ? (
                   <a
-                  href={offer.booking_url}
+                  href={bookingUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ck-book-btn ck-book-btn--active"
+                    onClick={() => trackSearchSessionEvent(searchId, 'booking_link_opened', {
+                      offer_id: offer.id,
+                      airline: offer.airline,
+                    }, {
+                      source: 'website-checkout',
+                      source_path: `/book/${offer.id}`,
+                      decision: 'booking_link_opened',
+                    }, { keepalive: true })}
                 >
                   {t('bookOn', { airline: offer.airline })}
                   <ArrowIcon />
                 </a>
-              ) : (
+              ) : isUnlocked ? (
                 <>
-                  <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
-                    <LockIcon />
-                    {t('bookOn', { airline: offer.airline })}
-                  </button>
+                  {tripBreakdown.length > 1 ? (
+                    <div className="ck-book-actions">
+                      {tripBreakdown.map((leg) => (
+                        <button key={`${leg.leg}-${leg.airline}`} className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
+                          {bookingLinkStatus === 'loading' ? t('processing') : getLegButtonLabel(leg.leg, leg.airline)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
+                      {bookingLinkStatus === 'loading' ? t('processing') : t('bookOn', { airline: summaryAirline })}
+                    </button>
+                  )}
+                  <div className="ck-book-locked-note">
+                    {bookingLinkStatus === 'error' ? t('unlockFirst') : t('processing')}
+                  </div>
+                </>
+              ) : splitBookingLegs.length > 0 ? null : (
+                <>
+                  {tripBreakdown.length > 1 ? (
+                    <div className="ck-book-actions">
+                      {tripBreakdown.map((leg) => (
+                        <button key={`${leg.leg}-${leg.airline}`} className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
+                          <LockIcon />
+                          {getLockedLegButtonLabel(leg.leg)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
+                      <LockIcon />
+                      {t('unlockBookingLink')}
+                    </button>
+                  )}
                   <div className="ck-book-locked-note">
                     {t('unlockFirst')}
                   </div>
@@ -572,7 +1266,16 @@ export default function CheckoutPanel({ offer, searchId }: Props) {
 
         {/* ── Trust footer ────────────────────────────────────────────────── */}
         <div className="ck-trust-footer">
-          <a href="https://letsfg.co" target="_blank" rel="noreferrer" className="ck-trust-link ck-trust-brand">LetsFG</a>
+          <a
+            href="https://letsfg.co"
+            target="_blank"
+            rel="noreferrer"
+            className="ck-trust-link ck-trust-brand"
+            onClick={() => trackSearchSessionEvent(searchId, 'navigate_home', {}, {
+              source: 'website-checkout',
+              source_path: `/book/${offer.id}`,
+            }, { keepalive: true })}
+          >LetsFG</a>
           <span className="ck-meta-dot">·</span>
           <a href="https://instagram.com/letsfg_" target="_blank" rel="noreferrer" className="ck-trust-link">Instagram</a>
           <span className="ck-meta-dot">·</span>

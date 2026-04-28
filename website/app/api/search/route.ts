@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordLocalSearch } from '../../lib/stats'
 import { parseNLQuery } from '../../lib/searchParsing'
-
-const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
-const FSW_SECRET = process.env.FSW_SECRET || ''
-const WEBSITE_SEARCH_LIMIT = 500
+import { startWebSearch } from '../../../lib/fsw-search'
 
 // ── POST /api/search ─────────────────────────────────────────────────────────
 
@@ -20,6 +17,8 @@ export async function POST(request: NextRequest) {
     let returnDate: string | undefined
     const adults = Math.max(1, parseInt(body.adults ?? '1', 10) || 1)
     const currency = (body.currency || 'EUR').toUpperCase()
+    let maxStops: number | undefined
+    let cabin: string | undefined
 
     if (body.origin && body.destination && body.date_from) {
       origin = (body.origin as string).toUpperCase().trim()
@@ -28,6 +27,10 @@ export async function POST(request: NextRequest) {
       destinationName = body.destination_name || destination
       dateFrom = body.date_from
       returnDate = body.return_date || undefined
+      if (body.max_stops !== undefined && body.max_stops !== null && body.max_stops !== '') {
+        maxStops = parseInt(body.max_stops, 10)
+      }
+      cabin = body.cabin ? String(body.cabin).toUpperCase() : undefined
     } else if (body.query) {
       const parsed = parseNLQuery(body.query)
       origin = parsed.origin
@@ -36,6 +39,8 @@ export async function POST(request: NextRequest) {
       destinationName = parsed.destination_name
       dateFrom = parsed.date
       returnDate = parsed.return_date || undefined
+      maxStops = parsed.stops
+      cabin = parsed.cabin ? String(parsed.cabin).toUpperCase() : undefined
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
     }
@@ -44,24 +49,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not determine origin or destination.' }, { status: 400 })
     }
 
-    recordLocalSearch(0)
+    recordLocalSearch()
 
-    const fswRes = await fetch(`${FSW_URL}/web-search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${FSW_SECRET}` },
-      body: JSON.stringify({ origin, destination, date_from: dateFrom, return_date: returnDate, adults, currency, limit: WEBSITE_SEARCH_LIMIT }),
-      signal: AbortSignal.timeout(10_000),
+    const { searchId, cache } = await startWebSearch({
+      origin,
+      destination,
+      date_from: dateFrom!,
+      return_date: returnDate,
+      adults,
+      currency,
+      ...(maxStops !== undefined ? { max_stops: maxStops } : {}),
+      ...(cabin ? { cabin } : {}),
+    }, {
+      query: typeof body.query === 'string' ? body.query : undefined,
+      origin_name: originName,
+      destination_name: destinationName,
+      source: 'website-api-search',
+      source_path: '/api/search',
     })
 
-    if (!fswRes.ok) {
-      const err = await fswRes.text()
-      console.error('FSW web-search error:', fswRes.status, err)
+    if (!searchId) {
       return NextResponse.json({ error: 'Search service unavailable' }, { status: 502 })
     }
 
-    const { search_id } = await fswRes.json()
-
-    return NextResponse.json({ search_id, status: 'searching', parsed: { origin, origin_name: originName, destination, destination_name: destinationName, date: dateFrom, return_date: returnDate } })
+    return NextResponse.json({
+      search_id: searchId,
+      status: 'searching',
+      cache,
+      parsed: {
+        origin,
+        origin_name: originName,
+        destination,
+        destination_name: destinationName,
+        date: dateFrom,
+        return_date: returnDate,
+        passengers: adults,
+        ...(maxStops !== undefined ? { stops: maxStops } : {}),
+        ...(cabin ? { cabin } : {}),
+      },
+    })
   } catch (error) {
     console.error('Search error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

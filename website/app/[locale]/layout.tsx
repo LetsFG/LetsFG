@@ -1,22 +1,8 @@
 import type { Metadata } from 'next'
-import { Lexend, JetBrains_Mono } from 'next/font/google'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages, getTranslations } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { routing } from '../../i18n/routing'
-import '../globals.css'
-
-const lexend = Lexend({
-  subsets: ['latin'],
-  variable: '--font-lexend',
-  display: 'swap',
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-})
 
 export async function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }))
@@ -83,12 +69,8 @@ export default async function LocaleLayout({
   const messages = await getMessages()
 
   return (
-    <html lang={locale} className={`${lexend.variable} ${jetbrainsMono.variable}`}>
-      <body>
-        <NextIntlClientProvider messages={messages}>
-          {children}
-        </NextIntlClientProvider>
-      </body>
-    </html>
+    <NextIntlClientProvider messages={messages}>
+      {children}
+    </NextIntlClientProvider>
   )
 }

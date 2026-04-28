@@ -6,13 +6,16 @@ import GlobeButton from '../globe-button'
 import ResultsSearchForm from './ResultsSearchForm'
 import ResultsPanel from './[searchId]/ResultsPanel'
 import SearchingTasks from './[searchId]/SearchingTasks'
+import CacheHitReveal from './CacheHitReveal'
 import { parseNLQuery } from '../lib/searchParsing'
 import { IATA_TO_NAME, getAirlineNameFromCode, looksLikeIataCode } from '../airlineLogos'
+import { startWebSearch } from '../../lib/fsw-search'
+import { upsertSearchSessionServer } from '../../lib/search-session-analytics-server'
+import { getGitHubStars, formatStars } from '../../lib/github-stars'
 
-const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
-const WEBSITE_SEARCH_LIMIT = 500
+const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
@@ -72,12 +75,12 @@ interface RawOffer {
   price: number
   currency: string
   airlines?: string[]
+  airline?: string
   airline_code?: string
+  owner_airline?: string
   origin_name?: string
   destination_name?: string
   google_flights_price?: number
-  source?: string
-  booking_url?: string
   outbound: {
     segments: RawSegment[]
     stopovers: number
@@ -96,10 +99,27 @@ function extractIataFromFlightNo(flightNo: string): string {
   return m ? m[1].toUpperCase() : ''
 }
 
+function looksLikePlaceholderAirline(value: string): boolean {
+  return /^Airline\s*#\d+$/i.test(value.trim())
+}
+
 function resolveAirline(raw: RawOffer, first: RawSegment): { airlineName: string; airlineCode: string } {
-  const airlines: string[] = raw.airlines || []
-  const rawName = airlines[0] || first.airline || first.carrier_name || ''
+  const candidates = [
+    ...(raw.airlines || []),
+    first.airline_name,
+    first.carrier_name,
+    raw.airline,
+    raw.owner_airline,
+    first.airline,
+  ].filter((value): value is string => Boolean(
+    value && value.trim().length > 0 && !looksLikePlaceholderAirline(value)
+  ))
+  const rawName = candidates[0] || ''
   const flightNo: string = first.flight_no || first.flight_number || ''
+  const fallbackCode = raw.airline_code
+    || (first.airline && looksLikeIataCode(first.airline) ? first.airline.toUpperCase() : '')
+    || extractIataFromFlightNo(flightNo)
+    || '??'
 
   // If the 'name' is actually an IATA code (e.g. FSW returned ['FR'] instead of ['Ryanair'])
   if (rawName && looksLikeIataCode(rawName)) {
@@ -109,10 +129,8 @@ function resolveAirline(raw: RawOffer, first: RawSegment): { airlineName: string
   }
 
   // Normal case: rawName is a full airline name
-  const airlineName = rawName || 'Unknown'
-  // Derive code: raw field → parse flight number → unknown
-  const codeFromFlightNo = extractIataFromFlightNo(flightNo)
-  const airlineCode = raw.airline_code || codeFromFlightNo || '??'
+  const airlineName = rawName || getAirlineNameFromCode(fallbackCode) || 'Unknown'
+  const airlineCode = fallbackCode
 
   return { airlineName, airlineCode }
 }
@@ -131,10 +149,16 @@ function normalizeSegments(segments: RawSegment[], fallbackAirlineName: string, 
       : 0
     const originCode = (s.origin || '').toUpperCase()
     const destinationCode = (s.destination || '').toUpperCase()
+    const airlineCode = (s.airline && looksLikeIataCode(s.airline) ? s.airline.toUpperCase() : '')
+      || extractIataFromFlightNo(s.flight_no || '')
+      || fallbackAirlineCode
+    const rawAirlineName = s.airline_name || s.carrier_name
+      || (s.airline && !looksLikeIataCode(s.airline) && !looksLikePlaceholderAirline(s.airline) ? s.airline : '')
+    const airlineName = rawAirlineName || getAirlineNameFromCode(airlineCode) || fallbackAirlineName
 
     return {
-      airline: s.airline || s.carrier_name || fallbackAirlineName,
-      airline_code: extractIataFromFlightNo(s.flight_no || '') || fallbackAirlineCode,
+      airline: airlineName,
+      airline_code: airlineCode,
       flight_number: s.flight_no || s.flight_number || '',
       origin: originCode,
       origin_name: IATA_TO_NAME[originCode] || originCode,
@@ -208,9 +232,9 @@ function normalizeOffer(raw: RawOffer, idx: number) {
   return {
     id,
     price: Math.round((raw.price || 0) * 100) / 100,
-    google_flights_price: raw.google_flights_price
+    google_flights_price: typeof raw.google_flights_price === 'number'
       ? Math.round(raw.google_flights_price * 100) / 100
-      : Math.round((raw.price || 0) * 1.12 * 100) / 100,
+      : undefined,
     currency: raw.currency || 'EUR',
     airline: airlineName,
     airline_code: airlineCode,
@@ -223,38 +247,35 @@ function normalizeOffer(raw: RawOffer, idx: number) {
     duration_minutes: durationMins,
     stops: ob.stopovers ?? Math.max(0, segs.length - 1),
     segments: normSegs.length > 1 ? normSegs : undefined,
-    source: raw.source,
-    booking_url: raw.booking_url,
     inbound,
   }
 }
 
-async function startFSWSearch(parsed: ReturnType<typeof parseNLQuery>): Promise<string | null> {
+async function startFSWSearch(parsed: ReturnType<typeof parseNLQuery>, query?: string): Promise<{ searchId: string | null; cache: 'hit' | 'miss' }> {
+  if (!parsed.origin || !parsed.destination || !parsed.date) {
+    return { searchId: null, cache: 'miss' }
+  }
+
   try {
-    const res = await fetch(`${FSW_URL}/web-search`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${FSW_SECRET}`,
-      },
-      body: JSON.stringify({
-        origin: parsed.origin,
-        destination: parsed.destination,
-        date_from: parsed.date,
-        return_date: parsed.return_date,
-        adults: 1,
-        currency: 'EUR',
-        limit: WEBSITE_SEARCH_LIMIT,
-        ...(parsed.stops !== undefined ? { max_stops: parsed.stops } : {}),
-        ...(parsed.cabin ? { cabin: parsed.cabin } : {}),
-      }),
-      signal: AbortSignal.timeout(10_000),
+    const result = await startWebSearch({
+      origin: parsed.origin,
+      destination: parsed.destination,
+      date_from: parsed.date,
+      return_date: parsed.return_date || undefined,
+      adults: 1,
+      currency: 'EUR',
+      ...(parsed.stops !== undefined ? { max_stops: parsed.stops } : {}),
+      ...(parsed.cabin ? { cabin: parsed.cabin } : {}),
+    }, {
+      query,
+      origin_name: parsed.origin_name,
+      destination_name: parsed.destination_name,
+      source: 'website-results-page',
+      source_path: '/results',
     })
-    if (!res.ok) return null
-    const { search_id } = await res.json()
-    return search_id as string
+    return result
   } catch {
-    return null
+    return { searchId: null, cache: 'miss' }
   }
 }
 
@@ -285,7 +306,8 @@ async function pollFSW(searchId: string, maxWaitMs: number): Promise<{ offers: R
 
 // ── Page components ───────────────────────────────────────────────────────────
 
-function PageTopbar({ query }: { query: string }) {
+async function PageTopbar({ query }: { query: string }) {
+  const stars = await getGitHubStars()
   return (
     <div className="res-topbar res-topbar--results">
       <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home">
@@ -293,8 +315,9 @@ function PageTopbar({ query }: { query: string }) {
       </Link>
       <div className="res-topbar-actions">
         <GlobeButton inline />
-        <a href={REPO_URL} target="_blank" rel="noreferrer" className="res-icon-btn" aria-label="GitHub" title="GitHub">
+        <a href={REPO_URL} target="_blank" rel="noreferrer" className={stars !== null ? 'res-icon-btn res-icon-btn--gh' : 'res-icon-btn'} aria-label="GitHub" title="GitHub">
           <GitHubIcon />
+          {stars !== null && <span className="res-gh-stars"><span className="res-gh-star" aria-hidden="true">⭐</span>{formatStars(stars)}</span>}
         </a>
       </div>
     </div>
@@ -309,6 +332,7 @@ function PageFooter() {
         <div className="res-search-footer-links">
           <a href="/privacy" className="res-search-footer-link">Privacy</a>
           <a href="/terms" className="res-search-footer-link">Terms</a>
+          <a href="mailto:contact@letsfg.co" className="res-search-footer-link">Support</a>
           <span className="res-search-footer-sep" aria-hidden="true" />
           <a href={INSTAGRAM_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram"><InstagramIcon /></a>
           <a href={TIKTOK_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="TikTok"><TikTokIcon /></a>
@@ -329,6 +353,7 @@ async function SearchContent({ query, sid, started }: { query: string; sid?: str
   ].filter(Boolean).join(' → ')
 
   let searchId = sid
+  let cacheHit = false
 
   // Start a new search if no sid provided
   if (!searchId) {
@@ -360,7 +385,7 @@ async function SearchContent({ query, sid, started }: { query: string; sid?: str
             <div className="res-hero-inner">
               <PageTopbar query={query} />
               <div className="res-search-shell">
-                <ResultsSearchForm initialQuery={query} />
+                <ResultsSearchForm initialQuery={query} trackingSearchId={searchId} trackingSourcePath="/results" />
               </div>
               <div className="res-hero-copy">
                 <p className="res-hero-kicker">{errKicker}</p>
@@ -373,7 +398,9 @@ async function SearchContent({ query, sid, started }: { query: string; sid?: str
       )
     }
 
-    searchId = await startFSWSearch(parsed) ?? undefined
+    const fswResult = await startFSWSearch(parsed, query)
+    searchId = fswResult.searchId ?? undefined
+    cacheHit = fswResult.cache === 'hit'
     if (!searchId) {
       return (
         <main className="res-page">
@@ -382,7 +409,7 @@ async function SearchContent({ query, sid, started }: { query: string; sid?: str
             <div className="res-hero-inner">
               <PageTopbar query={query} />
               <div className="res-search-shell">
-                <ResultsSearchForm initialQuery={query} />
+                <ResultsSearchForm initialQuery={query} trackingSearchId={searchId} trackingSourcePath="/results" />
               </div>
               <div className="res-hero-copy">
                 <p className="res-hero-kicker">Search unavailable</p>
@@ -397,135 +424,14 @@ async function SearchContent({ query, sid, started }: { query: string; sid?: str
     }
   }
 
-  // Poll FSW for up to 25s
-  const result = await pollFSW(searchId, 25_000)
-
-  // Still searching — redirect to the dedicated [searchId] page which has live polling
-  // (router.refresh() there works correctly because searchId is stable in the URL)
-  if (!result) {
-    const startedTs = started || Date.now().toString()
-    redirect(`/results/${searchId}?started=${startedTs}`)
+  if (!searchId) {
+    return null
   }
 
-  // Results ready
-  const rawOffers = result.offers || []
-  // Deduplicate by ID — FSW can return the same offer from multiple connectors
-  const allOffers = Array.from(
-    new Map(rawOffers.map((o, i) => normalizeOffer(o, i)).map(o => [o.id, o])).values()
-  )
-  const offerCurrency = allOffers[0]?.currency || 'EUR'
-  const priceMin = allOffers.length ? Math.min(...allOffers.map(o => o.price)) : 0
-  const priceMax = allOffers.length ? Math.max(...allOffers.map(o => o.price)) : 1000
-
-  const formatDuration = (mins: number) => `${Math.floor(mins / 60)}h ${mins % 60}m`
-
-  const jsonLd = allOffers.length > 0 ? {
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name: `Flights ${routeLabel}`,
-    numberOfItems: allOffers.length,
-    itemListElement: allOffers.slice(0, 10).map((offer, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      item: {
-        '@type': 'Product',
-        name: `${offer.airline} ${offer.origin}→${offer.destination}`,
-        offers: {
-          '@type': 'Offer',
-          price: String(offer.price),
-          priceCurrency: offer.currency,
-          availability: 'https://schema.org/InStock',
-        },
-      },
-    })),
-  } : null
-
-  return (
-    <>
-      {jsonLd && (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      )}
-
-      <main className="res-page res-page--completed">
-        <section className="res-hero res-hero--results">
-          <div className="res-hero-backdrop" aria-hidden="true" />
-          <div className="res-hero-inner">
-            <PageTopbar query={query} />
-            <div className="res-search-shell">
-              <ResultsSearchForm initialQuery={query} />
-            </div>
-            <div className="res-meta-bar">
-              <span className="res-meta-label">Search results</span>
-              {routeLabel && (<><span className="res-meta-sep">·</span><span className="res-meta-route">{routeLabel}</span></>)}
-              {parsed.date && parsed.return_date
-                ? (<><span className="res-meta-sep">·</span><span className="res-meta-detail">{parsed.date} → {parsed.return_date}</span></>)
-                : parsed.date && (<><span className="res-meta-sep">·</span><span className="res-meta-detail">{parsed.date}</span></>)}
-              {allOffers.length > 0 && (<><span className="res-meta-sep">·</span><span className="res-meta-detail">{allOffers.length} results</span></>)}
-            </div>
-          </div>
-        </section>
-
-        {allOffers.length > 0 && (
-          <ResultsPanel
-            allOffers={allOffers}
-            currency={offerCurrency}
-            priceMin={priceMin}
-            priceMax={priceMax}
-            searchId={searchId}
-          />
-        )}
-
-        {allOffers.length === 0 && (
-          <div className="res-notice-card" style={{ margin: '2rem auto', maxWidth: 480 }}>
-            <div className="res-notice-text">
-              <p className="res-notice-title">No flights found</p>
-              <p className="res-notice-sub">Try a different date or route.</p>
-            </div>
-            <Link href="/en" className="res-notice-btn">New search</Link>
-          </div>
-        )}
-
-        {/* Agent-readable section */}
-        <section className="sr-only" aria-hidden="true" data-agent-content>
-          <h2>Flight Search Results — Machine-Readable Summary</h2>
-          <p>Query: &quot;{query}&quot;</p>
-          <p>Parsed: {routeLabel}, {parsed.date || 'flexible dates'}</p>
-          <p>Status: COMPLETED — {allOffers.length} results found.</p>
-          {allOffers.length > 0 && (
-            <>
-              <p>Cheapest: {allOffers[0].currency}{allOffers[0].price} on {allOffers[0].airline} ({allOffers[0].stops === 0 ? 'direct' : `${allOffers[0].stops} stop(s)`}, {formatDuration(allOffers[0].duration_minutes)})</p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Rank</th><th>Airline</th><th>Price</th><th>Route</th>
-                    <th>Departure</th><th>Arrival</th><th>Duration</th><th>Stops</th><th>Offer ID</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allOffers.map((offer, i) => (
-                    <tr key={offer.id}>
-                      <td>{i + 1}</td>
-                      <td>{offer.airline}</td>
-                      <td>{offer.currency}{offer.price}</td>
-                      <td>{offer.origin}→{offer.destination}</td>
-                      <td>{offer.departure_time}</td>
-                      <td>{offer.arrival_time}</td>
-                      <td>{formatDuration(offer.duration_minutes)}</td>
-                      <td>{offer.stops === 0 ? 'Direct' : offer.stops}</td>
-                      <td>{offer.id}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p>To book: POST https://api.letsfg.co/api/v1/bookings/unlock with offer_id, then POST /api/v1/bookings/book</p>
-            </>
-          )}
-        </section>
-
-        <PageFooter />
-      </main>
-    </>
-  )
+  // Hand off immediately to the stable search page so the browser can leave
+  // the homepage without waiting for server-side polling on /results.
+  const startedTs = started || Date.now().toString()
+  redirect(`/results/${searchId}?started=${startedTs}`)
 }
 
 // ── Suspense fallback (shown instantly while SearchContent runs) ───────────────

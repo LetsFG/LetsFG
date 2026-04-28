@@ -279,7 +279,7 @@ export const IATA_TO_NAME: Record<string, string> = {
   UA: 'United Airlines', VJ: 'VietJet Air', VN: 'Vietnam Airlines',
   VS: 'Virgin Atlantic', VA: 'Virgin Australia', VB: 'VivaAerobus',
   Y4: 'Volaris', V7: 'Volotea', VY: 'Vueling', WS: 'WestJet',
-  P5: 'Wingo', W6: 'Wizz Air', W9: 'Wizz Air Malta', ZG: 'Zipair',
+  P5: 'Wingo', W6: 'Wizz Air', W9: 'Wizz Air UK', ZG: 'Zipair',
   // Common numeric-prefixed codes
   '2W': 'World2Fly', '4U': 'Germanwings', '5O': 'ASL Airlines France',
 }
@@ -301,6 +301,13 @@ export function getLogoByIata(iata: string): string {
   return `https://pics.avs.io/100/100/${iata}.png`
 }
 
+const IATA_LOGO_OVERRIDES: Record<string, string> = {
+  // avs.io does not consistently serve an easyJet logo, so use a known airline asset.
+  U2: 'https://images.kiwi.com/airlines/64/U2.png',
+  // Wizz Air UK should reuse the main Wizz brand mark when W9-specific art is missing.
+  W9: getLogoByIata('W6'),
+}
+
 /** Return a favicon URL for a given OTA domain. */
 export function getFaviconByDomain(domain: string): string {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
@@ -311,7 +318,8 @@ export function getFaviconByDomain(domain: string): string {
  * Automatically falls back gracefully via onError in the component.
  */
 export function getAirlineLogoUrl(airlineCode: string): string {
-  return getLogoByIata(airlineCode)
+  const normalized = airlineCode.trim().toUpperCase()
+  return IATA_LOGO_OVERRIDES[normalized] ?? getLogoByIata(normalized)
 }
 
 /**

@@ -1,51 +1,52 @@
 /**
  * LetsFG service fee calculation.
  *
- * Fee = max(1% of ticket price, floor in local currency equivalent to 1 EUR).
+ * Fee = max(1% of ticket price, configured minimum floor by currency).
  * Applied at display time only — raw airline prices are never mutated.
  *
  * Floor rates are rough pegged values; they don't need to be live-rates —
- * the point is just that no ticket under ~100 EUR pays less than 1 EUR fee.
+ * the point is just that no ticket under roughly the low-hundreds pays less
+ * than the minimum unlock fee.
  */
 
-// Approximate 1-EUR equivalents for common currencies (rounded to nearest unit)
-const EUR_FLOOR: Record<string, number> = {
-  EUR: 1,
-  USD: 1.10,
-  GBP: 0.85,
-  PLN: 4.25,
-  CZK: 25,
-  HUF: 400,
-  RON: 5,
-  SEK: 11,
-  NOK: 12,
-  DKK: 7.5,
-  CHF: 0.95,
-  TRY: 36,
-  AED: 4,
-  SAR: 4.10,
-  INR: 92,
-  THB: 39,
-  MYR: 5,
-  SGD: 1.50,
-  AUD: 1.70,
-  NZD: 1.85,
-  CAD: 1.50,
-  MXN: 22,
-  BRL: 6,
-  JPY: 162,
-  KRW: 1500,
-  HKD: 8.6,
-  ZAR: 20,
-  EGP: 55,
+// Currency-specific minimum unlock fees.
+const MIN_FEE_FLOOR: Record<string, number> = {
+  EUR: 3,
+  USD: 3,
+  GBP: 2.55,
+  PLN: 12.75,
+  CZK: 75,
+  HUF: 1200,
+  RON: 15,
+  SEK: 33,
+  NOK: 36,
+  DKK: 22.5,
+  CHF: 2.85,
+  TRY: 108,
+  AED: 12,
+  SAR: 12.3,
+  INR: 276,
+  THB: 117,
+  MYR: 15,
+  SGD: 4.5,
+  AUD: 5.1,
+  NZD: 5.55,
+  CAD: 4.5,
+  MXN: 66,
+  BRL: 18,
+  JPY: 486,
+  KRW: 4500,
+  HKD: 25.8,
+  ZAR: 60,
+  EGP: 165,
 }
 
 /**
  * Returns the LetsFG service fee for a given ticket price + currency.
- * fee = max(price × 1%, 1 EUR in local currency)
+ * fee = max(price × 1%, minimum fee floor for the currency)
  */
 export function calculateFee(price: number, currency: string): number {
-  const floor = EUR_FLOOR[currency.toUpperCase()] ?? 1.10 // default to USD-ish
+  const floor = MIN_FEE_FLOOR[currency.toUpperCase()] ?? 3
   return Math.max(price * 0.01, floor)
 }
 

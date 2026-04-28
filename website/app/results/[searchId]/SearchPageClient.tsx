@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -8,6 +8,8 @@ import GlobeButton from '../../globe-button'
 import ResultsSearchForm from '../ResultsSearchForm'
 import SearchingTasks from './SearchingTasks'
 import ResultsPanel from './ResultsPanel'
+import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
+import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
@@ -53,6 +55,8 @@ function XIcon() {
 interface FlightOffer {
   id: string
   price: number
+  google_flights_price?: number
+  offer_ref?: string
   currency: string
   airline: string
   airline_code: string
@@ -126,38 +130,34 @@ export default function SearchPageClient({
   const [status, setStatus] = useState(initialStatus)
   const [progress, setProgress] = useState(initialProgress)
   const [offers, setOffers] = useState(initialOffers)
+  const trackedResultsViewRef = useRef(false)
+  const trackedExpiredRef = useRef(false)
+  const scrollMilestonesRef = useRef<Set<number>>(new Set())
 
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
 
-  const CACHE_KEY = `lfg_result_${searchId}`
-
-  // If the server returned 'searching' (search not done yet / expired on FSW),
-  // immediately check sessionStorage for a previously cached completed result.
+  // If the server did not return completed results, immediately check browser
+  // storage for a previously cached completed result.
   useEffect(() => {
-    if (initialStatus !== 'searching') return
+    if (initialStatus === 'completed') return
     try {
-      const raw = sessionStorage.getItem(CACHE_KEY)
-      if (!raw) return
-      const cached = JSON.parse(raw)
-      if (cached.status === 'completed' && Array.isArray(cached.offers) && cached.offers.length > 0) {
+      const cached = readBrowserCachedResults<FlightOffer>(searchId)
+      if (cached?.status === 'completed' && Array.isArray(cached.offers)) {
         setStatus('completed')
         setOffers(dedup(cached.offers))
       }
     } catch { /* private mode or parse error — ignore */ }
-  }, [searchId, initialStatus, CACHE_KEY])
+  }, [searchId, initialStatus])
 
   // When search completes, persist results to sessionStorage so revisiting
   // the URL is instant even if FSW has expired the search.
   useEffect(() => {
-    if (status !== 'completed' || offers.length === 0) return
+    if (status !== 'completed') return
     try {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-        status: 'completed',
-        offers: offers.slice(0, SESSION_RESULT_CACHE_LIMIT),
-      }))
+      writeBrowserCachedResults(searchId, offers.slice(0, SESSION_RESULT_CACHE_LIMIT))
     } catch { /* storage full or unavailable */ }
-  }, [status, searchId, offers, CACHE_KEY])
+  }, [status, searchId, offers])
 
   // Client-side poll — replaces SearchPoller + router.refresh().
   // SearchingTasks stays mounted throughout the search; its animation state is
@@ -183,6 +183,78 @@ export default function SearchPageClient({
     const id = setInterval(poll, 5000)
     return () => clearInterval(id)
   }, [searchId, isSearching])
+
+  useEffect(() => {
+    if (status !== 'completed' || trackedResultsViewRef.current) return
+    trackedResultsViewRef.current = true
+    trackSearchSessionEvent(searchId, 'results_viewed', {
+      offers_count: offers.length,
+    }, {
+      source: 'website-results-client',
+      source_path: `/results/${searchId}`,
+    })
+  }, [offers.length, searchId, status])
+
+  useEffect(() => {
+    if (status !== 'expired' || trackedExpiredRef.current) return
+    trackedExpiredRef.current = true
+    trackSearchSessionEvent(searchId, 'search_expired', {}, {
+      source: 'website-results-client',
+      source_path: `/results/${searchId}`,
+      status: 'expired',
+    })
+  }, [searchId, status])
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (status === 'searching') {
+        trackSearchSessionEvent(searchId, 'pagehide_searching', {
+          progress_checked: progress?.checked ?? null,
+          progress_total: progress?.total ?? null,
+        }, {
+          source: 'website-results-client',
+          source_path: `/results/${searchId}`,
+        }, { beacon: true })
+        return
+      }
+
+      if (status === 'completed') {
+        trackSearchSessionEvent(searchId, 'pagehide_results', {
+          offers_count: offers.length,
+        }, {
+          source: 'website-results-client',
+          source_path: `/results/${searchId}`,
+        }, { beacon: true })
+      }
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    return () => window.removeEventListener('pagehide', handlePageHide)
+  }, [offers.length, progress?.checked, progress?.total, searchId, status])
+
+  useEffect(() => {
+    if (status !== 'completed') return
+
+    const milestones = [25, 50, 75]
+    const handleScroll = () => {
+      const doc = document.documentElement
+      const scrollable = doc.scrollHeight - window.innerHeight
+      if (scrollable <= 0) return
+      const percent = Math.min(100, Math.round((window.scrollY / scrollable) * 100))
+      for (const milestone of milestones) {
+        if (percent < milestone || scrollMilestonesRef.current.has(milestone)) continue
+        scrollMilestonesRef.current.add(milestone)
+        trackSearchSessionEvent(searchId, 'scroll_depth', { percent: milestone }, {
+          source: 'website-results-client',
+          source_path: `/results/${searchId}`,
+        })
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [searchId, status])
 
   // Derived display strings
   const routeLabel = [
@@ -222,6 +294,22 @@ export default function SearchPageClient({
   const priceMin = allOffers.length ? Math.min(...allOffers.map(o => o.price)) : 0
   const priceMax = allOffers.length ? Math.max(...allOffers.map(o => o.price)) : 1000
 
+  const handleNavigateHome = () => {
+    trackSearchSessionEvent(searchId, 'navigate_home', {}, {
+      source: 'website-results-client',
+      source_path: `/results/${searchId}`,
+    }, { beacon: true })
+  }
+
+  const handleSearchSubmit = (nextQuery: string) => {
+    trackSearchSessionEvent(searchId, 'new_search_started', {
+      next_query: nextQuery,
+    }, {
+      source: 'website-results-client',
+      source_path: `/results/${searchId}`,
+    }, { keepalive: true })
+  }
+
   return (
     <main className={`res-page${isSearching ? ' res-page--searching' : status === 'completed' ? ' res-page--completed' : ''}`}>
       <section className={`res-hero${isSearching ? ' res-hero--searching' : status === 'completed' ? ' res-hero--results' : ''}`}>
@@ -229,7 +317,7 @@ export default function SearchPageClient({
 
         <div className="res-hero-inner">
           <div className={`res-topbar${isSearching ? ' res-topbar--searching' : status === 'completed' ? ' res-topbar--results' : ''}`}>
-            <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home">
+            <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home" onClick={handleNavigateHome}>
               <Image
                 src="/lfg_ban.png"
                 alt="LetsFG"
@@ -257,14 +345,14 @@ export default function SearchPageClient({
 
           {status === 'completed' && (
             <div className="res-search-shell">
-              <ResultsSearchForm initialQuery={query} />
+              <ResultsSearchForm initialQuery={query} onSearchSubmit={handleSearchSubmit} />
             </div>
           )}
 
           {isSearching ? (
             <>
               <div className="res-search-shell">
-                <ResultsSearchForm initialQuery={query} />
+                <ResultsSearchForm initialQuery={query} onSearchSubmit={handleSearchSubmit} />
               </div>
 
               <div className="res-searching-stage">
@@ -316,7 +404,7 @@ export default function SearchPageClient({
                 <p className="res-notice-title">{t('expiredNoticeTitle')}</p>
                 <p className="res-notice-sub">{t('expiredNoticeSub')}</p>
               </div>
-              <Link href="/en" className="res-notice-btn">{t('searchAgain')}</Link>
+              <Link href="/en" className="res-notice-btn" onClick={handleNavigateHome}>{t('searchAgain')}</Link>
             </div>
           )}
         </div>
@@ -338,6 +426,7 @@ export default function SearchPageClient({
           <div className="res-search-footer-links">
             <a href="/privacy" className="res-search-footer-link">{t('privacy')}</a>
             <a href="/terms" className="res-search-footer-link">{t('terms')}</a>
+            <a href="mailto:contact@letsfg.co" className="res-search-footer-link">{t('support')}</a>
             <span className="res-search-footer-sep" aria-hidden="true" />
             <a href={INSTAGRAM_URL} className="res-search-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">
               <InstagramIcon />
