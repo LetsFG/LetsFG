@@ -20,11 +20,15 @@ No markup. No tracking. No price that goes up because you looked twice.
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/🌐_Try_on_letsfg.co-4CAF50?style=for-the-badge&logoColor=white" alt="Try on letsfg.co">](https://letsfg.co/en)
 &nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/💬_Try_on_Messenger-0099FF?style=for-the-badge&logo=messenger&logoColor=white" alt="Try on Messenger">](https://m.me/61579557368989)
-<br>
-[<img src="https://img.shields.io/badge/📸_Try_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Try on Instagram">](https://ig.me/m/letsfg_)
-&nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/📦_pip_install_letsfg-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="pip install">](https://pypi.org/project/letsfg/)
+
+<br>
+
+[<img src="https://img.shields.io/badge/Follow_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Follow on Instagram">](https://www.instagram.com/letsfg_)
+&nbsp;&nbsp;
+[<img src="https://img.shields.io/badge/Follow_on_TikTok-000000?style=for-the-badge&logo=tiktok&logoColor=white" alt="Follow on TikTok">](https://www.tiktok.com/@letsfg_)
+&nbsp;&nbsp;
+[<img src="https://img.shields.io/badge/Follow_on_X-111111?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X">](https://x.com/LetsFG_)
 
 <br>
 
@@ -103,8 +107,6 @@ We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026
 </div>
 
 Search any route, compare live results, and unlock the booking links for the flights you want without installing anything.
-
-If you prefer chat, the Messenger and Instagram buttons at the top still work too.
 
 When you're ready to integrate it into your own agent, keep reading.
 
@@ -379,10 +381,10 @@ Search a city code and LetsFG automatically searches all airports in that city. 
 
 <div align="center">
 
-**[letsfg.co](https://letsfg.co)** · **[Documentation](https://api.letsfg.co/docs)** · **[Connector Health](https://api.letsfg.co/health/connectors)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Messenger](https://m.me/61579557368989)** · **[Instagram](https://ig.me/m/letsfg_)**
+**[letsfg.co](https://letsfg.co)** · **[Documentation](https://api.letsfg.co/docs)** · **[Connector Health](https://api.letsfg.co/health/connectors)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Instagram](https://www.instagram.com/letsfg_)** · **[TikTok](https://www.tiktok.com/@letsfg_)** · **[X](https://x.com/LetsFG_)**
 
 *Open source · MIT License · Made with ❤️ by travelers, for travelers*
 
-Want updates? Click **Watch** above, or follow [@amjaworsky on X](https://x.com/amjaworsky).
+Want updates? Click **Watch** above, or follow [LetsFG on Instagram](https://www.instagram.com/letsfg_), [@letsfg_ on TikTok](https://www.tiktok.com/@letsfg_), or [@LetsFG_ on X](https://x.com/LetsFG_).
 
 </div>
