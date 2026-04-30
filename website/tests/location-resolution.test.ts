@@ -4,80 +4,115 @@ import test from 'node:test'
 import { findBestLocationMatch, findBestMatch, searchAirports } from '../app/airports.ts'
 import { parseNLQuery } from '../app/lib/searchParsing.ts'
 
+const RealDate = Date
+
+function withFixedNow<T>(isoTimestamp: string, run: () => T): T {
+  const fixedNow = new RealDate(isoTimestamp)
+
+  class MockDate extends RealDate {
+    constructor(...args: any[]) {
+      super(...(args.length === 0 ? [fixedNow.getTime()] : args))
+    }
+
+    static now() {
+      return fixedNow.getTime()
+    }
+
+    static parse(value: string) {
+      return RealDate.parse(value)
+    }
+
+    static UTC(...args: Parameters<DateConstructor['UTC']>) {
+      return RealDate.UTC(...args)
+    }
+  }
+
+  globalThis.Date = MockDate as DateConstructor
+  try {
+    return run()
+  } finally {
+    globalThis.Date = RealDate
+  }
+}
+
 test('parseNLQuery keeps the reported website examples working', () => {
-  const jfkToKarachi = parseNLQuery('New york jfk to karachi on 1st june 2026')
-  assert.deepEqual(
-    {
-      origin: jfkToKarachi.origin,
-      destination: jfkToKarachi.destination,
-      date: jfkToKarachi.date,
-    },
-    {
-      origin: 'JFK',
-      destination: 'KHI',
-      date: '2026-06-01',
-    },
-  )
+  withFixedNow('2026-05-01T12:00:00Z', () => {
+    const jfkToKarachi = parseNLQuery('New york jfk to karachi on 1st june 2026')
+    assert.deepEqual(
+      {
+        origin: jfkToKarachi.origin,
+        destination: jfkToKarachi.destination,
+        date: jfkToKarachi.date,
+      },
+      {
+        origin: 'JFK',
+        destination: 'KHI',
+        date: '2026-06-01',
+      },
+    )
 
-  const londonToBarcelona = parseNLQuery('London to Barcelona next Friday')
-  assert.deepEqual(
-    {
-      origin: londonToBarcelona.origin,
-      destination: londonToBarcelona.destination,
-      date: londonToBarcelona.date,
-    },
-    {
-      origin: 'LON',
-      destination: 'BCN',
-      date: '2026-05-08',
-    },
-  )
+    const londonToBarcelona = parseNLQuery('London to Barcelona next Friday')
+    assert.deepEqual(
+      {
+        origin: londonToBarcelona.origin,
+        destination: londonToBarcelona.destination,
+        date: londonToBarcelona.date,
+      },
+      {
+        origin: 'LON',
+        destination: 'BCN',
+        date: '2026-05-08',
+      },
+    )
 
-  const nycToTokyo = parseNLQuery('NYC to Tokyo in June, business class')
-  assert.deepEqual(
-    {
-      origin: nycToTokyo.origin,
-      destination: nycToTokyo.destination,
-      date: nycToTokyo.date,
-      cabin: nycToTokyo.cabin,
-    },
-    {
-      origin: 'NYC',
-      destination: 'TYO',
-      date: '2026-06-01',
-      cabin: 'C',
-    },
-  )
+    const nycToTokyo = parseNLQuery('NYC to Tokyo in June, business class')
+    assert.deepEqual(
+      {
+        origin: nycToTokyo.origin,
+        destination: nycToTokyo.destination,
+        date: nycToTokyo.date,
+        cabin: nycToTokyo.cabin,
+      },
+      {
+        origin: 'NYC',
+        destination: 'TYO',
+        date: '2026-06-01',
+        cabin: 'C',
+      },
+    )
+  })
 })
 
 test('parseNLQuery falls back to generated global coverage for long-tail names', () => {
-  const ashgabatToTirana = parseNLQuery('Aşgabat to Tiranë on 1st june 2026')
-  assert.deepEqual(
-    {
-      origin: ashgabatToTirana.origin,
-      destination: ashgabatToTirana.destination,
-      date: ashgabatToTirana.date,
-    },
-    {
-      origin: 'ASB',
-      destination: 'TIA',
-      date: '2026-06-01',
-    },
-  )
+  withFixedNow('2026-05-01T12:00:00Z', () => {
+    const ashgabatToTirana = parseNLQuery('Aşgabat to Tiranë on 1st june 2026')
+    assert.deepEqual(
+      {
+        origin: ashgabatToTirana.origin,
+        destination: ashgabatToTirana.destination,
+        date: ashgabatToTirana.date,
+      },
+      {
+        origin: 'ASB',
+        destination: 'TIA',
+        date: '2026-06-01',
+      },
+    )
 
-  const abidjanToAalborg = parseNLQuery('Abidjan to Aalborg on 1st june 2026')
-  assert.deepEqual(
-    {
-      origin: abidjanToAalborg.origin,
-      destination: abidjanToAalborg.destination,
-      date: abidjanToAalborg.date,
-    },
-    {
-      origin: 'ABJ',
-      destination: 'AAL',
-      date: '2026-06-01',
-    },
-  )
+    const abidjanToAalborg = parseNLQuery('Abidjan to Aalborg on 1st june 2026')
+    assert.deepEqual(
+      {
+        origin: abidjanToAalborg.origin,
+        destination: abidjanToAalborg.destination,
+        date: abidjanToAalborg.date,
+      },
+      {
+        origin: 'ABJ',
+        destination: 'AAL',
+        date: '2026-06-01',
+      },
+    )
+  })
 })
 
 test('findBestLocationMatch prefers explicit airports and city codes correctly', () => {
