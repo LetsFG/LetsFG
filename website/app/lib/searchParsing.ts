@@ -2,6 +2,8 @@
 // Handles: EN, DE, ES, FR, IT, NL, PL, PT, SQ (Albanian), HR (Croatian), SV (Swedish)
 // Also handles: filler words, typos via accent-stripping, ordinals, DD/MM/YYYY, relative dates
 
+import { findBestLocationMatch } from '../airports'
+
 // ── City → IATA lookup ────────────────────────────────────────────────────────
 // Keys are lowercase, accent-free. resolveCity() normalises input before lookup.
 
@@ -389,6 +391,10 @@ function stripAccents(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 // Format a Date as YYYY-MM-DD in local time (avoids UTC-shift issues)
 function toLocalDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -412,10 +418,17 @@ function editDistance(a: string, b: string): number {
   return row[b.length]
 }
 
+function containsLocationKey(text: string, key: string): boolean {
+  const haystack = stripAccents(text.toLowerCase())
+  const needle = stripAccents(key.toLowerCase())
+  return new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(needle)}(?:$|[^a-z0-9])`, 'i').test(haystack)
+}
+
 // Look up a city string → IATA:
 // 1. Exact match (accent-aware)
-// 2. Substring match (longest key first)
-// 3. Fuzzy edit-distance fallback (handles typos like "Barcelna" → Barcelona)
+// 2. Explicit 3-letter code inside a longer phrase ("new york jfk" → JFK)
+// 3. Boundary-aware contained phrase match (longest key first)
+// 4. Fuzzy edit-distance fallback (handles typos like "Barcelna" → Barcelona)
 function resolveCity(raw: string): { code: string; name: string } | null {
   const s = raw.toLowerCase().trim()
   if (!s || s.length < 2) return null
@@ -427,10 +440,16 @@ function resolveCity(raw: string): { code: string; name: string } | null {
   const stripped = stripAccents(s)
   if (CITY_TO_IATA[stripped]) return CITY_TO_IATA[stripped]
 
-  // Substring: longest key first so "new york" beats "york"
+  const explicitCodeTokens = stripped.match(/\b[a-z]{3}\b/g) || []
+  for (let idx = explicitCodeTokens.length - 1; idx >= 0; idx -= 1) {
+    const mapped = CITY_TO_IATA[explicitCodeTokens[idx]]
+    if (mapped) return mapped
+  }
+
+  // Boundary-aware contained phrase: longest key first so "new york" beats "york"
   const entries = Object.entries(CITY_TO_IATA).sort((a, b) => b[0].length - a[0].length)
   for (const [k, v] of entries) {
-    if (s.includes(k) || stripped.includes(stripAccents(k))) return v
+    if (containsLocationKey(s, k)) return v
   }
 
   // Fuzzy: edit distance tolerance scales with word length
@@ -451,6 +470,18 @@ function resolveCity(raw: string): { code: string; name: string } | null {
     if (best) return best.val
   }
 
+  return null
+}
+
+function resolveLocation(raw: string): { code: string; name: string } | null {
+  const resolved = resolveCity(raw)
+  if (resolved) return resolved
+  const generated = findBestLocationMatch(raw)
+  if (generated) return { code: generated.code, name: generated.name }
+  if (/^[a-zA-Z]{3}$/.test(raw.trim())) {
+    const code = raw.toUpperCase()
+    return { code, name: code }
+  }
   return null
 }
 
@@ -582,7 +613,7 @@ const RETURN_SPLIT_RE = new RegExp(
 
 // ── Preposition/filler words before city names (all languages) ────────────────
 const ORIGIN_PREFIX_RE = /^(?:from|from the|fly|flight|book|find|cheap|cheapest|best|search|get me|show me|i want to fly|i want to go|i need to fly|i need to go|von|ab|von\s+|aus|desde|desde el|desde la|de|de\s+|depuis|depuis le|depuis la|da|da\s+|uit|van|vanaf|vanuit|z|ze|ze\s+|från|fran|iz|nga)\s+/i
-const DEST_PREFIX_RE = /^(?:to|to the|into|→|->|–|-|nach|in die|in den|in das|in\s+|a|à|zu|para|til|naar|do|do\s+|till|na|ne|drejt)\s*/i
+const DEST_PREFIX_RE = /^(?:(?:to(?:\s+the)?|into|nach|in(?:\s+die|\s+den|\s+das)?|a|à|zu|para|til|naar|do|till|na|ne|drejt)\b|→|->|–|-)\s*/i
 
 // ── Route connector words / arrows (split origin from destination) ─────────────
 const ROUTE_SEP_RE = new RegExp(
@@ -649,26 +680,15 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   // Resolve cities
   if (originStr) {
-    // Check for bare 3-letter IATA first
-    if (/^[a-zA-Z]{3}$/.test(originStr)) {
-      result.origin = originStr.toUpperCase()
-      result.origin_name = originStr.toUpperCase()
-    } else {
-      const r = resolveCity(originStr)
-      if (r) { result.origin = r.code; result.origin_name = r.name }
-      else result.failed_origin_raw = originStr
-    }
+    const r = resolveLocation(originStr)
+    if (r) { result.origin = r.code; result.origin_name = r.name }
+    else result.failed_origin_raw = originStr
   }
 
   if (destStr) {
-    if (/^[a-zA-Z]{3}$/.test(destStr)) {
-      result.destination = destStr.toUpperCase()
-      result.destination_name = destStr.toUpperCase()
-    } else {
-      const r = resolveCity(destStr)
-      if (r) { result.destination = r.code; result.destination_name = r.name }
-      else result.failed_destination_raw = destStr
-    }
+    const r = resolveLocation(destStr)
+    if (r) { result.destination = r.code; result.destination_name = r.name }
+    else result.failed_destination_raw = destStr
   }
 
   // ── 3. Date extraction helper ────────────────────────────────────────────
@@ -704,16 +724,18 @@ export function parseNLQuery(query: string): ParsedQuery {
     const cleaned = tl.replace(/\b(?:on|le|am|el|il|em|dne|den|dia|på|na|the)\b/g, ' ').replace(/\s+/g,' ').trim()
 
     // Try: <number><ordinal?> <monthname>  or  <monthname> <number><ordinal?>
-    const dayMonthRe = /(\d{1,2})(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?\.?\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)/
-    const monthDayRe = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)\s+(\d{1,2})(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?/
+    const dayMonthRe = /(\d{1,2})(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?\.?\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s*,?\s*(\d{4}))?/
+    const monthDayRe = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)\s+(\d{1,2})(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?(?:\s*,?\s*(\d{4}))?/
 
     const dm = cleaned.match(dayMonthRe)
     if (dm) {
       const day = parseInt(dm[1])
       const mIdx = matchMonth(dm[2])
       if (mIdx !== null && day >= 1 && day <= 31) {
-        const d = new Date(today.getFullYear(), mIdx, day)
-        if (d < today) d.setFullYear(today.getFullYear() + 1)
+        const hasExplicitYear = Boolean(dm[3])
+        const year = hasExplicitYear ? parseInt(dm[3]) : today.getFullYear()
+        const d = new Date(year, mIdx, day)
+        if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
     }
@@ -722,21 +744,25 @@ export function parseNLQuery(query: string): ParsedQuery {
       const mIdx = matchMonth(md[1])
       const day = parseInt(md[2])
       if (mIdx !== null && day >= 1 && day <= 31) {
-        const d = new Date(today.getFullYear(), mIdx, day)
-        if (d < today) d.setFullYear(today.getFullYear() + 1)
+        const hasExplicitYear = Boolean(md[3])
+        const year = hasExplicitYear ? parseInt(md[3]) : today.getFullYear()
+        const d = new Date(year, mIdx, day)
+        if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
     }
 
     // Month-only: "in May", "im Mai", "en mayo", "en juin"
     // → default to 1st of that month
-    const monthOnlyRe = /(?:in|im|en|em|i|na|vo|à|au|in)\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)/
+    const monthOnlyRe = /(?:in|im|en|em|i|na|vo|à|au)\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s+(\d{4}))?/
     const moM = tl.match(monthOnlyRe)
     if (moM) {
       const mIdx = matchMonth(moM[1])
       if (mIdx !== null) {
-        const d = new Date(today.getFullYear(), mIdx, 1)
-        if (d < today) d.setFullYear(today.getFullYear() + 1)
+        const hasExplicitYear = Boolean(moM[2])
+        const year = hasExplicitYear ? parseInt(moM[2]) : today.getFullYear()
+        const d = new Date(year, mIdx, 1)
+        if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
     }

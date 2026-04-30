@@ -1,3 +1,5 @@
+import { GENERATED_LOCATIONS, type GeneratedLocationEntry } from './lib/generated-locations'
+
 // Airport database with locale-aware names
 // Format: { code, names: { locale: name }, country }
 
@@ -352,6 +354,151 @@ export function normalizeForSearch(str: string): string {
     .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
 }
 
+export interface LocationMatch {
+  code: string
+  name: string
+  type: 'airport' | 'city'
+  country: string
+}
+
+function dedupeAirports(airports: Airport[]): Airport[] {
+  const byCode = new Map<string, Airport>()
+
+  for (const airport of airports) {
+    const existing = byCode.get(airport.code)
+    if (!existing) {
+      byCode.set(airport.code, airport)
+      continue
+    }
+
+    byCode.set(airport.code, {
+      ...existing,
+      names: {
+        ...airport.names,
+        ...existing.names,
+      },
+    })
+  }
+
+  return Array.from(byCode.values())
+}
+
+function toGeneratedAirport(entry: GeneratedLocationEntry): Airport {
+  const normalizedName = normalizeForSearch(entry.name)
+  const normalizedCity = entry.city ? normalizeForSearch(entry.city) : ''
+  const label = entry.city && normalizedCity && !normalizedName.startsWith(normalizedCity)
+    ? `${entry.city} ${entry.name}`
+    : entry.name
+
+  return {
+    code: entry.code,
+    names: { en: label },
+    country: entry.country,
+  }
+}
+
+const GENERATED_LOCATION_BY_CODE = new Map(
+  GENERATED_LOCATIONS.map((entry) => [entry.code, entry]),
+)
+
+const ALL_AIRPORTS = dedupeAirports([
+  ...AIRPORTS,
+  ...GENERATED_LOCATIONS
+    .filter((entry) => entry.type === 'airport')
+    .map((entry) => toGeneratedAirport(entry)),
+])
+
+function getLocationAliases(entry: GeneratedLocationEntry): string[] {
+  return Array.from(new Set(entry.aliases.map((alias) => normalizeForSearch(alias)).filter(Boolean)))
+}
+
+function getAirportSearchTerms(airport: Airport): string[] {
+  const localizedNames = Object.values(airport.names)
+    .map((name) => normalizeForSearch(name))
+    .filter(Boolean)
+
+  const generatedEntry = GENERATED_LOCATION_BY_CODE.get(airport.code)
+  const generatedAliases = generatedEntry?.type === 'airport' ? getLocationAliases(generatedEntry) : []
+
+  return Array.from(new Set([
+    airport.code.toLowerCase(),
+    ...localizedNames,
+    ...generatedAliases,
+  ]))
+}
+
+function toLocationMatch(entry: GeneratedLocationEntry): LocationMatch {
+  return {
+    code: entry.code,
+    name: entry.name,
+    type: entry.type,
+    country: entry.country,
+  }
+}
+
+function scoreLocationEntry(entry: GeneratedLocationEntry, normalizedQuery: string): number {
+  let score = 0
+
+  for (const alias of getLocationAliases(entry)) {
+    if (alias === normalizedQuery) {
+      score = Math.max(score, entry.type === 'city' ? 1000 : 900)
+      continue
+    }
+
+    if (alias.startsWith(normalizedQuery)) {
+      score = Math.max(score, entry.type === 'city' ? 650 : 600)
+      continue
+    }
+
+    if (normalizedQuery.includes(alias) && alias.length >= 3) {
+      score = Math.max(score, entry.type === 'airport' ? 575 : 550)
+      continue
+    }
+
+    if (alias.includes(normalizedQuery)) {
+      score = Math.max(score, entry.type === 'airport' ? 425 : 400)
+    }
+  }
+
+  return score
+}
+
+export function findBestLocationMatch(query: string): LocationMatch | null {
+  if (!query || query.length < 2) return null
+
+  const normalizedQuery = normalizeForSearch(query)
+  const exactCode = GENERATED_LOCATION_BY_CODE.get(normalizedQuery.toUpperCase())
+  if (exactCode) return toLocationMatch(exactCode)
+
+  const explicitCodes = normalizedQuery.match(/\b[a-z]{3}\b/g) || []
+  for (let idx = explicitCodes.length - 1; idx >= 0; idx -= 1) {
+    const explicitMatch = GENERATED_LOCATION_BY_CODE.get(explicitCodes[idx].toUpperCase())
+    if (explicitMatch) return toLocationMatch(explicitMatch)
+  }
+
+  const exactAliasMatches = GENERATED_LOCATIONS.filter((entry) => getLocationAliases(entry).includes(normalizedQuery))
+  if (exactAliasMatches.length > 0) {
+    const cityMatch = exactAliasMatches.find((entry) => entry.type === 'city')
+    return toLocationMatch(cityMatch || exactAliasMatches[0])
+  }
+
+  let bestMatch: { entry: GeneratedLocationEntry; score: number } | null = null
+  for (const entry of GENERATED_LOCATIONS) {
+    const score = scoreLocationEntry(entry, normalizedQuery)
+    if (score <= 0) continue
+
+    if (
+      !bestMatch ||
+      score > bestMatch.score ||
+      (score === bestMatch.score && entry.type === 'city' && bestMatch.entry.type !== 'city')
+    ) {
+      bestMatch = { entry, score }
+    }
+  }
+
+  return bestMatch ? toLocationMatch(bestMatch.entry) : null
+}
+
 /**
  * Find airports matching a query string
  */
@@ -361,15 +508,17 @@ export function searchAirports(query: string, locale: string, limit = 10): Airpo
   const normalizedQuery = normalizeForSearch(query)
   
   // Score airports by match quality
-  const scored = AIRPORTS.map(airport => {
+  const scored = ALL_AIRPORTS.map(airport => {
     const name = getAirportName(airport, locale)
-    const normalizedName = normalizeForSearch(name)
-    const codeMatch = airport.code.toLowerCase().startsWith(normalizedQuery)
-    const nameStartsWith = normalizedName.startsWith(normalizedQuery)
-    const nameContains = normalizedName.includes(normalizedQuery)
+    const searchTerms = getAirportSearchTerms(airport)
+    const codeMatch = airport.code.toLowerCase() === normalizedQuery
+    const codeStartsWith = airport.code.toLowerCase().startsWith(normalizedQuery)
+    const nameStartsWith = searchTerms.some(term => term.startsWith(normalizedQuery))
+    const nameContains = searchTerms.some(term => term.includes(normalizedQuery))
     
     let score = 0
-    if (codeMatch) score += 100
+    if (codeMatch) score += 120
+    if (codeStartsWith) score += 100
     if (nameStartsWith) score += 50
     if (nameContains) score += 10
     
@@ -391,19 +540,26 @@ export function findBestMatch(query: string, locale: string): Airport | null {
   const normalizedQuery = normalizeForSearch(query)
   
   // First try exact code match
-  const codeMatch = AIRPORTS.find(a => a.code.toLowerCase() === normalizedQuery)
+  const codeMatch = ALL_AIRPORTS.find(a => a.code.toLowerCase() === normalizedQuery)
   if (codeMatch) return codeMatch
+
+  for (const airport of ALL_AIRPORTS) {
+    const searchTerms = getAirportSearchTerms(airport)
+    if (searchTerms.some(term => term === normalizedQuery)) {
+      return airport
+    }
+  }
   
   // Then try name prefix match
-  for (const airport of AIRPORTS) {
-    const name = getAirportName(airport, locale)
-    if (normalizeForSearch(name).startsWith(normalizedQuery)) {
+  for (const airport of ALL_AIRPORTS) {
+    const searchTerms = getAirportSearchTerms(airport)
+    if (searchTerms.some(term => term.startsWith(normalizedQuery))) {
       return airport
     }
   }
   
   // Then try code prefix
-  for (const airport of AIRPORTS) {
+  for (const airport of ALL_AIRPORTS) {
     if (airport.code.toLowerCase().startsWith(normalizedQuery)) {
       return airport
     }
