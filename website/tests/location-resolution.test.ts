@@ -1,0 +1,113 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { findBestLocationMatch, findBestMatch, searchAirports } from '../app/airports.ts'
+import { parseNLQuery } from '../app/lib/searchParsing.ts'
+
+test('parseNLQuery keeps the reported website examples working', () => {
+  const jfkToKarachi = parseNLQuery('New york jfk to karachi on 1st june 2026')
+  assert.deepEqual(
+    {
+      origin: jfkToKarachi.origin,
+      destination: jfkToKarachi.destination,
+      date: jfkToKarachi.date,
+    },
+    {
+      origin: 'JFK',
+      destination: 'KHI',
+      date: '2026-06-01',
+    },
+  )
+
+  const londonToBarcelona = parseNLQuery('London to Barcelona next Friday')
+  assert.deepEqual(
+    {
+      origin: londonToBarcelona.origin,
+      destination: londonToBarcelona.destination,
+      date: londonToBarcelona.date,
+    },
+    {
+      origin: 'LON',
+      destination: 'BCN',
+      date: '2026-05-08',
+    },
+  )
+
+  const nycToTokyo = parseNLQuery('NYC to Tokyo in June, business class')
+  assert.deepEqual(
+    {
+      origin: nycToTokyo.origin,
+      destination: nycToTokyo.destination,
+      date: nycToTokyo.date,
+      cabin: nycToTokyo.cabin,
+    },
+    {
+      origin: 'NYC',
+      destination: 'TYO',
+      date: '2026-06-01',
+      cabin: 'C',
+    },
+  )
+})
+
+test('parseNLQuery falls back to generated global coverage for long-tail names', () => {
+  const ashgabatToTirana = parseNLQuery('Aşgabat to Tiranë on 1st june 2026')
+  assert.deepEqual(
+    {
+      origin: ashgabatToTirana.origin,
+      destination: ashgabatToTirana.destination,
+      date: ashgabatToTirana.date,
+    },
+    {
+      origin: 'ASB',
+      destination: 'TIA',
+      date: '2026-06-01',
+    },
+  )
+
+  const abidjanToAalborg = parseNLQuery('Abidjan to Aalborg on 1st june 2026')
+  assert.deepEqual(
+    {
+      origin: abidjanToAalborg.origin,
+      destination: abidjanToAalborg.destination,
+      date: abidjanToAalborg.date,
+    },
+    {
+      origin: 'ABJ',
+      destination: 'AAL',
+      date: '2026-06-01',
+    },
+  )
+})
+
+test('findBestLocationMatch prefers explicit airports and city codes correctly', () => {
+  assert.deepEqual(findBestLocationMatch('Aşgabat'), {
+    code: 'ASB',
+    name: 'Ashgabat Airport',
+    type: 'airport',
+    country: 'TM',
+  })
+
+  assert.deepEqual(findBestLocationMatch('New York JFK'), {
+    code: 'JFK',
+    name: 'John F Kennedy International Airport',
+    type: 'airport',
+    country: 'US',
+  })
+
+  assert.deepEqual(findBestLocationMatch('Tokyo'), {
+    code: 'TYO',
+    name: 'Tokyo',
+    type: 'city',
+    country: 'JP',
+  })
+})
+
+test('homepage airport matching uses generated aliases and expanded airport coverage', () => {
+  assert.equal(findBestMatch('Aşgabat', 'en')?.code, 'ASB')
+  assert.equal(findBestMatch('Tiranë', 'en')?.code, 'TIA')
+  assert.equal(findBestMatch('Aalborg', 'en')?.code, 'AAL')
+
+  const airportResults = searchAirports('ashgabat', 'en', 5)
+  assert.ok(airportResults.some((airport) => airport.code === 'ASB'))
+})

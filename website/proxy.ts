@@ -3,9 +3,17 @@ import { routing } from './i18n/routing'
 import { NextResponse, type NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSessionUid, HOSTING_SESSION_COOKIE_NAME, LEGACY_UID_COOKIE_NAME } from './lib/session-uid'
+import {
+  buildRateLimitClientKey,
+  checkRateLimit,
+  getGlobalRateLimitStore,
+  getRateLimitPolicy,
+} from './lib/rate-limit'
 
 const intlMiddleware = createMiddleware(routing)
 const ANON_USER_COOKIE_MAX_AGE_SECONDS = 10 * 365 * 24 * 60 * 60
+const RATE_LIMIT_DISABLED = process.env.LETSFG_RATE_LIMIT_DISABLED === '1'
+const rateLimitStore = getGlobalRateLimitStore()
 
 // Paths that are NOT locale-prefixed — they live under app/results/ and app/book/
 // directly (outside app/[locale]/). Passing them through intlMiddleware would
@@ -15,8 +23,52 @@ function isNonLocalePath(pathname: string): boolean {
   return (
     pathname.startsWith('/results') ||
     pathname.startsWith('/book') ||
+    pathname.startsWith('/probe') ||
     pathname.startsWith('/api')
   )
+}
+
+function setRateLimitHeaders(
+  res: NextResponse,
+  pathname: string,
+  rateLimit: { limit: number; remaining: number; resetAfterMs: number },
+) {
+  res.headers.set('X-Letsfg-RateLimit-Limit', String(rateLimit.limit))
+  res.headers.set('X-Letsfg-RateLimit-Remaining', String(rateLimit.remaining))
+  res.headers.set('X-Letsfg-RateLimit-Reset', String(Math.max(1, Math.ceil(rateLimit.resetAfterMs / 1000))))
+  res.headers.set('X-Letsfg-RateLimit-Route', pathname)
+}
+
+function tooManyRequestsResponse(
+  req: NextRequest,
+  rateLimit: { limit: number; remaining: number; retryAfterMs: number; resetAfterMs: number },
+) {
+  const retryAfterSeconds = Math.max(1, Math.ceil(rateLimit.retryAfterMs / 1000))
+  const headers = new Headers({
+    'Cache-Control': 'no-store',
+    'Retry-After': String(retryAfterSeconds),
+    'X-Letsfg-RateLimit-Limit': String(rateLimit.limit),
+    'X-Letsfg-RateLimit-Remaining': String(rateLimit.remaining),
+    'X-Letsfg-RateLimit-Reset': String(Math.max(1, Math.ceil(rateLimit.resetAfterMs / 1000))),
+  })
+
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    headers.set('Content-Type', 'application/json; charset=utf-8')
+    return new NextResponse(
+      JSON.stringify({
+        error: 'Too many requests',
+        code: 'RATE_LIMITED',
+        retry_after_seconds: retryAfterSeconds,
+      }),
+      { status: 429, headers },
+    )
+  }
+
+  headers.set('Content-Type', 'text/plain; charset=utf-8')
+  return new NextResponse('Too many requests. Please wait a moment and try again.', {
+    status: 429,
+    headers,
+  })
 }
 
 export default function proxy(req: NextRequest) {
@@ -30,6 +82,20 @@ export default function proxy(req: NextRequest) {
     const target = req.nextUrl.clone()
     target.pathname = localePrefixMatch[1]
     return NextResponse.redirect(target)
+  }
+
+  const sessionUid = getSessionUid(req) || randomUUID()
+  const rateLimitPolicy = RATE_LIMIT_DISABLED ? null : getRateLimitPolicy(pathname)
+  const rateLimitDecision = rateLimitPolicy
+    ? checkRateLimit(
+        rateLimitStore,
+        `${rateLimitPolicy.name}:${buildRateLimitClientKey(req.headers, sessionUid)}`,
+        rateLimitPolicy,
+      )
+    : null
+
+  if (rateLimitDecision && !rateLimitDecision.allowed) {
+    return tooManyRequestsResponse(req, rateLimitDecision)
   }
 
   // For non-locale paths (results/book/api), skip intlMiddleware entirely.
@@ -53,7 +119,6 @@ export default function proxy(req: NextRequest) {
   // rewritten backends like this Cloud Run service. Keep the anonymous session
   // identity in `__session`, and mirror it to the legacy `lfg_uid` cookie for
   // direct Cloud Run access and backwards compatibility.
-  const sessionUid = getSessionUid(req) || randomUUID()
   const cookieOptions = {
     httpOnly: true,
     // Stripe returns via a cross-site top-level redirect. Lax keeps the
@@ -67,11 +132,15 @@ export default function proxy(req: NextRequest) {
   res.cookies.set(HOSTING_SESSION_COOKIE_NAME, sessionUid, cookieOptions)
   res.cookies.set(LEGACY_UID_COOKIE_NAME, sessionUid, cookieOptions)
 
+  if (rateLimitDecision) {
+    setRateLimitHeaders(res, pathname, rateLimitDecision)
+  }
+
   return res
 }
 
 export const config = {
   // Match root, locale-prefixed paths, and key app pages (results, book, api).
   // Do NOT match /_next/*, static files.
-  matcher: ['/', '/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv)/:path*', '/results/:path*', '/book/:path*', '/api/:path*'],
+  matcher: ['/', '/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv)/:path*', '/results/:path*', '/book/:path*', '/probe/:path*', '/api/:path*'],
 }
