@@ -1526,6 +1526,10 @@ input {
   gap: 4px;
 }
 
+.lp-currency-trigger-icon {
+  flex-shrink: 0;
+}
+
 .lp-currency-btn-code {
   font-size: 10px;
   font-weight: 700;
