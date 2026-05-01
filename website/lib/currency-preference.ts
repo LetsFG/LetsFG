@@ -35,9 +35,17 @@ export function resolveSearchCurrency(input: {
   return DEFAULT_SEARCH_CURRENCY
 }
 
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return ''
+  }
+}
+
 export function readBrowserCurrencyPreference(): SupportedCurrencyCode {
   if (typeof document === 'undefined') return DEFAULT_SEARCH_CURRENCY
   const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${LETSFG_CURRENCY_COOKIE}=([^;]*)`))
-  const raw = m?.[1] ? decodeURIComponent(m[1].trim()) : ''
+  const raw = m?.[1] ? safeDecodeURIComponent(m[1].trim()) : ''
   return normalizeCurrencyCode(raw) ?? DEFAULT_SEARCH_CURRENCY
 }
