@@ -314,9 +314,11 @@ export async function GET(
       ? Math.min(...normalized.map((offer) => getOfferKnownTotalPrice(offer)))
       : undefined
     const googleFlightsPrices = normalized
-      .map((offer) => typeof offer.google_flights_price === 'number' ? offer.google_flights_price : null)
+      .map((offer) => typeof offer.google_flights_price === 'number' && offer.google_flights_price > 0
+        ? offer.google_flights_price
+        : null)
       .filter((price): price is number => price !== null)
-    const googleFlightsPrice = typeof data.google_flights_price === 'number'
+    const googleFlightsPrice = typeof data.google_flights_price === 'number' && data.google_flights_price > 0
       ? Math.round(data.google_flights_price * 100) / 100
       : (googleFlightsPrices.length > 0 ? Math.min(...googleFlightsPrices) : undefined)
     const diff = typeof googleFlightsPrice === 'number' && typeof cheapestPrice === 'number'

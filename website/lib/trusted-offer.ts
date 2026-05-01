@@ -326,6 +326,11 @@ function parsePriceValue(value: unknown): number | undefined {
   return undefined
 }
 
+function parsePositiveComparisonPrice(value: unknown): number | undefined {
+  const price = parsePriceValue(value)
+  return typeof price === 'number' && price > 0 ? price : undefined
+}
+
 function parseLegacyPriceAndCurrency(value: unknown): {
   price?: number
   currency?: string
@@ -534,7 +539,7 @@ export function applyGoogleFlightsBaseline(
 ): TrustedOffer[] {
   // Only compare like-for-like itineraries in the same quoted currency.
   const matchIndex = buildGoogleFlightsMatchIndex(rawOffers, offers)
-  const fallbackBaseline = parsePriceValue(explicitBaseline)
+  const fallbackBaseline = parsePositiveComparisonPrice(explicitBaseline)
   if (matchIndex.size === 0 && typeof fallbackBaseline !== 'number') {
     return offers
   }
@@ -1289,9 +1294,7 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
   return hydrateTrustedOffer({
     id: raw.id || `wo_${idx}_${Math.random().toString(36).slice(2, 8)}`,
     price: Math.round((raw.price || 0) * 100) / 100,
-    google_flights_price: typeof raw.google_flights_price === 'number'
-      ? Math.round(raw.google_flights_price * 100) / 100
-      : undefined,
+    google_flights_price: parsePositiveComparisonPrice(raw.google_flights_price),
     source: parseStringValue(raw.source),
     currency: raw.currency || 'EUR',
     airline: airlineName,

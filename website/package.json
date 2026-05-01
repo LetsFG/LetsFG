@@ -7,9 +7,12 @@
     "build": "npm run test && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npm run test:locations && npm run test:ratelimit",
+    "test": "npm run test:locations && npm run test:ratelimit && npm run test:flight-datetime && npm run test:user-currency && npm run test:google-comparison",
     "test:locations": "tsx --test tests/location-resolution.test.ts",
-    "test:ratelimit": "tsx --test tests/rate-limit.test.ts"
+    "test:ratelimit": "tsx --test tests/rate-limit.test.ts",
+    "test:flight-datetime": "tsx --test tests/flight-datetime.test.ts",
+    "test:user-currency": "tsx --test tests/user-currency.test.ts",
+    "test:google-comparison": "tsx --test tests/google-comparison.test.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.2.0",
