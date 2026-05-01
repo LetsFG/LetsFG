@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { trackSearchSessionEvent } from '../../lib/search-session-analytics'
+import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type SupportedCurrencyCode } from '../../lib/currency-preference'
 
 const DEMO_LOADING = false
 
@@ -41,10 +42,18 @@ export default function ResultsSearchForm({
   const router = useRouter()
   const [query, setQuery] = useState(initialQuery)
   const [isLoading, setIsLoading] = useState(false)
+  const [prefCurrency, setPrefCurrency] = useState<SupportedCurrencyCode>('EUR')
 
   useEffect(() => {
     setQuery(initialQuery)
   }, [initialQuery])
+
+  useEffect(() => {
+    setPrefCurrency(readBrowserCurrencyPreference())
+    const sync = () => setPrefCurrency(readBrowserCurrencyPreference())
+    window.addEventListener(CURRENCY_CHANGE_EVENT, sync)
+    return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, sync)
+  }, [])
 
   const handleSearch = (event: FormEvent) => {
     if (!query.trim()) {
@@ -70,6 +79,7 @@ export default function ResultsSearchForm({
     <div className="lp-sf-wrap lp-sf-wrap--compact lp-sf-wrap--results">
       <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
         {probeMode && <input type="hidden" name="probe" value="1" />}
+        <input type="hidden" name="cur" value={prefCurrency} readOnly aria-hidden="true" />
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
             <span className="lp-sf-leading" aria-hidden="true">

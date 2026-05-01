@@ -1,8 +1,11 @@
 import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import GlobeButton from '../globe-button'
+import CurrencyButton from '../currency-button'
+import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency, type SupportedCurrencyCode } from '../../lib/currency-preference'
 import ResultsSearchForm from './ResultsSearchForm'
 import ResultsPanel from './[searchId]/ResultsPanel'
 import SearchingTasks from './[searchId]/SearchingTasks'
@@ -256,8 +259,9 @@ function normalizeOffer(raw: RawOffer, idx: number) {
 
 async function startFSWSearch(
   parsed: ReturnType<typeof parseNLQuery>,
-  query?: string,
-  isProbe = false,
+  query: string | undefined,
+  isProbe: boolean,
+  currency: SupportedCurrencyCode,
 ): Promise<{ searchId: string | null; cache: 'hit' | 'miss' }> {
   if (!parsed.origin || !parsed.destination || !parsed.date) {
     return { searchId: null, cache: 'miss' }
@@ -324,6 +328,7 @@ async function PageTopbar({ query, homeHref = '/en' }: { query: string; homeHref
       </Link>
       <div className="res-topbar-actions">
         <GlobeButton inline />
+        <CurrencyButton inline behavior="refresh" />
         <a href={REPO_URL} target="_blank" rel="noreferrer" className={stars !== null ? 'res-icon-btn res-icon-btn--gh' : 'res-icon-btn'} aria-label="GitHub" title="GitHub">
           <GitHubIcon />
           {stars !== null && <span className="res-gh-stars"><span className="res-gh-star" aria-hidden="true">⭐</span>{formatStars(stars)}</span>}
@@ -354,7 +359,19 @@ function PageFooter() {
 
 // ── Main async search component (runs server-side) ────────────────────────────
 
-async function SearchContent({ query, sid, started, isProbe }: { query: string; sid?: string; started?: string; isProbe: boolean }) {
+async function SearchContent({
+  query,
+  sid,
+  started,
+  isProbe,
+  currency,
+}: {
+  query: string
+  sid?: string
+  started?: string
+  isProbe: boolean
+  currency: SupportedCurrencyCode
+}) {
   const parsed = parseNLQuery(query)
   const routeLabel = [
     parsed.origin_name || parsed.origin,
@@ -408,7 +425,7 @@ async function SearchContent({ query, sid, started, isProbe }: { query: string; 
       )
     }
 
-    const fswResult = await startFSWSearch(parsed, query, isProbe)
+    const fswResult = await startFSWSearch(parsed, query, isProbe, currency)
     searchId = fswResult.searchId ?? undefined
     cacheHit = fswResult.cache === 'hit'
     if (!searchId) {
@@ -465,6 +482,7 @@ function SearchFallback({ query, isProbe }: { query: string; isProbe: boolean })
             </Link>
             <div className="res-topbar-actions">
               <GlobeButton inline />
+              <CurrencyButton inline behavior="refresh" />
             </div>
           </div>
           <div className="res-search-shell">
@@ -500,10 +518,15 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 export default async function ResultsQueryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sid?: string; started?: string; probe?: string }>
+  searchParams: Promise<{ q?: string; sid?: string; started?: string; probe?: string; cur?: string }>
 }) {
-  const { q, sid, started, probe } = await searchParams
+  const { q, sid, started, probe, cur } = await searchParams
   const isProbe = isProbeModeValue(probe)
+  const cookieStore = await cookies()
+  const resolvedCurrency = resolveSearchCurrency({
+    queryParam: cur?.trim(),
+    cookieValue: cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value,
+  })
 
   if (!q?.trim()) {
     redirect(isProbe ? '/en?probe=1' : '/')
@@ -513,7 +536,13 @@ export default async function ResultsQueryPage({
 
   return (
     <Suspense fallback={<SearchFallback query={query} isProbe={isProbe} />}>
-      <SearchContent query={query} sid={sid?.trim()} started={started?.trim()} isProbe={isProbe} />
+      <SearchContent
+        query={query}
+        sid={sid?.trim()}
+        started={started?.trim()}
+        isProbe={isProbe}
+        currency={resolvedCurrency}
+      />
     </Suspense>
   )
 }

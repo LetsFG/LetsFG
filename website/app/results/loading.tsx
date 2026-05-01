@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import GlobeButton from '../globe-button'
+import CurrencyButton from '../currency-button'
 import ResultsSearchForm from './ResultsSearchForm'
 import SearchingTasks from './[searchId]/SearchingTasks'
 import { parseNLQuery } from '../lib/searchParsing'
@@ -28,6 +29,7 @@ function LoadingInner() {
             </Link>
             <div className="res-topbar-actions">
               <GlobeButton inline />
+              <CurrencyButton inline behavior="rerun-search" searchQuery={query} />
             </div>
           </div>
           <div className="res-search-shell">

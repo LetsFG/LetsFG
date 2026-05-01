@@ -4,6 +4,7 @@ import { FormEvent, useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport } from './airports'
+import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type SupportedCurrencyCode } from '../lib/currency-preference'
 
 const DESTINATION_KEYS = [
   { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
@@ -505,6 +506,7 @@ export default function HomeSearchForm({
   const [query, setQuery] = useState(initialQuery)
   const [suggestion, setSuggestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [prefCurrency, setPrefCurrency] = useState<SupportedCurrencyCode>('EUR')
   const inputRef = useRef<HTMLInputElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
 
@@ -557,6 +559,13 @@ export default function HomeSearchForm({
     setQuery(initialQuery)
   }, [initialQuery])
 
+  useEffect(() => {
+    setPrefCurrency(readBrowserCurrencyPreference())
+    const sync = () => setPrefCurrency(readBrowserCurrencyPreference())
+    window.addEventListener(CURRENCY_CHANGE_EVENT, sync)
+    return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, sync)
+  }, [])
+
   const handleSearch = (event: FormEvent) => {
     if (!query.trim()) {
       event.preventDefault()
@@ -606,6 +615,7 @@ export default function HomeSearchForm({
 
       <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
         {probeMode && <input type="hidden" name="probe" value="1" />}
+        <input type="hidden" name="cur" value={prefCurrency} readOnly aria-hidden="true" />
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
             <span className="lp-sf-leading" aria-hidden="true">

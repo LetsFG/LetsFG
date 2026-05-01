@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 import Image from 'next/image'
 import GlobeButton from '../../globe-button'
+import CurrencyButton from '../../currency-button'
 import ResultsSearchForm from '../ResultsSearchForm'
 import ResultsPanel from './ResultsPanel'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
@@ -350,6 +351,7 @@ export default function SearchPageClient({
 
             <div className="res-topbar-actions">
               <GlobeButton inline />
+              <CurrencyButton inline behavior="rerun-search" searchQuery={query} probeMode={isTestSearch} />
               <a
                 href={REPO_URL}
                 target="_blank"

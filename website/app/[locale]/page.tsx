@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import HomeSearchForm from '../home-search-form'
 import GlobeButton from '../globe-button'
+import CurrencyButton from '../currency-button'
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 
@@ -152,6 +153,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
 
           <div className="lp-topbar-side">
             <GlobeButton inline />
+            <CurrencyButton inline behavior="refresh" />
             <a
               href={REPO_URL}
               target="_blank"
