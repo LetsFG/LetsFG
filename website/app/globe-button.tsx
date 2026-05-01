@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 
 const LANGUAGES = [
@@ -31,15 +32,83 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
   const currentLocale = (params?.locale as string) || 'en'
 
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null)
+      return
+    }
+
+    function updateMenuPosition() {
+      const button = buttonRef.current
+      const menu = menuRef.current
+      if (!button || !menu) return
+
+      const gap = 8
+      const viewportPadding = 8
+      const rect = button.getBoundingClientRect()
+      const menuWidth = menu.offsetWidth || 168
+      const menuHeight = menu.offsetHeight || 0
+
+      let left = rect.right - menuWidth
+      left = Math.min(left, window.innerWidth - menuWidth - viewportPadding)
+      left = Math.max(viewportPadding, left)
+
+      let top = rect.bottom + gap
+      const aboveTop = rect.top - menuHeight - gap
+      if (menuHeight > 0 && top + menuHeight > window.innerHeight - viewportPadding && aboveTop >= viewportPadding) {
+        top = aboveTop
+      }
+
+      top = Math.max(viewportPadding, top)
+
+      setMenuPos({ top, left })
+    }
+
+    let frameId: number | null = null
+    const scheduleMenuPosition = () => {
+      if (frameId !== null) return
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null
+        updateMenuPosition()
+      })
+    }
+
+    updateMenuPosition()
+
+    window.addEventListener('resize', scheduleMenuPosition)
+    window.addEventListener('scroll', scheduleMenuPosition, true)
+    window.visualViewport?.addEventListener('resize', scheduleMenuPosition)
+    window.visualViewport?.addEventListener('scroll', scheduleMenuPosition)
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+      window.removeEventListener('resize', scheduleMenuPosition)
+      window.removeEventListener('scroll', scheduleMenuPosition, true)
+      window.visualViewport?.removeEventListener('resize', scheduleMenuPosition)
+      window.visualViewport?.removeEventListener('scroll', scheduleMenuPosition)
+    }
+  }, [open])
 
   // Close on outside click
   useEffect(() => {
     if (!open) return
     function onPointerDown(e: PointerEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
+      const target = e.target as Node
+      if (
+        wrapRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return
       }
+
+      setOpen(false)
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
@@ -55,23 +124,19 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const currentLang = LANGUAGES.find(l => l.code === currentLocale) ?? LANGUAGES[0]
-
-  return (
-    <div ref={ref} className={`lp-globe-wrap${inline ? ' lp-globe-wrap--inline' : ''}`}>
-      <button
-        className={`lp-globe-btn${open ? ' lp-globe-btn--open' : ''}`}
-        aria-label="Language / region"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        type="button"
-        onClick={() => setOpen(v => !v)}
-      >
-        <EarthIcon />
-      </button>
-
-      {open && (
-        <div className="lp-lang-dropdown" role="listbox" aria-label="Select language">
+  const dropdown = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="lp-lang-dropdown lp-lang-dropdown--portal"
+          role="listbox"
+          aria-label="Select language"
+          style={{
+            top: menuPos?.top ?? 0,
+            left: menuPos?.left ?? 0,
+            visibility: menuPos ? 'visible' : 'hidden',
+          }}
+        >
           {LANGUAGES.map(lang => (
             <button
               key={lang.code}
@@ -90,8 +155,26 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
               )}
             </button>
           ))}
-        </div>
-      )}
+        </div>,
+        document.body,
+      )
+    : null
+
+  return (
+    <div ref={wrapRef} className={`lp-globe-wrap${inline ? ' lp-globe-wrap--inline' : ''}`}>
+      <button
+        ref={buttonRef}
+        className={`lp-globe-btn${open ? ' lp-globe-btn--open' : ''}`}
+        aria-label="Language / region"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        type="button"
+        onClick={() => setOpen(v => !v)}
+      >
+        <EarthIcon />
+      </button>
+
+      {dropdown}
     </div>
   )
 }

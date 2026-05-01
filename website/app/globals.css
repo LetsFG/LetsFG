@@ -1549,6 +1549,14 @@ input {
   animation: lp-dropdown-in 0.14s ease;
 }
 
+.lp-lang-dropdown--portal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: auto;
+  z-index: 100000;
+}
+
 @keyframes lp-dropdown-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0)   scale(1);    }
