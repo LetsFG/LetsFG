@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useParams } from 'next/navigation'
 
 const LANGUAGES = [
@@ -31,15 +32,36 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
   const currentLocale = (params?.locale as string) || 'en'
 
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
 
-  // Close on outside click
+  const updateMenuPosition = () => {
+    const btn = buttonRef.current
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    setMenuPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null)
+      return
+    }
+    updateMenuPosition()
+    window.addEventListener('resize', updateMenuPosition)
+    return () => window.removeEventListener('resize', updateMenuPosition)
+  }, [open])
+
+  // Close on outside click (menu is portaled — check both roots)
   useEffect(() => {
     if (!open) return
     function onPointerDown(e: PointerEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const t = e.target as Node
+      if (wrapRef.current?.contains(t)) return
+      if (menuRef.current?.contains(t)) return
+      setOpen(false)
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
@@ -55,11 +77,48 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const currentLang = LANGUAGES.find(l => l.code === currentLocale) ?? LANGUAGES[0]
+  const dropdown =
+    open &&
+    menuPos &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        ref={menuRef}
+        className="lp-lang-dropdown lp-lang-dropdown--portal"
+        style={{ top: menuPos.top, right: menuPos.right }}
+        role="listbox"
+        aria-label="Select language"
+      >
+        {LANGUAGES.map(lang => (
+          <button
+            key={lang.code}
+            role="option"
+            aria-selected={lang.code === currentLocale}
+            className={`lp-lang-option${lang.code === currentLocale ? ' lp-lang-option--active' : ''}`}
+            onClick={() => {
+              document.cookie = `LETSFG_LOCALE=${lang.code}; path=/; max-age=31536000; SameSite=Lax`
+              router.push(`/${lang.code}`)
+              setOpen(false)
+            }}
+            type="button"
+          >
+            <span className="lp-lang-flag" aria-hidden="true">{lang.flag}</span>
+            <span className="lp-lang-name">{lang.label}</span>
+            {lang.code === currentLocale && (
+              <svg className="lp-lang-check" viewBox="0 0 16 16" fill="currentColor" width="13" height="13" aria-hidden="true">
+                <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
+              </svg>
+            )}
+          </button>
+        ))}
+      </div>,
+      document.body
+    )
 
   return (
-    <div ref={ref} className={`lp-globe-wrap${inline ? ' lp-globe-wrap--inline' : ''}`}>
+    <div ref={wrapRef} className={`lp-globe-wrap${inline ? ' lp-globe-wrap--inline' : ''}`}>
       <button
+        ref={buttonRef}
         className={`lp-globe-btn${open ? ' lp-globe-btn--open' : ''}`}
         aria-label="Language / region"
         aria-expanded={open}
@@ -70,28 +129,7 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
         <EarthIcon />
       </button>
 
-      {open && (
-        <div className="lp-lang-dropdown" role="listbox" aria-label="Select language">
-          {LANGUAGES.map(lang => (
-            <button
-              key={lang.code}
-              role="option"
-              aria-selected={lang.code === currentLocale}
-              className={`lp-lang-option${lang.code === currentLocale ? ' lp-lang-option--active' : ''}`}
-              onClick={() => { document.cookie = `LETSFG_LOCALE=${lang.code}; path=/; max-age=31536000; SameSite=Lax`; router.push(`/${lang.code}`); setOpen(false) }}
-              type="button"
-            >
-              <span className="lp-lang-flag" aria-hidden="true">{lang.flag}</span>
-              <span className="lp-lang-name">{lang.label}</span>
-              {lang.code === currentLocale && (
-                <svg className="lp-lang-check" viewBox="0 0 16 16" fill="currentColor" width="13" height="13" aria-hidden="true">
-                  <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      {dropdown}
     </div>
   )
 }

@@ -1530,6 +1530,13 @@ input {
   z-index: auto;
 }
 
+/* Portaled menu: escapes stacking contexts (e.g. results search shell after topbar) */
+.lp-lang-dropdown--portal {
+  position: fixed;
+  z-index: 100000;
+  left: auto;
+}
+
 .lp-lang-dropdown {
   position: absolute;
   top: calc(100% + 8px);
