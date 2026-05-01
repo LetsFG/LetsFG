@@ -164,7 +164,11 @@ export default function CurrencyButton({
       return
     }
 
-    router.refresh()
+    const { pathname, search } = window.location
+    const params = new URLSearchParams(search)
+    params.set('cur', code)
+    const nextUrl = `${pathname}?${params.toString()}`
+    router.push(getTrackedSourcePath(nextUrl, probeMode))
   }
 
   const dropdown = open
