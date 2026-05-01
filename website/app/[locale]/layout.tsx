@@ -22,11 +22,10 @@ export async function generateMetadata({
     openGraph: {
       title: 'LetsFG — Find cheap flights',
       description: t('description'),
-      url: 'https://letsfg.co',
       siteName: 'LetsFG',
       images: [
         {
-          url: 'https://raw.githubusercontent.com/LetsFG/LetsFG/main/assets/banner.png',
+          url: '/banner.png',
           width: 1200,
           height: 400,
           alt: 'LetsFG',
@@ -39,7 +38,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: 'LetsFG — Find cheap flights',
       description: t('description'),
-      images: ['https://raw.githubusercontent.com/LetsFG/LetsFG/main/assets/banner.png'],
+      images: ['/banner.png'],
     },
     icons: {
       icon: '/logo.png',

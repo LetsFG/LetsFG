@@ -146,6 +146,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
               height={1560}
               className="lp-topbar-brand"
               priority
+              sizes="(max-width: 768px) 180px, 280px"
             />
           </Link>
 
@@ -175,7 +176,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
             height={667}
             className="lp-hero-brand"
             priority
-            unoptimized
+            sizes="(max-width: 768px) 92vw, 920px"
             style={LOCALE_BANNER_SCALE[locale] ? { transform: `scale(${LOCALE_BANNER_SCALE[locale]})` } : undefined}
             aria-hidden="true"
           />
@@ -272,6 +273,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         <a href={REPO_URL} className="lp-footer-link" target="_blank" rel="noreferrer">{tf('github')}</a>
         <a href="/terms" className="lp-footer-link">{tf('terms')}</a>
         <a href="/privacy" className="lp-footer-link">{tf('privacy')}</a>
+        <Link href={`/${locale}/developers`} className="lp-footer-link">API</Link>
         <a href="mailto:contact@letsfg.co" className="lp-footer-link">{tf('support')}</a>
         <span className="lp-footer-sep" aria-hidden="true" />
         <a href="https://www.instagram.com/letsfg_" className="lp-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">

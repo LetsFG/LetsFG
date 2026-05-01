@@ -85,6 +85,20 @@ test('parseNLQuery keeps the reported website examples working', () => {
 
 test('parseNLQuery falls back to generated global coverage for long-tail names', () => {
   withFixedNow('2026-05-01T12:00:00Z', () => {
+    const southamptonToEdinburgh = parseNLQuery('Southampton to Edinburgh next Friday')
+    assert.deepEqual(
+      {
+        origin: southamptonToEdinburgh.origin,
+        destination: southamptonToEdinburgh.destination,
+        date: southamptonToEdinburgh.date,
+      },
+      {
+        origin: 'SOU',
+        destination: 'EDI',
+        date: '2026-05-08',
+      },
+    )
+
     const ashgabatToTirana = parseNLQuery('Aşgabat to Tiranë on 1st june 2026')
     assert.deepEqual(
       {

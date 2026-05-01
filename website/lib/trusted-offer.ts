@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 
 import { cacheOffers, getCachedOffer } from './offer-cache'
+import { hasExplicitFlightTime } from './flight-datetime'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -179,6 +180,94 @@ function normalizeFlightNumber(flightNumber: string, airlineCode: string): strin
     : flightNumber
 }
 
+const DEPARTURE_TIME_KEYS = [
+  'departure',
+  'departure_time',
+  'departureTime',
+  'departureDateTime',
+  'departureDate',
+  'depTime',
+  'std',
+  'scheduledDeparture',
+  'scheduledDepartureTime',
+]
+
+const ARRIVAL_TIME_KEYS = [
+  'arrival',
+  'arrival_time',
+  'arrivalTime',
+  'arrivalDateTime',
+  'arrivalDate',
+  'arrTime',
+  'sta',
+  'scheduledArrival',
+  'scheduledArrivalTime',
+]
+
+function normalizeTimestampCandidate(candidate: unknown): string {
+  if (typeof candidate === 'string') {
+    const value = candidate.trim()
+    if (value && Number.isFinite(Date.parse(value))) {
+      return value
+    }
+    return ''
+  }
+
+  if (Array.isArray(candidate)) {
+    const datePart = typeof candidate[0] === 'string' ? candidate[0].trim() : ''
+    const timePart = typeof candidate[1] === 'string' ? candidate[1].trim() : ''
+    if (!datePart || !timePart) {
+      return ''
+    }
+
+    const combined = `${datePart}T${timePart}`
+    return Number.isFinite(Date.parse(combined)) ? combined : ''
+  }
+
+  if (!candidate || typeof candidate !== 'object') {
+    return ''
+  }
+
+  const record = candidate as Record<string, unknown>
+  for (const nested of [
+    record.dateTime,
+    record.datetime,
+    record.iso,
+    record.iso8601,
+    record.localDateTime,
+    record.scheduledTime,
+    record.scheduledTimeLocal,
+    record.value,
+  ]) {
+    const normalized = normalizeTimestampCandidate(nested)
+    if (normalized) {
+      return normalized
+    }
+  }
+
+  const datePart = typeof record.date === 'string' ? record.date.trim() : ''
+  const timePart = typeof record.time === 'string' ? record.time.trim() : ''
+  if (datePart && timePart) {
+    const combined = `${datePart}T${timePart}`
+    if (Number.isFinite(Date.parse(combined))) {
+      return combined
+    }
+  }
+
+  return ''
+}
+
+function extractTimestamp(record: any, keys: string[]): string {
+  for (const key of keys) {
+    const normalized = normalizeTimestampCandidate(record?.[key])
+    if (normalized) {
+      return normalized
+    }
+  }
+
+  return ''
+}
+
 function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: string): {
   departure: string
   arrival: string
@@ -188,9 +277,11 @@ function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: 
   const first = segments[0] || {}
   const last = segments[segments.length - 1] || first
 
-  let departure = first.departure || first.departure_time || fallbackDeparture || ''
-  let arrival = last.arrival || last.arrival_time || fallbackArrival || ''
-  let durationMinutes = departure && arrival
+  let departure = extractTimestamp(first, DEPARTURE_TIME_KEYS) || normalizeTimestampCandidate(fallbackDeparture) || ''
+  let arrival = extractTimestamp(last, ARRIVAL_TIME_KEYS) || normalizeTimestampCandidate(fallbackArrival) || ''
+  const departureHasClock = hasExplicitFlightTime(departure)
+  const arrivalHasClock = hasExplicitFlightTime(arrival)
+  let durationMinutes = departureHasClock && arrivalHasClock
     ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000)
     : 0
 
@@ -201,12 +292,12 @@ function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: 
   }, 0)
   const fallbackDurationMinutes = routeDurationMinutes || segmentDurationMinutes
 
-  if ((!arrival || durationMinutes <= 0) && departure && fallbackDurationMinutes > 0) {
+  if ((!arrival || durationMinutes <= 0) && departure && fallbackDurationMinutes > 0 && departureHasClock) {
     arrival = new Date(new Date(departure).getTime() + fallbackDurationMinutes * 60000).toISOString()
     durationMinutes = fallbackDurationMinutes
   }
 
-  if ((!departure || durationMinutes <= 0) && arrival && fallbackDurationMinutes > 0) {
+  if ((!departure || durationMinutes <= 0) && arrival && fallbackDurationMinutes > 0 && arrivalHasClock) {
     departure = new Date(new Date(arrival).getTime() - fallbackDurationMinutes * 60000).toISOString()
     durationMinutes = fallbackDurationMinutes
   }
@@ -689,8 +780,8 @@ function getRouteSummary(route: any, fallbackAirlineName: string, fallbackAirlin
   const last = segments[segments.length - 1] || first
   const timing = getRouteTiming(
     route,
-    first.departure || first.departure_time || '',
-    last.arrival || last.arrival_time || '',
+    extractTimestamp(first, DEPARTURE_TIME_KEYS),
+    extractTimestamp(last, ARRIVAL_TIME_KEYS),
   )
   const airlineCode = (typeof first.airline === 'string' && looksLikeIataCode(first.airline)
     ? first.airline.toUpperCase()
@@ -1107,8 +1198,8 @@ function decodeOfferSnapshot(snapshot: string | null | undefined): TrustedOffer 
 
 function normalizeSegments(segments: any[], fallbackAirlineName: string, fallbackAirlineCode: string): TrustedSegment[] {
   return segments.map((segment: any) => {
-    const departure = segment.departure || segment.departure_time || ''
-    const arrival = segment.arrival || segment.arrival_time || ''
+    const departure = extractTimestamp(segment, DEPARTURE_TIME_KEYS)
+    const arrival = extractTimestamp(segment, ARRIVAL_TIME_KEYS)
     const durationMinutes = departure && arrival
       ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000)
       : 0
@@ -1143,7 +1234,11 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
 
   const origin = (first.origin || raw.origin || '').toUpperCase()
   const destination = (last.destination || raw.destination || '').toUpperCase()
-  const outboundTiming = getRouteTiming(outbound, raw.departure_time || '', raw.arrival_time || '')
+  const outboundTiming = getRouteTiming(
+    outbound,
+    extractTimestamp(raw, DEPARTURE_TIME_KEYS),
+    extractTimestamp(raw, ARRIVAL_TIME_KEYS),
+  )
   const departure = outboundTiming.departure
   const arrival = outboundTiming.arrival
   const durationMinutes = outboundTiming.durationMinutes

@@ -6,6 +6,7 @@ import { getAirlineCodeFromName, getAirlineLogoUrl, getAirlineNameFromCode, look
 import { extractFlightClockMinutes, formatFlightDateCompact, formatFlightTime } from '../../../lib/flight-datetime'
 import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount } from '../../../lib/google-flights-savings'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
+import { formatCurrencyAmount } from '../../../lib/user-currency'
 import {
   getOfferKnownTotalPrice,
   getOfferTotalWithAncillary,
@@ -233,8 +234,8 @@ function getSegmentAirlineLabel(segment: FlightSegment, fallbackAirline: string)
   return fallbackCarrier?.name || fallbackAirline
 }
 
-function fmtOfferPrice(amount: number, currency: string) {
-  return `${currency}${Math.round(amount)}`
+function fmtOfferPrice(amount: number, currency: string, locale?: string) {
+  return formatCurrencyAmount(amount, currency, locale)
 }
 
 // ── Airline logo with IATA-code fallback ──────────────────────────────────────
@@ -627,7 +628,7 @@ export default function ResultsPanel({
     || retRange[0] > 0 || retRange[1] < 1439
     || durationRange[0] > durationBounds.min || durationRange[1] < durationBounds.max
 
-  const fmt = (p: number) => `${currency}${Math.round(p)}`
+  const fmt = (p: number) => formatCurrencyAmount(p, currency, locale)
 
   const stopsOptions = [
     { key: '0', label: t('direct') },
@@ -849,12 +850,12 @@ export default function ResultsPanel({
               hasIncludedAncillary(checkedBag)
                 ? t('checkedBagIncluded')
                 : hasPaidAncillary(checkedBag)
-                  ? t('checkedBagFee', { price: fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency) })
+                  ? t('checkedBagFee', { price: fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, locale) })
                   : null,
               hasIncludedAncillary(seatSelection)
                 ? t('seatSelectionIncluded')
                 : hasPaidAncillary(seatSelection)
-                  ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency) })
+                  ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, locale) })
                   : null,
             ].filter((value): value is string => Boolean(value))
             const checkedBagTotal = getOfferTotalWithAncillary(offer, checkedBag)
@@ -995,10 +996,10 @@ export default function ResultsPanel({
                     {(checkedBagTotal || seatSelectionTotal) && (
                       <div className="rf-price-notes">
                         {checkedBagTotal && (
-                          <span className="rf-price-note">{t('withCheckedBag', { price: fmtOfferPrice(checkedBagTotal, offer.currency) })}</span>
+                          <span className="rf-price-note">{t('withCheckedBag', { price: fmtOfferPrice(checkedBagTotal, offer.currency, locale) })}</span>
                         )}
                         {seatSelectionTotal && (
-                          <span className="rf-price-note">{t('withSeatSelection', { price: fmtOfferPrice(seatSelectionTotal, offer.currency) })}</span>
+                          <span className="rf-price-note">{t('withSeatSelection', { price: fmtOfferPrice(seatSelectionTotal, offer.currency, locale) })}</span>
                         )}
                       </div>
                     )}

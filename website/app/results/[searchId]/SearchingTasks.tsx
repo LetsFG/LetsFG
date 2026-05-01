@@ -743,6 +743,14 @@ export default function SearchingTasks({
     return Math.max(simFloor, next)
   }, [elapsed, progress, TOTAL, simFloor])
 
+  const progressPercent = useMemo(() => {
+    if (TOTAL <= 0) {
+      return 0
+    }
+
+    return Math.max(0, Math.min(100, Math.round((simChecked / TOTAL) * 100)))
+  }, [TOTAL, simChecked])
+
   useEffect(() => {
     if (!searchId) return
     _simFloor.set(searchId, simChecked)
@@ -834,6 +842,23 @@ export default function SearchingTasks({
           <p className="st-subtitle">
             {t('subtitle')}
           </p>
+        </div>
+
+        <div className="st-progress-shell">
+          <div className="st-progress-row">
+            <span className="st-progress-label">{t('footerChecked', { checked: simChecked, total: TOTAL })}</span>
+            <span className="st-progress-percent">{progressPercent}%</span>
+          </div>
+          <div
+            className="st-bar"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={TOTAL}
+            aria-valuenow={simChecked}
+            aria-valuetext={t('footerChecked', { checked: simChecked, total: TOTAL })}
+          >
+            <div className="st-bar-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
         </div>
 
         <div className="st-scene" aria-label={t('sceneLabel', { origin: originName, destination: destinationName })}>

@@ -45,10 +45,27 @@ function parseFlightDateTimeParts(value: string): FlightDateTimeParts | null {
   return { year, month, day, hour, minute }
 }
 
+export function hasExplicitFlightTime(value: string): boolean {
+  const parts = parseFlightDateTimeParts(value)
+  if (parts) {
+    return parts.hour !== undefined && parts.minute !== undefined
+  }
+
+  return /(?:T|\s)\d{2}:\d{2}/.test(value)
+}
+
 export function formatFlightTime(value: string): string {
   const parts = parseFlightDateTimeParts(value)
-  if (parts?.hour !== undefined && parts.minute !== undefined) {
-    return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`
+  if (parts) {
+    if (parts.hour !== undefined && parts.minute !== undefined) {
+      return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`
+    }
+
+    return '--:--'
+  }
+
+  if (!hasExplicitFlightTime(value)) {
+    return '--:--'
   }
 
   try {

@@ -3,6 +3,7 @@ import { recordLocalSearch } from '../../lib/stats'
 import { parseNLQuery } from '../../lib/searchParsing'
 import { startWebSearch } from '../../../lib/fsw-search'
 import { getTrackedSourcePath, isProbeModeValue } from '../../../lib/probe-mode'
+import { detectPreferredCurrency } from '../../../lib/user-currency'
 
 // ── POST /api/search ─────────────────────────────────────────────────────────
 
@@ -18,7 +19,9 @@ export async function POST(request: NextRequest) {
     let dateFrom: string | undefined
     let returnDate: string | undefined
     const adults = Math.max(1, parseInt(body.adults ?? '1', 10) || 1)
-    const currency = (body.currency || 'EUR').toUpperCase()
+    const currency = typeof body.currency === 'string' && body.currency.trim()
+      ? body.currency.toUpperCase()
+      : detectPreferredCurrency(request.headers)
     let maxStops: number | undefined
     let cabin: string | undefined
 

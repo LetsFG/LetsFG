@@ -13,6 +13,8 @@ import { startWebSearch } from '../../lib/fsw-search'
 import { upsertSearchSessionServer } from '../../lib/search-session-analytics-server'
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
+import { detectPreferredCurrency } from '../../lib/user-currency'
+import { headers } from 'next/headers'
 
 const FSW_SECRET = process.env.FSW_SECRET || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
@@ -262,13 +264,14 @@ async function startFSWSearch(
   }
 
   try {
+    const requestHeaders = await headers()
     const result = await startWebSearch({
       origin: parsed.origin,
       destination: parsed.destination,
       date_from: parsed.date,
       return_date: parsed.return_date || undefined,
       adults: 1,
-      currency: 'EUR',
+      currency: detectPreferredCurrency(requestHeaders),
       ...(parsed.stops !== undefined ? { max_stops: parsed.stops } : {}),
       ...(parsed.cabin ? { cabin: parsed.cabin } : {}),
     }, {

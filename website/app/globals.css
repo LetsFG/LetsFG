@@ -1621,9 +1621,8 @@ input {
   inset: 0;
   background:
     linear-gradient(180deg, rgba(11, 71, 107, 0.22) 0%, rgba(11, 71, 107, 0.06) 18%, rgba(255, 255, 255, 0) 40%),
-    url('/chatgpt-sky-bg.png');
-  background-size: cover;
-  background-position: center 46%;
+    radial-gradient(circle at 84% 26%, rgba(255, 213, 122, 0.22), transparent 18%),
+    radial-gradient(circle at 18% 24%, rgba(255, 255, 255, 0.16), transparent 16%);
   z-index: 0;
   pointer-events: none;
 }
@@ -2155,6 +2154,407 @@ input {
   color: #0f0f0f;
 }
 
+/* Developers page */
+
+.dev-page {
+  background:
+    radial-gradient(circle at 12% 12%, rgba(255, 151, 29, 0.12), transparent 20%),
+    radial-gradient(circle at 88% 10%, rgba(255, 91, 44, 0.1), transparent 22%),
+    linear-gradient(180deg, #fff9f2 0%, #ffffff 36%, #fffefb 100%);
+}
+
+.dev-hero-shell {
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 20px;
+}
+
+.dev-hero-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 460px;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255, 216, 77, 0.4), transparent 24%),
+    radial-gradient(circle at 82% 12%, rgba(255, 145, 22, 0.24), transparent 22%),
+    linear-gradient(180deg, #fff2da 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+}
+
+.dev-top-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 15, 15, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: #0f0f0f;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 12px 28px rgba(20, 53, 76, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dev-top-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(20, 53, 76, 0.12);
+}
+
+.dev-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.dev-hero {
+  position: relative;
+  padding: 40px 0 8px;
+}
+
+.dev-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.95fr);
+  gap: 28px;
+  align-items: stretch;
+}
+
+.dev-copy,
+.dev-spotlight,
+.dev-card,
+.dev-endpoint-card,
+.dev-contact-card {
+  border: 1px solid rgba(15, 15, 15, 0.08);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 24px 60px rgba(20, 53, 76, 0.08);
+}
+
+.dev-copy {
+  padding: 34px 34px 36px;
+}
+
+.dev-kicker,
+.dev-section-kicker,
+.dev-card-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 151, 29, 0.12);
+  color: #8e4f04;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dev-title {
+  margin: 16px 0 14px;
+  font-size: clamp(2.8rem, 6vw, 4.8rem);
+  line-height: 0.94;
+  letter-spacing: -0.045em;
+  color: #111111;
+  max-width: 10ch;
+}
+
+.dev-subtitle {
+  max-width: 62ch;
+  font-size: 1.06rem;
+  line-height: 1.72;
+  color: rgba(15, 15, 15, 0.68);
+}
+
+.dev-pill-row,
+.dev-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dev-pill-row {
+  margin-top: 22px;
+}
+
+.dev-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 15, 15, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgba(15, 15, 15, 0.72);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.dev-cta-row {
+  margin-top: 24px;
+}
+
+.dev-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.dev-button:hover {
+  transform: translateY(-1px);
+}
+
+.dev-button--primary {
+  background: linear-gradient(135deg, #ff5b2c 0%, #ff9116 58%, #ffd84d 100%);
+  color: #0f0f0f;
+  box-shadow: 0 18px 28px rgba(255, 145, 22, 0.22);
+}
+
+.dev-button--ghost {
+  border-color: rgba(15, 15, 15, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  color: #0f0f0f;
+}
+
+.dev-spotlight {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 28px 28px 30px;
+  background:
+    linear-gradient(180deg, rgba(255, 246, 223, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.dev-spotlight-title,
+.dev-card h3,
+.dev-contact-title {
+  font-size: clamp(1.4rem, 2vw, 2rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: #111111;
+}
+
+.dev-list {
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 12px;
+  color: rgba(15, 15, 15, 0.7);
+  line-height: 1.65;
+}
+
+.dev-list li::marker {
+  color: #ff7a16;
+}
+
+.dev-section {
+  padding: 10px 0 0;
+}
+
+.dev-section--compact {
+  padding-top: 18px;
+}
+
+.dev-section--last {
+  padding: 20px 0 28px;
+}
+
+.dev-section-head {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.dev-section-title {
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: #111111;
+  max-width: 18ch;
+}
+
+.dev-card-grid,
+.dev-endpoint-grid,
+.dev-detail-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.dev-card-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dev-endpoint-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dev-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dev-card,
+.dev-endpoint-card,
+.dev-contact-card {
+  padding: 24px;
+}
+
+.dev-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.dev-card p,
+.dev-endpoint-summary,
+.dev-endpoint-status,
+.dev-contact-copy {
+  color: rgba(15, 15, 15, 0.68);
+  line-height: 1.7;
+}
+
+.dev-card a,
+.dev-contact-copy a {
+  color: #111111;
+  text-decoration-color: rgba(15, 15, 15, 0.24);
+  text-underline-offset: 3px;
+}
+
+.dev-card code,
+.dev-path,
+.dev-contact-copy code {
+  font-family: var(--font-mono), 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.dev-code {
+  overflow-x: auto;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: #121212;
+  color: #fff6df;
+  font-family: var(--font-mono), 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+.dev-code--small {
+  font-size: 0.8rem;
+}
+
+.dev-endpoint-card {
+  display: grid;
+  gap: 12px;
+}
+
+.dev-endpoint-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.dev-method {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 151, 29, 0.14);
+  color: #8e4f04;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dev-path {
+  font-size: 0.96rem;
+  color: #111111;
+}
+
+.dev-endpoint-status {
+  padding-top: 12px;
+  border-top: 1px solid rgba(15, 15, 15, 0.08);
+  font-size: 0.93rem;
+}
+
+.dev-card--code {
+  background: linear-gradient(180deg, rgba(255, 250, 239, 0.96), rgba(255, 255, 255, 0.96));
+}
+
+.dev-contact-card {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+  padding: 30px;
+  background:
+    radial-gradient(circle at 78% 24%, rgba(255, 216, 77, 0.28), transparent 24%),
+    linear-gradient(180deg, rgba(255, 246, 223, 0.94), rgba(255, 255, 255, 0.98));
+}
+
+@media (max-width: 1024px) {
+  .dev-hero-grid,
+  .dev-card-grid,
+  .dev-endpoint-grid,
+  .dev-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dev-title,
+  .dev-section-title {
+    max-width: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .dev-shell {
+    width: calc(100% - 32px);
+  }
+
+  .dev-hero {
+    padding-top: 22px;
+  }
+
+  .dev-copy,
+  .dev-spotlight,
+  .dev-card,
+  .dev-endpoint-card,
+  .dev-contact-card {
+    padding: 22px 20px;
+    border-radius: 24px;
+  }
+
+  .dev-title {
+    font-size: clamp(2.3rem, 10vw, 3.6rem);
+  }
+
+  .dev-subtitle,
+  .dev-card p,
+  .dev-endpoint-summary,
+  .dev-endpoint-status,
+  .dev-contact-copy,
+  .dev-list {
+    font-size: 0.95rem;
+  }
+
+  .dev-button {
+    width: 100%;
+  }
+}
+
 /* ─── Results page ───────────────────────────────────────────────────────── */
 
 /* Override the dark landing-page body background whenever a results page is
@@ -2190,13 +2590,10 @@ body:has(.res-page) {
 /* ── Completed results: full-page sky background, fades to white at bottom ── */
 .res-page--completed {
   background-color: #c3dce8; /* sky-blue fallback while image loads — prevents black flash */
-  background-image:
-    linear-gradient(to bottom, transparent 72%, #ffffff 100%),
-    url('/chatgpt-sky-bg.png');
-  background-size: cover, cover;
-  background-position: center, center 44%;
-  background-attachment: fixed, fixed;
-  background-repeat: no-repeat, no-repeat;
+  background-image: linear-gradient(180deg, #d9edf5 0%, #eef8fb 72%, #ffffff 100%);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 /* Compact hero for completed: topbar + meta line only */
@@ -2304,7 +2701,8 @@ body:has(.res-page) {
   inset: 0;
   background:
     linear-gradient(180deg, rgba(11, 71, 107, 0.2) 0%, rgba(11, 71, 107, 0.06) 18%, rgba(255, 255, 255, 0) 34%),
-    url('/chatgpt-sky-bg.png') center 44% / cover,
+    radial-gradient(circle at 82% 72%, rgba(255, 216, 155, 0.18), transparent 18%),
+    radial-gradient(circle at 18% 28%, rgba(255, 255, 255, 0.16), transparent 16%),
     #acd8f0; /* sky-blue shown before the image loads — no dark flash */
 }
 
@@ -2324,8 +2722,52 @@ body:has(.res-page) {
 .res-hero--searching .res-hero-backdrop {
   background:
     linear-gradient(180deg, rgba(11, 71, 107, 0.22) 0%, rgba(11, 71, 107, 0.1) 24%, rgba(11, 71, 107, 0.06) 100%),
-    url('/chatgpt-sky-bg.png') center 46% / cover,
+    radial-gradient(circle at 78% 24%, rgba(255, 216, 155, 0.18), transparent 18%),
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.16), transparent 16%),
     #acd8f0;
+}
+
+@media (min-width: 768px) {
+  .lp-hero-sky {
+    background:
+      linear-gradient(180deg, rgba(11, 71, 107, 0.22) 0%, rgba(11, 71, 107, 0.06) 18%, rgba(255, 255, 255, 0) 40%),
+      url('/chatgpt-sky-bg.png');
+    background-size: cover;
+    background-position: center 46%;
+  }
+
+  .res-page--completed {
+    background-image:
+      linear-gradient(to bottom, transparent 72%, #ffffff 100%),
+      url('/chatgpt-sky-bg.png');
+    background-size: cover, cover;
+    background-position: center, center 44%;
+    background-attachment: fixed, fixed;
+    background-repeat: no-repeat, no-repeat;
+  }
+
+  .res-hero-backdrop {
+    background:
+      linear-gradient(180deg, rgba(11, 71, 107, 0.2) 0%, rgba(11, 71, 107, 0.06) 18%, rgba(255, 255, 255, 0) 34%),
+      url('/chatgpt-sky-bg.png') center 44% / cover,
+      #acd8f0;
+  }
+
+  .res-hero--searching .res-hero-backdrop {
+    background:
+      linear-gradient(180deg, rgba(11, 71, 107, 0.22) 0%, rgba(11, 71, 107, 0.1) 24%, rgba(11, 71, 107, 0.06) 100%),
+      url('/chatgpt-sky-bg.png') center 46% / cover,
+      #acd8f0;
+  }
+}
+
+@media (prefers-reduced-data: reduce) {
+  .lp-hero-sky,
+  .res-page--completed,
+  .res-hero-backdrop,
+  .res-hero--searching .res-hero-backdrop {
+    background-attachment: initial;
+  }
 }
 
 .res-hero-inner {
@@ -4222,6 +4664,58 @@ body:has(.res-page) {
   line-height: 1.45;
   max-width: 100%;
   white-space: nowrap;
+}
+
+.st-progress-shell {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 247, 240, 0.92) 0%, rgba(244, 250, 252, 0.96) 100%);
+  border: 1px solid rgba(255, 138, 29, 0.16);
+}
+
+.st-progress-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.st-progress-label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #163447;
+}
+
+.st-progress-percent {
+  font-size: 1.18rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #f47a1c;
+  line-height: 1;
+}
+
+.st-bar {
+  position: relative;
+  overflow: hidden;
+  height: 12px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(20, 45, 60, 0.08);
+  box-shadow: inset 0 1px 3px rgba(20, 45, 60, 0.08);
+}
+
+.st-bar-fill {
+  height: 100%;
+  min-width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffab4a 0%, #f47a1c 42%, #0a7ca0 100%);
+  transition: width 0.6s ease;
 }
 
 .st-scene {

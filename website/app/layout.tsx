@@ -6,8 +6,12 @@ import Script from 'next/script'
 import './globals.css'
 
 const GA_ID = 'G-C5G5EJS81G'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  applicationName: 'LetsFG',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/logo.png',
     shortcut: '/logo.png',
