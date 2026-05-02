@@ -14,12 +14,12 @@ from letsfg.client import _get_bookable_connector
 from letsfg.connectors.checkout_engine import AIRLINE_CONFIGS, GenericCheckoutEngine
 
 
-TARGET_SOURCES = (
-    "itaairways_direct",
-    "mea_direct",
-    "aircairo_direct",
-    "aireuropa_direct",
-)
+TARGET_SOURCE_HANDLERS = {
+    "itaairways_direct": "_extract_generic_visible_checkout_details",
+    "mea_direct": "_extract_generic_visible_checkout_details",
+    "aircairo_direct": "_extract_aircairo_checkout_details",
+    "aireuropa_direct": "_extract_generic_visible_checkout_details",
+}
 
 DEFAULT_GENERIC_SOURCES = (
     "ryanair_direct",
@@ -157,11 +157,11 @@ AIRASIA_PERSISTED_CHECKOUT_STORAGE = {
 
 class CheckoutEngineConfigTest(unittest.TestCase):
     def test_target_sources_are_registered_for_generic_checkout(self) -> None:
-        for source in TARGET_SOURCES:
+        for source, details_extractor_handler in TARGET_SOURCE_HANDLERS.items():
             with self.subTest(source=source):
                 config = AIRLINE_CONFIGS.get(source)
                 self.assertIsNotNone(config)
-                self.assertEqual(config.details_extractor_handler, "_extract_generic_visible_checkout_details")
+                self.assertEqual(config.details_extractor_handler, details_extractor_handler)
                 self.assertIsNotNone(_get_bookable_connector(source))
 
     def test_base_configs_default_to_generic_checkout_details(self) -> None:

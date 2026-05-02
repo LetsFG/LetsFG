@@ -1,4 +1,3 @@
-import json
 import sys
 import unittest
 from datetime import date, timedelta
@@ -6,7 +5,6 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SDK_PYTHON_ROOT = PROJECT_ROOT / "sdk" / "python"
-WORKSPACE_ROOT = PROJECT_ROOT.parent
 if str(SDK_PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(SDK_PYTHON_ROOT))
 
@@ -42,6 +40,242 @@ def _airasia_truth_flight(*, bundle_code: str | None = None, fare_type_category:
                 ],
                 "checkedBaggageAllowed": True,
             }
+        },
+    }
+
+
+def _airasiax_baggage_truth_payload() -> dict:
+    return {
+        "searchResults": {
+            "trips": [
+                {
+                    "flightsList": [
+                        {
+                            "tripId": "kul-nrt-d7",
+                            "convertedPrice": 199.0,
+                            "userCurrencyCode": "USD",
+                            **_airasia_truth_flight(),
+                            "flightDetails": {
+                                "designator": {
+                                    "departureStation": "KUL",
+                                    "arrivalStation": "NRT",
+                                    "departureTime": "2026-06-01T09:00:00",
+                                    "arrivalTime": "2026-06-01T17:00:00",
+                                },
+                                "segments": [
+                                    {
+                                        "carrierCode": "D7",
+                                        "marketingFlightNo": "D7522",
+                                        "designator": {
+                                            "departureStation": "KUL",
+                                            "arrivalStation": "NRT",
+                                            "departureTime": "2026-06-01T09:00:00",
+                                            "arrivalTime": "2026-06-01T17:00:00",
+                                        },
+                                    }
+                                ],
+                                "baggage": {
+                                    "complimentaryBaggage": [{"type": "cabin_bag", "weight": 7}],
+                                    "checkedBaggageAllowed": True,
+                                },
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+
+def _flight_dict(carrier: str, flight_number: str, origin: str, destination: str) -> dict:
+    return {
+        "departure": {"locationCode": origin, "dateTime": "2026-06-01T08:00:00"},
+        "arrival": {"locationCode": destination, "dateTime": "2026-06-01T10:00:00"},
+        "marketingAirlineCode": carrier,
+        "marketingFlightNumber": flight_number,
+    }
+
+
+def _air_bound(
+    fare_family: str,
+    total: int,
+    currency: str = "EUR",
+    services: list | None = None,
+    condition_codes: list | None = None,
+) -> dict:
+    return {
+        "fareFamilyCode": fare_family,
+        "prices": {"totalPrices": [{"total": total, "currencyCode": currency}]},
+        "airOffer": {"totalPrice": {"value": total, "currencyCode": currency}},
+        "services": services or [],
+        "fareConditionsCodes": condition_codes or [],
+    }
+
+
+def _checked_bag_service(quantity: int, weight: int) -> dict:
+    return {
+        "serviceType": "freeCheckedBaggage",
+        "baggagePolicyDescriptions": [
+            {
+                "quantity": quantity,
+                "baggageCharacteristics": [
+                    {"policyDetails": [{"type": "weight", "unit": "kilogram", "value": weight}]}
+                ],
+            }
+        ],
+    }
+
+
+def _ita_air_bounds_payload() -> dict:
+    return {
+        "data": {
+            "airBoundGroups": [
+                {
+                    "boundDetails": {
+                        "originLocationCode": "FCO",
+                        "destinationLocationCode": "LHR",
+                        "duration": 7200,
+                        "segments": [{"flightId": "az1"}],
+                    },
+                    "airBounds": [
+                        _air_bound(
+                            "LIGHT",
+                            12000,
+                            services=[
+                                {"serviceCode": "C0CCC", "price": {"total": 7000, "currencyCode": "EUR"}},
+                                {"serviceCode": "A0B5S", "price": {"total": 1200, "currencyCode": "EUR"}},
+                            ],
+                        ),
+                        _air_bound("CLASSIC", 19000, services=[{"serviceCode": "FBA23"}]),
+                    ],
+                }
+            ]
+        },
+        "dictionaries": {
+            "flight": {"az1": _flight_dict("AZ", "201", "FCO", "LHR")},
+            "airline": {"AZ": "ITA Airways"},
+            "currency": {"EUR": {"decimalPlaces": 2}},
+            "fareFamilyWithServices": {},
+            "service": {
+                "C0CCC": {"serviceDescriptions": [{"content": "FIRST CHECKED BAG"}]},
+                "A0B5S": {"serviceDescriptions": [{"content": "Standard seat"}]},
+                "FBA23": {
+                    "serviceDescriptions": [{"content": "Checked bag"}],
+                    "baggagePolicyDescriptions": [
+                        {
+                            "quantity": 1,
+                            "baggageCharacteristics": [
+                                {"policyDetails": [{"type": "weight", "unit": "kilogram", "value": 23}]}
+                            ],
+                        }
+                    ],
+                },
+            },
+            "fareConditions": {},
+        },
+    }
+
+
+def _mea_air_bounds_payload() -> dict:
+    return {
+        "data": {
+            "airBoundGroups": [
+                {
+                    "boundDetails": {"duration": 7200, "segments": [{"flightId": "me1"}]},
+                    "airBounds": [
+                        _air_bound("ECOFLEX", 22000, "USD", services=[{"serviceCode": "BAG23"}]),
+                        _air_bound("BUSIFLEX", 52000, "USD", services=[{"serviceCode": "BAG30X2"}]),
+                    ],
+                }
+            ]
+        },
+        "dictionaries": {
+            "flight": {"me1": _flight_dict("ME", "211", "BEY", "CDG")},
+            "currency": {"USD": {"decimalPlaces": 2}},
+            "fareFamilyWithServices": {},
+            "service": {
+                "BAG23": _checked_bag_service(1, 23),
+                "BAG30X2": _checked_bag_service(2, 30),
+            },
+        },
+    }
+
+
+def _aircairo_air_bounds_payload() -> dict:
+    return {
+        "data": {
+            "airBoundGroups": [
+                {
+                    "boundDetails": {"duration": 7200, "segments": [{"flightId": "sm1"}]},
+                    "airBounds": [
+                        _air_bound(
+                            "PROMO",
+                            10000,
+                            "USD",
+                            services=[{"serviceCode": "BAG30"}],
+                            condition_codes=["NOREF"],
+                        ),
+                        _air_bound(
+                            "SPECIAL",
+                            12000,
+                            "USD",
+                            services=[{"serviceCode": "BAG30"}],
+                            condition_codes=["REFEE"],
+                        ),
+                        _air_bound("ECONOMY", 14000, "USD", services=[{"serviceCode": "BAG30"}]),
+                        _air_bound(
+                            "ECO FLEX",
+                            18000,
+                            "USD",
+                            services=[{"serviceCode": "BAG30"}],
+                            condition_codes=["REFEE"],
+                        ),
+                    ],
+                }
+            ]
+        },
+        "dictionaries": {
+            "flight": {"sm1": _flight_dict("SM", "401", "CAI", "JED")},
+            "currency": {"USD": {"decimalPlaces": 2}},
+            "fareFamilyWithServices": {},
+            "service": {
+                "BAG30": {
+                    "serviceType": "freeCheckedBaggage",
+                    "baggagePolicyDescriptions": [{"type": "weight", "quantity": 30, "weightUnit": "kilogram"}],
+                }
+            },
+            "fareConditions": {
+                "NOREF": {"category": "refund", "details": [{"isAllowed": False}]},
+                "REFEE": {
+                    "category": "refund",
+                    "details": [
+                        {"isAllowed": True, "penalty": {"price": {"total": 5000, "currencyCode": "USD"}}}
+                    ],
+                },
+            },
+        },
+    }
+
+
+def _aireuropa_air_bounds_payload() -> dict:
+    return {
+        "data": {
+            "airBoundGroups": [
+                {
+                    "boundDetails": {"duration": 3600, "segments": [{"flightId": "ux1"}]},
+                    "airBounds": [
+                        _air_bound("NOBAG", 5000),
+                        _air_bound("ECONOMY", 7000),
+                        _air_bound("FLEX", 9000),
+                        _air_bound("BUSINESS", 15000),
+                        _air_bound("BUSFLEX", 20000),
+                    ],
+                }
+            ]
+        },
+        "dictionaries": {
+            "flight": {"ux1": _flight_dict("UX", "7701", "MAD", "BCN")},
+            "fareFamilyWithServices": {},
         },
     }
 
@@ -152,7 +386,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(merged.get("inbound_checked_bag"), "included - 1 piece 20kg checked bag")
 
     def test_airasiax_parser_reads_saved_baggage_truth_from_response(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_airasiax_KUL-NRT_profile=d.json").read_text(encoding="utf-8"))
+        payload = _airasiax_baggage_truth_payload()
         req = FlightSearchRequest(origin="KUL", destination="NRT", date_from=_future_date(34), adults=1, currency="USD")
 
         client = AirAsiaXConnectorClient()
@@ -170,7 +404,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertFalse((offer.bags_price or {}).get("seat_selection"))
 
     def test_ita_parser_exposes_fare_family_ancillaries(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "webcon-backup" / "_ita_api_51.json").read_text(encoding="utf-8"))
+        payload = _ita_air_bounds_payload()
         req = FlightSearchRequest(origin="FCO", destination="LHR", date_from=_future_date(35), adults=1)
 
         client = ITAAirwaysConnectorClient()
@@ -192,7 +426,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(rt_offer.bags_price.get("inbound_checked_bag"), 0.0)
 
     def test_mea_parser_keeps_all_fare_families_and_bags(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_mea_air_bounds.json").read_text(encoding="utf-8"))
+        payload = _mea_air_bounds_payload()
         req = FlightSearchRequest(origin="BEY", destination="CDG", date_from=_future_date(45), adults=1)
 
         client = MEAConnectorClient()
@@ -213,7 +447,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(rt_offer.bags_price.get("checked_bag"), 0.0)
 
     def test_aircairo_parser_reads_airboundgroups_and_preserves_metadata(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_tmp_aircairo_air_bounds.json").read_text(encoding="utf-8"))
+        payload = _aircairo_air_bounds_payload()
         req = FlightSearchRequest.model_construct(
             origin="CAI",
             destination="JED",
@@ -244,7 +478,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(rt_offer.bags_price.get("checked_bag"), 0.0)
 
     def test_aireuropa_parser_only_flags_nobag(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_aireuropa_flight_data.json").read_text(encoding="utf-8"))
+        payload = _aireuropa_air_bounds_payload()
         req = FlightSearchRequest(origin="MAD", destination="BCN", date_from=_future_date(60), adults=1)
 
         client = AirEuropaConnectorClient()
