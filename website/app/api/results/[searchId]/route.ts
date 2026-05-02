@@ -3,6 +3,7 @@ import { cacheOffers } from '../../../../lib/offer-cache'
 import { cacheCompletedSearchResult, getCachedSearchResult } from '../../../../lib/results-cache'
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
+import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 
@@ -188,6 +189,22 @@ function mockOffer(i: number, origin: string, dest: string, date: string) {
   }
 }
 
+function buildExpiredResult(
+  searchId: string,
+  cachedResult?: ReturnType<typeof getCachedSearchResult> | null,
+) {
+  return {
+    search_id: searchId,
+    status: 'expired' as const,
+    query: cachedResult?.query || '',
+    parsed: cachedResult?.parsed || {},
+    offers: [],
+    total_results: 0,
+    searched_at: cachedResult?.searched_at,
+    expires_at: cachedResult?.expires_at,
+  }
+}
+
 // ── GET /api/results/[searchId] ───────────────────────────────────────────────
 
 export async function GET(
@@ -244,58 +261,10 @@ export async function GET(
     if (res.status === 404) {
       const cachedResult = getCachedSearchResult(searchId)
       if (cachedResult) {
-        if (isProbeSearch && cachedResult.status === 'completed') {
-          const cachedOffers = (Array.isArray(cachedResult.offers) ? cachedResult.offers : []) as Array<{
-            id?: string
-            airline?: string
-            price?: number
-            currency?: string
-            google_flights_price?: number
-            stops?: number
-            duration_minutes?: number
-          }>
-          await upsertSearchSessionServer({
-            search_id: analyticsSearchId,
-            source_search_id: searchId,
-            is_test_search: true,
-            source: 'website-results-api-cache',
-            source_path: analyticsSourcePath,
-            status: 'completed',
-            results_count: cachedResult.total_results || cachedOffers.length,
-            cheapest_price: cachedResult.cheapest_price,
-            google_flights_price: cachedResult.google_flights_price,
-            value: cachedResult.value,
-            savings_vs_google_flights: cachedResult.savings_vs_google_flights,
-            results_preview: cachedOffers.slice(0, 10).map((offer) => ({
-              id: offer.id,
-              airline: offer.airline,
-              price: offer.price,
-              currency: offer.currency,
-              google_flights_price: offer.google_flights_price,
-              stops: offer.stops,
-              duration_minutes: offer.duration_minutes,
-            })),
-            event: {
-              type: 'results_materialized',
-              at: new Date().toISOString(),
-              data: {
-                offers_returned: cachedOffers.length,
-                cache_hit: true,
-              },
-            },
-          })
-        }
-
-        return NextResponse.json(cachedResult)
+        return NextResponse.json(buildExpiredResult(searchId, cachedResult))
       }
 
-      return NextResponse.json({
-        search_id: searchId,
-        status: 'expired',
-        parsed: {},
-        offers: [],
-        total_results: 0,
-      })
+      return NextResponse.json(buildExpiredResult(searchId))
     }
 
     if (!res.ok) {
@@ -335,6 +304,7 @@ export async function GET(
 
       await upsertSearchSessionServer({
         search_id: analyticsSearchId,
+        session_uid: getSessionUid(request) || undefined,
         source_search_id: isProbeSearch ? searchId : undefined,
         is_test_search: isProbeSearch || undefined,
         source: 'website-results-api',

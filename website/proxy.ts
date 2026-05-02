@@ -2,7 +2,7 @@ import createMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { NextResponse, type NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
-import { getSessionUid, HOSTING_SESSION_COOKIE_NAME, LEGACY_UID_COOKIE_NAME } from './lib/session-uid'
+import { getSessionUid, HOSTING_SESSION_COOKIE_NAME, LEGACY_UID_COOKIE_NAME, SESSION_UID_HEADER_NAME } from './lib/session-uid'
 import {
   buildRateLimitClientKey,
   checkRateLimit,
@@ -110,6 +110,7 @@ export default function proxy(req: NextRequest) {
         : routing.defaultLocale
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-next-intl-locale', detectedLocale)
+    requestHeaders.set(SESSION_UID_HEADER_NAME, sessionUid)
     res = NextResponse.next({ request: { headers: requestHeaders } })
   } else {
     res = intlMiddleware(req) as NextResponse

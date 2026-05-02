@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 
 export const HOSTING_SESSION_COOKIE_NAME = '__session'
 export const LEGACY_UID_COOKIE_NAME = 'lfg_uid'
+export const SESSION_UID_HEADER_NAME = 'x-lfg-session-uid'
 
 const MAX_UID_LENGTH = 128
 
@@ -18,7 +19,8 @@ function normalizeUid(value: string | null | undefined): string | null {
 
 export function getSessionUid(req: NextRequest): string | null {
   return (
-    normalizeUid(req.cookies.get(HOSTING_SESSION_COOKIE_NAME)?.value)
+    normalizeUid(req.headers.get(SESSION_UID_HEADER_NAME))
+    ?? normalizeUid(req.cookies.get(HOSTING_SESSION_COOKIE_NAME)?.value)
     ?? normalizeUid(req.cookies.get(LEGACY_UID_COOKIE_NAME)?.value)
   )
 }
