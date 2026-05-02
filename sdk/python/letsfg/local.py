@@ -402,6 +402,21 @@ def _build_location_index() -> dict[str, list[dict]]:
         _add(code.lower(), entry)
         _add(city_name.lower(), entry)
 
+    # India city aliases (historical/colloquial names not in the main AIRPORTS dict)
+    _INDIA_ALIASES: dict[str, str] = {
+        "bengaluru": "BLR",
+        "new delhi": "DEL",
+        "bombay": "BOM",
+        "madras": "MAA",
+        "calcutta": "CCU",
+    }
+    for alias, iata in _INDIA_ALIASES.items():
+        if iata in _AIRPORTS:
+            name, city, _ = _AIRPORTS[iata]
+            country = AIRPORT_COUNTRY.get(iata, "IN")
+            alias_entry = {"iata_code": iata, "name": name, "type": "airport", "city": city, "country": country}
+            _add(alias, alias_entry)
+
     return idx
 
 

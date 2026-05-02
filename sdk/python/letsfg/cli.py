@@ -96,6 +96,21 @@ def _json_out(data):
     print(json.dumps(data, indent=2, default=str))
 
 
+def _resolve_locations_with_local_fallback(bt, query: str) -> list[dict]:
+    """Resolve locations via API, falling back to local index when offline."""
+    try:
+        result = bt.resolve_location(query)
+        if result:
+            return result
+    except Exception:
+        pass
+    try:
+        from letsfg.local import _resolve_location_local
+        return _resolve_location_local(query)
+    except Exception:
+        return []
+
+
 # ── Airline display helpers ───────────────────────────────────────────────
 
 _IATA_TO_AIRLINE: dict[str, str] = {
@@ -681,7 +696,7 @@ def locations(
     """Resolve city/airport name to IATA codes."""
     bt = _get_client(api_key, base_url)
     try:
-        result = bt.resolve_location(query)
+        result = _resolve_locations_with_local_fallback(bt, query)
     except LetsFGError as e:
         _err(f"{e.message}")
 
