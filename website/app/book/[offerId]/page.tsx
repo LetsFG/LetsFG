@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
 import GlobeButton from '../../globe-button'
+import CurrencyButton from '../../currency-button'
 import BookPageClient from './BookPageClient'
 import { formatFlightTime } from '../../../lib/flight-datetime'
 import { appendProbeParam, getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
@@ -202,6 +203,7 @@ export default async function BookPage({
             </div>
             <div className="res-topbar-actions">
               <GlobeButton inline />
+              <CurrencyButton inline behavior="refresh" />
               <a
                 href={REPO_URL}
                 target="_blank"
