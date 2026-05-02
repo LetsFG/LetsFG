@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { recordLocalSearch } from '../../lib/stats'
 import { parseNLQuery } from '../../lib/searchParsing'
 import { startWebSearch } from '../../../lib/fsw-search'
+import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../../lib/currency-preference'
 import { getTrackedSourcePath, isProbeModeValue } from '../../../lib/probe-mode'
+import { getSessionUid } from '../../../lib/session-uid'
 import { detectPreferredCurrency } from '../../../lib/user-currency'
 
 // ── POST /api/search ─────────────────────────────────────────────────────────
@@ -19,9 +21,11 @@ export async function POST(request: NextRequest) {
     let dateFrom: string | undefined
     let returnDate: string | undefined
     const adults = Math.max(1, parseInt(body.adults ?? '1', 10) || 1)
-    const currency = typeof body.currency === 'string' && body.currency.trim()
-      ? body.currency.toUpperCase()
-      : detectPreferredCurrency(request.headers)
+    const currency = resolveSearchCurrency({
+      queryParam: typeof body.currency === 'string' ? body.currency : undefined,
+      cookieValue: request.cookies.get(LETSFG_CURRENCY_COOKIE)?.value,
+      fallback: detectPreferredCurrency(request.headers),
+    })
     let maxStops: number | undefined
     let cabin: string | undefined
 
@@ -71,6 +75,7 @@ export async function POST(request: NextRequest) {
       destination_name: destinationName,
       source: 'website-api-search',
       source_path: getTrackedSourcePath('/api/search', isProbeSearch),
+      session_uid: getSessionUid(request) ?? undefined,
       is_test_search: isProbeSearch,
     })
 

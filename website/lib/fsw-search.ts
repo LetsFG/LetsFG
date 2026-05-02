@@ -24,6 +24,7 @@ export interface WebSearchAnalyticsContext {
   source_path?: string
   referrer_path?: string
   source_search_id?: string
+  session_uid?: string
   is_test_search?: boolean
 }
 
@@ -87,6 +88,7 @@ export async function startWebSearch(
       source_path: analytics?.source_path,
       referrer_path: analytics?.referrer_path,
       source_search_id: analytics?.source_search_id || (isTestSearch ? searchId : undefined),
+      session_uid: analytics?.session_uid,
       is_test_search: isTestSearch || undefined,
       status: 'searching',
       cache_hit: Boolean(data.cache_hit),

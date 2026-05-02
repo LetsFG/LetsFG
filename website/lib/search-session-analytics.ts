@@ -32,6 +32,7 @@ export interface SearchSessionPayload {
   source_path?: string
   referrer_path?: string
   source_search_id?: string
+  session_uid?: string
   status?: string
   decision?: string
   is_test_search?: boolean

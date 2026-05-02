@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getSessionUid } from '../../../../lib/session-uid'
 
 const ANALYTICS_API_BASE = (
   process.env.LETSFG_ANALYTICS_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
@@ -20,6 +21,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing request body' }, { status: 400 })
     }
 
+    const parsed = JSON.parse(bodyText)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
+    const payload = parsed as Record<string, unknown>
+    const sessionUid = getSessionUid(request)
+    if (sessionUid && !String(payload.session_uid ?? '').trim()) {
+      payload.session_uid = sessionUid
+    }
+
     const response = await fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
       method: 'POST',
       headers: {
@@ -28,7 +40,7 @@ export async function POST(request: NextRequest) {
         'Referer': 'https://letsfg.co/',
         'User-Agent': request.headers.get('user-agent') || 'Mozilla/5.0 (compatible; LetsFG Website/1.0; +https://letsfg.co)',
       },
-      body: bodyText,
+      body: JSON.stringify(payload),
       cache: 'no-store',
       signal: AbortSignal.timeout(4000),
     })

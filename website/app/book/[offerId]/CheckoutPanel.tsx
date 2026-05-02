@@ -576,23 +576,6 @@ export default function CheckoutPanel({
   }, [checkUnlockStatus, loadBookingLink])
 
   useEffect(() => {
-    trackSearchSessionEvent(analyticsSearchId, 'checkout_opened', {
-      offer_id: offer.id,
-      airline: offer.airline,
-      currency: offer.currency,
-      price: offer.price,
-    }, {
-      source: 'website-checkout',
-      source_path: checkoutSourcePath,
-      is_test_search: isTestSearch || undefined,
-      selected_offer_id: offer.id,
-      selected_offer_airline: offer.airline,
-      selected_offer_currency: offer.currency,
-      selected_offer_price: offer.price,
-    })
-  }, [analyticsSearchId, checkoutSourcePath, isTestSearch, offer.airline, offer.currency, offer.id, offer.price])
-
-  useEffect(() => {
     const handlePageHide = () => {
       trackSearchSessionEvent(analyticsSearchId, 'pagehide_checkout', {
         offer_id: offer.id,
@@ -699,6 +682,21 @@ export default function CheckoutPanel({
       })
       const data = await res.json()
       if (data.url) {
+        trackSearchSessionEvent(analyticsSearchId, 'checkout_opened', {
+          offer_id: offer.id,
+          airline: offer.airline,
+          currency: offer.currency,
+          price: offer.price,
+        }, {
+          source: 'website-checkout',
+          source_path: checkoutSourcePath,
+          is_test_search: isTestSearch || undefined,
+          selected_offer_id: offer.id,
+          selected_offer_airline: offer.airline,
+          selected_offer_currency: offer.currency,
+          selected_offer_price: offer.price,
+          potential_revenue: fee,
+        })
         window.location.href = data.url
       } else {
         setStep({ type: 'locked' })
