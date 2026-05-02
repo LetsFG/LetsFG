@@ -546,15 +546,14 @@ export function applyGoogleFlightsBaseline(
 
   let changed = false
   const nextOffers = offers.map((offer, index) => {
-    if (typeof offer.google_flights_price === 'number') {
-      return offer
-    }
-
     const signature = getOfferSignature(offer)
     const matchedPrice = signature
       ? matchIndex.get(signature)?.get(toUpperCode(offer.currency))
       : undefined
-    const googleFlightsPrice = typeof matchedPrice === 'number' ? matchedPrice : fallbackBaseline
+    const existingGoogleFlightsPrice = parsePositiveComparisonPrice(offer.google_flights_price)
+    const googleFlightsPrice = typeof matchedPrice === 'number'
+      ? matchedPrice
+      : (typeof existingGoogleFlightsPrice === 'number' ? existingGoogleFlightsPrice : fallbackBaseline)
     if (typeof googleFlightsPrice !== 'number' || offer.google_flights_price === googleFlightsPrice) {
       return offer
     }

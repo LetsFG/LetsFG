@@ -1,11 +1,15 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
+import CurrencyButton from '../currency-button'
 import HomeSearchForm from '../home-search-form'
 import GlobeButton from '../globe-button'
+import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../lib/currency-preference'
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
+import { detectPreferredCurrency } from '../../lib/user-currency'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 
@@ -87,15 +91,22 @@ function GitHubIcon() {
   )
 }
 
-export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; probe?: string }> }) {
+export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; probe?: string; cur?: string }> }) {
   const { locale } = await params
-  const { q, probe } = await searchParams
+  const { q, probe, cur } = await searchParams
   const isProbe = isProbeModeValue(probe)
+  const requestHeaders = await headers()
+  const cookieStore = await cookies()
+  const initialCurrency = resolveSearchCurrency({
+    queryParam: cur?.trim(),
+    cookieValue: cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value,
+    fallback: detectPreferredCurrency(requestHeaders),
+  })
 
   // ?q= support: agents (and humans) can navigate directly to /?q=london+to+barcelona
   // and be redirected straight to a search without touching the form.
   if (q?.trim()) {
-    redirect(getTrackedSourcePath(`/results?q=${encodeURIComponent(q.trim())}`, isProbe))
+    redirect(getTrackedSourcePath(`/results?q=${encodeURIComponent(q.trim())}&cur=${encodeURIComponent(initialCurrency)}`, isProbe))
   }
 
   const [stats, t, githubStars] = await Promise.all([
@@ -152,6 +163,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
 
           <div className="lp-topbar-side">
             <GlobeButton inline />
+            <CurrencyButton inline behavior="persist" initialCurrency={initialCurrency} probeMode={isProbe} />
             <a
               href={REPO_URL}
               target="_blank"
@@ -182,7 +194,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
           />
           <p className="lp-hero-sub">{th('tagline')}</p>
           <div className="lp-hero-search-shell" id="destinations">
-            <HomeSearchForm probeMode={isProbe} />
+            <HomeSearchForm probeMode={isProbe} initialCurrency={initialCurrency} />
           </div>
         </div>
       </section>
