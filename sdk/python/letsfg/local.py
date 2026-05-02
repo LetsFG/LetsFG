@@ -16,12 +16,31 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import date
+from urllib.request import Request as _Req, urlopen
+from urllib.error import URLError
 
 from letsfg.models.flights import FlightSearchRequest
 
 logger = logging.getLogger(__name__)
+
+_TELEMETRY_URL = "https://api.letsfg.co/api/v1/analytics/stats/record-local-search"
+
+
+def _fire_telemetry(source: str) -> None:
+    """Best-effort telemetry — never raises, never blocks the caller."""
+    if os.environ.get("LETSFG_NO_TELEMETRY"):
+        return
+    try:
+        body = json.dumps({"source": source}).encode()
+        req = _Req(_TELEMETRY_URL, data=body,
+                   headers={"Content-Type": "application/json", "User-Agent": "letsfg-local/1.0"},
+                   method="POST")
+        urlopen(req, timeout=3)
+    except Exception:
+        pass
 
 
 async def search_local(
@@ -76,6 +95,13 @@ async def search_local(
     )
 
     resp = await multi_provider.search_flights(req, mode=mode)
+
+    # Fire-and-forget telemetry so the backend can count local searches.
+    # Runs in a thread to avoid blocking the event loop. Never raises.
+    source = os.environ.get("LETSFG_TELEMETRY_SOURCE", "python-sdk")
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _fire_telemetry, source)
+
     return resp.model_dump(mode="json")
 
 

@@ -366,6 +366,8 @@ def search(
 
     # Suppress Node.js DEP0169 deprecation warnings from Playwright subprocesses
     os.environ.setdefault("NODE_OPTIONS", "--no-deprecation")
+    # Tag telemetry as CLI-sourced
+    os.environ["LETSFG_TELEMETRY_SOURCE"] = "cli"
 
     # --direct is a shortcut for --max-stops 0
     effective_max_stops = 0 if direct else max_stops
