@@ -177,7 +177,16 @@ def _to_datetime(val) -> datetime:
     return datetime.strptime(str(val), "%Y-%m-%d")
 
 
-def _parse_dt(s: str) -> datetime:
+def _parse_dt(s: str) -> datetime | None:
+    if not s:
+        return None
+    s = str(s).strip().replace("Z", "+00:00")
+    if ":" not in s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        pass
     for fmt in (
         "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f",
         "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M",
@@ -186,7 +195,7 @@ def _parse_dt(s: str) -> datetime:
             return datetime.strptime(s[:len(fmt) + 3], fmt)
         except (ValueError, IndexError):
             continue
-    return datetime.strptime(s[:10], "%Y-%m-%d")
+    return None
 
 
 _SKIP = frozenset((
@@ -499,8 +508,14 @@ class CopaConnectorClient:
                 arr_date = arr.get("flightDate", dep_date)
                 arr_time = arr.get("flightTime", "")
 
-                dep_dt = _parse_dt(f"{dep_date}T{dep_time}:00") if dep_date and dep_time else _to_datetime(req.date_from)
-                arr_dt = _parse_dt(f"{arr_date}T{arr_time}:00") if arr_date and arr_time else dep_dt + timedelta(hours=3)
+                if not dep_date or not dep_time or not arr_date or not arr_time:
+                    segments = []
+                    break
+                dep_dt = _parse_dt(f"{dep_date}T{dep_time}:00")
+                arr_dt = _parse_dt(f"{arr_date}T{arr_time}:00")
+                if not dep_dt or not arr_dt:
+                    segments = []
+                    break
 
                 carrier = mc.get("airlineCode", "CM")
                 fno = str(mc.get("flightNumber", ""))
@@ -580,8 +595,10 @@ class CopaConnectorClient:
             carrier = seg.get("airlineCode") or seg.get("carrierCode") or seg.get("operatingCarrier") or "CM"
             fno = seg.get("flightNumber") or seg.get("flightNo") or ""
 
-            dep_dt = _parse_dt(dep_str) if dep_str else _to_datetime(req.date_from)
-            arr_dt = _parse_dt(arr_str) if arr_str else dep_dt + timedelta(hours=3)
+            dep_dt = _parse_dt(dep_str)
+            arr_dt = _parse_dt(arr_str)
+            if not dep_dt or not arr_dt:
+                return []
             dur = int((arr_dt - dep_dt).total_seconds()) if arr_dt > dep_dt else 0
 
             segments.append(FlightSegment(
@@ -698,90 +715,8 @@ class CopaConnectorClient:
         except Exception as e:
             logger.info("CM Sputnik error: %s", e)
             return []
-
-        origin_set = city_match_set(req.origin)
-        dest_set = city_match_set(req.destination)
-
-        offers = []
-        for route in data:
-            for fare in route.get("fares") or []:
-                orig = (fare.get("originAirportCode") or route.get("origin") or "").upper()
-                dest = (fare.get("destinationAirportCode") or route.get("destination") or "").upper()
-                if dest not in dest_set and orig not in origin_set:
-                    continue
-
-                price = fare.get("totalPrice") or fare.get("usdTotalPrice")
-                if not price or float(price) <= 0:
-                    continue
-                if fare.get("redemption"):
-                    continue
-
-                price_f = round(float(price), 2)
-                currency = fare.get("currencyCode") or "USD"
-                dep_str = (fare.get("departureDate") or "")[:10]
-                ret_str = (fare.get("returnDate") or "")[:10]
-                cabin = (fare.get("farenetTravelClass") or "ECONOMY").lower()
-
-                dep_dt = datetime(2000, 1, 1)
-                if dep_str:
-                    try:
-                        dep_dt = datetime.strptime(dep_str, "%Y-%m-%d")
-                    except ValueError:
-                        pass
-
-                seg = FlightSegment(
-                    airline="CM", airline_name="Copa Airlines", flight_no="",
-                    origin=orig, destination=dest,
-                    origin_city=fare.get("originCity") or "",
-                    destination_city=fare.get("destinationCity") or "",
-                    departure=dep_dt, arrival=dep_dt,
-                    duration_seconds=0, cabin_class=cabin,
-                )
-                outbound = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
-
-                inbound = None
-                if ret_str:
-                    try:
-                        ret_dt = datetime.strptime(ret_str, "%Y-%m-%d")
-                    except ValueError:
-                        ret_dt = dep_dt
-                    ret_seg = FlightSegment(
-                        airline="CM", airline_name="Copa Airlines", flight_no="",
-                        origin=dest, destination=orig,
-                        origin_city=fare.get("destinationCity") or "",
-                        destination_city=fare.get("originCity") or "",
-                        departure=ret_dt, arrival=ret_dt,
-                        duration_seconds=0, cabin_class=cabin,
-                    )
-                    inbound = FlightRoute(segments=[ret_seg], total_duration_seconds=0, stopovers=0)
-
-                ret_token = f"_{ret_str}" if ret_str else ""
-                fid = hashlib.md5(
-                    f"cm_{orig}_{dest}_{dep_str}{ret_token}_{price_f}".encode()
-                ).hexdigest()[:12]
-
-                offers.append(FlightOffer(
-                    id=f"cm_{fid}",
-                    price=price_f,
-                    currency=currency,
-                    price_formatted=fare.get("formattedTotalPrice") or f"{price_f:.2f} {currency}",
-                    outbound=outbound,
-                    inbound=inbound,
-                    airlines=["Copa Airlines"],
-                    owner_airline="CM",
-                    booking_url=f"https://shopping.copaair.com/?roundtrip=false&area1={req.origin}&area2={req.destination}",
-                    is_locked=False,
-                    source="copa_direct",
-                    source_tier="free",
-                    conditions={
-                        "trip_type": (fare.get("flightType") or "ROUND_TRIP").lower().replace("_", "-"),
-                        "cabin": str(fare.get("formattedTravelClass") or cabin),
-                        "fare_note": "Published fare from Copa Airlines fare module",
-                    },
-                ))
-
-        logger.info("CM Sputnik %s→%s: %d offers", req.origin, req.destination, len(offers))
-        return offers
+        logger.info("CM Sputnik: fare-only grouped-route data is suppressed until real schedule times are available")
+        return []
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         h = hashlib.md5(f"cm{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]

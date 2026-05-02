@@ -1265,6 +1265,10 @@ class ITAAirwaysConnectorClient:
         dicts = data.get("dictionaries", {})
         flight_dict = dicts.get("flight", {})
         airline_dict = dicts.get("airline", {})
+        currency_dict = dicts.get("currency", {})
+        fare_family_dict = dicts.get("fareFamilyWithServices", {})
+        service_dict = dicts.get("service", {})
+        fare_conditions = dicts.get("fareConditions", {})
         groups = search_data.get("airBoundGroups", [])
 
         if not groups:
@@ -1280,55 +1284,6 @@ class ITAAirwaysConnectorClient:
             else:
                 ob_groups.append(g)
 
-        # Build cheapest inbound route
-        ib_route = None
-        ib_price = 0.0
-        if ib_groups:
-            best_ib_price = float("inf")
-            best_ib_group = None
-            for g in ib_groups:
-                for ab in g.get("airBounds", []):
-                    tp = ab.get("airOffer", {}).get("totalPrice", {})
-                    pc = tp.get("value")
-                    if pc is None:
-                        tps = ab.get("prices", {}).get("totalPrices", [])
-                        if tps:
-                            pc = tps[0].get("total")
-                    if pc and 0 < pc < best_ib_price:
-                        best_ib_price = pc
-                        best_ib_group = g
-                        break
-            if best_ib_group:
-                ib_price = round(best_ib_price / 100, 2)
-                ib_bd = best_ib_group.get("boundDetails", {})
-                ib_segs: list[FlightSegment] = []
-                for sref in ib_bd.get("segments", []):
-                    fid = sref.get("flightId", "")
-                    fl = flight_dict.get(fid, {})
-                    dep = fl.get("departure", {})
-                    arr = fl.get("arrival", {})
-                    mkt_code = fl.get("marketingAirlineCode", "AZ")
-                    mkt_num = fl.get("marketingFlightNumber", "")
-                    airline_name = airline_dict.get(mkt_code, "ITA Airways")
-                    ib_segs.append(FlightSegment(
-                        airline=mkt_code, airline_name=airline_name,
-                        flight_no=f"{mkt_code}{mkt_num}",
-                        origin=dep.get("locationCode", req.destination),
-                        destination=arr.get("locationCode", req.origin),
-                        departure=self._parse_dt(dep.get("dateTime")),
-                        arrival=self._parse_dt(arr.get("dateTime")),
-                    ))
-                ib_route = FlightRoute(
-                    segments=ib_segs or [FlightSegment(
-                        airline="AZ", airline_name="ITA Airways", flight_no="AZ",
-                        origin=req.destination, destination=req.origin,
-                        departure=datetime.combine(req.return_from, datetime.min.time().replace(hour=8)),
-                        arrival=datetime.combine(req.return_from, datetime.min.time().replace(hour=8)),
-                    )],
-                    total_duration_seconds=ib_bd.get("duration", 0),
-                    stopovers=max(len(ib_segs) - 1, 0),
-                )
-
         seen_keys: set[str] = set()
 
         for group in ob_groups:
@@ -1338,43 +1293,14 @@ class ITAAirwaysConnectorClient:
             route_dur = bd.get("duration", 0)
             seg_refs = bd.get("segments", [])
 
-            # Build segments from flight dictionary
-            segments: list[FlightSegment] = []
-            airlines_set: set[str] = set()
-            for sref in seg_refs:
-                fid = sref.get("flightId", "")
-                fl = flight_dict.get(fid, {})
-                dep = fl.get("departure", {})
-                arr = fl.get("arrival", {})
-                mkt_code = fl.get("marketingAirlineCode", "AZ")
-                mkt_num = fl.get("marketingFlightNumber", "")
-                airline_name = airline_dict.get(mkt_code, "ITA Airways")
-                airlines_set.add(airline_name)
-
-                segments.append(FlightSegment(
-                    airline=mkt_code,
-                    airline_name=airline_name,
-                    flight_no=f"{mkt_code}{mkt_num}",
-                    origin=dep.get("locationCode", origin_code),
-                    destination=arr.get("locationCode", dest_code),
-                    departure=self._parse_dt(dep.get("dateTime")),
-                    arrival=self._parse_dt(arr.get("dateTime")),
-                ))
-
-            stopovers = max(len(segments) - 1, 0)
-            route = FlightRoute(
-                segments=segments or [FlightSegment(
-                    airline="AZ", airline_name="ITA Airways", flight_no="AZ",
-                    origin=req.origin, destination=req.destination,
-                    departure=datetime.combine(req.date_from, datetime.min.time().replace(hour=8)),
-                    arrival=datetime.combine(req.date_from, datetime.min.time().replace(hour=8)),
-                )],
-                total_duration_seconds=route_dur,
-                stopovers=stopovers,
+            package_price_note = self._describe_group_package_prices(
+                group.get("airBounds", []),
+                currency_dict,
             )
 
-            # Take cheapest fare per group (first airBound is usually isCheapestOffer)
             for ab in group.get("airBounds", []):
+                ff_code = str(ab.get("fareFamilyCode", "") or "")
+                family_meta = fare_family_dict.get(ff_code, {}) if isinstance(fare_family_dict, dict) else {}
                 tp = ab.get("airOffer", {}).get("totalPrice", {})
                 price_cents = tp.get("value")
                 currency = tp.get("currencyCode", "EUR")
@@ -1388,81 +1314,317 @@ class ITAAirwaysConnectorClient:
                 if price_cents is None or price_cents <= 0:
                     continue
 
-                price = round(price_cents / 100, 2)
+                price = self._normalize_price(price_cents, currency, currency_dict)
 
-                ff_code = ab.get("fareFamilyCode", "")
                 dedup_key = f"az_{origin_code}{dest_code}{price}{ff_code}"
                 if dedup_key in seen_keys:
                     continue
+
+                segments: list[FlightSegment] = []
+                airlines_set: set[str] = set()
+                for sref in seg_refs:
+                    fid = sref.get("flightId", "")
+                    fl = flight_dict.get(fid, {})
+                    dep = fl.get("departure", {})
+                    arr = fl.get("arrival", {})
+                    mkt_code = fl.get("marketingAirlineCode", "AZ")
+                    mkt_num = fl.get("marketingFlightNumber", "")
+                    airline_name = airline_dict.get(mkt_code, "ITA Airways")
+                    airlines_set.add(airline_name)
+                    dep_dt = self._parse_dt(dep.get("dateTime"))
+                    arr_dt = self._parse_dt(arr.get("dateTime"))
+                    if dep_dt.year <= 2000 or arr_dt.year <= 2000:
+                        segments = []
+                        break
+
+                    cabin_code = self._resolve_cabin_code(ab, family_meta, fid)
+                    segments.append(FlightSegment(
+                        airline=mkt_code,
+                        airline_name=airline_name,
+                        flight_no=f"{mkt_code}{mkt_num}",
+                        origin=dep.get("locationCode", origin_code),
+                        destination=arr.get("locationCode", dest_code),
+                        departure=dep_dt,
+                        arrival=arr_dt,
+                        cabin_class=self._normalize_cabin(cabin_code),
+                    ))
+
+                if not segments:
+                    continue
+
                 seen_keys.add(dedup_key)
 
-                combined = round(price + ib_price, 2) if ib_route else price
+                route = FlightRoute(
+                    segments=segments,
+                    total_duration_seconds=route_dur,
+                    stopovers=max(len(segments) - 1, 0),
+                )
+                conditions, bags_price = self._build_bound_metadata(
+                    ab,
+                    ff_code,
+                    family_meta,
+                    service_dict,
+                    fare_conditions,
+                    currency,
+                    currency_dict,
+                )
+                if package_price_note:
+                    conditions["fare_package_prices"] = package_price_note
                 oid = hashlib.md5(dedup_key.encode()).hexdigest()[:12]
                 airlines_list = sorted(airlines_set) if airlines_set else ["ITA Airways"]
                 offers.append(FlightOffer(
-                    id=f"az_rt_{oid}" if ib_route else f"az_{oid}",
-                    price=combined,
+                    id=f"az_{oid}",
+                    price=price,
                     currency=currency,
-                    price_formatted=f"{combined:.2f} {currency}",
+                    price_formatted=f"{price:.2f} {currency}",
                     outbound=route,
-                    inbound=ib_route,
+                    inbound=None,
                     airlines=airlines_list,
                     owner_airline="AZ",
+                    bags_price=bags_price,
+                    conditions=conditions,
                     booking_url=booking_url,
                     is_locked=False,
                     source="itaairways_direct",
                     source_tier="free",
                 ))
-                break  # Only cheapest fare per group
 
         return offers
 
+    @staticmethod
+    def _normalize_price(raw_amount, currency: str, currency_dict: dict) -> float:
+        try:
+            decimals = 2
+            if currency and isinstance(currency_dict, dict):
+                meta = currency_dict.get(currency)
+                if isinstance(meta, dict):
+                    d = meta.get("decimalPlaces")
+                    if isinstance(d, int) and 0 <= d <= 6:
+                        decimals = d
+            return round(float(raw_amount) / (10 ** decimals), 2)
+        except Exception:
+            return 0.0
+
+    @classmethod
+    def _describe_group_package_prices(cls, air_bounds: list, currency_dict: dict) -> str:
+        package_prices: list[tuple[str, str, float]] = []
+        seen_families: set[str] = set()
+
+        for air_bound in air_bounds if isinstance(air_bounds, list) else []:
+            if not isinstance(air_bound, dict):
+                continue
+            fare_family = str(air_bound.get("fareFamilyCode") or "").strip()
+            if not fare_family or fare_family in seen_families:
+                continue
+
+            prices_block = air_bound.get("prices") if isinstance(air_bound.get("prices"), dict) else {}
+            total_prices = prices_block.get("totalPrices") if isinstance(prices_block.get("totalPrices"), list) else []
+            if not total_prices:
+                continue
+            first_total = total_prices[0] if isinstance(total_prices[0], dict) else {}
+            raw_total = first_total.get("total")
+            currency = str(first_total.get("currencyCode") or "").upper()
+            price = cls._normalize_price(raw_total, currency, currency_dict) if raw_total is not None else 0.0
+            if price <= 0:
+                continue
+
+            seen_families.add(fare_family)
+            package_prices.append((fare_family, currency, price))
+
+        if len(package_prices) < 2:
+            return ""
+
+        package_prices.sort(key=lambda item: item[2])
+        return "; ".join(
+            f"{fare_family} {currency} {price:,.2f}"
+            for fare_family, currency, price in package_prices
+        )
+
+    @staticmethod
+    def _resolve_cabin_code(air_bound: dict, family_meta: dict, flight_id: str) -> str:
+        for detail in air_bound.get("availabilityDetails", []):
+            if isinstance(detail, dict) and detail.get("flightId") == flight_id:
+                cabin = detail.get("cabin")
+                if isinstance(cabin, str) and cabin.strip():
+                    return cabin
+        cabin = family_meta.get("cabin") if isinstance(family_meta, dict) else ""
+        return cabin if isinstance(cabin, str) else ""
+
+    @staticmethod
+    def _normalize_cabin(cabin_code: str) -> str:
+        code = (cabin_code or "").strip().lower()
+        if code in {"business", "biz", "c"}:
+            return "business"
+        if code in {"premium", "premiumeconomy", "premium_economy", "w"}:
+            return "premium_economy"
+        if code in {"first", "f"}:
+            return "first"
+        return "economy"
+
+    def _build_bound_metadata(
+        self,
+        air_bound: dict,
+        fare_family_code: str,
+        family_meta: dict,
+        service_dict: dict,
+        fare_conditions: dict,
+        currency: str,
+        currency_dict: dict,
+    ) -> tuple[dict[str, str], dict[str, float]]:
+        conditions: dict[str, str] = {}
+        bags_price: dict[str, float] = {}
+
+        if fare_family_code:
+            conditions["fare_family"] = fare_family_code
+
+        cabin_bag_parts: list[str] = []
+        if isinstance(family_meta, dict):
+            for service in family_meta.get("services", []):
+                if not isinstance(service, dict):
+                    continue
+                if str(service.get("applicability") or "").lower() != "included":
+                    continue
+                code = str(service.get("serviceCode") or "")
+                desc = self._service_description(service_dict.get(code, {}), code)
+                norm = desc.lower()
+                if any(token in norm for token in ("cabin", "carry", "personal")):
+                    if desc not in cabin_bag_parts:
+                        cabin_bag_parts.append(desc)
+        if cabin_bag_parts:
+            conditions["cabin_bag"] = f"included - {'; '.join(cabin_bag_parts)}"
+            bags_price["cabin_bag"] = 0.0
+
+        for service in air_bound.get("services", []):
+            if not isinstance(service, dict):
+                continue
+            code = str(service.get("serviceCode") or "")
+            service_meta = service_dict.get(code, {}) if isinstance(service_dict, dict) else {}
+            service_desc = self._service_description(service_meta, code)
+            price_info = service.get("price") if isinstance(service.get("price"), dict) else {}
+            price_total = price_info.get("total")
+            price_currency = str(price_info.get("currencyCode") or currency)
+            service_price = None
+            if price_total is not None:
+                normalized = self._normalize_price(price_total, price_currency, currency_dict)
+                if normalized >= 0:
+                    service_price = normalized
+
+            if code == "FBA1" or code.startswith("FBA1-"):
+                conditions.setdefault("checked_bag", "not included")
+                continue
+
+            if code.startswith("FBA"):
+                baggage_desc = self._checked_bag_description(service_meta) or service_desc
+                if baggage_desc:
+                    conditions["checked_bag"] = f"included - {baggage_desc}"
+                    bags_price["checked_bag"] = 0.0
+                continue
+
+            if code.startswith("C0CCC"):
+                if service_price is not None:
+                    bags_price["checked_bag"] = service_price
+                conditions["checked_bag"] = f"not included - {service_desc}"
+                continue
+
+            if code.startswith("A0B5"):
+                if service_price is not None:
+                    bags_price["seat_selection"] = service_price
+                    if service_price <= 0:
+                        conditions["seat_selection"] = f"included - {service_desc}"
+                    else:
+                        conditions["seat_selection"] = service_desc
+                else:
+                    conditions["seat_selection"] = service_desc
+
+        conditions.update(self._extract_fare_conditions(air_bound.get("fareConditionsCodes", []), fare_conditions, currency, currency_dict))
+        return conditions, bags_price
+
+    @staticmethod
+    def _service_description(service_meta: dict, fallback_code: str) -> str:
+        if isinstance(service_meta, dict):
+            descriptions = service_meta.get("serviceDescriptions", [])
+            texts = []
+            for entry in descriptions if isinstance(descriptions, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                content = str(entry.get("content") or "").strip()
+                if content and content not in texts:
+                    texts.append(content)
+            if texts:
+                return texts[0]
+        return fallback_code
+
+    @staticmethod
+    def _checked_bag_description(service_meta: dict) -> str:
+        if not isinstance(service_meta, dict):
+            return ""
+        baggage = service_meta.get("baggagePolicyDescriptions", [])
+        if not isinstance(baggage, list) or not baggage:
+            return ""
+        first = baggage[0] if isinstance(baggage[0], dict) else {}
+        quantity = first.get("quantity")
+        weight = ""
+        characteristics = first.get("baggageCharacteristics", [])
+        if isinstance(characteristics, list) and characteristics:
+            first_char = characteristics[0] if isinstance(characteristics[0], dict) else {}
+            for detail in first_char.get("policyDetails", []) if isinstance(first_char.get("policyDetails"), list) else []:
+                if not isinstance(detail, dict):
+                    continue
+                if detail.get("type") == "weight" and detail.get("unit") == "kilogram":
+                    value = detail.get("value")
+                    if value:
+                        weight = f"{value}kg"
+                        break
+        pieces = []
+        if quantity:
+            pieces.append(f"{quantity} x")
+        if weight:
+            pieces.append(weight)
+        pieces.append("checked bag")
+        return " ".join(pieces).strip()
+
+    def _extract_fare_conditions(
+        self,
+        condition_codes: list,
+        fare_conditions: dict,
+        currency: str,
+        currency_dict: dict,
+    ) -> dict[str, str]:
+        merged: dict[str, str] = {}
+        for code in condition_codes if isinstance(condition_codes, list) else []:
+            meta = fare_conditions.get(code, {}) if isinstance(fare_conditions, dict) else {}
+            if not isinstance(meta, dict):
+                continue
+            category = str(meta.get("category") or "").lower()
+            if category not in {"refund", "change"}:
+                continue
+            status = ""
+            for detail in meta.get("details", []) if isinstance(meta.get("details"), list) else []:
+                if not isinstance(detail, dict):
+                    continue
+                if detail.get("isAllowed") is False:
+                    status = self._merge_condition_status(status, "not_allowed")
+                    continue
+                if detail.get("isAllowed") is True:
+                    penalty = detail.get("penalty") if isinstance(detail.get("penalty"), dict) else {}
+                    price = penalty.get("price") if isinstance(penalty.get("price"), dict) else {}
+                    total = price.get("total")
+                    fee_currency = str(price.get("currencyCode") or currency)
+                    fee_value = self._normalize_price(total, fee_currency, currency_dict) if total is not None else 0.0
+                    status = self._merge_condition_status(status, "allowed_with_fee" if fee_value > 0 else "allowed")
+            if status:
+                merged[f"{category}_before_departure"] = status
+        return merged
+
+    @staticmethod
+    def _merge_condition_status(current: str, incoming: str) -> str:
+        order = {"": 0, "not_allowed": 1, "allowed": 2, "allowed_with_fee": 3}
+        return incoming if order.get(incoming, 0) >= order.get(current, 0) else current
+
     async def _scrape_dom(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
         """Fallback: scrape pricing from page DOM."""
-        booking_url = self._booking_url(req)
-        try:
-            data = await page.evaluate(r"""() => {
-                const results = [];
-                const body = document.body?.innerText || '';
-                const priceRe = /(?:EUR|€)\s*([\d.,]+)|(\d{1,4}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*(?:EUR|€)/gi;
-                let m;
-                while ((m = priceRe.exec(body)) !== null) {
-                    const raw = (m[1] || m[2] || '').replace(/\./g, '').replace(',', '.');
-                    const p = parseFloat(raw);
-                    if (p > 15 && p < 10000) results.push(p);
-                }
-                return [...new Set(results)].sort((a, b) => a - b).slice(0, 10);
-            }""")
-            offers = []
-            for price in (data or []):
-                dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                seg = FlightSegment(
-                    airline="AZ", airline_name="ITA Airways", flight_no="AZ",
-                    origin=req.origin, destination=req.destination,
-                    departure=dep_dt, arrival=dep_dt,
-                )
-                route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
-                key = f"az_dom_{req.origin}{req.destination}{price}"
-                oid = hashlib.md5(key.encode()).hexdigest()[:12]
-                offers.append(FlightOffer(
-                    id=f"az_{oid}",
-                    price=round(price, 2),
-                    currency="EUR",
-                    price_formatted=f"{price:.2f} EUR",
-                    outbound=route,
-                    inbound=None,
-                    airlines=["ITA Airways"],
-                    owner_airline="AZ",
-                    conditions={"price_type": "starting_from"},
-                    booking_url=booking_url,
-                    is_locked=False,
-                    source="itaairways_direct",
-                    source_tier="free",
-                ))
-            return offers
-        except Exception as e:
-            logger.warning("ITA DOM scrape failed: %s", e)
-            return []
+        logger.info("ITA DOM fallback exposes price-only results without schedule times; suppressing offers")
+        return []
 
     # ---- Helpers ----
 
@@ -1553,13 +1715,41 @@ class ITAAirwaysConnectorClient:
             for i in ib[:10]:
                 price = round(o.price + i.price, 2)
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
+                merged_conditions, merged_bags = ITAAirwaysConnectorClient._merge_round_trip_metadata(o, i)
                 combos.append(FlightOffer(
                     id=f"rt_itaa_{cid}", price=price, currency=o.currency,
                     outbound=o.outbound, inbound=i.outbound,
                     airlines=list(dict.fromkeys(o.airlines + i.airlines)),
                     owner_airline=o.owner_airline,
+                    bags_price=merged_bags,
+                    conditions=merged_conditions,
                     booking_url=o.booking_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
                 ))
         combos.sort(key=lambda c: c.price)
         return combos[:20]
+
+    @staticmethod
+    def _merge_round_trip_metadata(outbound: FlightOffer, inbound: FlightOffer) -> tuple[dict[str, str], dict[str, float]]:
+        merged_conditions = dict(outbound.conditions or {})
+        merged_bags = dict(outbound.bags_price or {})
+
+        for key, value in (inbound.conditions or {}).items():
+            if not value:
+                continue
+            if key not in merged_conditions:
+                merged_conditions[key] = value
+            elif merged_conditions[key] != value:
+                merged_conditions.setdefault(f"outbound_{key}", merged_conditions[key])
+                merged_conditions[f"inbound_{key}"] = value
+
+        for key, value in (inbound.bags_price or {}).items():
+            if value is None:
+                continue
+            if key not in merged_bags:
+                merged_bags[key] = value
+            elif merged_bags[key] != value:
+                merged_bags.setdefault(f"outbound_{key}", merged_bags[key])
+                merged_bags[f"inbound_{key}"] = value
+
+        return merged_conditions, merged_bags

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import time
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -214,18 +215,23 @@ class IbomAirConnectorClient:
 
             currency = flight.get("currency", flight.get("currencyCode", "NGN"))
 
+            flight_no = flight.get("flightNumber", flight.get("number", ""))
+
+            dep_time = flight.get("departureTime") or flight.get("departure") or ""
+            arr_time = flight.get("arrivalTime") or flight.get("arrival") or ""
+
+            if not dep_time or not arr_time:
+                continue
+
+            dep_dt = _parse_dt(dep_time, date_str)
+            arr_dt = _parse_dt(arr_time, date_str)
+            if not dep_dt or not arr_dt:
+                continue
+
             dedup_key = f"{req.origin}_{req.destination}_{date_str}_{price_f}"
             if dedup_key in seen:
                 continue
             seen.add(dedup_key)
-
-            flight_no = flight.get("flightNumber", flight.get("number", ""))
-
-            dep_time = flight.get("departureTime", flight.get("departure", date_str))
-            arr_time = flight.get("arrivalTime", flight.get("arrival", date_str))
-
-            dep_dt = _parse_dt(dep_time, date_str)
-            arr_dt = _parse_dt(arr_time, date_str)
 
             dur = flight.get("duration", flight.get("durationMinutes", 0))
             dur_sec = int(dur) * 60 if dur and int(dur) < 1000 else int(dur or 0)
@@ -312,13 +318,21 @@ class IbomAirConnectorClient:
         )
 
 
-def _parse_dt(value: Any, fallback_date: str) -> datetime:
+def _parse_dt(value: Any, fallback_date: str) -> datetime | None:
     if isinstance(value, datetime):
         return value
-    s = str(value) if value else fallback_date
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+    s = str(value).strip() if value else ""
+    if not s:
+        return None
+    if re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", s):
+        fmt = "%Y-%m-%dT%H:%M:%S" if s.count(":") == 2 else "%Y-%m-%dT%H:%M"
+        try:
+            return datetime.strptime(f"{fallback_date}T{s}", fmt)
+        except ValueError:
+            return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
         try:
             return datetime.strptime(s[:19], fmt)
         except ValueError:
             continue
-    return datetime(2000, 1, 1)
+    return None

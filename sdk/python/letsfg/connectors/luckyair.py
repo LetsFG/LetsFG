@@ -217,7 +217,9 @@ class LuckyAirConnectorClient:
             page, captured_data, api_event, req, remaining,
         )
 
-        return self._parse_calendar(entries, req)
+        if entries:
+            logger.info("Lucky Air: calendar API returned fares without schedule times; suppressing offers")
+        return []
 
     async def _navigate_calendar_to_month(
         self, page, captured_data, api_event, req, remaining,
@@ -361,105 +363,8 @@ class LuckyAirConnectorClient:
     def _parse_calendar(
         self, entries: list[dict], req: FlightSearchRequest,
     ) -> list[FlightOffer]:
-        """Convert calendar price entries into FlightOffers."""
-        offers: list[FlightOffer] = []
-        currency = "CNY"
-        booking_base = self._booking_url(req)
-
-        priced = [e for e in entries if e.get("price")]
-        logger.info("Lucky Air: calendar returned %d priced days", len(priced))
-
-        # First pass: collect all valid priced entries
-        valid_entries: list[tuple] = []  # (date, price, date_str)
-        for entry in entries:
-            price_str = entry.get("price")
-            if not price_str:
-                continue
-            try:
-                price = float(price_str)
-            except (ValueError, TypeError):
-                continue
-            if price <= 0:
-                continue
-            flight_date_str = entry.get("date", "")
-            if not flight_date_str:
-                continue
-            try:
-                flight_date = datetime.strptime(flight_date_str, "%Y-%m-%d").date()
-            except ValueError:
-                continue
-            valid_entries.append((flight_date, price, flight_date_str))
-
-        if not valid_entries:
-            return []
-
-        # Filter to requested date(s)
-        if req.date_to:
-            # Date range: include all in range
-            filtered = [
-                (d, p, s) for d, p, s in valid_entries
-                if req.date_from <= d <= req.date_to
-            ]
-        else:
-            # Single date: exact match
-            filtered = [
-                (d, p, s) for d, p, s in valid_entries if d == req.date_from
-            ]
-
-        # Fallback: if no exact match, use closest date to prove route exists
-        if not filtered:
-            closest = min(
-                valid_entries,
-                key=lambda e: abs((e[0] - req.date_from).days),
-            )
-            filtered = [closest]
-            logger.info(
-                "Lucky Air: no exact date match for %s, using closest %s",
-                req.date_from, closest[2],
-            )
-
-        for flight_date, price, flight_date_str in filtered:
-            fid = hashlib.md5(
-                f"8l_{req.origin}{req.destination}{flight_date_str}{price}".encode()
-            ).hexdigest()[:12]
-
-            _8l_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")
-            # Build a minimal segment — calendar gives price only, not times
-            dep_dt = datetime(flight_date.year, flight_date.month, flight_date.day, 0, 0)
-            segment = FlightSegment(
-                airline="8L",
-                airline_name="Lucky Air",
-                flight_no="8L",
-                origin=req.origin,
-                destination=req.destination,
-                departure=dep_dt,
-                arrival=dep_dt,
-                duration_seconds=0,
-                cabin_class=_8l_cabin,
-            )
-
-            route = FlightRoute(
-                segments=[segment],
-                total_duration_seconds=0,
-                stopovers=0,
-            )
-
-            offers.append(FlightOffer(
-                id=f"8l_{fid}",
-                price=round(price, 2),
-                currency=currency,
-                price_formatted=f"{price:.0f} {currency}",
-                outbound=route,
-                inbound=None,
-                airlines=["Lucky Air"],
-                owner_airline="8L",
-                booking_url=booking_base,
-                is_locked=False,
-                source="luckyair_direct",
-                source_tier="free",
-            ))
-
-        return offers
+        logger.info("Lucky Air: fare-only calendar parsing is disabled until real schedule times are available")
+        return []
 
     @staticmethod
     def _booking_url(req: FlightSearchRequest) -> str:

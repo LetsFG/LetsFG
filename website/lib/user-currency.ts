@@ -73,6 +73,12 @@ const LANGUAGE_TO_CURRENCY: Record<string, string> = {
   sv: 'SEK',
 }
 
+export const KNOWN_CURRENCY_CODES = Array.from(new Set([
+  DEFAULT_CURRENCY,
+  ...Object.values(COUNTRY_TO_CURRENCY),
+  ...Object.values(LANGUAGE_TO_CURRENCY),
+])).sort()
+
 type HeaderLike = Pick<Headers, 'get'> | null | undefined
 
 function normalizeCountryCode(value: string | null | undefined): string | null {

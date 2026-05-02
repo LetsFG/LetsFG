@@ -424,16 +424,13 @@ class Jet2ConnectorClient:
                 pass
             await asyncio.sleep(1.5)
 
-            # Step 4: Parse offers from captured API or DOM
-            offers: list[FlightOffer] = []
+            # Step 4: current captured sources only expose fare-calendar data.
+            if captured.get("results") or captured.get("schedules"):
+                logger.info("Jet2: captured fare-only calendar data without schedule times; suppressing offers")
+            else:
+                logger.info("Jet2: DOM calendar exposed prices without schedule times; suppressing offers")
 
-            if "schedules" in captured:
-                offers = self._parse_schedule_data(captured["schedules"], req)
-
-            if not offers:
-                offers = await self._parse_dom_prices(page, req)
-
-            return offers
+            return []
 
         finally:
             try:
@@ -482,148 +479,15 @@ class Jet2ConnectorClient:
                 _airport_slug_cache[iata] = slug
 
     def _parse_schedule_data(self, data: Any, req: FlightSearchRequest) -> list[FlightOffer]:
-        """Parse flight-schedules API response."""
-        if not isinstance(data, dict):
-            return []
-
-        year_str = str(req.date_from.year)
-        month_str = str(req.date_from.month)
-        day_str = str(req.date_from.day)
-
-        year_data = data.get(year_str, {})
-        month_data = year_data.get(month_str, {})
-        days = month_data.get("days", {})
-
-        if day_str not in days:
-            logger.debug("Jet2: schedule API says no flight on %s", req.date_from)
-            return []
-
-        day_info = days.get(day_str, {})
-        price = day_info.get("price") or day_info.get("lowestPrice") or day_info.get("p")
-        if not price:
-            return []
-
-        try:
-            price = float(price)
-        except (ValueError, TypeError):
-            return []
-
-        return [self._make_offer(price, req)]
+        logger.info("Jet2: fare-only schedule parsing is disabled until real schedule times are available")
+        return []
 
     async def _parse_dom_prices(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
-        """Parse calendar prices from the page DOM.
-        
-        Jet2 calendar pages show prices per day. We try to:
-        1. Find calendar cells with date and price data
-        2. Match the requested date to get the exact price
-        3. Fall back to finding any £ prices if calendar parsing fails
-        """
-        try:
-            html = await page.content()
-        except Exception:
-            return []
-
-        offers: list[FlightOffer] = []
-        target_date = req.date_from
-        target_day = str(target_date.day)
-        target_month = target_date.month
-        target_year = target_date.year
-        
-        # Strategy 1: Try to parse calendar table cells with data-date attributes
-        try:
-            # Get all td elements that might contain calendar data
-            calendar_cells = await page.query_selector_all("td[data-date], td[data-day], .calendar-day")
-            for cell in calendar_cells:
-                try:
-                    data_date = await cell.get_attribute("data-date")
-                    if data_date and target_date.strftime("%Y-%m-%d") in data_date:
-                        inner = await cell.inner_text()
-                        prices = re.findall(r'£(\d+(?:\.\d{2})?)', inner)
-                        if prices:
-                            price = float(prices[0])
-                            offers.append(self._make_offer(price, req))
-                            logger.info("Jet2: found £%.2f for %s via calendar cell", price, target_date)
-                            return offers
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        
-        # Strategy 2: Find day number + adjacent price in HTML
-        # Calendar cells often have format: <td>15<br>£60</td> or similar
-        day_price_pattern = rf'>\s*{target_day}\s*(?:</?\w[^>]*>\s*)*£(\d+(?:\.\d{2})?)'
-        matches = re.findall(day_price_pattern, html, re.IGNORECASE)
-        if matches:
-            try:
-                price = float(matches[0])
-                offers.append(self._make_offer(price, req))
-                logger.info("Jet2: found £%.2f for day %s via regex", price, target_day)
-                return offers
-            except ValueError:
-                pass
-
-        # Strategy 3: Parse any visible flights for the date
-        # Look for "Flights Available" indicators with prices
-        flights_avail = re.findall(r'flights?\s+available[^£]*£(\d+(?:\.\d{2})?)', html, re.IGNORECASE)
-        if flights_avail:
-            try:
-                price = float(flights_avail[0])
-                offers.append(self._make_offer(price, req))
-                logger.info("Jet2: found £%.2f via 'flights available' text", price)
-                return offers
-            except ValueError:
-                pass
-
-        # Strategy 4: Fallback - find all £ prices and take the lowest as "from" price
-        all_prices = re.findall(r'£(\d+(?:\.\d{2})?)', html)
-        if not all_prices:
-            return []
-
-        seen: set[float] = set()
-        for price_str in all_prices:
-            try:
-                price = float(price_str)
-            except ValueError:
-                continue
-            if price <= 0 or price >= 10000 or price in seen:
-                continue
-            seen.add(price)
-            offers.append(self._make_offer(price, req))
-
-        if offers:
-            # Sort and take lowest prices as calendar "from" prices
-            offers.sort(key=lambda o: o.price)
-            logger.info("Jet2: found %d prices via fallback, lowest: £%.2f", len(offers), offers[0].price)
-        
-        return offers
+        logger.info("Jet2: DOM fare parsing is disabled until real schedule times are available")
+        return []
 
     def _make_offer(self, price: float, req: FlightSearchRequest) -> FlightOffer:
-        """Create a FlightOffer from a price."""
-        _ls_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")
-        dep_dt = datetime(req.date_from.year, req.date_from.month, req.date_from.day, 0, 0)
-        segment = FlightSegment(
-            airline="LS", airline_name="Jet2",
-            flight_no="",
-            origin=req.origin, destination=req.destination,
-            departure=dep_dt, arrival=dep_dt,
-            cabin_class=_ls_cabin,
-        )
-        route = FlightRoute(segments=[segment], total_duration_seconds=0, stopovers=0)
-        offer_id = f"ls_{hashlib.md5(f'{req.date_from}_{price}'.encode()).hexdigest()[:12]}"
-        return FlightOffer(
-            id=offer_id,
-            price=round(price, 2),
-            currency="GBP",
-            price_formatted=f"£{price:.2f}",
-            outbound=route,
-            inbound=None,
-            airlines=["Jet2"],
-            owner_airline="LS",
-            booking_url=self._build_booking_url(req),
-            is_locked=False,
-            source="jet2_direct",
-            source_tier="free",
-        )
+        raise RuntimeError("Jet2 fare-only calendar offers are suppressed until real schedule times are available")
 
     def _build_booking_url(self, req: FlightSearchRequest) -> str:
         origin_slug = _STATIC_SLUGS.get(req.origin.upper(), req.origin.lower())

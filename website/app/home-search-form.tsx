@@ -4,6 +4,11 @@ import { FormEvent, useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport } from './airports'
+import {
+  CURRENCY_CHANGE_EVENT,
+  readBrowserSearchCurrency,
+  type CurrencyCode,
+} from '../lib/currency-preference'
 
 const DESTINATION_KEYS = [
   { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
@@ -486,6 +491,7 @@ const DEMO_LOADING = false
 
 interface HomeSearchFormProps {
   initialQuery?: string
+  initialCurrency?: CurrencyCode
   compact?: boolean
   autoFocus?: boolean
   probeMode?: boolean
@@ -493,6 +499,7 @@ interface HomeSearchFormProps {
 
 export default function HomeSearchForm({
   initialQuery = '',
+  initialCurrency = 'EUR',
   compact = false,
   autoFocus = true,
   probeMode = false,
@@ -503,6 +510,7 @@ export default function HomeSearchForm({
   const td = useTranslations('destinations')
   const th = useTranslations('hero')
   const [query, setQuery] = useState(initialQuery)
+  const [prefCurrency, setPrefCurrency] = useState<CurrencyCode>(initialCurrency)
   const [suggestion, setSuggestion] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -557,6 +565,13 @@ export default function HomeSearchForm({
     setQuery(initialQuery)
   }, [initialQuery])
 
+  useEffect(() => {
+    setPrefCurrency(readBrowserSearchCurrency(initialCurrency))
+    const sync = () => setPrefCurrency(readBrowserSearchCurrency(initialCurrency))
+    window.addEventListener(CURRENCY_CHANGE_EVENT, sync)
+    return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, sync)
+  }, [initialCurrency])
+
   const handleSearch = (event: FormEvent) => {
     if (!query.trim()) {
       event.preventDefault()
@@ -606,6 +621,7 @@ export default function HomeSearchForm({
 
       <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
         {probeMode && <input type="hidden" name="probe" value="1" />}
+        <input type="hidden" name="cur" value={prefCurrency} readOnly aria-hidden="true" />
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
             <span className="lp-sf-leading" aria-hidden="true">

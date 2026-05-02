@@ -100,7 +100,8 @@ class ArajetConnectorClient:
             logger.warning("Arajet calendar %s→%s: %s", req.origin, req.destination, exc)
             return self._empty(req)
 
-        offers = self._parse(data, req, target)
+        logger.info("Arajet: calendar API returned fare-only data without schedule times; suppressing offers")
+        return self._empty(req)
 
         # RT: fetch reverse calendar for inbound
         ib_offers: list[FlightOffer] = []
@@ -170,35 +171,8 @@ class ArajetConnectorClient:
     # ------------------------------------------------------------------
 
     def _parse(self, data: dict, req: FlightSearchRequest, target: str) -> list[FlightOffer]:
-        offers: list[FlightOffer] = []
-        for month_block in data.get("months", {}).get("items", []):
-            for week in month_block.get("weeks", {}).get("items", []):
-                for day in week.get("days", {}).get("items", []):
-                    if day.get("description") != target:
-                        continue
-                    fps = day.get("fareProducts")
-                    if not fps:
-                        continue
-                    seen: set[str] = set()
-                    for fp in fps.get("items", []):
-                        for price_item in fp.get("prices", {}).get("items", []):
-                            total = price_item.get("totalAmount", {})
-                            base = price_item.get("baseAmount", {})
-                            amount = total.get("value", 0)
-                            currency = total.get("currency", {}).get("code", "USD")
-                            if amount <= 0:
-                                continue
-                            code = price_item.get("code", "")
-                            dedup = f"{code}_{amount}"
-                            if dedup in seen:
-                                continue
-                            seen.add(dedup)
-
-                            cabin = self._cabin_label(fp.get("code", "E"), code)
-                            offers.append(self._build_offer(
-                                req, target, amount, currency, cabin, code,
-                            ))
-        return offers
+        logger.info("Arajet: fare-only calendar parsing is disabled until real schedule times are available")
+        return []
 
     @staticmethod
     def _cabin_label(fare_class: str, code: str) -> str:
@@ -215,35 +189,7 @@ class ArajetConnectorClient:
         self, req: FlightSearchRequest, target: str,
         total: float, currency: str, cabin: str, code: str,
     ) -> FlightOffer:
-        dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-        seg = FlightSegment(
-            airline="Arajet", flight_no="", origin=req.origin,
-            destination=req.destination, departure=dep_dt, arrival=dep_dt,
-            duration_seconds=0,
-        )
-        route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
-        oid = hashlib.md5(
-            f"dm_{req.origin}{req.destination}{target}{total}{code}".encode()
-        ).hexdigest()[:12]
-        return FlightOffer(
-            id=f"dm_{oid}",
-            price=round(total, 2),
-            currency=currency,
-            price_formatted=f"{total:.2f} {currency} ({cabin})",
-            outbound=route,
-            inbound=None,
-            airlines=["Arajet"],
-            owner_airline="DM",
-            conditions={"cabin": cabin},
-            booking_url=(
-                f"https://www.arajet.com/en-us/booking/select"
-                f"?origin={req.origin}&destination={req.destination}"
-                f"&date={target}&adt={req.adults or 1}"
-            ),
-            is_locked=False,
-            source="arajet_direct",
-            source_tier="free",
-        )
+        raise RuntimeError("Arajet fare-only calendar offers are suppressed until real schedule times are available")
 
 
     @staticmethod

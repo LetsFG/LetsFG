@@ -55,16 +55,18 @@ _AIRLINE_NAMES: dict[str, str] = {
 }
 
 
-def _parse_dt(s: Any) -> datetime:
+def _parse_dt(s: Any) -> datetime | None:
     if not s:
-        return datetime(2000, 1, 1)
+        return None
     s = str(s)
+    if ":" not in s:
+        return None
     try:
         clean = s.split("+")[0] if "+" in s and "T" in s else s
         clean = clean.split(".")[0] if "." in clean else clean
         return datetime.fromisoformat(clean)
     except (ValueError, AttributeError):
-        return datetime(2000, 1, 1)
+        return None
 
 
 class AlmosaferConnectorClient:
@@ -297,8 +299,12 @@ class AlmosaferConnectorClient:
 
                 dep_str = leg.get("departure", "")
                 arr_str = leg.get("arrival", "")
-                dep_dt = _parse_dt(dep_str) if dep_str else _parse_dt(f"{date_str}T00:00:00")
-                arr_dt = _parse_dt(arr_str) if arr_str else _parse_dt(f"{date_str}T00:00:00")
+                if not dep_str or not arr_str:
+                    continue
+                dep_dt = _parse_dt(dep_str)
+                arr_dt = _parse_dt(arr_str)
+                if not dep_dt or not arr_dt:
+                    continue
 
                 dur_sec = 0
                 if dep_dt and arr_dt and arr_dt > dep_dt:

@@ -258,22 +258,8 @@ class AirAsiaXConnectorClient:
                             ib_offers.append(ib_offer)
                     if ib_offers:
                         _ib_best = min(ib_offers, key=lambda o: o.price)
-                        _ib_route = _ib_best.outbound
                         for _i, _o in enumerate(offers):
-                            offers[_i] = FlightOffer(
-                                id=f"rt_{_o.id}",
-                                price=round(_o.price + _ib_best.price, 2),
-                                currency=_o.currency,
-                                price_formatted=f"{round(_o.price + _ib_best.price, 2):.2f} {_o.currency}",
-                                outbound=_o.outbound,
-                                inbound=_ib_route,
-                                airlines=_o.airlines,
-                                owner_airline=_o.owner_airline,
-                                booking_url=_o.booking_url,
-                                is_locked=False,
-                                source=_o.source,
-                                source_tier=_o.source_tier,
-                            )
+                            offers[_i] = self._build_round_trip_offer(_o, _ib_best, f"rt_{_o.id}")
         if offers:
             return offers
 
@@ -299,6 +285,171 @@ class AirAsiaXConnectorClient:
             if offer:
                 offers.append(offer)
         return offers
+
+    @classmethod
+    def _extract_airasia_offer_truth(cls, flight: dict) -> tuple[dict[str, str], dict[str, Any]]:
+        conditions: dict[str, str] = {}
+        bags_price: dict[str, Any] = {}
+
+        bundle_code = cls._clean_metadata_text(flight.get("bundleCode"))
+        if bundle_code:
+            conditions["fare_bundle"] = bundle_code
+
+        fare_type_category = cls._clean_metadata_text(flight.get("fareTypeCategory"))
+        if fare_type_category:
+            conditions["fare_type_category"] = fare_type_category
+
+        details = flight.get("flightDetails") if isinstance(flight, dict) else {}
+        baggage = details.get("baggage") if isinstance(details, dict) else {}
+        complimentary_types: set[str] = set()
+
+        if isinstance(baggage, dict):
+            complimentary = baggage.get("complimentaryBaggage")
+            if isinstance(complimentary, list):
+                for item in complimentary:
+                    ancillary_type = cls._map_airasia_baggage_type(item)
+                    description = cls._describe_airasia_baggage(item, ancillary_type)
+                    if not ancillary_type or not description:
+                        continue
+                    conditions[ancillary_type] = f"included - {description}"
+                    complimentary_types.add(ancillary_type)
+
+            if baggage.get("checkedBaggageAllowed") and "checked_bag" not in complimentary_types:
+                conditions["checked_bag"] = "not included - purchasable in checkout; no numeric search price"
+
+        return conditions, bags_price
+
+    @staticmethod
+    def _clean_metadata_text(value: Any) -> str:
+        if value is None:
+            return ""
+        text = " ".join(str(value).split())
+        if text.lower() in {"", "none", "null"}:
+            return ""
+        return text
+
+    @classmethod
+    def _describe_airasia_baggage(cls, item: Any, ancillary_type: str) -> str:
+        if not isinstance(item, dict) or not ancillary_type:
+            return ""
+
+        parts: list[str] = []
+        count = cls._format_airasia_number(item.get("count"))
+        if count:
+            unit = "piece" if count == "1" else "pieces"
+            parts.append(f"{count} {unit}")
+
+        weight = cls._format_airasia_number(item.get("weight"))
+        if weight:
+            parts.append(f"{weight}kg")
+
+        bag_label = "cabin bag" if ancillary_type == "cabin_bag" else "checked bag"
+        parts.append(bag_label)
+
+        dimensions = [cls._format_airasia_number(item.get(key)) for key in ("length", "width", "height")]
+        if all(dimensions):
+            parts.append(f"{dimensions[0]}x{dimensions[1]}x{dimensions[2]}cm")
+
+        return " ".join(part for part in parts if part).strip()
+
+    @staticmethod
+    def _format_airasia_number(value: Any) -> str:
+        if value in (None, ""):
+            return ""
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            text = str(value).strip()
+            return text if text else ""
+        if number.is_integer():
+            return str(int(number))
+        return f"{number:g}"
+
+    @staticmethod
+    def _map_airasia_baggage_type(item: Any) -> str:
+        if not isinstance(item, dict):
+            return ""
+        raw_type = str(item.get("type") or "").strip().lower()
+        if raw_type in {"cabin_bag", "carry_on", "carry-on", "carry_on_bag", "carry-on_bag"}:
+            return "cabin_bag"
+        if raw_type in {"checked_bag", "checked_baggage", "hold_bag", "hold_baggage"}:
+            return "checked_bag"
+        return ""
+
+    @staticmethod
+    def _merge_round_trip_conditions(
+        outbound_conditions: Optional[dict[str, str]],
+        inbound_conditions: Optional[dict[str, str]],
+    ) -> dict[str, str]:
+        outbound = dict(outbound_conditions or {})
+        inbound = dict(inbound_conditions or {})
+        merged: dict[str, str] = dict(outbound)
+
+        for key, value in inbound.items():
+            if value in (None, ""):
+                continue
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = value
+                continue
+            if existing == value:
+                continue
+            merged.pop(key, None)
+            if outbound.get(key):
+                merged[f"outbound_{key}"] = outbound[key]
+            merged[f"inbound_{key}"] = value
+
+        return merged
+
+    @staticmethod
+    def _merge_round_trip_bags_price(
+        outbound_bags_price: Optional[dict[str, Any]],
+        inbound_bags_price: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        outbound = dict(outbound_bags_price or {})
+        inbound = dict(inbound_bags_price or {})
+        merged: dict[str, Any] = dict(outbound)
+
+        for key, value in inbound.items():
+            if value is None:
+                continue
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = value
+                continue
+            if existing == value:
+                continue
+            merged.pop(key, None)
+            if key in outbound:
+                merged[f"outbound_{key}"] = outbound[key]
+            merged[f"inbound_{key}"] = value
+
+        return merged
+
+    @classmethod
+    def _build_round_trip_offer(
+        cls,
+        outbound_offer: FlightOffer,
+        inbound_offer: FlightOffer,
+        offer_id: str,
+    ) -> FlightOffer:
+        total_price = round(outbound_offer.price + inbound_offer.price, 2)
+        return FlightOffer(
+            id=offer_id,
+            price=total_price,
+            currency=outbound_offer.currency,
+            price_formatted=f"{total_price:.2f} {outbound_offer.currency}",
+            outbound=outbound_offer.outbound,
+            inbound=inbound_offer.outbound,
+            airlines=list(dict.fromkeys(outbound_offer.airlines + inbound_offer.airlines)),
+            owner_airline=outbound_offer.owner_airline,
+            bags_price=cls._merge_round_trip_bags_price(outbound_offer.bags_price, inbound_offer.bags_price),
+            conditions=cls._merge_round_trip_conditions(outbound_offer.conditions, inbound_offer.conditions),
+            booking_url=outbound_offer.booking_url,
+            is_locked=False,
+            source=outbound_offer.source,
+            source_tier=outbound_offer.source_tier,
+        )
 
     @staticmethod
     def _is_d7_flight(flight: dict) -> bool:
@@ -377,12 +528,15 @@ class AirAsiaXConnectorClient:
         )
 
         flight_key = flight.get("tripId") or f"{designator.get('departureTime', '')}_{time.monotonic()}"
+        conditions, bags_price = self._extract_airasia_offer_truth(flight)
         return FlightOffer(
             id=f"d7_{hashlib.md5(str(flight_key).encode()).hexdigest()[:12]}",
             price=round(price, 2), currency=flight_currency,
             price_formatted=f"{price:.2f} {flight_currency}",
             outbound=route, inbound=None,
             airlines=["AirAsia X"], owner_airline="D7",
+            bags_price=bags_price,
+            conditions=conditions,
             booking_url=booking_url, is_locked=False,
             source="airasiax_direct", source_tier="free",
         )
@@ -403,12 +557,15 @@ class AirAsiaXConnectorClient:
             total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
         route = FlightRoute(segments=segments, total_duration_seconds=max(total_dur, 0), stopovers=max(len(segments) - 1, 0))
         flight_key = flight.get("journeyKey") or flight.get("id") or f"{flight.get('departureDate', '')}_{time.monotonic()}"
+        conditions, bags_price = self._extract_airasia_offer_truth(flight)
         return FlightOffer(
             id=f"d7_{hashlib.md5(str(flight_key).encode()).hexdigest()[:12]}",
             price=round(best_price, 2), currency=currency,
             price_formatted=f"{best_price:.2f} {currency}",
             outbound=route, inbound=None,
             airlines=["AirAsia X"], owner_airline="D7",
+            bags_price=bags_price,
+            conditions=conditions,
             booking_url=booking_url, is_locked=False,
             source="airasiax_direct", source_tier="free",
         )
@@ -523,15 +680,7 @@ class AirAsiaXConnectorClient:
         combos: list[FlightOffer] = []
         for o in ob[:15]:
             for i in ib[:10]:
-                price = round(o.price + i.price, 2)
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
-                combos.append(FlightOffer(
-                    id=f"rt_aira_{cid}", price=price, currency=o.currency,
-                    outbound=o.outbound, inbound=i.outbound,
-                    airlines=list(dict.fromkeys(o.airlines + i.airlines)),
-                    owner_airline=o.owner_airline,
-                    booking_url=o.booking_url, is_locked=False,
-                    source=o.source, source_tier=o.source_tier,
-                ))
+                combos.append(AirAsiaXConnectorClient._build_round_trip_offer(o, i, f"rt_aira_{cid}"))
         combos.sort(key=lambda c: c.price)
         return combos[:20]

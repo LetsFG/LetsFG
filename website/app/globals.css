@@ -1514,6 +1514,29 @@ input {
   color: #fff;
 }
 
+.lp-currency-btn {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+}
+
+.lp-currency-btn-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lp-currency-trigger-icon {
+  flex-shrink: 0;
+}
+
+.lp-currency-btn--busy,
+.lp-currency-btn:disabled {
+  cursor: progress;
+  opacity: 0.72;
+  transform: none;
+}
+
 /* Language dropdown */
 
 .lp-globe-wrap {
@@ -1542,11 +1565,14 @@ input {
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   overflow: hidden;
+  overflow-y: auto;
+  max-height: min(70vh, 420px);
   padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   animation: lp-dropdown-in 0.14s ease;
+  overscroll-behavior: contain;
 }
 
 .lp-lang-dropdown--portal {
@@ -1582,6 +1608,11 @@ input {
 .lp-lang-option:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+.lp-lang-option:disabled {
+  cursor: progress;
+  opacity: 0.6;
 }
 
 .lp-lang-option--active {
@@ -2833,6 +2864,20 @@ body:has(.res-page) {
   align-items: center;
   justify-self: end;
   gap: 12px;
+}
+
+.res-topbar-actions .lp-currency-btn {
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(20, 53, 76, 0.14);
+}
+
+.res-topbar-actions .lp-currency-btn:hover,
+.res-topbar-actions .lp-currency-btn.lp-globe-btn--open {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.42);
+  color: #ffffff;
 }
 
 .res-icon-btn {

@@ -68,9 +68,11 @@ def _parse_datetime(dt_str: Any) -> Optional[datetime]:
     if not dt_str:
         return None
     try:
-        s = str(dt_str)
+        s = str(dt_str).strip()
+        if ":" not in s:
+            return None
         # Handle timezone offset like "-03:00"
-        return datetime.fromisoformat(s)
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
 
@@ -303,6 +305,7 @@ class DespegarConnectorClient:
 
                 # Build segments
                 segments: list[FlightSegment] = []
+                incomplete_schedule = False
                 for seg_data in segments_data:
                     dep_info = seg_data.get("departure", {})
                     arr_info = seg_data.get("arrival", {})
@@ -314,10 +317,9 @@ class DespegarConnectorClient:
                     arr_dt = _parse_datetime(arr_info.get("date"))
                     duration_secs = _parse_duration(duration_str)
 
-                    if not dep_dt:
-                        dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                    if not arr_dt:
-                        arr_dt = dep_dt
+                    if not dep_dt or not arr_dt:
+                        incomplete_schedule = True
+                        break
 
                     airline_name = _AIRLINE_NAMES.get(airline_code, airline_code)
 
@@ -331,7 +333,7 @@ class DespegarConnectorClient:
                         duration_seconds=duration_secs,
                     ))
 
-                if not segments:
+                if incomplete_schedule or not segments:
                     continue
 
                 # Calculate total duration

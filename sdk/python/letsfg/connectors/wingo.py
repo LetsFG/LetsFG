@@ -188,6 +188,16 @@ class WingoConnectorClient:
                     all_fares.append(f)
         return all_fares
 
+    @staticmethod
+    def _extract_fare_conditions(fare: dict) -> dict[str, str]:
+        conditions = {
+            "fare_upgrade_note": "Route page exposes base fare only; no baggage or seat pricing",
+        }
+        branded_fare = fare.get("brandedFareClass")
+        if isinstance(branded_fare, str) and branded_fare.strip():
+            conditions["fare_family"] = branded_fare.strip()
+        return conditions
+
     def _build_offers(self, fares: list[dict], req: FlightSearchRequest,
                       ib_fares: list[dict] | None = None) -> list[FlightOffer]:
         target_date = req.date_from.strftime("%Y-%m-%d")
@@ -311,6 +321,7 @@ class WingoConnectorClient:
 
             total_price = round(price_f + ib_price, 2) if is_rt and ib_route else price_f
             prefix = "p5_rt_" if is_rt and ib_route else "p5_"
+            conditions = self._extract_fare_conditions(fare)
 
             offers.append(FlightOffer(
                 id=f"{prefix}{fid}",
@@ -321,6 +332,7 @@ class WingoConnectorClient:
                 inbound=ib_route,
                 airlines=["Wingo"],
                 owner_airline="P5",
+                conditions=conditions,
                 booking_url=(
                     f"https://booking.wingo.com/search/"
                     f"?origin={req.origin}&destination={req.destination}"
@@ -350,6 +362,23 @@ class WingoConnectorClient:
     def _combine_rt(
         ob: list[FlightOffer], ib: list[FlightOffer], req,
     ) -> list[FlightOffer]:
+        def merge_conditions(outbound_conditions: dict[str, str], inbound_conditions: dict[str, str]) -> dict[str, str]:
+            merged = dict(outbound_conditions or {})
+            for key, value in (inbound_conditions or {}).items():
+                if value in (None, ""):
+                    continue
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = value
+                    continue
+                if existing == value:
+                    continue
+                merged.pop(key, None)
+                if key in (outbound_conditions or {}):
+                    merged[f"outbound_{key}"] = outbound_conditions[key]
+                merged[f"inbound_{key}"] = value
+            return merged
+
         combos: list[FlightOffer] = []
         for o in ob[:15]:
             for i in ib[:10]:
@@ -357,9 +386,11 @@ class WingoConnectorClient:
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
                 combos.append(FlightOffer(
                     id=f"rt_wingo_{cid}", price=price, currency=o.currency,
+                    price_formatted=f"{price:.2f} {o.currency}",
                     outbound=o.outbound, inbound=i.outbound,
                     airlines=list(dict.fromkeys(o.airlines + i.airlines)),
                     owner_airline=o.owner_airline,
+                    conditions=merge_conditions(o.conditions, i.conditions),
                     booking_url=o.booking_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
                 ))

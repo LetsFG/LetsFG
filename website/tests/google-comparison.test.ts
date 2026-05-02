@@ -84,6 +84,55 @@ test('applyGoogleFlightsBaseline ignores zero fallback and matches only positive
   assert.equal(patchedOffers[1]?.google_flights_price, 140)
 })
 
+test('applyGoogleFlightsBaseline prefers matched Google fare over stale raw baseline', () => {
+  const rawOffers = [
+    {
+      id: 'google-offer-usd',
+      source: 'google_flights',
+      booking_url: 'https://www.google.com/travel/flights?curr=USD',
+      price: 140,
+      currency: 'USD',
+      airline: 'Example Air',
+      outbound: {
+        stopovers: 0,
+        total_duration_seconds: 2 * 60 * 60,
+        segments: [
+          {
+            origin: 'SOU',
+            destination: 'EDI',
+            departure: '2026-06-01T10:15:00Z',
+            arrival: '2026-06-01T12:15:00Z',
+          },
+        ],
+      },
+    },
+    {
+      id: 'letsfg-offer-stale-google',
+      price: 110,
+      currency: 'USD',
+      airline: 'Example Air',
+      google_flights_price: 1568,
+      outbound: {
+        stopovers: 0,
+        total_duration_seconds: 2 * 60 * 60,
+        segments: [
+          {
+            origin: 'SOU',
+            destination: 'EDI',
+            departure: '2026-06-01T10:15:00Z',
+            arrival: '2026-06-01T12:15:00Z',
+          },
+        ],
+      },
+    },
+  ]
+
+  const trustedOffers = rawOffers.map((rawOffer, index) => buildOffer(rawOffer, index))
+  const patchedOffers = applyGoogleFlightsBaseline(rawOffers, trustedOffers)
+
+  assert.equal(patchedOffers[1]?.google_flights_price, 140)
+})
+
 test('sanitizePersistedSearchResult repairs stale cached zero baselines', () => {
   const sanitized = sanitizePersistedSearchResult({
     search_id: 'cached-zero-google-price',

@@ -34,6 +34,7 @@ import subprocess
 import time
 from datetime import date, datetime, timedelta
 from typing import Optional
+from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse, urlunparse
 
 from ..models.flights import (
     FlightOffer,
@@ -179,12 +180,30 @@ class AirCairoConnectorClient:
         page = await context.new_page()
         await apply_cdp_url_blocking(page)
 
+        try:
+            submit_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d %b %y")
+        except ValueError:
+            submit_date = date_str
+
         # Capture any JSON API responses the page makes during search
         api_data: list[dict] = []
+        redirect_url: str | None = None
 
         async def _on_response(response):
+            nonlocal redirect_url
             url = response.url
             ct = response.headers.get("content-type", "")
+            if response.status == 200 and "search-result" in url.lower() and "book=flightp" in url.lower():
+                try:
+                    body = await response.text()
+                    data = json.loads(body)
+                    if isinstance(data, dict):
+                        payload_url = data.get("url")
+                        if isinstance(payload_url, str) and payload_url.strip():
+                            redirect_url = urljoin(_BASE, payload_url.strip())
+                except Exception:
+                    pass
+                return
             if response.status == 200 and "json" in ct:
                 if any(k in url.lower() for k in ["/search", "/flight", "/result", "/availab", "/fare"]):
                     try:
@@ -216,77 +235,153 @@ class AirCairoConnectorClient:
             }""")
             await asyncio.sleep(0.5)
 
-            # Fill form entirely via JS to avoid overlay/click issues
-            filled = await page.evaluate("""([origin, dest, dateStr, adults]) => {
-                // Set departure
-                const depInput = document.querySelector('input[name="departureFrom"], #departureFrom');
-                if (depInput) {
-                    depInput.value = origin;
-                    depInput.dispatchEvent(new Event('input', {bubbles: true}));
-                    depInput.dispatchEvent(new Event('change', {bubbles: true}));
+            # Fill the actual booking form, not the site-search header form.
+            filled = await page.evaluate("""([origin, dest, dateText, adults]) => {
+                const bookingForm = Array.from(document.querySelectorAll('form')).find((form) =>
+                    form.querySelector('input[name="departureFrom"]') &&
+                    form.querySelector('input[name="departureTo"]')
+                );
+                if (!bookingForm) {
+                    return {error: 'booking_form_not_found'};
                 }
-                // Set arrival
-                const arrInput = document.querySelector('input[name="departureTo"], #departureTo');
-                if (arrInput) {
-                    arrInput.value = dest;
-                    arrInput.dispatchEvent(new Event('input', {bubbles: true}));
-                    arrInput.dispatchEvent(new Event('change', {bubbles: true}));
-                }
-                // Set trip type
-                const tripSel = document.querySelector('select[name="tripType"]');
-                if (tripSel) {
-                    tripSel.value = 'oneWay';
-                    tripSel.dispatchEvent(new Event('change', {bubbles: true}));
-                }
-                // Set date
-                const dateInput = document.querySelector('input[name="date"]');
-                if (dateInput) {
-                    dateInput.value = dateStr;
-                    dateInput.dispatchEvent(new Event('input', {bubbles: true}));
-                    dateInput.dispatchEvent(new Event('change', {bubbles: true}));
-                }
-                // Set adults
-                const adultInput = document.querySelector('input[name="adult"], #adult, select[name="adult"]');
-                if (adultInput) {
-                    adultInput.value = String(adults);
-                    adultInput.dispatchEvent(new Event('change', {bubbles: true}));
-                }
+
+                const depInput = bookingForm.querySelector('input[name="departureFrom"], #departureFrom');
+                const arrInput = bookingForm.querySelector('input[name="departureTo"], #departureTo');
+                const dateInput = bookingForm.querySelector('input[name="date"]');
+                const adultInput = bookingForm.querySelector('input[name="adult"], #adult, select[name="adult"]');
+                const childInput = bookingForm.querySelector('input[name="child"], select[name="child"]');
+                const infantInput = bookingForm.querySelector('input[name="infant"], select[name="infant"]');
+                const tripSel = bookingForm.querySelector('select[name="tripType"]');
+                const csrfInput = bookingForm.querySelector('input[name="_csrf"]');
+
+                if (depInput) depInput.value = origin;
+                if (arrInput) arrInput.value = dest;
+                if (tripSel) tripSel.value = 'oneWay';
+                if (dateInput) dateInput.value = dateText;
+                if (adultInput) adultInput.value = String(adults);
+                if (childInput) childInput.value = '0';
+                if (infantInput) infantInput.value = '0';
+
+                [depInput, arrInput, tripSel, dateInput, adultInput, childInput, infantInput].forEach((el) => {
+                    if (!el) return;
+                    el.dispatchEvent(new Event('input', {bubbles: true}));
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                });
+
                 return {
                     dep: depInput ? depInput.value : null,
                     arr: arrInput ? arrInput.value : null,
                     date: dateInput ? dateInput.value : null,
+                    csrf: csrfInput ? csrfInput.value : null,
+                    formId: bookingForm.id || null,
+                    action: bookingForm.getAttribute('action') || null,
                 };
-            }""", [req.origin, req.destination, date_str, req.adults or 1])
+            }""", [req.origin, req.destination, submit_date, req.adults or 1])
             logger.info("AirCairo: form filled via JS: %s", filled)
             await asyncio.sleep(0.5)
 
-            # Submit the form via JS
+            # Submit the actual booking form and wait for the wrapper JSON redirect.
             submitted = await page.evaluate("""() => {
-                // Remove any remaining modals/overlays
                 document.querySelectorAll('#termsModal, .modal-backdrop').forEach(el => el.remove());
                 document.body.classList.remove('modal-open');
-                // Submit form
-                const form = document.querySelector('form');
-                if (form) { form.submit(); return true; }
-                const btn = document.querySelector('button[type="submit"], input[type="submit"]');
-                if (btn) { btn.click(); return true; }
-                return false;
+                document.body.style.overflow = '';
+
+                const bookingForm = Array.from(document.querySelectorAll('form')).find((form) =>
+                    form.querySelector('input[name="departureFrom"]') &&
+                    form.querySelector('input[name="departureTo"]')
+                );
+                if (!bookingForm) {
+                    return {submitted: false, reason: 'booking_form_not_found'};
+                }
+
+                const submitBtn = bookingForm.querySelector('#bookingFormSubmit, button[type="submit"], input[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.click();
+                    return {submitted: true, method: 'button', formId: bookingForm.id || null};
+                }
+                if (typeof bookingForm.requestSubmit === 'function') {
+                    bookingForm.requestSubmit();
+                    return {submitted: true, method: 'requestSubmit', formId: bookingForm.id || null};
+                }
+                bookingForm.submit();
+                return {submitted: true, method: 'submit', formId: bookingForm.id || null};
             }""")
             logger.info("AirCairo: form submitted via JS: %s", submitted)
 
-            # Wait for results page
-            await page.wait_for_load_state("domcontentloaded", timeout=15000)
-            await asyncio.sleep(3)
+            for _ in range(12):
+                if redirect_url:
+                    break
+                await asyncio.sleep(1.0)
+
+            if redirect_url:
+                redirect_url = self._rewrite_redirect_search_data(redirect_url, req, date_str)
+                logger.info("AirCairo: wrapper redirect captured: %s", redirect_url[:220])
+                try:
+                    await page.goto(redirect_url, wait_until="domcontentloaded", timeout=45000)
+                    try:
+                        await page.wait_for_load_state("load", timeout=15000)
+                    except Exception:
+                        pass
+                    wait_state = await self._wait_for_booking_results(
+                        page,
+                        api_data,
+                        expect_booking_host=True,
+                    )
+                    logger.info("AirCairo: post-redirect wait state=%s", wait_state)
+                except Exception as exc:
+                    logger.warning("AirCairo: redirect navigation failed: %s", exc)
+            else:
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                except Exception:
+                    pass
+                wait_state = await self._wait_for_booking_results(
+                    page,
+                    api_data,
+                    expect_booking_host=False,
+                )
+                logger.info("AirCairo: post-submit wait state=%s", wait_state)
+
+            results_booking_url = redirect_url or page.url
+
+            if "online.aircairo.com/booking" in page.url.lower():
+                for _ in range(8):
+                    if any(
+                        isinstance(data.get("data"), dict) and isinstance(data["data"].get("airBoundGroups"), list)
+                        for data in api_data
+                        if isinstance(data, dict)
+                    ):
+                        break
+                    await asyncio.sleep(1.0)
 
             # Try API data first
             if api_data:
                 for data in api_data:
-                    offers = self._parse_api_data(data, req, date_str)
+                    offers = self._parse_api_data(data, req, date_str, booking_url=results_booking_url)
                     if offers:
                         return offers
 
             # DOM scraping for flight results
-            offers = await self._extract_from_dom(page, req, date_str)
+            offers = await self._extract_from_dom(page, req, date_str, booking_url=results_booking_url)
+            if not offers:
+                try:
+                    title = await page.title()
+                except Exception:
+                    title = ""
+                try:
+                    body_text = await page.evaluate(
+                        "() => ((document.body && (document.body.innerText || document.body.textContent)) || '')"
+                    )
+                except Exception:
+                    body_text = ""
+                excerpt = re.sub(r"\s+", " ", body_text).strip()[:600]
+                logger.warning(
+                    "AirCairo: zero offers after submit url=%s title=%s api_payloads=%d excerpt=%s",
+                    page.url,
+                    title,
+                    len(api_data),
+                    excerpt or "<empty>",
+                )
             return offers
 
         except Exception as e:
@@ -298,7 +393,162 @@ class AirCairoConnectorClient:
             except Exception:
                 pass
 
-    async def _extract_from_dom(self, page, req: FlightSearchRequest, date_str: str) -> list[FlightOffer]:
+    @staticmethod
+    def _rewrite_redirect_search_data(redirect_url: str, req: FlightSearchRequest, date_str: str) -> str:
+        if not redirect_url:
+            return redirect_url
+        try:
+            parsed = urlparse(redirect_url)
+            query = parse_qs(parsed.query, keep_blank_values=True)
+            raw_search_data = query.get("searchData")
+            if not raw_search_data:
+                return redirect_url
+
+            search_data = json.loads(unquote(raw_search_data[0]))
+            if not isinstance(search_data, dict):
+                return redirect_url
+
+            itineraries = search_data.get("itineraries")
+            if isinstance(itineraries, list) and itineraries:
+                itinerary = itineraries[0]
+                if isinstance(itinerary, dict):
+                    itinerary["originLocationCode"] = req.origin
+                    itinerary["destinationLocationCode"] = req.destination
+                    itinerary["departureDateTime"] = date_str
+
+            travelers: list[dict[str, str]] = []
+            travelers.extend({"passengerTypeCode": "ADT"} for _ in range(max(1, int(req.adults or 1))))
+            travelers.extend({"passengerTypeCode": "CHD"} for _ in range(max(0, int(req.children or 0))))
+            travelers.extend({"passengerTypeCode": "INF"} for _ in range(max(0, int(req.infants or 0))))
+            search_data["travelers"] = travelers
+
+            query["searchData"] = [json.dumps(search_data, separators=(",", ":"))]
+            return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+        except Exception:
+            return redirect_url
+
+    async def _wait_for_booking_results(
+        self,
+        page,
+        api_data: list[dict],
+        *,
+        expect_booking_host: bool,
+    ) -> dict:
+        last_state: dict = {}
+
+        for attempt in range(35):
+            if api_data:
+                return {
+                    "reason": "api",
+                    "attempt": attempt,
+                    "url": page.url,
+                }
+
+            try:
+                last_state = await page.evaluate(r"""() => {
+                    const body = ((document.body && (document.body.innerText || document.body.textContent)) || '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    const lower = body.toLowerCase();
+                    const title = document.title || '';
+                    const href = location.href || '';
+                    const resultNodes = document.querySelectorAll(
+                        '.flight-card, .flight-row, .flight-result, .result-item, .booking-result, ' +
+                        '[class*="availability"], [class*="flight"], [class*="result"], ' +
+                        '[class*="fare"], [class*="bound"]'
+                    ).length;
+                    const hasTimes = /\b\d{1,2}:\d{2}\b/.test(body);
+                    const hasPrice =
+                        /(EGP|USD|EUR|GBP|SAR|AED)\s*\d/i.test(body) ||
+                        /\b\d[\d,.]*\s*(EGP|USD|EUR|GBP|SAR|AED)\b/i.test(body);
+                    const hasFlightNo = /\bSM\s*\d{2,4}\b/i.test(body);
+                    const isLoading =
+                        /loading|please wait|searching for flights|fetching results|just a moment/i.test(lower) ||
+                        document.querySelector(
+                            '.spinner, .loading, [class*="spinner"], [class*="loading"], .skeleton, [class*="skeleton"]'
+                        ) !== null;
+                    const hasNoAvailability =
+                        /no flights|no availability|sold out|not available|no results/i.test(lower);
+                    const isBlocked =
+                        /sorry, you have been blocked|attention required|captcha|verify you are human|cloudflare/i.test(lower) ||
+                        /attention required/i.test(title.toLowerCase());
+
+                    return {
+                        url: href,
+                        title,
+                        resultNodes,
+                        hasTimes,
+                        hasPrice,
+                        hasFlightNo,
+                        isLoading,
+                        hasNoAvailability,
+                        isBlocked,
+                        textSample: body.slice(0, 220),
+                    };
+                }""")
+            except Exception:
+                last_state = {}
+
+            url = str(last_state.get("url") or "")
+            url_lower = url.lower()
+            on_booking_surface = any(
+                part in url_lower
+                for part in (
+                    "/booking/availability",
+                    "/booking/select",
+                    "/booking/shopping-cart",
+                    "/booking/search",
+                )
+            )
+            has_dom_results = bool(
+                last_state.get("hasPrice") and
+                (last_state.get("hasTimes") or last_state.get("hasFlightNo"))
+            )
+
+            if has_dom_results:
+                last_state["reason"] = "dom-results"
+                last_state["attempt"] = attempt
+                return last_state
+
+            if last_state.get("hasNoAvailability"):
+                last_state["reason"] = "no-availability"
+                last_state["attempt"] = attempt
+                return last_state
+
+            if last_state.get("isBlocked"):
+                last_state["reason"] = "blocked"
+                last_state["attempt"] = attempt
+                return last_state
+
+            if on_booking_surface and last_state.get("resultNodes", 0) > 0 and not last_state.get("isLoading"):
+                last_state["reason"] = "booking-surface"
+                last_state["attempt"] = attempt
+                return last_state
+
+            if (
+                expect_booking_host and
+                "online.aircairo.com/booking" in url_lower and
+                attempt >= 5 and
+                not last_state.get("isLoading") and
+                (last_state.get("hasTimes") or last_state.get("resultNodes", 0) > 0)
+            ):
+                last_state["reason"] = "booking-host"
+                last_state["attempt"] = attempt
+                return last_state
+
+            await asyncio.sleep(1.0 if attempt < 10 else 1.5)
+
+        last_state["reason"] = "timeout"
+        last_state["attempt"] = 34
+        return last_state
+
+    async def _extract_from_dom(
+        self,
+        page,
+        req: FlightSearchRequest,
+        date_str: str,
+        booking_url: str | None = None,
+    ) -> list[FlightOffer]:
         """Scrape flight result cards from the search results page."""
         offers: list[FlightOffer] = []
         seen: set[str] = set()
@@ -439,7 +689,7 @@ class AirCairoConnectorClient:
                 inbound=None,
                 airlines=["Air Cairo"],
                 owner_airline="SM",
-                booking_url=(
+                booking_url=booking_url or (
                     f"https://www.aircairo.com/en-gl/book-flight?"
                     f"departureFrom={req.origin}&departureTo={req.destination}"
                     f"&date={date_str}&adult={req.adults or 1}"
@@ -451,8 +701,17 @@ class AirCairoConnectorClient:
 
         return offers
 
-    def _parse_api_data(self, data: dict, req: FlightSearchRequest, date_str: str) -> list[FlightOffer]:
+    def _parse_api_data(
+        self,
+        data: dict,
+        req: FlightSearchRequest,
+        date_str: str,
+        booking_url: str | None = None,
+    ) -> list[FlightOffer]:
         """Parse intercepted API JSON responses."""
+        if isinstance(data.get("data"), dict) and isinstance(data["data"].get("airBoundGroups"), list):
+            return self._parse_air_bounds_payload(data, req, date_str, booking_url=booking_url)
+
         offers: list[FlightOffer] = []
         seen: set[str] = set()
 
@@ -511,11 +770,274 @@ class AirCairoConnectorClient:
                 price_formatted=f"{price_f:.2f} {currency}",
                 outbound=route, inbound=None,
                 airlines=["Air Cairo"], owner_airline="SM",
-                booking_url=f"{_BASE}/en-gl/book-flight",
+                booking_url=booking_url or f"{_BASE}/en-gl/book-flight",
                 is_locked=False, source="aircairo_direct", source_tier="free",
             ))
 
         return offers
+
+    def _parse_air_bounds_payload(
+        self,
+        data: dict,
+        req: FlightSearchRequest,
+        date_str: str,
+        booking_url: str | None = None,
+    ) -> list[FlightOffer]:
+        offers: list[FlightOffer] = []
+        seen: set[str] = set()
+
+        search_data = data.get("data", {}) if isinstance(data.get("data"), dict) else {}
+        groups = search_data.get("airBoundGroups", []) if isinstance(search_data.get("airBoundGroups"), list) else []
+        dicts = data.get("dictionaries", {}) if isinstance(data.get("dictionaries"), dict) else {}
+        flight_dict = dicts.get("flight", {}) if isinstance(dicts.get("flight"), dict) else {}
+        currency_dict = dicts.get("currency", {}) if isinstance(dicts.get("currency"), dict) else {}
+        fare_family_dict = dicts.get("fareFamilyWithServices", {}) if isinstance(dicts.get("fareFamilyWithServices"), dict) else {}
+        service_dict = dicts.get("service", {}) if isinstance(dicts.get("service"), dict) else {}
+        fare_conditions = dicts.get("fareConditions", {}) if isinstance(dicts.get("fareConditions"), dict) else {}
+
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            bound_details = group.get("boundDetails", {}) if isinstance(group.get("boundDetails"), dict) else {}
+            seg_refs = bound_details.get("segments", []) if isinstance(bound_details.get("segments"), list) else []
+            duration = bound_details.get("duration", 0)
+            air_bounds = group.get("airBounds", []) if isinstance(group.get("airBounds"), list) else []
+
+            for air_bound in air_bounds:
+                if not isinstance(air_bound, dict):
+                    continue
+                raw_amount, currency = self._extract_total_price(air_bound)
+                price = self._normalize_price(raw_amount, currency, currency_dict)
+                if price <= 0:
+                    continue
+
+                fare_family = str(air_bound.get("fareFamilyCode") or "")
+                family_meta = fare_family_dict.get(fare_family, {}) if isinstance(fare_family_dict, dict) else {}
+                segments = []
+                for seg_ref in seg_refs:
+                    fid = seg_ref.get("flightId", "") if isinstance(seg_ref, dict) else str(seg_ref)
+                    flight = flight_dict.get(fid, {}) if isinstance(flight_dict, dict) else {}
+                    if not isinstance(flight, dict) or not flight:
+                        continue
+                    dep_info = flight.get("departure", {}) if isinstance(flight.get("departure"), dict) else {}
+                    arr_info = flight.get("arrival", {}) if isinstance(flight.get("arrival"), dict) else {}
+                    dep_dt = self._parse_dt(dep_info.get("dateTime", ""), date_str)
+                    arr_dt = self._parse_dt(arr_info.get("dateTime", ""), date_str)
+                    if dep_dt is None or arr_dt is None:
+                        segments = []
+                        break
+                    airline = str(flight.get("marketingAirlineCode") or "SM").upper()
+                    flight_num_raw = str(flight.get("marketingFlightNumber") or "").strip()
+                    if flight_num_raw and not flight_num_raw.upper().startswith(airline):
+                        flight_no = f"{airline}{flight_num_raw}"
+                    else:
+                        flight_no = flight_num_raw or airline
+
+                    cabin_code = self._resolve_cabin_code(air_bound, family_meta, fid)
+                    segments.append(FlightSegment(
+                        airline=airline,
+                        airline_name="Air Cairo" if airline == "SM" else airline,
+                        flight_no=flight_no,
+                        origin=str(dep_info.get("locationCode") or req.origin),
+                        destination=str(arr_info.get("locationCode") or req.destination),
+                        departure=dep_dt,
+                        arrival=arr_dt,
+                        duration_seconds=max(0, int((arr_dt - dep_dt).total_seconds())),
+                        cabin_class=self._normalize_cabin(cabin_code),
+                    ))
+
+                if not segments:
+                    continue
+
+                route = FlightRoute(
+                    segments=segments,
+                    total_duration_seconds=duration if isinstance(duration, int) and duration > 0 else sum(s.duration_seconds for s in segments),
+                    stopovers=max(0, len(segments) - 1),
+                )
+
+                conditions: dict[str, str] = {}
+                bags_price: dict[str, float] = {}
+                if fare_family:
+                    conditions["fare_family"] = fare_family
+
+                checked_bag = self._extract_checked_bag(air_bound.get("services", []), service_dict)
+                if checked_bag:
+                    conditions["checked_bag"] = f"included - {checked_bag}"
+                    bags_price["checked_bag"] = 0.0
+
+                conditions.update(self._extract_fare_conditions(air_bound.get("fareConditionsCodes", []), fare_conditions, currency, currency_dict))
+
+                flight_ids = [segment.flight_no for segment in segments]
+                dedup_key = f"{req.origin}_{req.destination}_{date_str}_{price}_{fare_family}_{','.join(flight_ids)}"
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+
+                offer_id = hashlib.md5(f"sm_{dedup_key}".encode()).hexdigest()[:12]
+                offers.append(FlightOffer(
+                    id=f"sm_{offer_id}",
+                    price=price,
+                    currency=currency or "USD",
+                    price_formatted=f"{price:.2f} {currency or 'USD'}",
+                    outbound=route,
+                    inbound=None,
+                    airlines=["Air Cairo"],
+                    owner_airline="SM",
+                    bags_price=bags_price,
+                    conditions=conditions,
+                    booking_url=booking_url or (
+                        f"https://www.aircairo.com/en-gl/book-flight?"
+                        f"departureFrom={req.origin}&departureTo={req.destination}"
+                        f"&date={date_str}&adult={req.adults or 1}"
+                    ),
+                    is_locked=False,
+                    source="aircairo_direct",
+                    source_tier="free",
+                ))
+
+        offers.sort(key=lambda offer: offer.price if offer.price > 0 else float("inf"))
+        return offers
+
+    @staticmethod
+    def _extract_total_price(bound: dict) -> tuple[object, str]:
+        if not isinstance(bound, dict):
+            return None, ""
+
+        air_offer = bound.get("airOffer") if isinstance(bound.get("airOffer"), dict) else {}
+        total_price = air_offer.get("totalPrice") if isinstance(air_offer.get("totalPrice"), dict) else {}
+        raw_amount = total_price.get("value", total_price.get("total"))
+        currency = str(total_price.get("currencyCode") or "")
+
+        if raw_amount is None:
+            prices = bound.get("prices") if isinstance(bound.get("prices"), dict) else {}
+            total_prices = prices.get("totalPrices") if isinstance(prices.get("totalPrices"), list) else []
+            if total_prices:
+                p0 = total_prices[0] if isinstance(total_prices[0], dict) else {}
+                raw_amount = p0.get("total", p0.get("value", p0.get("base")))
+                if not currency:
+                    currency = str(p0.get("currencyCode") or "")
+
+        return raw_amount, currency
+
+    @staticmethod
+    def _normalize_price(raw_amount, currency: str, currency_dict: dict) -> float:
+        try:
+            if raw_amount is None:
+                return 0.0
+
+            if isinstance(raw_amount, str):
+                s = raw_amount.strip().replace(",", "")
+                if not s:
+                    return 0.0
+                if "." in s:
+                    return round(float(s), 2)
+                minor_units = int(s)
+            elif isinstance(raw_amount, int):
+                minor_units = raw_amount
+            elif isinstance(raw_amount, float):
+                if raw_amount.is_integer():
+                    minor_units = int(raw_amount)
+                else:
+                    return round(raw_amount, 2)
+            else:
+                return round(float(raw_amount), 2)
+
+            decimals = 2
+            if currency and isinstance(currency_dict, dict):
+                meta = currency_dict.get(currency)
+                if isinstance(meta, dict):
+                    d = meta.get("decimalPlaces")
+                    if isinstance(d, int) and 0 <= d <= 6:
+                        decimals = d
+
+            return round(minor_units / (10 ** decimals), 2)
+        except Exception:
+            try:
+                return round(float(raw_amount), 2)
+            except Exception:
+                return 0.0
+
+    @staticmethod
+    def _resolve_cabin_code(air_bound: dict, family_meta: dict, flight_id: str) -> str:
+        for detail in air_bound.get("availabilityDetails", []):
+            if isinstance(detail, dict) and detail.get("flightId") == flight_id:
+                cabin = detail.get("cabin")
+                if isinstance(cabin, str) and cabin.strip():
+                    return cabin
+        cabin = family_meta.get("cabin") if isinstance(family_meta, dict) else ""
+        return cabin if isinstance(cabin, str) else ""
+
+    @staticmethod
+    def _normalize_cabin(cabin_code: str) -> str:
+        code = (cabin_code or "").strip().lower()
+        if code in {"business", "biz", "c"}:
+            return "business"
+        if code in {"premium", "premiumeconomy", "premium_economy", "w"}:
+            return "premium_economy"
+        if code in {"first", "f"}:
+            return "first"
+        return "economy"
+
+    @staticmethod
+    def _extract_checked_bag(services: list, service_dict: dict) -> str:
+        for service in services if isinstance(services, list) else []:
+            if not isinstance(service, dict):
+                continue
+            code = str(service.get("serviceCode") or "")
+            meta = service_dict.get(code, {}) if isinstance(service_dict, dict) else {}
+            if not isinstance(meta, dict) or meta.get("serviceType") != "freeCheckedBaggage":
+                continue
+            baggage = meta.get("baggagePolicyDescriptions", [])
+            if not isinstance(baggage, list) or not baggage:
+                continue
+            first = baggage[0] if isinstance(baggage[0], dict) else {}
+            if first.get("type") == "weight":
+                quantity = first.get("quantity")
+                unit = first.get("weightUnit")
+                if quantity and unit == "kilogram":
+                    return f"checked bag up to {quantity}kg"
+            quantity = first.get("quantity")
+            if quantity:
+                return f"{quantity} checked bag"
+        return ""
+
+    def _extract_fare_conditions(
+        self,
+        condition_codes: list,
+        fare_conditions: dict,
+        currency: str,
+        currency_dict: dict,
+    ) -> dict[str, str]:
+        merged: dict[str, str] = {}
+        for code in condition_codes if isinstance(condition_codes, list) else []:
+            meta = fare_conditions.get(code, {}) if isinstance(fare_conditions, dict) else {}
+            if not isinstance(meta, dict):
+                continue
+            category = str(meta.get("category") or "").lower()
+            if category not in {"refund", "change"}:
+                continue
+            status = ""
+            for detail in meta.get("details", []) if isinstance(meta.get("details"), list) else []:
+                if not isinstance(detail, dict):
+                    continue
+                if detail.get("isAllowed") is False:
+                    status = self._merge_condition_status(status, "not_allowed")
+                    continue
+                if detail.get("isAllowed") is True:
+                    penalty = detail.get("penalty") if isinstance(detail.get("penalty"), dict) else {}
+                    price = penalty.get("price") if isinstance(price := penalty.get("price"), dict) else {}
+                    total = price.get("total")
+                    fee_currency = str(price.get("currencyCode") or currency)
+                    fee_value = self._normalize_price(total, fee_currency, currency_dict) if total is not None else 0.0
+                    status = self._merge_condition_status(status, "allowed_with_fee" if fee_value > 0 else "allowed")
+            if status:
+                merged[f"{category}_before_departure"] = status
+        return merged
+
+    @staticmethod
+    def _merge_condition_status(current: str, incoming: str) -> str:
+        order = {"": 0, "not_allowed": 1, "allowed": 2, "allowed_with_fee": 3}
+        return incoming if order.get(incoming, 0) >= order.get(current, 0) else current
 
     @staticmethod
     def _parse_dt(s: str, fallback_date: str) -> datetime:

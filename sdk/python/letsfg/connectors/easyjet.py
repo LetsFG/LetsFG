@@ -30,7 +30,7 @@ import re
 import shutil
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from ..models.flights import (
@@ -40,10 +40,21 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import find_chrome, stealth_popen_kwargs, proxy_chrome_args, auto_block_if_proxied, inject_stealth_js, disable_background_networking_args
+from .browser import find_chrome, stealth_popen_kwargs, proxy_chrome_args, auto_block_if_proxied, inject_stealth_js, disable_background_networking_args, get_default_proxy
 from .airline_routes import get_city_airports
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_hhmm(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.strftime("%H:%M")
+    text = str(value or "").strip()
+    if len(text) >= 16:
+        return text[11:16]
+    if len(text) >= 5 and text[2] == ":" and text[:2].isdigit() and text[3:5].isdigit():
+        return text[:5]
+    return ""
 
 _VIEWPORTS = [
     {"width": 1366, "height": 768},
@@ -208,6 +219,45 @@ async def _reset_chrome_profile():
             logger.warning("easyJet: failed to delete Chrome profile: %s", e)
 
 
+async def _launch_patchright_browser():
+    """Launch a Patchright browser using the local Chrome binary when available."""
+    from patchright.async_api import async_playwright
+
+    proxy = get_default_proxy()
+    try:
+        chrome_path = find_chrome()
+    except RuntimeError:
+        chrome_path = None
+
+    pw = await async_playwright().start()
+    viewport = random.choice(_VIEWPORTS)
+    launch_kwargs = {
+        "headless": False,
+        "args": [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-default-browser-check",
+            f"--window-size={viewport['width']},{viewport['height']}",
+        ],
+        "proxy": proxy,
+    }
+    if chrome_path:
+        launch_kwargs["executable_path"] = chrome_path
+
+    browser = await pw.chromium.launch(**launch_kwargs)
+    context = await browser.new_context(
+        viewport=viewport,
+        locale="en-US",
+        timezone_id="Europe/London",
+        color_scheme="light",
+    )
+    page = await context.new_page()
+    await inject_stealth_js(page)
+    await auto_block_if_proxied(page)
+    return pw, browser, context, page
+
+
 class EasyjetConnectorClient:
     """easyJet CDP Chrome scraper — persistent browser + form + API response interception."""
 
@@ -361,10 +411,27 @@ class EasyjetConnectorClient:
             # More human-like wait
             await asyncio.sleep(random.uniform(2.5, 4.0))
 
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+
             # Dismiss cookie/consent banners
             await _dismiss_cookies(page)
             await asyncio.sleep(random.uniform(0.5, 1.0))
             await _dismiss_cookies(page)
+
+            try:
+                await page.mouse.move(
+                    random.randint(200, 800), random.randint(200, 400)
+                )
+                await asyncio.sleep(random.uniform(0.3, 0.7))
+                await page.evaluate("window.scrollBy(0, %d)" % random.randint(50, 200))
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+                await page.evaluate("window.scrollTo(0, 0)")
+                await asyncio.sleep(random.uniform(0.3, 0.6))
+            except Exception:
+                pass
 
             # Fill the search form with human-like delays
             ok = await self._fill_search_form(page, req)
@@ -421,12 +488,36 @@ class EasyjetConnectorClient:
 
             # If Akamai blocked us, nuke the profile and bail
             if akamai_blocked:
-                logger.warning("easyJet: Akamai flagged session, clearing Chrome profile for next run")
+                logger.warning("easyJet: Akamai flagged session, trying Patchright fallback")
+                patchright_resp = await self._search_single_with_patchright(req)
+                if patchright_resp and patchright_resp.offers:
+                    return patchright_resp
+
+                logger.warning("easyJet: Patchright fallback empty, trying DOM scrape fallback")
+                active_page = results_page or page
+                dom_offers = await self._scrape_dom_fallback(active_page, req)
+                if dom_offers:
+                    search_hash = hashlib.md5(
+                        f"easyjet{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+                    ).hexdigest()[:12]
+                    return FlightSearchResponse(
+                        search_id=f"fs_{search_hash}",
+                        origin=req.origin,
+                        destination=req.destination,
+                        currency="GBP",
+                        offers=dom_offers,
+                        total_results=len(dom_offers),
+                    )
+
+                logger.warning("easyJet: DOM fallback empty, clearing Chrome profile for next run")
                 await _reset_chrome_profile()
                 return self._empty(req)
 
             if not search_data or not search_data.get("journeyPairs"):
-                logger.warning("easyJet: no journeyPairs in intercepted response")
+                logger.warning("easyJet: no journeyPairs in intercepted response, trying Patchright fallback")
+                patchright_resp = await self._search_single_with_patchright(req)
+                if patchright_resp and patchright_resp.offers:
+                    return patchright_resp
                 return self._empty(req)
 
             currency = search_data.get("metaData", {}).get("currencyCode", "GBP")
@@ -462,6 +553,201 @@ class EasyjetConnectorClient:
                         await p.close()
                 except Exception:
                     pass
+
+    async def _search_single_with_patchright(self, req: FlightSearchRequest) -> FlightSearchResponse:
+        """Retry an easyJet search with Patchright when CDP Chrome is blocked."""
+        t0 = time.monotonic()
+        pw = browser = context = page = results_page = None
+
+        try:
+            pw, browser, context, page = await _launch_patchright_browser()
+
+            search_data: dict = {}
+            akamai_blocked = False
+
+            async def _on_response(response):
+                nonlocal akamai_blocked
+                url = response.url
+                if (
+                    "/funnel/api/query" in url
+                    and "auth-status" not in url
+                    and "search/airports" not in url
+                    and "/stats" not in url
+                ):
+                    status = response.status
+                    if status == 403:
+                        akamai_blocked = True
+                        logger.warning("easyJet: Patchright also hit Akamai 403 on /funnel/api/query")
+                        return
+                    if status == 200:
+                        try:
+                            data = await response.json()
+                            if isinstance(data, dict) and "journeyPairs" in data:
+                                search_data.update(data)
+                                logger.info("easyJet: Patchright captured search API response")
+                        except Exception as exc:
+                            logger.warning("easyJet: Patchright failed to parse API response: %s", exc)
+
+            page.on("response", _on_response)
+
+            logger.info("easyJet: Patchright loading homepage for %s→%s", req.origin, req.destination)
+            await page.goto(
+                "https://www.easyjet.com/en/",
+                wait_until="domcontentloaded",
+                timeout=int(self.timeout * 1000),
+            )
+            await asyncio.sleep(random.uniform(2.5, 4.0))
+
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+
+            await _dismiss_cookies(page)
+            await asyncio.sleep(random.uniform(0.5, 1.0))
+            await _dismiss_cookies(page)
+
+            try:
+                await page.mouse.move(
+                    random.randint(200, 800), random.randint(200, 400)
+                )
+                await asyncio.sleep(random.uniform(0.3, 0.7))
+                await page.evaluate("window.scrollBy(0, %d)" % random.randint(50, 200))
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+                await page.evaluate("window.scrollTo(0, 0)")
+                await asyncio.sleep(random.uniform(0.3, 0.6))
+            except Exception:
+                pass
+
+            ok = await self._fill_search_form(page, req)
+            if not ok:
+                logger.warning("easyJet: Patchright form fill failed")
+                return self._empty(req)
+
+            new_page_event = asyncio.Event()
+            new_page_ref: list = [None]
+
+            def _on_new_page(p):
+                new_page_ref[0] = p
+                new_page_event.set()
+
+            context.on("page", _on_new_page)
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            try:
+                await page.get_by_role("button", name="Show flights").click(timeout=5000)
+                logger.info("easyJet: Patchright clicked 'Show flights'")
+            except Exception as exc:
+                logger.warning("easyJet: Patchright could not click 'Show flights': %s", exc)
+                return self._empty(req)
+
+            try:
+                await asyncio.wait_for(new_page_event.wait(), timeout=10.0)
+                results_page = new_page_ref[0]
+                if results_page:
+                    results_page.on("response", _on_response)
+                    await auto_block_if_proxied(results_page)
+                    logger.info("easyJet: Patchright results tab opened: %s", results_page.url)
+                    try:
+                        await results_page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    except Exception:
+                        pass
+            except (asyncio.TimeoutError, Exception):
+                logger.info("easyJet: Patchright saw no new tab, checking current page: %s", page.url)
+                try:
+                    await page.wait_for_url("**/buy/flights**", timeout=5000)
+                except Exception:
+                    pass
+
+            remaining = max(self.timeout - (time.monotonic() - t0), 10)
+            deadline = time.monotonic() + remaining
+            while not search_data and not akamai_blocked and time.monotonic() < deadline:
+                await asyncio.sleep(0.5)
+
+            active_page = results_page or page
+            if akamai_blocked:
+                logger.warning("easyJet: Patchright session still blocked, trying DOM scrape fallback")
+                dom_offers = await self._scrape_dom_fallback(active_page, req)
+                if dom_offers:
+                    search_hash = hashlib.md5(
+                        f"easyjet{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+                    ).hexdigest()[:12]
+                    return FlightSearchResponse(
+                        search_id=f"fs_{search_hash}",
+                        origin=req.origin,
+                        destination=req.destination,
+                        currency="GBP",
+                        offers=dom_offers,
+                        total_results=len(dom_offers),
+                    )
+                return self._empty(req)
+
+            if not search_data or not search_data.get("journeyPairs"):
+                logger.warning("easyJet: Patchright captured no journeyPairs, trying DOM scrape fallback")
+                dom_offers = await self._scrape_dom_fallback(active_page, req)
+                if dom_offers:
+                    search_hash = hashlib.md5(
+                        f"easyjet{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+                    ).hexdigest()[:12]
+                    return FlightSearchResponse(
+                        search_id=f"fs_{search_hash}",
+                        origin=req.origin,
+                        destination=req.destination,
+                        currency="GBP",
+                        offers=dom_offers,
+                        total_results=len(dom_offers),
+                    )
+                return self._empty(req)
+
+            currency = search_data.get("metaData", {}).get("currencyCode", "GBP")
+            offers = self._parse_journey_pairs(search_data["journeyPairs"], req, currency)
+            offers.sort(key=lambda o: o.price)
+
+            elapsed = time.monotonic() - t0
+            logger.info(
+                "easyJet %s→%s returned %d offers in %.1fs (Patchright fallback)",
+                req.origin, req.destination, len(offers), elapsed,
+            )
+
+            search_hash = hashlib.md5(
+                f"easyjet{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
+            ).hexdigest()[:12]
+            return FlightSearchResponse(
+                search_id=f"fs_{search_hash}",
+                origin=req.origin,
+                destination=req.destination,
+                currency=currency,
+                offers=offers,
+                total_results=len(offers),
+            )
+        except ImportError:
+            logger.warning("easyJet: Patchright is not installed; fallback unavailable")
+            return self._empty(req)
+        except Exception as exc:
+            logger.error("easyJet Patchright fallback error: %s", exc)
+            return self._empty(req)
+        finally:
+            for current_page in [results_page, page]:
+                try:
+                    if current_page:
+                        await current_page.close()
+                except Exception:
+                    pass
+            try:
+                if context:
+                    await context.close()
+            except Exception:
+                pass
+            try:
+                if browser:
+                    await browser.close()
+            except Exception:
+                pass
+            try:
+                if pw:
+                    await pw.stop()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Form interaction
@@ -797,6 +1083,96 @@ class EasyjetConnectorClient:
             logger.warning("easyJet: date error: %s", e)
             return False
 
+    async def _scrape_dom_fallback(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
+        """Extract visible flight cards when the API is blocked but the results page still renders fares."""
+        try:
+            await asyncio.sleep(5.0)
+            flights = await page.evaluate(r'''() => {
+                const results = [];
+                const cards = document.querySelectorAll(
+                    '[class*="flight-card"], [class*="journey"], [class*="FlightCard"], ' +
+                    '[data-testid*="flight"], [class*="flight-row"], [class*="flightInfo"]'
+                );
+                for (const card of cards) {
+                    const text = (card.innerText || '').replace(/\s+/g, ' ').trim();
+                    if (text.length < 20) continue;
+                    const times = text.match(/\b(\d{1,2}:\d{2})\b/g) || [];
+                    if (times.length < 2) continue;
+                    const priceMatch = text.match(/[£€$]\s*([\d,.]+)/);
+                    if (!priceMatch) continue;
+                    const price = Number(priceMatch[1].replace(/,/g, ''));
+                    if (!Number.isFinite(price) || price <= 0) continue;
+                    results.push({
+                        dep_time: times[0],
+                        arr_time: times[1],
+                        price,
+                        text: text.slice(0, 200),
+                    });
+                }
+                return results;
+            }''')
+
+            if not flights:
+                logger.info("easyJet: DOM scrape found no flight cards")
+                return []
+
+            logger.info("easyJet: DOM scrape found %d flight cards", len(flights))
+            offers: list[FlightOffer] = []
+            date_value = req.date_from if hasattr(req.date_from, "strftime") else datetime.strptime(str(req.date_from), "%Y-%m-%d")
+            date_str = date_value.strftime("%Y-%m-%d")
+            booking_url = self._build_booking_url(req)
+
+            for flight in flights:
+                dep_time = str(flight.get("dep_time") or "00:00")
+                arr_time = str(flight.get("arr_time") or "00:00")
+                price = float(flight.get("price") or 0)
+                if price <= 0:
+                    continue
+
+                departure = datetime.strptime(f"{date_str}T{dep_time}:00", "%Y-%m-%dT%H:%M:%S")
+                arrival = datetime.strptime(f"{date_str}T{arr_time}:00", "%Y-%m-%dT%H:%M:%S")
+                if arrival <= departure:
+                    arrival += timedelta(days=1)
+
+                segment = FlightSegment(
+                    airline="U2",
+                    airline_name="easyJet",
+                    flight_no="",
+                    origin=req.origin,
+                    destination=req.destination,
+                    departure=departure,
+                    arrival=arrival,
+                    cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy"),
+                )
+                duration_seconds = int((arrival - departure).total_seconds())
+                route = FlightRoute(
+                    segments=[segment],
+                    total_duration_seconds=max(duration_seconds, 0),
+                    stopovers=0,
+                )
+                offer_key = f"ej-dom-{req.origin}{req.destination}{date_str}{dep_time}{price}"
+                offers.append(
+                    FlightOffer(
+                        id=f"ej_{hashlib.md5(offer_key.encode()).hexdigest()[:12]}",
+                        price=round(price, 2),
+                        currency="GBP",
+                        price_formatted=f"{price:.2f} GBP",
+                        outbound=route,
+                        inbound=None,
+                        airlines=["easyJet"],
+                        owner_airline="U2",
+                        booking_url=booking_url,
+                        is_locked=False,
+                        source="easyjet_direct",
+                        source_tier="free",
+                    )
+                )
+
+            return offers
+        except Exception as e:
+            logger.warning("easyJet: DOM scrape failed: %s", e)
+            return []
+
     # ------------------------------------------------------------------
     # Parsing
     # ------------------------------------------------------------------
@@ -823,14 +1199,19 @@ class EasyjetConnectorClient:
 
             for date_key in matched_dates:
                 for flight in flights_by_date[date_key]:
-                    offer = self._parse_single_flight(flight, currency, booking_url)
+                    offer = self._parse_single_flight(
+                        flight,
+                        currency,
+                        booking_url,
+                        req.cabin_class or "M",
+                    )
                     if offer:
                         offers.append(offer)
 
         return offers
 
     def _parse_single_flight(
-        self, flight: dict, currency: str, booking_url: str
+        self, flight: dict, currency: str, booking_url: str, cabin_code: str = "M"
     ) -> Optional[FlightOffer]:
         if flight.get("soldOut") or flight.get("saleableStatus") != "AVAILABLE":
             return None
@@ -867,7 +1248,7 @@ class EasyjetConnectorClient:
             destination=flight.get("arrivalAirportCode", ""),
             departure=self._parse_dt(dep_str),
             arrival=self._parse_dt(arr_str),
-            cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy"),
+            cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(cabin_code or "M", "economy"),
         )
 
         total_dur = int((segment.arrival - segment.departure).total_seconds())
@@ -1083,8 +1464,8 @@ class EasyjetBookableConnector:
             segments = outbound.get("segments", []) if isinstance(outbound, dict) else []
             if segments:
                 dep = segments[0].get("departure", "")
-                if dep and len(dep) >= 16:
-                    dep_time = dep[11:16]
+                dep_time = _extract_hhmm(dep)
+                if dep_time:
                     try:
                         card = page.locator(f"text='{dep_time}'").first
                         if await card.is_visible(timeout=3000):

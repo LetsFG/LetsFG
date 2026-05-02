@@ -405,10 +405,10 @@ class WizzairConnectorClient:
         origin = outbound_segments[0].origin
         destination = outbound_segments[-1].destination
         date_out = outbound_segments[0].departure.date().isoformat() if outbound_segments[0].departure else ""
-        date_in = ""
+        date_in = "null"
         if inbound_route and inbound_route.segments:
             inbound_departure = inbound_route.segments[0].departure
-            date_in = inbound_departure.date().isoformat() if inbound_departure else ""
+            date_in = inbound_departure.date().isoformat() if inbound_departure else "null"
         return (
             f"https://wizzair.com/en-gb#/booking/select-flight/"
             f"{origin}/{destination}/{date_out}/{date_in}/"

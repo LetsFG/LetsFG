@@ -176,19 +176,26 @@ class ScootConnectorClient:
 
     async def _search_ow(self, req: FlightSearchRequest) -> FlightSearchResponse:
         # Fast path: Sputnik API (~1s, no browser)
+        sputnik_fallback: Optional[FlightSearchResponse] = None
         sputnik_offers = await self._try_sputnik(req)
         if sputnik_offers:
             _td = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
             sputnik_offers = [o for o in sputnik_offers if o.outbound and o.outbound.segments and o.outbound.segments[0].departure.date() == _td]
             sputnik_offers.sort(key=lambda o: o.price if o.price > 0 else float("inf"))
             h = hashlib.md5(f"tr{req.origin}{req.destination}{req.date_from}".encode()).hexdigest()[:12]
-            return FlightSearchResponse(
+            sputnik_fallback = FlightSearchResponse(
                 search_id=f"fs_{h}",
                 origin=req.origin,
                 destination=req.destination,
                 currency=sputnik_offers[0].currency,
                 offers=sputnik_offers,
                 total_results=len(sputnik_offers),
+            )
+            if self._offers_have_bundle_metadata(sputnik_offers):
+                return sputnik_fallback
+            logger.info(
+                "Scoot: Sputnik returned %d offers without bundle metadata, continuing to Navitaire search",
+                len(sputnik_offers),
             )
 
         # Slow path: CDP Chrome + Navitaire API interception
@@ -204,7 +211,27 @@ class ScootConnectorClient:
             except Exception as e:
                 logger.warning("Scoot: attempt %d/%d error: %s", attempt, _MAX_ATTEMPTS, e)
 
+        if sputnik_fallback is not None:
+            return sputnik_fallback
         return self._empty(req)
+
+    @staticmethod
+    def _offers_have_bundle_metadata(offers: list[FlightOffer]) -> bool:
+        for offer in offers:
+            conditions = offer.conditions or {}
+            if any(
+                conditions.get(key)
+                for key in [
+                    "fare_brand",
+                    "bundle_name",
+                    "bundle_subheader",
+                    "service_bundle_code",
+                    "outbound_fare_brand",
+                    "inbound_fare_brand",
+                ]
+            ):
+                return True
+        return False
 
     async def _try_sputnik(self, req: FlightSearchRequest) -> list[FlightOffer]:
         """Fast path: EveryMundo Sputnik grouped-routes API."""
@@ -430,16 +457,28 @@ class ScootConnectorClient:
             # Accept cookies on booking site too
             await self._dismiss_cookies(page)
 
+            # The current site lands on a collapsed mobile-style search shell.
+            await self._ensure_search_form_open(page)
+
             # Wait for SPA to render (use JS to check for visible input — avoids
             # the duplicate-ID trap where wait_for_selector picks the hidden one)
             spa_ready = False
             for _wait_round in range(6):  # up to ~12s total
                 spa_ready = await page.evaluate("""() => {
-                    const inputs = document.querySelectorAll('input#originStation');
-                    return Array.from(inputs).some(i => i.offsetHeight > 0);
+                    const selectors = [
+                        'input#originStation',
+                        'input[aria-label="origin-input"]',
+                        'input[aria-label="destination-input"]',
+                    ];
+                    return selectors.some(selector =>
+                        Array.from(document.querySelectorAll(selector)).some(el =>
+                            el.offsetHeight > 0 || el.offsetWidth > 0 || el.getClientRects().length
+                        )
+                    );
                 }""")
                 if spa_ready:
                     break
+                await self._ensure_search_form_open(page)
                 await asyncio.sleep(2)
             if not spa_ready:
                 logger.warning("Scoot: search form never appeared")
@@ -478,17 +517,37 @@ class ScootConnectorClient:
                     logger.warning("Scoot: return date fill failed, continuing anyway")
                 await asyncio.sleep(0.3)
 
+            if not req.return_from and not await self._is_one_way_selected(page):
+                logger.info("Scoot: one-way selection did not stick after form fill; retrying before submit")
+                await self._set_one_way(page)
+                await asyncio.sleep(0.5)
+
             # Step 8: Click search (enable API capture first)
             search_clicked["ready"] = True
             await self._click_search(page)
 
             # Step 9: Wait for API response
             remaining = max(self.timeout - (time.monotonic() - t0), 10)
-            try:
-                await asyncio.wait_for(api_event.wait(), timeout=remaining)
-            except asyncio.TimeoutError:
+            deadline = time.monotonic() + remaining
+            select_page_checked = False
+            while time.monotonic() < deadline:
+                if api_event.is_set():
+                    break
+                current_url = (page.url or "").lower()
+                if "/book/flight/" in current_url and not select_page_checked:
+                    select_page_checked = True
+                    offers = await self._extract_select_page_offers(page, req)
+                    if offers:
+                        logger.info("Scoot: parsed select page DOM after search submit")
+                        return offers
+                await asyncio.sleep(0.75)
+
+            if not api_event.is_set():
                 logger.info("Scoot: API intercept timed out, trying DOM extraction")
-                offers = await self._extract_from_dom(page, req)
+                if "/book/flight/" in (page.url or "").lower():
+                    offers = await self._extract_select_page_offers(page, req)
+                else:
+                    offers = await self._extract_from_dom(page, req)
                 if offers:
                     return offers
                 offers = await self._extract_from_page_data(page, req)
@@ -501,6 +560,8 @@ class ScootConnectorClient:
                     return offers
 
             # Fallback to DOM
+            if "/book/flight/" in (page.url or "").lower():
+                return await self._extract_select_page_offers(page, req) or None
             return await self._extract_from_dom(page, req) or None
 
         finally:
@@ -543,26 +604,135 @@ class ScootConnectorClient:
         except Exception:
             pass
 
+    async def _ensure_search_form_open(self, page) -> None:
+        """Expand Scoot's collapsed search shell when the full form is hidden."""
+        try:
+            expanded = await page.evaluate("""() => {
+                const selectors = [
+                    'input#originStation',
+                    'input[aria-label="origin-input"]',
+                    'input[aria-label="destination-input"]',
+                ];
+                return selectors.some(selector =>
+                    Array.from(document.querySelectorAll(selector)).some(el =>
+                        el.offsetHeight > 0 || el.offsetWidth > 0 || el.getClientRects().length
+                    )
+                );
+            }""")
+            if expanded:
+                return
+
+            clicked = await page.evaluate("""() => {
+                const selectors = [
+                    '[aria-label="destination-field-collapse"]',
+                    '[aria-label="home-search-collapse-container"]',
+                ];
+                for (const selector of selectors) {
+                    const elements = document.querySelectorAll(selector);
+                    for (const el of elements) {
+                        if (el.offsetHeight > 0 || el.offsetWidth > 0 || el.getClientRects().length) {
+                            el.click();
+                            return selector;
+                        }
+                    }
+                }
+                return null;
+            }""")
+            if clicked:
+                logger.info("Scoot: expanded collapsed search shell via %s", clicked)
+                await asyncio.sleep(1)
+        except Exception as e:
+            logger.debug("Scoot: failed to expand collapsed search shell: %s", e)
+
     # ── One-way toggle ──────────────────────────────────────────────────────
 
     async def _set_one_way(self, page) -> None:
         """Click One-Way radio/tab if not already selected."""
-        try:
-            one_way = page.locator("text='One-Way'").first
-            if await one_way.count() > 0:
-                await one_way.click(timeout=3000)
-                await asyncio.sleep(0.5)
-                return
-        except Exception:
-            pass
-        for label in ["One Way", "ONE WAY", "One-way", "one way"]:
+        if await self._is_one_way_selected(page):
+            return
+
+        for _attempt in range(3):
             try:
-                el = page.get_by_text(label, exact=False).first
-                if await el.count() > 0:
-                    await el.click(timeout=2000)
-                    return
+                opened = await page.evaluate("""() => {
+                    const isVisible = (el) => !!(el && (el.offsetHeight || el.offsetWidth || el.getClientRects().length));
+                    const triggers = [
+                        '[aria-label="mobile-trip-type-trigger"]',
+                        '[aria-label="desktop-trip-type-trigger"]',
+                    ];
+                    for (const selector of triggers) {
+                        const trigger = document.querySelector(selector);
+                        if (isVisible(trigger)) {
+                            trigger.click();
+                            return selector;
+                        }
+                    }
+                    return null;
+                }""")
+                if opened:
+                    await asyncio.sleep(0.4)
+                    clicked = await page.evaluate("""() => {
+                        const isVisible = (el) => !!(el && (el.offsetHeight || el.offsetWidth || el.getClientRects().length));
+                        const selectors = [
+                            '[aria-label="mobile-trip-type-menu-item-one-way"]',
+                            '[aria-label="desktop-trip-type-menu-item-one-way"]',
+                            '[aria-label="mobile-trip-type-label-one-way"]',
+                            '[aria-label="desktop-trip-type-label-one-way"]',
+                        ];
+                        for (const selector of selectors) {
+                            const option = document.querySelector(selector);
+                            if (isVisible(option)) {
+                                const clickable = option.closest('[aria-label*="menu-item"]') || option;
+                                clickable.click();
+                                return selector;
+                            }
+                        }
+                        return null;
+                    }""")
+                    if clicked:
+                        await asyncio.sleep(0.6)
+                        if await self._is_one_way_selected(page):
+                            return
             except Exception:
-                continue
+                pass
+
+            for label in ["One-way", "One Way", "ONE WAY", "one way"]:
+                try:
+                    el = page.get_by_text(label, exact=False).first
+                    if await el.count() > 0:
+                        await el.click(timeout=2000)
+                        await asyncio.sleep(0.5)
+                        if await self._is_one_way_selected(page):
+                            return
+                except Exception:
+                    continue
+
+        logger.warning("Scoot: one-way toggle did not stick")
+
+    async def _is_one_way_selected(self, page) -> bool:
+        try:
+            return bool(await page.evaluate(r"""() => {
+                const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const isVisible = (el) => !!(el && (el.offsetHeight || el.offsetWidth || el.getClientRects().length));
+                const triggerSelectors = [
+                    '[aria-label="mobile-trip-type-trigger"]',
+                    '[aria-label="desktop-trip-type-trigger"]',
+                ];
+                for (const selector of triggerSelectors) {
+                    const trigger = document.querySelector(selector);
+                    if (isVisible(trigger) && normalize(trigger.textContent).includes('one-way')) {
+                        return true;
+                    }
+                }
+                const oneWayCheck = document.querySelector('[aria-label="mobile-trip-type-check-one-way"], [aria-label="desktop-trip-type-check-one-way"]');
+                if (isVisible(oneWayCheck)) {
+                    return true;
+                }
+                const returnInputs = document.querySelectorAll('input[aria-label="return-date-input-roundtrip"], input[aria-label="return-date-input"]');
+                const returnVisible = Array.from(returnInputs).some(isVisible);
+                return !returnVisible && /one-way/i.test(document.body?.innerText || '');
+            }"""))
+        except Exception:
+            return False
 
     # ── Station (airport) fill ──────────────────────────────────────────────
 
@@ -575,36 +745,42 @@ class ScootConnectorClient:
         try:
             is_origin = "origin" in selector.lower()
             field_id = "originStation" if is_origin else "destinationStation"
+            aria_label = "origin-input" if is_origin else "destination-input"
 
             # Use JS to click the visible input (avoids duplicate-ID ambiguity)
-            clicked = await page.evaluate("""(fieldId) => {
-                const inputs = document.querySelectorAll('input#' + fieldId);
-                for (const inp of inputs) {
-                    if (inp.offsetHeight > 0) {
-                        inp.click();
-                        inp.focus();
-                        return true;
+            clicked = await page.evaluate("""(inputSelectors) => {
+                for (const selector of inputSelectors) {
+                    const inputs = document.querySelectorAll(selector);
+                    for (const inp of inputs) {
+                        if (inp.offsetHeight > 0 || inp.offsetWidth > 0 || inp.getClientRects().length) {
+                            inp.click();
+                            inp.focus();
+                            return selector;
+                        }
                     }
                 }
-                return false;
-            }""", field_id)
+                return null;
+            }""", [f"input#{field_id}", f"input[aria-label='{aria_label}']"])
             if not clicked:
-                logger.debug("Scoot: no visible input for %s", field_id)
+                logger.debug("Scoot: no visible input for %s/%s", field_id, aria_label)
                 return False
             await asyncio.sleep(0.5)
 
             # Clear via JS + Angular event dispatch
-            await page.evaluate("""(fieldId) => {
-                const inputs = document.querySelectorAll('input#' + fieldId);
-                for (const inp of inputs) {
-                    if (inp.offsetHeight > 0) {
-                        inp.value = '';
-                        inp.dispatchEvent(new Event('input', {bubbles: true}));
-                        inp.dispatchEvent(new Event('change', {bubbles: true}));
-                        return;
+            await page.evaluate("""(inputSelectors) => {
+                for (const selector of inputSelectors) {
+                    const inputs = document.querySelectorAll(selector);
+                    for (const inp of inputs) {
+                        if (inp.offsetHeight > 0 || inp.offsetWidth > 0 || inp.getClientRects().length) {
+                            inp.value = '';
+                            inp.dispatchEvent(new Event('input', {bubbles: true}));
+                            inp.dispatchEvent(new Event('change', {bubbles: true}));
+                            return selector;
+                        }
                     }
                 }
-            }""", field_id)
+                return null;
+            }""", [f"input#{field_id}", f"input[aria-label='{aria_label}']"])
             await asyncio.sleep(0.2)
 
             # Type IATA code character by character (triggers Angular keypress)
@@ -635,6 +811,29 @@ class ScootConnectorClient:
                             item.click();
                             return 'text-match';
                         }
+                    }
+                }
+
+                const directSelectors = [
+                    '[aria-label="' + iata + '"]',
+                    '[aria-label*="' + iata + '"]',
+                ];
+                for (const selector of directSelectors) {
+                    const nodes = document.querySelectorAll(selector);
+                    for (const node of nodes) {
+                        if (node.offsetHeight > 0 || node.offsetWidth > 0 || node.getClientRects().length) {
+                            node.click();
+                            return selector;
+                        }
+                    }
+                }
+
+                const stationNodes = document.querySelectorAll('[class*="station"], [class*="airport"]');
+                for (const node of stationNodes) {
+                    if ((node.offsetHeight > 0 || node.offsetWidth > 0 || node.getClientRects().length) &&
+                        node.textContent && node.textContent.includes(iata)) {
+                        node.click();
+                        return 'station-text-match';
                     }
                 }
                 return null;
@@ -671,7 +870,7 @@ class ScootConnectorClient:
 
     # ── Date fill ───────────────────────────────────────────────────────────
 
-    async def _fill_date(self, page, target: datetime) -> bool:
+    async def _fill_date(self, page, target: datetime, is_return: bool = False) -> bool:
         """Fill the departure date using the ngb-datepicker calendar.
 
         Calendar uses: div.ngb-dp-month-name ("March 2026"),
@@ -679,82 +878,142 @@ class ScootConnectorClient:
         div.ngb-dp-day[role="gridcell"][aria-label="Thursday, April 9, 2026"].
         """
         try:
-            # Click the visible #departureDate to open the calendar
-            opened = await page.evaluate("""() => {
-                const els = document.querySelectorAll('#departureDate');
-                for (const el of els) {
-                    if (el.offsetHeight > 0) { el.click(); return true; }
+            # Click the visible date input to open the calendar.
+            if is_return:
+                selectors = [
+                    "input[aria-label='return-date-input-roundtrip']",
+                    "input[aria-label='return-date-input']",
+                    '#returnDate',
+                ]
+            else:
+                selectors = [
+                    "input[aria-label='departure-date-input-one-way']",
+                    "input[aria-label='departure-date-input']",
+                    '#departureDate',
+                ]
+            opened = await page.evaluate("""(inputSelectors) => {
+                for (const selector of inputSelectors) {
+                    const els = document.querySelectorAll(selector);
+                    for (const el of els) {
+                        if (el.offsetHeight > 0 || el.offsetWidth > 0 || el.getClientRects().length) {
+                            el.click();
+                            return selector;
+                        }
+                    }
                 }
-                return false;
-            }""")
+                return null;
+            }""", selectors)
             if not opened:
-                logger.warning("Scoot: no visible #departureDate to click")
+                logger.warning("Scoot: no visible date input to click (return=%s)", is_return)
                 return False
             await asyncio.sleep(1)
 
-            target_month_year = target.strftime("%B %Y")  # e.g. "April 2026"
-
-            # Navigate calendar to the target month
-            for _ in range(12):
-                visible_months = await page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('.ngb-dp-month-name'))
-                        .filter(e => e.offsetHeight > 0)
-                        .map(e => e.textContent.trim());
-                }""")
-                if target_month_year in visible_months:
-                    break
-                # Click "Next month"
-                try:
-                    await page.locator(
-                        "button[aria-label='Next month']"
-                    ).first.click(timeout=3000)
-                    await asyncio.sleep(0.5)
-                except Exception:
-                    logger.warning("Scoot: can't find Next month button")
-                    break
-
+            target_date = target.date() if isinstance(target, datetime) else target
             # Build the aria-label for the target day, e.g. "Thursday, April 9, 2026"
-            # The calendar uses full day-of-week names
-            day_label = target.strftime("%A, %B ") + str(target.day) + target.strftime(", %Y")
+            day_label = target_date.strftime("%A, %B ") + str(target_date.day) + target_date.strftime(", %Y")
+            target_month_key = target_date.strftime("%Y-%m")
 
-            # Click the day cell via JS — click the gridcell div directly
-            # (clicking the inner .custom-day span doesn't trigger Angular)
-            clicked = await page.evaluate("""(label) => {
-                const cells = document.querySelectorAll(
-                    'div.ngb-dp-day[role="gridcell"]:not(.disabled)');
-                for (const cell of cells) {
-                    if (cell.offsetHeight > 0 &&
-                        cell.getAttribute('aria-label') === label) {
-                        cell.click();
-                        return true;
+            clicked = False
+            for _navigation_attempt in range(14):
+                step = await page.evaluate(r"""({ label, targetMonthKey }) => {
+                    const isVisible = (el) => !!(el && (el.offsetHeight || el.offsetWidth || el.getClientRects().length));
+                    const monthMap = {
+                        jan: 1, january: 1,
+                        feb: 2, february: 2,
+                        mar: 3, march: 3,
+                        apr: 4, april: 4,
+                        may: 5,
+                        jun: 6, june: 6,
+                        jul: 7, july: 7,
+                        aug: 8, august: 8,
+                        sep: 9, sept: 9, september: 9,
+                        oct: 10, october: 10,
+                        nov: 11, november: 11,
+                        dec: 12, december: 12,
+                    };
+                    const toMonthKey = (text) => {
+                        const match = (text || '').match(/([A-Za-z]{3,9})\s+(\d{4})/);
+                        if (!match) {
+                            return null;
+                        }
+                        const month = monthMap[match[1].toLowerCase()];
+                        if (!month) {
+                            return null;
+                        }
+                        return `${match[2]}-${String(month).padStart(2, '0')}`;
+                    };
+                    const matchDay = (root) => {
+                        const nodes = root.querySelectorAll('[aria-label]');
+                        for (const node of nodes) {
+                            const aria = node.getAttribute('aria-label') || '';
+                            if (aria === label && !node.classList.contains('disabled') && !node.closest('.disabled, [disabled]')) {
+                                const clickable = node.closest('[role="gridcell"]') || node;
+                                clickable.scrollIntoView({ block: 'center' });
+                                clickable.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    };
+
+                    const modal = document.querySelector('[aria-label="calendar-with-fare"]')
+                        || document.querySelector('.calendar-with-fare');
+                    if (modal && matchDay(modal)) {
+                        return { clicked: true, action: 'click-modal' };
                     }
-                }
-                return false;
-            }""", day_label)
+                    if (matchDay(document)) {
+                        return { clicked: true, action: 'click-document' };
+                    }
+
+                    const monthKeys = Array.from(document.querySelectorAll('.dp-month-short, .dp-month, .ngb-dp-month-name'))
+                        .filter(isVisible)
+                        .map(node => toMonthKey(node.textContent || ''))
+                        .filter((key, index, list) => !!key && list.indexOf(key) === index);
+
+                    if (monthKeys.length > 0) {
+                        const firstMonth = monthKeys[0];
+                        const lastMonth = monthKeys[monthKeys.length - 1];
+                        if (targetMonthKey < firstMonth) {
+                            const prev = document.querySelector('button[aria-label="Previous month"]');
+                            if (isVisible(prev)) {
+                                prev.click();
+                                return { clicked: false, action: 'prev-month' };
+                            }
+                        }
+                        if (targetMonthKey > lastMonth) {
+                            const next = document.querySelector('button[aria-label="Next month"]');
+                            if (isVisible(next)) {
+                                next.click();
+                                return { clicked: false, action: 'next-month' };
+                            }
+                        }
+                    }
+
+                    if (modal && modal.scrollHeight > modal.clientHeight + 20) {
+                        const nextTop = Math.min(modal.scrollTop + Math.max(320, modal.clientHeight - 40), modal.scrollHeight - modal.clientHeight);
+                        if (nextTop > modal.scrollTop) {
+                            modal.scrollTop = nextTop;
+                            return { clicked: false, action: 'scroll-calendar' };
+                        }
+                    }
+
+                    const next = document.querySelector('button[aria-label="Next month"]');
+                    if (isVisible(next)) {
+                        next.click();
+                        return { clicked: false, action: 'next-month-fallback' };
+                    }
+
+                    return { clicked: false, action: 'stalled' };
+                }""", {"label": day_label, "targetMonthKey": target_month_key})
+                if step.get("clicked"):
+                    clicked = True
+                    break
+                if step.get("action") == "stalled":
+                    break
+                await asyncio.sleep(0.35)
 
             if clicked:
                 logger.info("Scoot: selected date %s", target.strftime("%Y-%m-%d"))
-                await asyncio.sleep(0.5)
-                await self._close_calendar(page)
-                return True
-
-            # Fallback: match by day number within visible non-disabled cells
-            day_num = str(target.day)
-            clicked2 = await page.evaluate("""(dayNum) => {
-                const cells = document.querySelectorAll(
-                    'div.ngb-dp-day[role="gridcell"]:not(.disabled)');
-                for (const cell of cells) {
-                    if (cell.offsetHeight > 0 &&
-                        cell.textContent.trim() === dayNum) {
-                        cell.click();
-                        return true;
-                    }
-                }
-                return false;
-            }""", day_num)
-
-            if clicked2:
-                logger.info("Scoot: selected date %s via day-number fallback", target.strftime("%Y-%m-%d"))
                 await asyncio.sleep(0.5)
                 await self._close_calendar(page)
                 return True
@@ -771,7 +1030,10 @@ class ScootConnectorClient:
             done_clicked = await page.evaluate("""() => {
                 const btns = document.querySelectorAll('button, div[role="button"]');
                 for (const btn of btns) {
-                    if (btn.offsetHeight > 0 && btn.textContent.trim() === 'Done') {
+                    const aria = btn.getAttribute('aria-label') || '';
+                    const text = btn.textContent.trim();
+                    if ((btn.offsetHeight > 0 || btn.offsetWidth > 0 || btn.getClientRects().length) &&
+                        (text === 'Done' || text === 'Close' || text === 'Confirm' || aria === 'Close')) {
                         btn.click();
                         return true;
                     }
@@ -789,6 +1051,19 @@ class ScootConnectorClient:
     async def _click_search(self, page) -> None:
         """Click the 'Let's Go!' search button via JS."""
         clicked = await page.evaluate("""() => {
+            const ariaTargets = [
+                '[aria-label="search-button"]',
+                'button[aria-label="search-button"]',
+            ];
+            for (const selector of ariaTargets) {
+                const nodes = document.querySelectorAll(selector);
+                for (const node of nodes) {
+                    if (node.offsetHeight > 0 || node.offsetWidth > 0 || node.getClientRects().length) {
+                        node.click();
+                        return selector;
+                    }
+                }
+            }
             const labels = ["Let's Go!", "Search flights", "Search", "SEARCH", "Find flights"];
             const btns = document.querySelectorAll('button, a[role="button"], div[role="button"]');
             for (const label of labels) {
@@ -813,61 +1088,368 @@ class ScootConnectorClient:
             await page.keyboard.press("Enter")
             logger.info("Scoot: pressed Enter as search fallback")
 
+    async def _get_select_page_state(self, page) -> dict[str, Any]:
+        try:
+            return await page.evaluate(r"""() => {
+                const isVisible = (el) => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+                const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim();
+                const bodyText = document.body?.innerText || '';
+                const hasRefresh = Array.from(document.querySelectorAll('button, a[role="button"], div[role="button"], a'))
+                    .some(el => isVisible(el) && normalize(el.textContent) === 'Refresh');
+                return {
+                    isSelectPage: /\/book\/flight\//i.test(location.pathname || '') || /Scoot\s*\|\s*Select/i.test(document.title || ''),
+                    cardCount: document.querySelectorAll('[aria-label="fare availability container"], .fare-availability-container').length,
+                    filterCount: Array.from(document.querySelectorAll('[aria-label^="Button filter"]')).filter(isVisible).length,
+                    genericCount: document.querySelectorAll('[class*="flight-card"], [class*="flight-row"], [class*="journey-card"], [class*="flight-result"], [class*="fare-card"], [class*="flight-select"], [data-test*="flight"], [class*="availability-row"]').length,
+                    hasRefresh,
+                    isLoading: /Add Passenger Details\s+Loading|\bLoading\.\.\.|\bLoading\b/i.test(bodyText),
+                };
+            }""")
+        except Exception:
+            return {
+                "isSelectPage": False,
+                "cardCount": 0,
+                "filterCount": 0,
+                "genericCount": 0,
+                "hasRefresh": False,
+                "isLoading": False,
+            }
+
+    async def _wait_for_select_page_content(self, page, timeout_ms: int = 12000) -> bool:
+        try:
+            await page.wait_for_function(r"""() => {
+                const isVisible = (el) => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+                const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim();
+                const cardCount = document.querySelectorAll('[aria-label="fare availability container"], .fare-availability-container').length;
+                const filterCount = Array.from(document.querySelectorAll('[aria-label^="Button filter"]')).filter(isVisible).length;
+                const hasRefresh = Array.from(document.querySelectorAll('button, a[role="button"], div[role="button"], a'))
+                    .some(el => isVisible(el) && normalize(el.textContent) === 'Refresh');
+                return cardCount > 0 || filterCount > 0 || hasRefresh;
+            }""", timeout=timeout_ms)
+            return True
+        except Exception:
+            return False
+
+    async def _extract_select_page_offers(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
+        await self._wait_for_select_page_content(page)
+        offers = await self._extract_from_dom(page, req)
+        state = await self._get_select_page_state(page)
+        if not state.get("isSelectPage"):
+            return offers
+
+        needs_reload = (
+            (not state.get("cardCount") and not state.get("filterCount"))
+            or (offers and len(offers) <= 1 and not self._offers_have_bundle_metadata(offers))
+        )
+        if not needs_reload:
+            return offers
+
+        current_url = page.url
+        if not current_url:
+            return offers
+
+        logger.info("Scoot: reloading select page for hydrated fare containers")
+        try:
+            await page.goto(current_url, wait_until="domcontentloaded", timeout=20000)
+            await self._wait_for_select_page_content(page, timeout_ms=15000)
+            reloaded_offers = await self._extract_from_dom(page, req)
+            if reloaded_offers:
+                return reloaded_offers
+        except Exception as e:
+            logger.info("Scoot: select page reload recovery failed: %s", e)
+        return offers
+
     # ── DOM extraction fallback ─────────────────────────────────────────────
 
     async def _extract_from_dom(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
         """Extract flight offers from DOM elements on the results page."""
         try:
-            await asyncio.sleep(3)
-            offers_data = await page.evaluate("""() => {
-                const results = [];
-                const cardSelectors = [
-                    '[class*="flight-card"]', '[class*="flight-row"]',
-                    '[class*="journey-card"]', '[class*="flight-result"]',
-                    '[class*="fare-card"]', '[class*="flight-select"]',
-                    '[data-test*="flight"]', '[class*="availability-row"]',
-                ];
-                for (const sel of cardSelectors) {
-                    const cards = document.querySelectorAll(sel);
-                    if (cards.length > 0) {
-                        cards.forEach(card => {
-                            const text = card.innerText || '';
-                            const priceMatch = text.match(/(?:SGD|USD|EUR|\\$)\\s*([\\d,]+\\.?\\d*)/i)
-                                || text.match(/([\\d,]+\\.?\\d*)\\s*(?:SGD|USD|EUR)/i);
-                            const timeMatch = text.match(/(\\d{1,2}:\\d{2})\\s*(?:am|pm)?/gi);
-                            const flightMatch = text.match(/(?:TR|TZ|3K)\\s*\\d+/i);
-                            if (priceMatch || timeMatch)
-                                results.push({
-                                    price: priceMatch ? parseFloat(priceMatch[1].replace(',', '')) : null,
-                                    times: timeMatch || [],
-                                    flightNo: flightMatch ? flightMatch[0] : null,
-                                    fullText: text.substring(0, 300),
-                                });
-                        });
-                        break;
+            generic_fallback: list[FlightOffer] = []
+            for attempt, delay_seconds in enumerate((3, 5, 5)):
+                await asyncio.sleep(delay_seconds)
+                offers_data = await page.evaluate(r"""() => {
+                    const isVisible = (el) => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+                    const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim();
+
+                    const bundleScript = document.querySelector('script#bundle-data-v2, script#bundle-data');
+                    if (bundleScript) {
+                        try { return { type: 'bundle', data: JSON.parse(bundleScript.textContent) }; }
+                        catch {}
                     }
-                }
-                const bundleScript = document.querySelector(
-                    'script#bundle-data-v2, script#bundle-data');
-                if (bundleScript) {
-                    try { return { type: 'bundle', data: JSON.parse(bundleScript.textContent) }; }
-                    catch {}
-                }
-                return { type: 'dom', cards: results };
-            }""")
 
-            if not offers_data:
-                return []
+                    const selectCards = [];
+                    const seenSelectCards = new Set();
+                    const availabilityCards = Array.from(document.querySelectorAll('.availability-card')).filter(isVisible);
+                    availabilityCards.forEach(card => {
+                        const cityNodes = Array.from(card.querySelectorAll('.original-text')).map(el => normalize(el.textContent)).filter(Boolean);
+                        const originTexts = Array.from(card.querySelectorAll('.origin-station-text')).map(el => normalize(el.textContent)).filter(Boolean);
+                        const destinationTexts = Array.from(card.querySelectorAll('.destination-station-text')).map(el => normalize(el.textContent)).filter(Boolean);
+                        const dateTexts = Array.from(card.querySelectorAll('.date-text')).map(el => normalize(el.textContent)).filter(Boolean);
+                        const flightTexts = Array.from(card.querySelectorAll('.flight-number-text')).map(el => normalize(el.textContent)).filter(Boolean);
 
-            data_type = offers_data.get("type", "")
-            if data_type == "bundle":
-                return self._parse_navitaire_response(offers_data.get("data", {}), req)
-            if data_type == "dom":
-                return self._parse_dom_cards(offers_data.get("cards", []), req)
-            return []
+                        const originCity = cityNodes[0] || '';
+                        const destinationCity = cityNodes[1] || '';
+                        const originCode = originTexts[0] || '';
+                        const departureTime = originTexts[1] || '';
+                        const destinationCode = destinationTexts[0] || '';
+                        const arrivalTime = destinationTexts[1] || '';
+                        const departureDay = dateTexts[0] || '';
+                        const arrivalDay = dateTexts[1] || departureDay;
+                        const duration = flightTexts.find(text => /\d+h\s*\d+m/i.test(text)) || '';
+                        const flightNo = flightTexts.find(text => /^(TR|TZ|3K)\d+$/i.test(text)) || '';
+
+                        Array.from(card.querySelectorAll('.fare-type-bundle')).filter(isVisible).forEach(bundle => {
+                            const fareBrand = normalize(bundle.querySelector('.fare-type-header-text')?.textContent || '');
+                            const currency = normalize(bundle.querySelector('.fare-currency')?.textContent || 'SGD');
+                            const price = normalize(bundle.querySelector('.fare-price')?.textContent || bundle.querySelector('.fare-price-wrapper')?.textContent || '');
+                            if (!fareBrand || !price) return;
+                            const fullText = normalize(`${departureDay} ${departureTime} ${originCode}${originCity} ${arrivalDay} ${arrivalTime} ${destinationCode}${destinationCity} ${flightNo} ${duration} ${fareBrand} ${currency} ${price}`);
+                            const dedupeKey = `${fareBrand}|${flightNo}|${fullText}`;
+                            if (seenSelectCards.has(dedupeKey)) return;
+                            seenSelectCards.add(dedupeKey);
+                            selectCards.push({ fareBrand, fullText });
+                        });
+                    });
+                    if (selectCards.length > 0) {
+                        return { type: 'select', cards: selectCards };
+                    }
+
+                    const fareTypes = Array.from(document.querySelectorAll('[aria-label^="Button filter"], .btn-fare-filter'))
+                        .filter(el => isVisible(el) && normalize(el.textContent))
+                        .map(el => normalize(el.textContent).replace(/\s+From\s+[A-Z]{3}\s*[\d,.]+/i, ''));
+                    const fareContainers = Array.from(document.querySelectorAll('.fare-swiper, [class*="fare-swiper"]'))
+                        .filter(el => el.querySelector('[aria-label="fare availability container"], .fare-availability-container'));
+                    fareContainers.forEach((container, index) => {
+                        const fareBrand = fareTypes[index] || fareTypes[0] || '';
+                        container.querySelectorAll('[aria-label="fare availability container"], .fare-availability-container').forEach(card => {
+                            const fullText = normalize(card.innerText || card.textContent || '');
+                            if (!fullText) return;
+                            const dedupeKey = `${fareBrand}|${fullText}`;
+                            if (seenSelectCards.has(dedupeKey)) return;
+                            seenSelectCards.add(dedupeKey);
+                            selectCards.push({ fareBrand, fullText });
+                        });
+                    });
+                    if (selectCards.length === 0) {
+                        document.querySelectorAll('[aria-label="fare availability container"], .fare-availability-container').forEach(card => {
+                            const fullText = normalize(card.innerText || card.textContent || '');
+                            if (!fullText) return;
+                            const dedupeKey = `|${fullText}`;
+                            if (seenSelectCards.has(dedupeKey)) return;
+                            seenSelectCards.add(dedupeKey);
+                            selectCards.push({ fareBrand: fareTypes[0] || '', fullText });
+                        });
+                    }
+                    if (selectCards.length > 0) {
+                        return { type: 'select', cards: selectCards };
+                    }
+
+                    const results = [];
+                    const cardSelectors = [
+                        '[class*="flight-card"]', '[class*="flight-row"]',
+                        '[class*="journey-card"]', '[class*="flight-result"]',
+                        '[class*="fare-card"]', '[class*="flight-select"]',
+                        '[data-test*="flight"]', '[class*="availability-row"]',
+                    ];
+                    for (const sel of cardSelectors) {
+                        const cards = document.querySelectorAll(sel);
+                        if (cards.length > 0) {
+                            cards.forEach(card => {
+                                const text = card.innerText || '';
+                                const priceMatch = text.match(/(?:SGD|USD|EUR|\$)\s*([\d,]+\.?\d*)/i)
+                                    || text.match(/([\d,]+\.?\d*)\s*(?:SGD|USD|EUR)/i);
+                                const timeMatch = text.match(/(\d{1,2}:\d{2})\s*(?:am|pm)?/gi);
+                                const flightMatch = text.match(/(?:TR|TZ|3K)\s*\d+/i);
+                                if (priceMatch || timeMatch)
+                                    results.push({
+                                        price: priceMatch ? parseFloat(priceMatch[1].replace(',', '')) : null,
+                                        times: timeMatch || [],
+                                        flightNo: flightMatch ? flightMatch[0] : null,
+                                        fullText: text.substring(0, 300),
+                                    });
+                            });
+                            break;
+                        }
+                    }
+
+                    const bodyText = document.body?.innerText || '';
+                    const isSelectPage = /\/book\/flight\//i.test(location.pathname || '') || /Scoot\s*\|\s*Select/i.test(document.title || '');
+                    const filterCount = fareTypes.length;
+                    const genericCount = results.length;
+                    const isLoading = isSelectPage && (
+                        /Add Passenger Details\s+Loading|\bLoading\.\.\.|\bLoading\b/i.test(bodyText)
+                        || (!selectCards.length && !filterCount && genericCount <= 1)
+                    );
+                    const isStuck = /Uh-Oh, Something.?s Stuck|Something went wrong/i.test(bodyText);
+                    const hasRefresh = Array.from(document.querySelectorAll('button, a[role="button"], div[role="button"], a'))
+                        .some(el => isVisible(el) && normalize(el.textContent) === 'Refresh');
+                    return {
+                        type: 'dom',
+                        cards: results,
+                        isStuck,
+                        hasRefresh,
+                        isSelectPage,
+                        isLoading,
+                        filterCount,
+                        genericCount,
+                    };
+                }""")
+
+                if not offers_data:
+                    return []
+
+                data_type = offers_data.get("type", "")
+                if data_type == "bundle":
+                    return self._parse_navitaire_response(offers_data.get("data", {}), req)
+                if data_type == "select":
+                    offers = self._parse_select_page_cards(offers_data.get("cards", []), req)
+                    if offers:
+                        return offers
+                if data_type == "dom":
+                    offers = self._parse_dom_cards(offers_data.get("cards", []), req)
+                    if offers_data.get("isSelectPage") and offers:
+                        generic_fallback = offers
+                        if offers_data.get("isLoading") or not offers_data.get("filterCount"):
+                            logger.info(
+                                "Scoot: select page still loading (%s generic cards); waiting for fare containers",
+                                offers_data.get("genericCount", 0),
+                            )
+                            if attempt < 2:
+                                continue
+                    if offers:
+                        return offers
+                    if attempt == 0 and offers_data.get("isStuck") and offers_data.get("hasRefresh"):
+                        refreshed = await page.evaluate(r"""() => {
+                            const normalize = (text) => (text || '').replace(/\s+/g, ' ').trim();
+                            const actions = document.querySelectorAll('button, a[role="button"], div[role="button"], a');
+                            for (const action of actions) {
+                                if ((action.offsetWidth || action.offsetHeight || action.getClientRects().length) && normalize(action.textContent) === 'Refresh') {
+                                    action.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }""")
+                        if refreshed:
+                            logger.info("Scoot: refreshed select page after stuck-flight state")
+                            continue
+            return generic_fallback
         except Exception as e:
             logger.debug("Scoot: DOM extraction error: %s", e)
             return []
+
+    def _parse_select_page_cards(self, cards: list[dict], req: FlightSearchRequest) -> list[FlightOffer]:
+        """Parse Scoot's current select-page fare DOM into offers."""
+        offers: list[FlightOffer] = []
+        seen: set[tuple[str, str, str, float, str]] = set()
+        booking_url = self._build_booking_url(req)
+        anchor_date = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
+        currency = req.currency or "SGD"
+        pattern = re.compile(
+            r"(?P<dep_day>[A-Za-z]{3},\s+\d{2}\s+[A-Za-z]{3})\s*"
+            r"(?P<dep_time>\d{2}:\d{2})\s*"
+            r"(?P<origin>[A-Z]{3}).*?"
+            r"(?P<arr_day>[A-Za-z]{3},\s+\d{2}\s+[A-Za-z]{3})\s*"
+            r"(?P<arr_time>\d{2}:\d{2})\s*"
+            r"(?P<destination>[A-Z]{3}).*?"
+            r"(?P<flight>(?:TR|TZ|3K)\d+)"
+            r".*?(?P<duration>\d+h\s*\d+m)?"
+            r".*?(?P<currency>[A-Z]{3})\s*(?P<price>\d+(?:\.\d+)?)",
+            re.IGNORECASE,
+        )
+
+        for index, card in enumerate(cards):
+            if not isinstance(card, dict):
+                continue
+            full_text = " ".join(str(card.get("fullText") or "").split())
+            if not full_text:
+                continue
+            match = pattern.search(full_text)
+            if not match:
+                continue
+
+            try:
+                price = float(match.group("price"))
+            except (TypeError, ValueError):
+                continue
+            if price <= 0:
+                continue
+
+            dep_dt = self._parse_partial_date_time(match.group("dep_day"), match.group("dep_time"), anchor_date)
+            arr_dt = self._parse_partial_date_time(match.group("arr_day"), match.group("arr_time"), anchor_date)
+            if arr_dt < dep_dt:
+                arr_dt += timedelta(days=1)
+
+            flight_no = match.group("flight").replace(" ", "")
+            fare_brand = " ".join(str(card.get("fareBrand") or "").split())
+            if not fare_brand:
+                lowered = full_text.lower()
+                if "scootplus" in lowered:
+                    fare_brand = "ScootPlus"
+                elif "economy" in lowered:
+                    fare_brand = "Economy"
+            dedupe_key = (
+                flight_no,
+                dep_dt.isoformat(),
+                arr_dt.isoformat(),
+                round(price, 2),
+                fare_brand,
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            route = FlightRoute(
+                segments=[
+                    FlightSegment(
+                        airline="TR",
+                        airline_name="Scoot",
+                        flight_no=flight_no,
+                        origin=match.group("origin"),
+                        destination=match.group("destination"),
+                        departure=dep_dt,
+                        arrival=arr_dt,
+                        cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy"),
+                    )
+                ],
+                total_duration_seconds=max(int((arr_dt - dep_dt).total_seconds()), 0),
+                stopovers=0,
+            )
+
+            conditions = {"price_type": "select_page_dom"}
+            if fare_brand:
+                conditions["fare_brand"] = fare_brand
+                conditions["bundle_name"] = fare_brand
+
+            offer_key = f"{flight_no}:{dep_dt.isoformat()}:{price:.2f}:{fare_brand or index}"
+            offers.append(FlightOffer(
+                id=f"tr_{hashlib.md5(offer_key.encode()).hexdigest()[:12]}",
+                price=round(price, 2),
+                currency=(match.group("currency") or currency).upper(),
+                price_formatted=f"{price:.2f} {(match.group('currency') or currency).upper()}",
+                outbound=route,
+                inbound=None,
+                airlines=["Scoot"],
+                owner_airline="TR",
+                conditions=conditions,
+                booking_url=booking_url,
+                is_locked=False,
+                source="scoot_direct",
+                source_tier="free",
+            ))
+
+        offers.sort(key=lambda offer: offer.price)
+        return offers
+
+    @staticmethod
+    def _parse_partial_date_time(day_label: str, time_value: str, anchor_date: date) -> datetime:
+        candidate = datetime.strptime(f"{day_label} {anchor_date.year} {time_value}", "%a, %d %b %Y %H:%M")
+        delta_days = (candidate.date() - anchor_date).days
+        if delta_days < -200:
+            candidate = candidate.replace(year=candidate.year + 1)
+        elif delta_days > 200:
+            candidate = candidate.replace(year=candidate.year - 1)
+        return candidate
 
     async def _extract_from_page_data(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
         """Extract flight data from Angular component state or inline scripts."""
@@ -901,21 +1483,80 @@ class ScootConnectorClient:
 
     # ── Response parsing ────────────────────────────────────────────────────
 
-    def _parse_navitaire_journey(self, journey: dict, req: FlightSearchRequest,
-                                fare_lookup: dict[str, float]) -> Optional[tuple[float, FlightRoute]]:
-        """Parse a single Navitaire journey into (price, FlightRoute) or None."""
+    def _parse_navitaire_journey(
+        self,
+        journey: dict,
+        req: FlightSearchRequest,
+        fare_lookup: dict[str, float],
+        fare_data_lookup: dict[str, dict[str, Any]],
+    ) -> list[tuple[str, float, FlightRoute, dict[str, Any]]]:
+        """Parse a single Navitaire journey into one offer per fare product."""
         if not isinstance(journey, dict):
-            return None
+            return []
+
+        route = self._build_navitaire_route(journey, req)
+        if route is None:
+            return []
+
+        offers: list[tuple[str, float, FlightRoute, dict[str, Any]]] = []
+        seen: set[tuple[str, float]] = set()
+        fares = journey.get("fares", [])
+        if not isinstance(fares, list):
+            fares = []
+
+        for index, fare in enumerate(fares):
+            if not isinstance(fare, dict):
+                continue
+
+            fare_availability_key = str(fare.get("fareAvailabilityKey") or "").strip()
+            fare_key = (
+                fare_availability_key
+                or str(fare.get("fareSellKey") or "").strip()
+                or str(fare.get("productClass") or "").strip()
+                or str(index)
+            )
+            fare_data = fare_data_lookup.get(fare_availability_key, {})
+            price = self._extract_navitaire_fare_amount(fare_data)
+            if price is None:
+                price = self._extract_navitaire_fare_amount(fare)
+            if price is None and fare_availability_key:
+                price = fare_lookup.get(fare_availability_key)
+            if price is None or price <= 0:
+                continue
+
+            conditions = self._extract_navitaire_fare_metadata(fare, fare_data)
+            dedupe_key = (
+                str(
+                    conditions.get("service_bundle_code")
+                    or conditions.get("fare_brand")
+                    or conditions.get("bundle_name")
+                    or fare_key
+                ),
+                round(price, 2),
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            offers.append((fare_key, round(price, 2), route, conditions))
+
+        if offers:
+            offers.sort(key=lambda item: item[1])
+            return offers
 
         best_price = float("inf")
-        for fare in journey.get("fares", []):
-            fkey = fare.get("fareAvailabilityKey", "")
-            if fkey in fare_lookup:
-                p = fare_lookup[fkey]
-                if 0 < p < best_price:
-                    best_price = p
+        for fare in fares:
+            if not isinstance(fare, dict):
+                continue
+            fare_availability_key = str(fare.get("fareAvailabilityKey") or "").strip()
+            if fare_availability_key in fare_lookup:
+                price = fare_lookup[fare_availability_key]
+                if 0 < price < best_price:
+                    best_price = price
         if best_price == float("inf"):
-            return None
+            return []
+        return [("journey", round(best_price, 2), route, {})]
+
+    def _build_navitaire_route(self, journey: dict, req: FlightSearchRequest) -> Optional[FlightRoute]:
         _tr_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")
 
         segments: list[FlightSegment] = []
@@ -961,7 +1602,128 @@ class ScootConnectorClient:
             total_duration_seconds=total_dur,
             stopovers=max(len(segments) - 1, 0),
         )
-        return (best_price, route)
+        return route
+
+    @staticmethod
+    def _extract_navitaire_fare_amount(fare: Any) -> Optional[float]:
+        if not isinstance(fare, dict):
+            return None
+
+        totals = fare.get("totals") if isinstance(fare.get("totals"), dict) else {}
+        candidates = [
+            totals.get("fareTotal"),
+            totals.get("totalAmount"),
+            totals.get("amount"),
+            fare.get("fareTotal"),
+            fare.get("totalAmount"),
+            fare.get("fareAmount"),
+            fare.get("amount"),
+            fare.get("price"),
+            fare.get("PassengerFare"),
+            fare.get("passengerFare"),
+        ]
+        for candidate in candidates:
+            if isinstance(candidate, dict):
+                candidate = (
+                    candidate.get("Amount")
+                    or candidate.get("amount")
+                    or candidate.get("TotalAmount")
+                    or candidate.get("value")
+                )
+            if candidate is None:
+                continue
+            try:
+                value = float(candidate)
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                return value
+        return None
+
+    @staticmethod
+    def _extract_navitaire_fare_metadata(fare: dict, fare_data: dict) -> dict[str, Any]:
+        def pick(*keys: str) -> Optional[str]:
+            for source in (fare_data, fare):
+                if not isinstance(source, dict):
+                    continue
+                for key in keys:
+                    value = source.get(key)
+                    if value is None:
+                        continue
+                    if isinstance(value, str):
+                        value = value.strip()
+                    if value in ("", [], {}):
+                        continue
+                    return str(value)
+            return None
+
+        conditions: dict[str, Any] = {}
+        fare_brand = pick(
+            "productClass",
+            "productBundle",
+            "bundleName",
+            "fareClassOfService",
+            "fareClassCode",
+            "fareClass",
+            "classOfService",
+            "name",
+            "title",
+        )
+        bundle_name = pick("bundleName", "productName", "name", "title", "label", "displayName")
+        bundle_subheader = pick("bundleDescription", "description", "subheader", "marketingText", "summary")
+        service_bundle_code = pick("serviceBundleCode", "bundleCode", "productBundleCode", "productClass")
+        fare_code = pick("fareClassCode", "fareCode", "productCode")
+        fare_sell_key = pick("fareSellKey")
+        price_type = pick("priceType", "journeyFareType", "fareType")
+        fare_availability_key = pick("fareAvailabilityKey")
+
+        if fare_brand:
+            conditions["fare_brand"] = fare_brand
+        if bundle_name:
+            conditions["bundle_name"] = bundle_name
+        if bundle_subheader:
+            conditions["bundle_subheader"] = bundle_subheader
+        if service_bundle_code:
+            conditions["service_bundle_code"] = service_bundle_code
+        if fare_code:
+            conditions["fare_code"] = fare_code
+        if fare_sell_key:
+            conditions["fare_sell_key"] = fare_sell_key
+        if fare_availability_key:
+            conditions["fare_availability_key"] = fare_availability_key
+        if price_type:
+            conditions["price_type"] = price_type
+        return conditions
+
+    @staticmethod
+    def _merge_round_trip_conditions(
+        outbound_conditions: Optional[dict[str, Any]],
+        inbound_conditions: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        merged = dict(outbound_conditions or {})
+        inbound = dict(inbound_conditions or {})
+        brand_keys = ("fare_brand", "bundle_name")
+        outbound_brand = next((merged.get(key) for key in brand_keys if merged.get(key)), "")
+        inbound_brand = next((inbound.get(key) for key in brand_keys if inbound.get(key)), "")
+        if outbound_brand or inbound_brand:
+            merged["fare_brand"] = f"{outbound_brand or 'Outbound'} / {inbound_brand or 'Inbound'}"
+
+        for key in [
+            "bundle_name",
+            "bundle_subheader",
+            "service_bundle_code",
+            "fare_code",
+            "fare_sell_key",
+            "fare_availability_key",
+            "price_type",
+        ]:
+            outbound_value = (outbound_conditions or {}).get(key)
+            inbound_value = inbound.get(key)
+            if outbound_value:
+                merged[f"outbound_{key}"] = outbound_value
+            if inbound_value:
+                merged[f"inbound_{key}"] = inbound_value
+        return merged
 
     def _parse_navitaire_response(self, data: Any, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse Scoot Navitaire availability API response.
@@ -979,47 +1741,61 @@ class ScootConnectorClient:
 
         # Build fare price lookup: fareAvailabilityKey → lowest fareTotal
         fare_lookup: dict[str, float] = {}
+        fare_data_lookup: dict[str, dict[str, Any]] = {}
         for fa in data.get("faresAvailable", []):
             key = fa.get("fareAvailabilityKey", "")
-            totals = fa.get("totals", {})
-            price = totals.get("fareTotal")
-            if key and price is not None:
-                fare_lookup[key] = float(price)
+            if not key:
+                continue
+            price = self._extract_navitaire_fare_amount(fa)
+            if price is not None and (key not in fare_lookup or price < fare_lookup[key]):
+                fare_lookup[key] = price
+                fare_data_lookup[key] = fa
+            elif key not in fare_data_lookup:
+                fare_data_lookup[key] = fa
 
         trips = data.get("trips", [])
         is_rt = bool(req.return_from) and len(trips) >= 2
 
         # ── Parse outbound journeys (trip[0]) ──────────────────────────
-        ob_journeys: list[tuple[str, float, FlightRoute]] = []
+        ob_journeys: list[tuple[str, str, float, FlightRoute, dict[str, Any]]] = []
         ob_trip = trips[0] if trips else {}
         if isinstance(ob_trip, dict):
             for journey in ob_trip.get("journeys", []):
-                parsed = self._parse_navitaire_journey(journey, req, fare_lookup)
-                if parsed:
-                    price, route = parsed
-                    jkey = journey.get("journeyKey", f"{req.origin}{req.destination}{time.monotonic()}")
-                    ob_journeys.append((jkey, price, route))
+                parsed = self._parse_navitaire_journey(journey, req, fare_lookup, fare_data_lookup)
+                if not parsed:
+                    continue
+                jkey = journey.get("journeyKey", f"{req.origin}{req.destination}{time.monotonic()}")
+                for fare_key, price, route, conditions in parsed:
+                    ob_journeys.append((jkey, fare_key, price, route, conditions))
 
         # ── Parse inbound journeys (trip[1]) if RT ─────────────────────
         ib_route: Optional[FlightRoute] = None
         ib_price = 0.0
+        ib_conditions: dict[str, Any] = {}
         if is_rt:
             ib_best_price = float("inf")
             ib_trip = trips[1]
             if isinstance(ib_trip, dict):
                 for journey in ib_trip.get("journeys", []):
-                    parsed = self._parse_navitaire_journey(journey, req, fare_lookup)
-                    if parsed and parsed[0] < ib_best_price:
-                        ib_best_price = parsed[0]
-                        ib_route = parsed[1]
-                        ib_price = parsed[0]
+                    parsed = self._parse_navitaire_journey(journey, req, fare_lookup, fare_data_lookup)
+                    for _, price, route, conditions in parsed:
+                        if price < ib_best_price:
+                            ib_best_price = price
+                            ib_route = route
+                            ib_price = price
+                            ib_conditions = conditions
 
         # ── Build offers ───────────────────────────────────────────────
-        for jkey, price, route in ob_journeys:
+        for jkey, fare_key, price, route, conditions in ob_journeys:
             total_price = round(price + ib_price, 2) if is_rt else round(price, 2)
             prefix = "tr_rt_" if is_rt and ib_route else "tr_"
+            merged_conditions = (
+                self._merge_round_trip_conditions(conditions, ib_conditions)
+                if is_rt and ib_route
+                else dict(conditions)
+            )
             offers.append(FlightOffer(
-                id=f"{prefix}{hashlib.md5(str(jkey).encode()).hexdigest()[:12]}",
+                id=f"{prefix}{hashlib.md5(f'{jkey}:{fare_key}'.encode()).hexdigest()[:12]}",
                 price=total_price,
                 currency=currency,
                 price_formatted=f"{total_price:.2f} {currency}",
@@ -1027,6 +1803,7 @@ class ScootConnectorClient:
                 inbound=ib_route,
                 airlines=["Scoot"],
                 owner_airline="TR",
+                conditions=merged_conditions,
                 booking_url=booking_url,
                 is_locked=False,
                 source="scoot_direct",
@@ -1384,11 +2161,16 @@ class ScootConnectorClient:
             for i in ib[:10]:
                 price = round(o.price + i.price, 2)
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
+                combined_conditions = ScootConnectorClient._merge_round_trip_conditions(
+                    o.conditions,
+                    i.conditions,
+                )
                 combos.append(FlightOffer(
                     id=f"rt_tr_{cid}", price=price, currency=o.currency,
                     outbound=o.outbound, inbound=i.outbound,
                     airlines=list(dict.fromkeys(o.airlines + i.airlines)),
                     owner_airline=o.owner_airline,
+                    conditions=combined_conditions,
                     booking_url=o.booking_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
                 ))

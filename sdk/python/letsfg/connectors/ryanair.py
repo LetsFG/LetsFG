@@ -30,6 +30,17 @@ from .browser import auto_block_if_proxied, get_httpx_proxy_url
 
 logger = logging.getLogger(__name__)
 
+
+def _extract_hhmm(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.strftime("%H:%M")
+    text = str(value or "").strip()
+    if len(text) >= 16:
+        return text[11:16]
+    if len(text) >= 5 and text[2] == ":" and text[:2].isdigit() and text[3:5].isdigit():
+        return text[:5]
+    return ""
+
 RYANAIR_API = "https://www.ryanair.com/api"
 
 _HEADERS = {
@@ -458,8 +469,8 @@ class RyanairBookableConnector:
             segments = outbound.get("segments", []) if isinstance(outbound, dict) else []
             if segments:
                 dep = segments[0].get("departure", "")
-                if dep and len(dep) >= 16:
-                    dep_time = dep[11:16]  # "HH:MM"
+                dep_time = _extract_hhmm(dep)
+                if dep_time:
                     try:
                         card = page.locator(f"text='{dep_time}'").first
                         if await card.is_visible(timeout=3000):

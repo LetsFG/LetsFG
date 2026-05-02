@@ -197,7 +197,25 @@ async def safe_click(page, selector: str, timeout: int = 2000, desc: str = "") -
         await el.wait_for(state="visible", timeout=timeout)
         await el.scroll_into_view_if_needed()
         await page.wait_for_timeout(random.randint(150, 400))
-        await el.click()
+        try:
+            await el.click()
+        except Exception:
+            handle = await el.element_handle()
+            if handle is None:
+                raise
+            await page.evaluate(
+                """(element) => {
+                    if (typeof element.click === 'function') {
+                        element.click();
+                        return;
+                    }
+                    element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                }""",
+                handle,
+            )
+            await page.wait_for_timeout(250)
+            logger.debug("Clicked %s (%s) via DOM fallback", selector, desc)
+            return True
         logger.debug("Clicked %s (%s)", selector, desc)
         return True
     except Exception as e:
@@ -220,7 +238,25 @@ async def safe_click_first(page, selectors: list[str], timeout: int = 2000, desc
         await el.wait_for(state="visible", timeout=timeout)
         await el.scroll_into_view_if_needed()
         await page.wait_for_timeout(random.randint(150, 400))
-        await el.click()
+        try:
+            await el.click()
+        except Exception:
+            handle = await el.element_handle()
+            if handle is None:
+                raise
+            await page.evaluate(
+                """(element) => {
+                    if (typeof element.click === 'function') {
+                        element.click();
+                        return;
+                    }
+                    element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                }""",
+                handle,
+            )
+            await page.wait_for_timeout(250)
+            logger.debug("Clicked first of %d selectors (%s) via DOM fallback", len(selectors), desc)
+            return True
         logger.debug("Clicked first of %d selectors (%s)", len(selectors), desc)
         return True
     except Exception as e:
@@ -235,8 +271,11 @@ async def safe_fill(page, selector: str, value: str, timeout: int = 1500) -> boo
         await el.wait_for(state="visible", timeout=timeout)
         await el.scroll_into_view_if_needed()
         await page.wait_for_timeout(random.randint(100, 250))
-        await el.click()
-        await el.fill(value)
+        try:
+            await el.fill(value)
+        except Exception:
+            await el.click()
+            await el.fill(value)
         return True
     except Exception as e:
         logger.debug("Could not fill %s: %s", selector, e)
@@ -247,20 +286,80 @@ async def safe_fill_first(page, selectors: list[str], value: str, timeout: int =
     """Try multiple input selectors simultaneously — fill the first visible one."""
     if not selectors:
         return False
-    try:
-        combined = page.locator(selectors[0])
-        for sel in selectors[1:]:
-            combined = combined.or_(page.locator(sel))
-        el = combined.first
-        await el.wait_for(state="visible", timeout=timeout)
-        await el.scroll_into_view_if_needed()
-        await page.wait_for_timeout(random.randint(100, 250))
-        await el.click()
-        await el.fill(value)
-        return True
-    except Exception as e:
-        logger.debug("None of %d input selectors matched: %s", len(selectors), e)
+    last_error = None
+    for sel in selectors:
+        locator = page.locator(sel)
+        try:
+            count = await locator.count()
+        except Exception as e:
+            last_error = e
+            continue
+        for index in range(count):
+            el = locator.nth(index)
+            try:
+                await el.wait_for(state="visible", timeout=timeout)
+                await el.scroll_into_view_if_needed()
+                await page.wait_for_timeout(random.randint(100, 250))
+                try:
+                    await el.fill(value)
+                except Exception:
+                    await el.click()
+                    await el.fill(value)
+                return True
+            except Exception as e:
+                last_error = e
+                continue
+    logger.debug("None of %d input selectors matched: %s", len(selectors), last_error)
+    return False
+
+
+async def safe_type_first(
+    page,
+    selectors: list[str],
+    value: str,
+    timeout: int = 1500,
+    *,
+    delay_ms: int = 60,
+    blur: bool = False,
+) -> bool:
+    """Try multiple input selectors and type into the first visible one."""
+    if not selectors:
         return False
+    last_error = None
+    for sel in selectors:
+        locator = page.locator(sel)
+        try:
+            count = await locator.count()
+        except Exception as e:
+            last_error = e
+            continue
+        for index in range(count):
+            el = locator.nth(index)
+            try:
+                await el.wait_for(state="visible", timeout=timeout)
+                await el.scroll_into_view_if_needed()
+                await page.wait_for_timeout(random.randint(100, 250))
+                await el.click()
+                try:
+                    await el.press("Control+a")
+                    await el.press("Backspace")
+                except Exception:
+                    try:
+                        await el.fill("")
+                    except Exception:
+                        pass
+                await el.type(value, delay=delay_ms)
+                if blur:
+                    try:
+                        await el.press("Tab")
+                    except Exception:
+                        pass
+                return True
+            except Exception as e:
+                last_error = e
+                continue
+    logger.debug("None of %d type selectors matched: %s", len(selectors), last_error)
+    return False
 
 
 async def take_screenshot_b64(page) -> str:

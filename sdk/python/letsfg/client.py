@@ -138,12 +138,11 @@ def _auto_register(base_url: str | None = None) -> str:
 # ── Bookable connector registry ────────────────────────────────────────────
 # Maps source tags to their BookableConnector subclass.
 # Loaded lazily to avoid importing Playwright at module level.
-# For the 3 airlines with hand-tuned connectors we keep explicit entries.
+# For the remaining hand-tuned connectors we keep explicit entries.
 # All other airlines are handled by the GenericCheckoutEngine via config.
 
 _BOOKABLE_CONNECTORS: dict[str, tuple[str, str]] = {
     "ryanair_direct": ("letsfg.connectors.ryanair", "RyanairBookableConnector"),
-    "wizzair_api": ("letsfg.connectors.wizzair", "WizzairBookableConnector"),
     "easyjet_direct": ("letsfg.connectors.easyjet", "EasyjetBookableConnector"),
 }
 

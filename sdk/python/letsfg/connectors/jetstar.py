@@ -34,7 +34,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import time
 from datetime import datetime
 from typing import Any, Optional
@@ -46,7 +48,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import auto_block_if_proxied, proxy_chrome_args
+from .browser import auto_block_if_proxied, proxy_chrome_args, proxy_is_configured
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +57,92 @@ _CDP_PORT = 9444
 _USER_DATA_DIR = os.path.join(
     os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp")), ".jetstar_chrome_data"
 )
+_FARE_CACHE_URL = (
+    "https://digitalapi.jetstar.com/v1/farecache/deals/aggregated"
+    "?dealsType=All&filterByRule=true"
+)
+_PUBLIC_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "Accept-Language": "en-AU,en;q=0.9",
+    "Referer": "https://www.jetstar.com/",
+    "Origin": "https://www.jetstar.com",
+    "culture": "en-AU",
+}
 
 _pw_instance = None
 _browser = None
 _chrome_proc = None
 _browser_lock: Optional[asyncio.Lock] = None
+_active_user_data_dir: Optional[str] = None
+_active_user_data_dir_is_ephemeral = False
 _warmup_done = False
+_WARMUP_URLS = (
+    "https://www.jetstar.com/",
+    "https://booking.jetstar.com/au/en",
+)
+_WORKER_USER_DATA_DIR_ENV = "LETSFG_CONNECTOR_USER_DATA_DIR"
+_WORKER_USER_DATA_DIR_EPHEMERAL_ENV = "LETSFG_CONNECTOR_USER_DATA_DIR_EPHEMERAL"
+
+
+def _use_fresh_profile() -> bool:
+    if os.environ.get(_WORKER_USER_DATA_DIR_ENV, "").strip():
+        return True
+    raw = os.environ.get("LETSFG_JETSTAR_FRESH_PROFILE", "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    return proxy_is_configured()
+
+
+def _current_warmup_urls() -> tuple[str, ...]:
+    if _use_fresh_profile():
+        return ("https://booking.jetstar.com/au/en/booking",)
+    return _WARMUP_URLS
+
+
+def _ensure_user_data_dir() -> str:
+    global _active_user_data_dir, _active_user_data_dir_is_ephemeral
+    if _active_user_data_dir and os.path.isdir(_active_user_data_dir):
+        return _active_user_data_dir
+    worker_dir = os.environ.get(_WORKER_USER_DATA_DIR_ENV, "").strip()
+    if worker_dir:
+        os.makedirs(worker_dir, exist_ok=True)
+        _active_user_data_dir = worker_dir
+        _active_user_data_dir_is_ephemeral = os.environ.get(
+            _WORKER_USER_DATA_DIR_EPHEMERAL_ENV,
+            "",
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        logger.info("Jetstar: using worker-provided Chrome profile %s", _active_user_data_dir)
+        return _active_user_data_dir
+    if _use_fresh_profile():
+        root_dir = os.path.join(
+            os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp")),
+            ".jetstar_chrome_profiles",
+        )
+        os.makedirs(root_dir, exist_ok=True)
+        _active_user_data_dir = tempfile.mkdtemp(prefix="profile_", dir=root_dir)
+        _active_user_data_dir_is_ephemeral = True
+        logger.info("Jetstar: using fresh Chrome profile %s", _active_user_data_dir)
+        return _active_user_data_dir
+    os.makedirs(_USER_DATA_DIR, exist_ok=True)
+    _active_user_data_dir = _USER_DATA_DIR
+    _active_user_data_dir_is_ephemeral = False
+    return _active_user_data_dir
+
+
+def _current_attempt_limit() -> int:
+    return 2 if _use_fresh_profile() else _MAX_ATTEMPTS
+
+
+def _result_wait_timeout_ms() -> int:
+    return 45000 if _use_fresh_profile() else 20000
+
+
+def _cdp_connect_delay_seconds() -> float:
+    return 5.0 if _use_fresh_profile() else 2.5
 
 
 def _find_chrome() -> Optional[str]:
@@ -113,17 +195,19 @@ async def _get_browser():
         _pw_instance = await async_playwright().start()
 
         chrome_path = _find_chrome()
+        fresh_profile = _use_fresh_profile()
+        user_data_dir = _ensure_user_data_dir()
         if chrome_path:
-            os.makedirs(_USER_DATA_DIR, exist_ok=True)
             # Try connecting to existing Chrome first
-            try:
-                _browser = await _pw_instance.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{_CDP_PORT}"
-                )
-                logger.info("Jetstar: connected to existing Chrome via CDP")
-                return _browser
-            except Exception:
-                pass
+            if not fresh_profile:
+                try:
+                    _browser = await _pw_instance.chromium.connect_over_cdp(
+                        f"http://127.0.0.1:{_CDP_PORT}"
+                    )
+                    logger.info("Jetstar: connected to existing Chrome via CDP")
+                    return _browser
+                except Exception:
+                    pass
 
             popen_kw: dict[str, Any] = {}
             if hasattr(subprocess, "CREATE_NO_WINDOW"):
@@ -135,7 +219,7 @@ async def _get_browser():
                 [
                     chrome_path,
                     f"--remote-debugging-port={_CDP_PORT}",
-                    f"--user-data-dir={_USER_DATA_DIR}",
+                    f"--user-data-dir={user_data_dir}",
                     "--window-size=1366,768",
                     "--no-first-run",
                     *proxy_chrome_args(),
@@ -146,7 +230,7 @@ async def _get_browser():
                 ],
                 **popen_kw,
             )
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(_cdp_connect_delay_seconds())
             try:
                 _browser = await _pw_instance.chromium.connect_over_cdp(
                     f"http://127.0.0.1:{_CDP_PORT}"
@@ -178,6 +262,7 @@ async def _get_browser():
 async def _reset_browser():
     """Reset browser connection and Chrome process."""
     global _pw_instance, _browser, _chrome_proc, _warmup_done
+    global _active_user_data_dir, _active_user_data_dir_is_ephemeral
     lock = _get_lock()
     async with lock:
         _warmup_done = False
@@ -203,6 +288,11 @@ async def _reset_browser():
                 except Exception:
                     pass
             _chrome_proc = None
+        stale_user_data_dir = _active_user_data_dir if _active_user_data_dir_is_ephemeral else None
+        _active_user_data_dir = None
+        _active_user_data_dir_is_ephemeral = False
+        if stale_user_data_dir:
+            shutil.rmtree(stale_user_data_dir, ignore_errors=True)
 
 
 class JetstarConnectorClient:
@@ -210,14 +300,17 @@ class JetstarConnectorClient:
 
     def __init__(self, timeout: float = 45.0):
         self.timeout = timeout
+        self._last_attempt_blocked = False
 
     async def close(self):
-        pass
+        if _use_fresh_profile():
+            await _reset_browser()
 
     async def search_flights(self, req: FlightSearchRequest) -> FlightSearchResponse:
         t0 = time.monotonic()
         adults = getattr(req, "adults", 1) or 1
         dep = req.date_from.strftime("%Y-%m-%d")
+        attempt_limit = _current_attempt_limit()
         search_url = (
             f"https://booking.jetstar.com/au/en/booking/search-flights"
             f"?origin1={req.origin}&destination1={req.destination}"
@@ -225,20 +318,38 @@ class JetstarConnectorClient:
         )
 
         ob_offers = None
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
+        for attempt in range(1, attempt_limit + 1):
             try:
                 ob_offers = await self._attempt_search(search_url, req)
                 if ob_offers is not None:
                     break
+                if self._last_attempt_blocked:
+                    logger.info(
+                        "Jetstar: attempt %d/%d hit a challenge; resetting browser before retry",
+                        attempt,
+                        attempt_limit,
+                    )
+                    if attempt < attempt_limit:
+                        await _reset_browser()
+                        await asyncio.sleep(2.0)
+                    continue
                 logger.warning(
                     "Jetstar: attempt %d/%d got no results or blocked",
-                    attempt, _MAX_ATTEMPTS,
+                    attempt, attempt_limit,
                 )
+                if attempt < attempt_limit:
+                    await _reset_browser()
+                    await asyncio.sleep(1.5)
             except Exception as e:
-                logger.warning("Jetstar: attempt %d/%d error: %s", attempt, _MAX_ATTEMPTS, e)
+                logger.warning("Jetstar: attempt %d/%d error: %s", attempt, attempt_limit, e)
                 if "ERR_CONNECTION" in str(e) or "ERR_HTTP2" in str(e) or "Target closed" in str(e):
                     await _reset_browser()
                     await asyncio.sleep(2.0)
+
+        if not ob_offers:
+            ob_offers = await self._search_cached_deals(req)
+            if ob_offers:
+                logger.info("Jetstar: using fare-cache fallback with %d outbound offers", len(ob_offers))
 
         if not ob_offers:
             return self._empty(req)
@@ -257,14 +368,30 @@ class JetstarConnectorClient:
                 "date_from": req.return_from,
                 "return_from": None,
             })
-            for attempt in range(1, _MAX_ATTEMPTS + 1):
+            ib_offers = None
+            for attempt in range(1, attempt_limit + 1):
                 try:
                     ib_offers = await self._attempt_search(ib_url, ib_req)
                     if ib_offers is not None:
-                        ob_offers = self._combine_rt(ob_offers, ib_offers, req)
                         break
+                    if self._last_attempt_blocked:
+                        logger.info(
+                            "Jetstar: inbound attempt %d/%d hit a challenge; resetting browser before retry",
+                            attempt,
+                            attempt_limit,
+                        )
+                        if attempt < attempt_limit:
+                            await _reset_browser()
+                            await asyncio.sleep(2.0)
+                        continue
                 except Exception:
                     pass
+            if not ib_offers:
+                ib_offers = await self._search_cached_deals(ib_req)
+                if ib_offers:
+                    logger.info("Jetstar: using fare-cache fallback with %d inbound offers", len(ib_offers))
+            if ib_offers:
+                ob_offers = self._combine_rt(ob_offers, ib_offers, req)
 
         elapsed = time.monotonic() - t0
         return self._build_response(ob_offers, req, elapsed)
@@ -273,6 +400,7 @@ class JetstarConnectorClient:
         self, url: str, req: FlightSearchRequest
     ) -> Optional[list[FlightOffer]]:
         global _warmup_done
+        self._last_attempt_blocked = False
         browser = await _get_browser()
 
         # CDP browsers use default context
@@ -290,20 +418,37 @@ class JetstarConnectorClient:
         await auto_block_if_proxied(page)
 
         try:
-            # Kasada warm-up: visit base booking page first to acquire
-            # challenge tokens/cookies before loading the search URL.
+            # Kasada warm-up: follow the public Jetstar entry path first,
+            # then the booking host before loading the deeplink search URL.
             if not _warmup_done:
-                logger.info("Jetstar: Kasada warm-up on booking base page")
+                warmup_urls = _current_warmup_urls()
+                if len(warmup_urls) == 1:
+                    logger.info("Jetstar: Kasada warm-up on booking host only")
+                else:
+                    logger.info("Jetstar: Kasada warm-up on public and booking pages")
                 try:
-                    await page.goto(
-                        "https://booking.jetstar.com/au/en/booking",
-                        wait_until="domcontentloaded",
-                        timeout=20000,
-                    )
-                    await asyncio.sleep(3)
-                    warmup_title = await page.title()
-                    logger.info("Jetstar: warm-up page title: %s", warmup_title)
-                    _warmup_done = True
+                    warmup_ok = True
+                    for warmup_url in warmup_urls:
+                        await page.goto(
+                            warmup_url,
+                            wait_until="domcontentloaded",
+                            timeout=20000,
+                        )
+                        await asyncio.sleep(3)
+                        warmup_title = await page.title()
+                        logger.info(
+                            "Jetstar: warm-up page title/url: %s | %s",
+                            warmup_title,
+                            page.url,
+                        )
+                        if any(
+                            marker in warmup_title.lower()
+                            for marker in ("challenge", "not found", "error", "processing")
+                        ):
+                            warmup_ok = False
+                            break
+                    if warmup_ok:
+                        _warmup_done = True
                 except Exception as e:
                     logger.debug("Jetstar: warm-up navigation error (non-fatal): %s", e)
 
@@ -321,6 +466,7 @@ class JetstarConnectorClient:
             title = await page.title()
             if "challenge" in title.lower():
                 logger.warning("Jetstar: Kasada challenge on search page, will retry")
+                self._last_attempt_blocked = True
                 _warmup_done = False
                 return None
             if "not found" in title.lower() or "error" in title.lower():
@@ -335,7 +481,7 @@ class JetstarConnectorClient:
                 await page.wait_for_selector(
                     "script#bundle-data-v2, [class*='flight-row'], "
                     "div[aria-label*='Departure'], div[aria-label*='price']",
-                    timeout=20000,
+                    timeout=_result_wait_timeout_ms(),
                 )
             except Exception:
                 pass
@@ -510,20 +656,21 @@ class JetstarConnectorClient:
         for trip in trips:
             flights = trip.get("Flights") or trip.get("flights") or []
             for flight in flights:
-                offer = self._parse_bundle_flight(flight, req, booking_url)
-                if offer:
-                    offers.append(offer)
+                bundle_offers = self._parse_bundle_flight(flight, req, booking_url)
+                if bundle_offers:
+                    offers.extend(bundle_offers)
 
         return offers
 
     def _parse_bundle_flight(
         self, flight: dict, req: FlightSearchRequest, booking_url: str
-    ) -> Optional[FlightOffer]:
-        """Parse a single flight from bundle-data-v2 Trips[].Flights[]."""
-        # Extract price from Bundles — prefer RegularInclusiveAmount (non-member)
-        price = self._extract_bundle_price(flight)
-        if price is None or price <= 0:
-            return None
+    ) -> list[FlightOffer]:
+        """Parse a single flight from bundle-data-v2 Trips[].Flights[].
+
+        Jetstar exposes multiple sellable bundles per flight (Starter, Starter Plus,
+        Flex, Flex Plus). Preserve those as separate offers instead of collapsing to
+        the single cheapest bundle.
+        """
 
         # Parse JourneySellKey for flight number, airports, times
         sell_key = flight.get("JourneySellKey") or flight.get("journeySellKey") or ""
@@ -557,7 +704,7 @@ class JetstarConnectorClient:
             segments.append(seg)
 
         if not segments:
-            return None
+            return []
 
         total_dur = 0
         if segments[0].departure and segments[-1].arrival:
@@ -570,47 +717,150 @@ class JetstarConnectorClient:
         )
 
         flight_key = sell_key or f"{req.origin}_{req.destination}_{time.monotonic()}"
-        return FlightOffer(
-            id=f"jq_{hashlib.md5(flight_key.encode()).hexdigest()[:12]}",
-            price=round(price, 2), currency="AUD",
-            price_formatted=f"${price:.2f} AUD",
-            outbound=route, inbound=None,
-            airlines=["Jetstar"], owner_airline="JQ",
-            booking_url=booking_url, is_locked=False,
-            source="jetstar_direct", source_tier="free",
-        )
+        bundle_entries = self._extract_bundle_entries(flight)
+        if not bundle_entries:
+            price = self._extract_bundle_price(flight)
+            if price is None or price <= 0:
+                return []
+            return [
+                FlightOffer(
+                    id=f"jq_{hashlib.md5(flight_key.encode()).hexdigest()[:12]}",
+                    price=round(price, 2),
+                    currency="AUD",
+                    price_formatted=f"${price:.2f} AUD",
+                    outbound=route,
+                    inbound=None,
+                    airlines=["Jetstar"],
+                    owner_airline="JQ",
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="jetstar_direct",
+                    source_tier="free",
+                )
+            ]
+
+        offers: list[FlightOffer] = []
+        for bundle in bundle_entries:
+            price = bundle["regular_price"]
+            fare_brand = bundle["bundle_name"]
+            bundle_key = "|".join([
+                flight_key,
+                fare_brand,
+                bundle.get("bundle_ssr_code", ""),
+                bundle.get("service_bundle_code", ""),
+                f"{price:.2f}",
+            ])
+            conditions = {
+                "fare_brand": fare_brand,
+                "bundle_name": fare_brand,
+                "bundle_subheader": bundle.get("bundle_subheader", ""),
+                "bundle_product_name": bundle.get("bundle_product_name", ""),
+                "bundle_ssr_code": bundle.get("bundle_ssr_code", ""),
+                "service_bundle_code": bundle.get("service_bundle_code", ""),
+                "club_jetstar_price": bundle.get("club_price_formatted", ""),
+                "is_starter_bundle": bundle.get("is_starter_bundle", ""),
+                "price_type": "regular_inclusive_bundle",
+            }
+            offers.append(
+                FlightOffer(
+                    id=f"jq_{hashlib.md5(bundle_key.encode()).hexdigest()[:12]}",
+                    price=round(price, 2),
+                    currency="AUD",
+                    price_formatted=f"${price:.2f} AUD",
+                    outbound=route,
+                    inbound=None,
+                    airlines=["Jetstar"],
+                    owner_airline="JQ",
+                    conditions={k: v for k, v in conditions.items() if v},
+                    booking_url=booking_url,
+                    is_locked=False,
+                    source="jetstar_direct",
+                    source_tier="free",
+                )
+            )
+
+        return offers
+
+    @staticmethod
+    def _extract_bundle_entries(flight: dict) -> list[dict[str, str | float]]:
+        bundles = flight.get("Bundles") or flight.get("bundles") or []
+        entries: list[dict[str, str | float]] = []
+
+        for bundle in bundles:
+            if not isinstance(bundle, dict):
+                continue
+
+            regular_price = JetstarConnectorClient._extract_bundle_amount(
+                bundle,
+                [
+                    "RegularInclusiveAmount",
+                    "regularInclusiveAmount",
+                    "InclusiveAmount",
+                    "inclusiveAmount",
+                ],
+            )
+            if regular_price is None or regular_price <= 0:
+                continue
+
+            club_price = JetstarConnectorClient._extract_bundle_amount(
+                bundle,
+                ["CjInclusiveAmount", "cjInclusiveAmount"],
+            )
+            bundle_name = (
+                bundle.get("BundleLabel")
+                or bundle.get("BundleName")
+                or bundle.get("bundleName")
+                or bundle.get("BundleProductName")
+                or bundle.get("bundleProductName")
+                or bundle.get("ServiceBundleCode")
+                or bundle.get("serviceBundleCode")
+                or "Jetstar Bundle"
+            )
+            entries.append({
+                "bundle_name": str(bundle_name).strip(),
+                "bundle_subheader": str(bundle.get("BundleSubHeader") or bundle.get("bundleSubHeader") or "").strip(),
+                "bundle_product_name": str(bundle.get("BundleProductName") or bundle.get("bundleProductName") or "").strip(),
+                "bundle_ssr_code": str(bundle.get("BundleSsrCode") or bundle.get("bundleSsrCode") or "").strip(),
+                "service_bundle_code": str(bundle.get("ServiceBundleCode") or bundle.get("serviceBundleCode") or "").strip(),
+                "regular_price": regular_price,
+                "club_price_formatted": f"${club_price:.2f} AUD" if isinstance(club_price, float) and club_price > 0 else "",
+                "is_starter_bundle": str(bool(bundle.get("IsStarterBundle"))).lower() if bundle.get("IsStarterBundle") is not None else "",
+            })
+
+        return entries
+
+    @staticmethod
+    def _extract_bundle_amount(bundle: dict, keys: list[str]) -> Optional[float]:
+        for key in keys:
+            val = bundle.get(key)
+            if val is not None:
+                try:
+                    amount = float(val)
+                    if amount > 0:
+                        return amount
+                except (TypeError, ValueError):
+                    pass
+
+        price_obj = bundle.get("Price") or bundle.get("price") or {}
+        if isinstance(price_obj, dict):
+            for key in ["Amount", "amount", "Value", "value"]:
+                val = price_obj.get(key)
+                if val is not None:
+                    try:
+                        amount = float(val)
+                        if amount > 0:
+                            return amount
+                    except (TypeError, ValueError):
+                        pass
+
+        return None
 
     @staticmethod
     def _extract_bundle_price(flight: dict) -> Optional[float]:
         """Extract best price from Bundles[].RegularInclusiveAmount."""
-        bundles = flight.get("Bundles") or flight.get("bundles") or []
-        best = float("inf")
-        for bundle in bundles:
-            # Regular (non-member) price
-            for key in ["RegularInclusiveAmount", "regularInclusiveAmount",
-                        "InclusiveAmount", "inclusiveAmount",
-                        "CjInclusiveAmount", "cjInclusiveAmount"]:
-                val = bundle.get(key)
-                if val is not None:
-                    try:
-                        v = float(val)
-                        if 0 < v < best:
-                            best = v
-                    except (TypeError, ValueError):
-                        pass
-            # Nested price object
-            price_obj = bundle.get("Price") or bundle.get("price") or {}
-            if isinstance(price_obj, dict):
-                for key in ["Amount", "amount", "Value", "value"]:
-                    val = price_obj.get(key)
-                    if val is not None:
-                        try:
-                            v = float(val)
-                            if 0 < v < best:
-                                best = v
-                        except (TypeError, ValueError):
-                            pass
-        return best if best < float("inf") else None
+        entries = JetstarConnectorClient._extract_bundle_entries(flight)
+        prices = [entry["regular_price"] for entry in entries if isinstance(entry.get("regular_price"), float)]
+        return min(prices) if prices else None
 
     @staticmethod
     def _parse_journey_sell_key(sell_key: str) -> Optional[dict]:
@@ -966,6 +1216,133 @@ class JetstarConnectorClient:
                 continue
         return datetime(2000, 1, 1)
 
+    async def _search_cached_deals(self, req: FlightSearchRequest) -> list[FlightOffer]:
+        try:
+            from curl_cffi.requests import AsyncSession
+        except Exception as exc:
+            logger.debug("Jetstar: fare-cache fallback unavailable: %s", exc)
+            return []
+
+        try:
+            async with AsyncSession(impersonate="chrome") as session:
+                response = await session.get(
+                    _FARE_CACHE_URL,
+                    headers=_PUBLIC_HEADERS,
+                    timeout=30,
+                )
+        except Exception as exc:
+            logger.warning("Jetstar: fare-cache fallback request failed: %s", exc)
+            return []
+
+        if response.status_code != 200:
+            logger.warning("Jetstar: fare-cache fallback returned HTTP %s", response.status_code)
+            return []
+
+        try:
+            payload = response.json()
+        except Exception as exc:
+            logger.warning("Jetstar: fare-cache fallback JSON parse failed: %s", exc)
+            return []
+
+        offers: list[FlightOffer] = []
+        for sale in payload.get("sales") or []:
+            if not self._sale_matches_request(sale, req):
+                continue
+            offer = self._build_cached_deal_offer(sale, req)
+            if offer:
+                offers.append(offer)
+
+        offers.sort(key=lambda offer: offer.price)
+        return offers
+
+    def _sale_matches_request(self, sale: dict, req: FlightSearchRequest) -> bool:
+        if sale.get("departureAirport") != req.origin or sale.get("arrivalAirport") != req.destination:
+            return False
+
+        dep_date = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
+        first = self._parse_dt(sale.get("firstTravelDate"))
+        if first.year > 2000 and dep_date < first.date():
+            return False
+        last = self._parse_dt(sale.get("lastTravelDate"))
+        if last.year > 2000 and dep_date > last.date():
+            return False
+
+        days_available = sale.get("daysAvailable") or []
+        if days_available and dep_date.strftime("%a") not in days_available:
+            return False
+
+        return True
+
+    def _build_cached_deal_offer(self, sale: dict, req: FlightSearchRequest) -> Optional[FlightOffer]:
+        try:
+            price = float(sale.get("dealPrice") or 0)
+        except (TypeError, ValueError):
+            return None
+        if price <= 0:
+            return None
+
+        dep_date = req.date_from.date() if isinstance(req.date_from, datetime) else req.date_from
+        dep_dt = datetime(dep_date.year, dep_date.month, dep_date.day, 0, 0)
+        route = FlightRoute(
+            segments=[
+                FlightSegment(
+                    airline="JQ",
+                    airline_name="Jetstar",
+                    flight_no="",
+                    origin=req.origin,
+                    destination=req.destination,
+                    departure=dep_dt,
+                    arrival=dep_dt,
+                    cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy"),
+                )
+            ],
+            total_duration_seconds=0,
+            stopovers=1 if sale.get("via") else 0,
+        )
+        currency = sale.get("dealCurrency") or "AUD"
+        member_price = sale.get("cjDealPrice")
+        conditions: dict[str, Any] = {
+            "fare_note": "Jetstar public fare-cache deal",
+            "fare_type": sale.get("fareType") or "economy",
+            "fare_class": sale.get("fareClass") or "",
+            "travel_window_start": sale.get("firstTravelDate") or "",
+            "travel_window_end": sale.get("lastTravelDate") or "",
+            "days_available": ",".join(sale.get("daysAvailable") or []),
+        }
+        if member_price is not None:
+            conditions["club_jetstar_price"] = f"{float(member_price):.2f}"
+        if sale.get("seatLeft"):
+            conditions["seat_left"] = sale.get("seatLeft")
+        if sale.get("via"):
+            conditions["via"] = sale.get("via")
+
+        cache_key = json.dumps(
+            {
+                "origin": req.origin,
+                "destination": req.destination,
+                "date": dep_date.isoformat(),
+                "price": price,
+                "fare_class": sale.get("fareClass") or "",
+                "via": sale.get("via") or "",
+            },
+            sort_keys=True,
+        )
+        return FlightOffer(
+            id=f"jq_sale_{hashlib.md5(cache_key.encode()).hexdigest()[:12]}",
+            price=round(price, 2),
+            currency=currency,
+            price_formatted=(f"${price:.2f} {currency}" if currency == "AUD" else f"{price:.2f} {currency}"),
+            outbound=route,
+            inbound=None,
+            conditions=conditions,
+            airlines=["Jetstar"],
+            owner_airline="JQ",
+            booking_url=self._build_booking_url(req),
+            is_locked=False,
+            source="jetstar_direct",
+            source_tier="free",
+        )
+
     def _combine_rt(
         self,
         ob_offers: list[FlightOffer],
@@ -990,6 +1367,21 @@ class JetstarConnectorClient:
                 total = round(ob.price + ib.price, 2)
                 key = f"{ob.id}_{ib.id}"
                 cid = f"jq_rt_{hashlib.md5(key.encode()).hexdigest()[:12]}"
+                combined_conditions = {}
+                ob_brand = ob.conditions.get("fare_brand") if ob.conditions else ""
+                ib_brand = ib.conditions.get("fare_brand") if ib.conditions else ""
+                if ob_brand or ib_brand:
+                    combined_conditions["fare_brand"] = f"{ob_brand or 'Outbound'} / {ib_brand or 'Inbound'}"
+                if ob_brand:
+                    combined_conditions["outbound_fare_brand"] = ob_brand
+                if ib_brand:
+                    combined_conditions["inbound_fare_brand"] = ib_brand
+                ob_subheader = ob.conditions.get("bundle_subheader") if ob.conditions else ""
+                ib_subheader = ib.conditions.get("bundle_subheader") if ib.conditions else ""
+                if ob_subheader:
+                    combined_conditions["outbound_bundle_subheader"] = ob_subheader
+                if ib_subheader:
+                    combined_conditions["inbound_bundle_subheader"] = ib_subheader
                 combined.append(FlightOffer(
                     id=cid,
                     price=total,
@@ -999,6 +1391,7 @@ class JetstarConnectorClient:
                     inbound=ib.outbound,
                     airlines=list(set(ob.airlines + ib.airlines)),
                     owner_airline="JQ",
+                    conditions=combined_conditions,
                     booking_url=bk_url,
                     is_locked=False,
                     source="jetstar_direct",

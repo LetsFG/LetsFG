@@ -117,7 +117,6 @@ _NO_PROXY_SOURCES: frozenset[str] = frozenset({
     "flybondi_direct",         # curl_cffi + PW fallback — open SSR pages
 
     # ── Small regionals (browser for rendering only, no WAF) ──
-    "aircairo_direct",         # CDP form fill — no WAF
     "airnorth_direct",         # curl_cffi — .NET antiforgery + form POST
     "linkairways_direct",      # Playwright — ASP.NET WebForms (no WAF)
     "pngair_direct",           # curl_cffi — VARS PSS AJAX
@@ -1125,6 +1124,7 @@ async def launch_cdp_chrome(
     port: int,
     user_data_dir: str,
     *,
+    use_proxy: bool = True,
     extra_args: Optional[list[str]] = None,
     start_url: str = "about:blank",
     startup_wait: float = 2.0,
@@ -1138,6 +1138,7 @@ async def launch_cdp_chrome(
     Args:
         port: CDP debugging port (e.g. 9460).
         user_data_dir: Path to Chrome user data directory.
+        use_proxy: Whether to route Chrome through the configured proxy.
         extra_args: Additional Chrome CLI flags.
         start_url: Initial URL to load (default: about:blank).
         startup_wait: Seconds to wait after launch for Chrome to be ready.
@@ -1156,7 +1157,7 @@ async def launch_cdp_chrome(
         "--no-default-browser-check",
         "--disable-blink-features=AutomationControlled",
         *stealth_args(),
-        *proxy_chrome_args(),
+        *(proxy_chrome_args() if use_proxy else []),
         *bandwidth_saving_args(),
         *disable_background_networking_args(),
         *(extra_args or []),

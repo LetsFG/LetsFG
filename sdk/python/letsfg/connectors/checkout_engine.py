@@ -9,17 +9,18 @@ All airlines follow the same basic checkout pattern:
   2. Dismiss cookie/overlay banners
   3. Select flights (by departure time)
   4. Select fare tier
-  5. Bypass login / continue as guest
-  6. Fill passenger details
-  7. Skip extras (bags, insurance, priority)
-  8. Skip seat selection
-  9. STOP at payment page → screenshot + URL for manual completion
 
-The differences between airlines are:
-  - CSS selectors for each element
-  - Anti-bot setup (Kasada, Akamai, Cloudflare, PerimeterX)
-  - Pre-navigation requirements (homepage pre-load for Kasada, etc.)
-  - Quirks (storage cleanup, iframe payment, PRM declarations, etc.)
+            # First name
+            await safe_fill_first(page, config.first_name_selectors, pax.get("given_name", "Test"))
+
+            # Last name
+            await safe_fill_first(page, config.last_name_selectors, pax.get("family_name", "Traveler"))
+
+            # Gender (if required)
+            if config.gender_enabled:
+                gender = pax.get("gender", "m")
+                sels = config.gender_selectors_male if gender == "m" else config.gender_selectors_female
+                await safe_click_first(page, sels, timeout=2000, desc=f"gender {gender}")
 
 This module exports:
   - AirlineCheckoutConfig: dataclass with all per-airline selectors/settings
@@ -35,6 +36,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -49,6 +51,7 @@ from .booking_base import (
     safe_click_first,
     safe_fill,
     safe_fill_first,
+    safe_type_first,
     take_screenshot_b64,
     verify_checkout_token,
 )
@@ -240,12 +243,18 @@ class AirlineCheckoutConfig:
     # Nationality (some airlines require it)
     nationality_enabled: bool = False
     nationality_selectors: list[str] = field(default_factory=list)
+    nationality_fill_value: str = "GB"
     nationality_dropdown_item: str = "[class*='dropdown'] [class*='item']:first-child"
 
     # Travel document / contact accordions used by some checkout flows
     document_number_selectors: list[str] = field(default_factory=list)
     document_expiry_selectors: list[str] = field(default_factory=list)
+    issuance_country_selectors: list[str] = field(default_factory=list)
+    issuance_country_fill_value: str = ""
+    issuance_country_dropdown_item: str = "[class*='dropdown'] [class*='item']:first-child"
     contact_section_expand_selectors: list[str] = field(default_factory=list)
+    contact_first_name_selectors: list[str] = field(default_factory=list)
+    contact_last_name_selectors: list[str] = field(default_factory=list)
 
     # Contact info
     email_selectors: list[str] = field(default_factory=lambda: [
@@ -261,6 +270,20 @@ class AirlineCheckoutConfig:
         "input[data-testid*='phone']",
         "input[type='tel']",
     ])
+    confirm_email_selectors: list[str] = field(default_factory=list)
+    phone_type_selectors: list[str] = field(default_factory=list)
+    phone_type_option_selectors: list[str] = field(default_factory=list)
+    phone_country_code_selectors: list[str] = field(default_factory=list)
+    phone_country_code_value: str = ""
+    phone_country_code_dropdown_item: str = "[class*='dropdown'] [class*='item']:first-child"
+    consent_checkbox_selectors: list[str] = field(default_factory=list)
+    phone_digits_only: bool = False
+    phone_grouping: list[int] = field(default_factory=list)
+    phone_type_delay_ms: int = 0
+    phone_local_digits_count: int = 0
+    pre_passenger_continue_settle_ms: int = 0
+    post_passenger_transition_timeout_ms: int = 1500
+    passenger_continue_retries: int = 0
 
     # Passenger continue button
     passenger_continue_selectors: list[str] = field(default_factory=lambda: [
@@ -853,23 +876,52 @@ _register(_base_cfg("Flybondi", "flybondi_direct",
 ))
 
 _register(_base_cfg("JetSMART", "jetsmart_direct",
-    flight_cards_selector="[class*='flight'], [class*='result']",
+    custom_checkout_handler="_jetsmart_checkout",
+    flight_cards_timeout=20000,
+    flight_cards_selector="div[class*='rounded-lg'][class*='sm:grid']:has-text('Vuelo directo'):has-text('Tarifa desde'), div[class*='rounded-lg'][class*='sm:grid']:has-text('Direct flight'):has-text('Fare from')",
+    first_flight_selectors=[
+        "div[class*='rounded-lg'][class*='sm:grid']:has-text('Vuelo directo'):has-text('Tarifa desde')",
+        "div[class*='rounded-lg'][class*='sm:grid']:has-text('Direct flight'):has-text('Fare from')",
+    ],
     fare_selectors=[
-        "button:has-text('Light')",
-        "button:has-text('Select')",
+        "div[class*='cursor-pointer']:has-text('Tarifa desde')",
+        "div[class*='cursor-pointer']:has-text('Fare from')",
+        "div[class*='cursor-pointer']:has-text('Club de descuentos')",
+        "div[class*='cursor-pointer']:has-text('Discount club')",
     ],
 ))
 
 _register(_base_cfg("Volaris", "volaris_direct",
-    flight_cards_selector="button:has-text('Reserva ahora'), button:has-text('Book Now'), [class*='flight'], [class*='result']",
+    custom_checkout_handler="_volaris_checkout",
+    details_extractor_handler="_extract_volaris_checkout_details",
+    use_chrome_channel=True,
+    service_workers="block",
+    flight_cards_timeout=20000,
+    locale_pool=["en-US", "es-MX", "en-GB", "es-US"],
+    timezone_pool=[
+        "America/Mexico_City",
+        "America/Cancun",
+        "America/Tijuana",
+        "America/Chicago",
+        "America/Los_Angeles",
+    ],
+    flight_cards_selector="mbs-flight-lists .flightItem, .flightLists .flightItem, .flightItem .flightFares a[role='button'], a.panel-open[role='button']",
     first_flight_selectors=[
-        "button:has-text('Reserva ahora')",
-        "button:has-text('Book Now')",
-        "button:has-text('Book now')",
+        ".flightItem .flightFares a[role='button']",
+        "a.panel-open[role='button']",
+        "mbs-flight-lists .flightItem:first-child a[role='button']",
     ],
     fare_selectors=[
+        "mbs-flight-fares button.btn-select",
+        "button:has-text('Seleccionar')",
         "button:has-text('Basic')",
         "button:has-text('Select')",
+    ],
+    fare_upsell_decline=[
+        "button:has-text('Mantener Zero')",
+        "button:has-text('Mantener Básica')",
+        "button:has-text('Keep Zero')",
+        "button:has-text('Keep Basic')",
     ],
 ))
 
@@ -959,6 +1011,12 @@ _register(_base_cfg("Middle East Airlines", "mea_direct",
 
 _register(_base_cfg("Air Cairo", "aircairo_direct",
     goto_timeout=60000,
+    use_proxy=True,
+    use_cdp_chrome=True,
+    cdp_port=9499,
+    cdp_user_data_dir=".aircairo_chrome_data",
+    homepage_url="https://online.aircairo.com/booking?lang=en-GB",
+    homepage_wait_ms=4000,
     flight_cards_selector="[class*='flight'], [class*='result'], [class*='journey'], [class*='bound']",
     fare_selectors=[
         "button:has-text('Select')",
@@ -966,10 +1024,105 @@ _register(_base_cfg("Air Cairo", "aircairo_direct",
         "button:has-text('Economy')",
     ],
     login_skip_selectors=[
+        "button:has-text('Fill passenger details')",
         "button:has-text('Continue as guest')",
         "button:has-text('Skip')",
         "button:has-text('Not now')",
     ],
+    title_mode="dropdown",
+    title_dropdown_selectors=[
+        "mat-select[id*='title']",
+        "[role='combobox'][id*='title']",
+    ],
+    passenger_form_selector="input[placeholder*='first name' i], input[placeholder*='last name' i], input[placeholder*='email' i], input[placeholder='Day / Month / Year']",
+    first_name_selectors=[
+        "input[id*='PersonalInfofirstName']",
+        "input[placeholder='Enter a first name']",
+        "input[placeholder*='first name' i]",
+    ],
+    last_name_selectors=[
+        "input[id*='PersonalInfolastName']",
+        "input[placeholder='Enter a last name']",
+        "input[placeholder*='last name' i]",
+    ],
+    gender_enabled=True,
+    gender_selectors_male=[
+        "button[role='radio']:has-text('Male')",
+        "button:has-text('Male')",
+    ],
+    gender_selectors_female=[
+        "button[role='radio']:has-text('Female')",
+        "button:has-text('Female')",
+    ],
+    dob_enabled=True,
+    dob_single_input_selectors=[
+        "input[id*='PersonalInfodob']",
+        "xpath=(//input[@placeholder='Day / Month / Year'])[1]",
+    ],
+    nationality_enabled=True,
+    nationality_selectors=[
+        "input[placeholder='Nationality']",
+        "input[id*='nationality']",
+    ],
+    nationality_fill_value="British",
+    nationality_dropdown_item="mat-option:has-text('British'), [role='option']:has-text('British')",
+    document_number_selectors=[
+        "input[placeholder='Your document number']",
+        "input[id*='documentNumber']",
+    ],
+    document_expiry_selectors=[
+        "input[id*='expiryDate']",
+        "xpath=(//input[@placeholder='Day / Month / Year'])[2]",
+    ],
+    issuance_country_selectors=[
+        "input[placeholder='Government']",
+        "input[id*='issuanceCountry']",
+    ],
+    issuance_country_fill_value="United Kingdom",
+    issuance_country_dropdown_item="mat-option:has-text('United Kingdom'), [role='option']:has-text('United Kingdom')",
+    email_selectors=[
+        "input[placeholder='Enter an email address']",
+        "input[id*='emailItem-0email']",
+        "input[type='email']",
+    ],
+    confirm_email_selectors=[
+        "input[placeholder='Confirm an email address']",
+        "input[id*='confirmedEmail']",
+    ],
+    phone_type_selectors=[
+        "mat-select[id*='phoneType']",
+        "[role='combobox'][id*='phoneType']",
+    ],
+    phone_type_option_selectors=[
+        "mat-option:has-text('Personal')",
+        "[role='option']:has-text('Personal')",
+    ],
+    phone_country_code_selectors=[
+        "input[placeholder='Enter a country calling code']",
+        "input[id*='phoneCountryCode']",
+    ],
+    phone_country_code_value="44",
+    phone_country_code_dropdown_item="mat-option:has-text('+44'), [role='option']:has-text('+44'), mat-option:has-text('44'), [role='option']:has-text('44')",
+    phone_selectors=[
+        "input[placeholder='Enter a mobile phone']",
+        "input[id*='phoneItem-0phone']",
+        "input[type='tel']",
+    ],
+    phone_digits_only=True,
+    phone_local_digits_count=10,
+    consent_checkbox_selectors=[
+        "input[type='checkbox']",
+        "label[for='gdprConsent-input']",
+        "#gdprConsent-input",
+        "label:has-text('I understand and accept')",
+    ],
+    passenger_continue_selectors=[
+        "button:has-text('Confirm')",
+        "button:has-text('Continue')",
+        "button:has-text('Next')",
+    ],
+    post_passenger_transition_timeout_ms=8000,
+    passenger_continue_retries=1,
     extras_skip_selectors=[
         "button:has-text('No thanks')",
         "button:has-text('Continue without')",
@@ -982,21 +1135,44 @@ _register(_base_cfg("Air Cairo", "aircairo_direct",
         "button:has-text('No thanks')",
         "button:has-text('Skip')",
     ],
-    details_extractor_handler="_extract_generic_visible_checkout_details",
+    details_extractor_handler="_extract_aircairo_checkout_details",
 ))
 
 # ─── Asian airlines ─────────────────────────────────────────────────────
 
 _register(_base_cfg("AirAsia", "airasia_direct",
-    flight_cards_selector="a:has-text('Select'), [class*='JourneyPriceCTA'], [class*='flight'], [class*='result'], [data-testid*='flight']",
+    use_chrome_channel=True,
+    use_proxy=True,
+    service_workers="block",
+    locale_pool=["en-GB", "en-US", "en-MY", "en-SG"],
+    timezone_pool=[
+        "Asia/Kuala_Lumpur",
+        "Asia/Singapore",
+        "Asia/Bangkok",
+        "Asia/Jakarta",
+        "Asia/Manila",
+    ],
+    cookie_selectors=[
+        "#airasia-phoenix-modal-close-button",
+        "button[aria-label='Close modal button']",
+        "button:has-text('Accept all cookies')",
+        "button:has-text('Accept All Cookies')",
+        "button:has-text('Accept')",
+        "button:has-text('OK')",
+    ],
+    flight_cards_selector="[class*='JourneyPriceCTA'], [class*='flight'], [class*='result'], [data-testid*='flight']",
     first_flight_selectors=[
-        "#jcta-mobile a:has-text('Select')",
-        "a:has-text('Select')",
-        "text=Select",
+        "[class*='JourneyPriceCTA'] a:has-text('Select')",
+        "[class*='JourneyPriceCTA'] [class*='Button__ButtonContainer']:has-text('Select')",
+        "main [class*='JourneyPriceCTA'] a",
     ],
     fare_selectors=[],
+    passenger_form_selector="input[placeholder*='First/Given name' i], input[placeholder*='Family name/Surname' i], input[placeholder='DD/MM/YYYY'], input[placeholder='Email']",
+    title_mode="select",
+    title_select_selector="select, [class*='SelectItemsMobile__Select']",
     login_skip_selectors=[
         "#guestButton",
+        "a:has-text('Continue as guest')",
         "text=Continue as guest",
         "button:has-text('Continue as guest')",
     ],
@@ -1022,8 +1198,37 @@ _register(_base_cfg("AirAsia", "airasia_direct",
     contact_section_expand_selectors=[
         "text=Contact details",
     ],
+    contact_first_name_selectors=[
+        "xpath=(//input[@placeholder='First/Given name'])[2]",
+        "xpath=(//input[contains(@placeholder, 'First/Given name')])[2]",
+    ],
+    contact_last_name_selectors=[
+        "xpath=(//input[@placeholder='Family name/Surname'])[2]",
+        "xpath=(//input[contains(@placeholder, 'Family name/Surname')])[2]",
+    ],
+    first_name_selectors=[
+        "input[placeholder*='First/Given name' i]",
+        "input[placeholder*='First name' i]",
+        "input[name*='name'][name*='first']",
+        "input[data-ref*='first-name']",
+        "input[data-test*='first-name']",
+        "input[data-test='passenger-first-name-0']",
+        "input[name*='firstName']",
+        "input[data-testid*='first-name']",
+    ],
+    last_name_selectors=[
+        "input[placeholder*='Family name/Surname' i]",
+        "input[placeholder*='Last name' i]",
+        "input[name*='name'][name*='last']",
+        "input[data-ref*='last-name']",
+        "input[data-test*='last-name']",
+        "input[data-test='passenger-last-name-0']",
+        "input[name*='lastName']",
+        "input[data-testid*='last-name']",
+    ],
     email_selectors=[
         "input[placeholder='Email']",
+        "#emailId",
         "input[data-test*='email']",
         "input[data-test*='contact-email']",
         "input[name*='email']",
@@ -1037,7 +1242,16 @@ _register(_base_cfg("AirAsia", "airasia_direct",
         "input[data-testid*='phone']",
         "input[type='tel']",
     ],
+    phone_digits_only=True,
+    phone_grouping=[3, 3, 3],
+    phone_type_delay_ms=80,
+    phone_local_digits_count=9,
+    pre_passenger_continue_settle_ms=1000,
+    post_passenger_transition_timeout_ms=9000,
+    passenger_continue_retries=1,
     passenger_continue_selectors=[
+        "a:has-text('Continue to Add-Ons')",
+        "button:has-text('Continue to Add-Ons')",
         "text=Continue",
         "button:has-text('Continue')",
         "button[data-test='passengers-continue-btn']",
@@ -1768,6 +1982,11 @@ _register(_base_cfg("ITA Airways", "itaairways_direct",
 
 _register(_base_cfg("Air Europa", "aireuropa_direct",
     goto_timeout=60000,
+    use_cdp_chrome=True,
+    cdp_port=9498,
+    cdp_user_data_dir=".aireuropa_chrome_data",
+    homepage_url="https://www.aireuropa.com/en/flights",
+    homepage_wait_ms=4000,
     flight_cards_selector="[class*='flight'], [class*='result'], [class*='journey'], [class*='bound']",
     fare_selectors=[
         "button:has-text('Lite')",
@@ -2153,6 +2372,60 @@ class GenericCheckoutEngine:
     Never submits payment. Returns CheckoutProgress with screenshot + URL.
     """
 
+    async def _choose_dropdown_option(
+        self,
+        page,
+        open_selectors: list[str],
+        option_text: str = "",
+        *,
+        option_selectors: list[str] | None = None,
+        desc: str = "dropdown",
+    ) -> bool:
+        if not open_selectors:
+            return False
+        if not await safe_click_first(page, open_selectors, timeout=2000, desc=desc):
+            return False
+        await page.wait_for_timeout(400)
+
+        selectors = list(option_selectors or [])
+        if option_text:
+            selectors.extend([
+                f"mat-option:has-text('{option_text}')",
+                f"[role='option']:has-text('{option_text}')",
+                f"button:has-text('{option_text}')",
+                f"label:has-text('{option_text}')",
+            ])
+        if selectors and await safe_click_first(page, selectors, timeout=2000, desc=f"{desc} option"):
+            await page.wait_for_timeout(300)
+            return True
+        return False
+
+    async def _fill_autocomplete_field(
+        self,
+        page,
+        selectors: list[str],
+        value: str,
+        dropdown_selector: str = "",
+        *,
+        desc: str = "autocomplete",
+    ) -> bool:
+        if not selectors or not value:
+            return False
+        if not await safe_type_first(page, selectors, value, timeout=2000, delay_ms=40):
+            return False
+        await page.wait_for_timeout(500)
+        if dropdown_selector and await safe_click(page, dropdown_selector, timeout=2000, desc=desc):
+            await page.wait_for_timeout(300)
+            return True
+        try:
+            await page.keyboard.press("ArrowDown")
+            await page.wait_for_timeout(200)
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(300)
+        except Exception:
+            pass
+        return True
+
     async def run(
         self,
         config: AirlineCheckoutConfig,
@@ -2195,55 +2468,91 @@ class GenericCheckoutEngine:
         from playwright.async_api import async_playwright
         import subprocess as _sp
 
-        pw = await async_playwright().start()
+        pw = None
         _chrome_proc = None  # CDP Chrome subprocess (if any)
 
         if config.use_cdp_chrome:
             # CDP mode: launch real Chrome as subprocess, connect via CDP.
             # This bypasses Kasada KPSDK — Playwright automation hooks are NOT
             # injected into the Chrome binary, so KPSDK JS runs naturally.
-            from .browser import find_chrome, stealth_popen_kwargs, bandwidth_saving_args, disable_background_networking_args
-            chrome_path = find_chrome()
+            from .browser import launch_cdp_chrome
+            pw = await async_playwright().start()
             _udd_name = config.cdp_user_data_dir or f".{config.source_tag}_chrome_data"
             _user_data_dir = os.path.join(
                 os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp")),
                 _udd_name,
             )
             os.makedirs(_user_data_dir, exist_ok=True)
+            _fallback_user_data_dir = f"{_user_data_dir}_fresh"
             vp = random.choice([(1366, 768), (1440, 900), (1920, 1080)])
-            cdp_args = [
-                chrome_path,
-                f"--remote-debugging-port={config.cdp_port}",
-                f"--user-data-dir={_user_data_dir}",
-                f"--window-size={vp[0]},{vp[1]}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-blink-features=AutomationControlled",
-                "--window-position=-2400,-2400",
-                *bandwidth_saving_args(),
-                *disable_background_networking_args(),
-                "about:blank",
-            ]
-            logger.info("%s checkout: launching CDP Chrome on port %d", config.airline_name, config.cdp_port)
-            _chrome_proc = _sp.Popen(cdp_args, **stealth_popen_kwargs())
-            import asyncio as _aio
-            await _aio.sleep(3.0)  # give Chrome time to start CDP server
-            try:
-                browser = await pw.chromium.connect_over_cdp(
+
+            async def _connect_cdp(user_data_dir: str, *, label: str):
+                nonlocal _chrome_proc
+                logger.info(
+                    "%s checkout: launching CDP Chrome on port %d using %s",
+                    config.airline_name,
+                    config.cdp_port,
+                    label,
+                )
+                _chrome_proc = await launch_cdp_chrome(
+                    config.cdp_port,
+                    user_data_dir,
+                    use_proxy=config.use_proxy,
+                    extra_args=[f"--window-size={vp[0]},{vp[1]}"],
+                    startup_wait=3.0,
+                )
+                return await pw.chromium.connect_over_cdp(
                     f"http://127.0.0.1:{config.cdp_port}"
                 )
-            except Exception as cdp_err:
-                logger.warning("%s checkout: CDP connect failed: %s", config.airline_name, cdp_err)
-                _chrome_proc.terminate()
+
+            def _stop_cdp_proc() -> None:
+                nonlocal _chrome_proc
+                if not _chrome_proc:
+                    return
+                try:
+                    _chrome_proc.terminate()
+                    _chrome_proc.wait(timeout=5)
+                except Exception:
+                    try:
+                        _chrome_proc.kill()
+                    except Exception:
+                        pass
                 _chrome_proc = None
-                await pw.stop()
-                return CheckoutProgress(
-                    status="failed", airline=config.airline_name, source=config.source_tag,
-                    offer_id=offer_id, booking_url=booking_url,
-                    message=f"CDP Chrome launch failed: {cdp_err}",
-                    elapsed_seconds=time.monotonic() - t0,
+
+            try:
+                browser = await _connect_cdp(_user_data_dir, label="persistent profile")
+            except Exception as cdp_err:
+                logger.warning(
+                    "%s checkout: CDP connect failed with persistent profile: %s",
+                    config.airline_name,
+                    cdp_err,
                 )
+                _stop_cdp_proc()
+                try:
+                    if os.path.isdir(_fallback_user_data_dir):
+                        shutil.rmtree(_fallback_user_data_dir, ignore_errors=True)
+                    os.makedirs(_fallback_user_data_dir, exist_ok=True)
+                    browser = await _connect_cdp(_fallback_user_data_dir, label="fresh fallback profile")
+                except Exception as fallback_err:
+                    logger.warning(
+                        "%s checkout: CDP connect failed with fresh fallback profile: %s",
+                        config.airline_name,
+                        fallback_err,
+                    )
+                    _stop_cdp_proc()
+                    await pw.stop()
+                    return CheckoutProgress(
+                        status="failed", airline=config.airline_name, source=config.source_tag,
+                        offer_id=offer_id, booking_url=booking_url,
+                        message=(
+                            "CDP Chrome launch failed: "
+                            f"persistent profile error: {cdp_err}; "
+                            f"fresh-profile fallback error: {fallback_err}"
+                        ),
+                        elapsed_seconds=time.monotonic() - t0,
+                    )
         else:
+            pw = await async_playwright().start()
             launch_args = [
                 "--disable-blink-features=AutomationControlled",
                 "--window-position=-2400,-2400",
@@ -2313,6 +2622,13 @@ class GenericCheckoutEngine:
             # Stealth (skip for CDP Chrome — it's already a real browser)
             if config.use_cdp_chrome:
                 page = await context.new_page()
+                if config.source_tag == "aireuropa_direct":
+                    try:
+                        from .browser import inject_stealth_js
+
+                        await inject_stealth_js(page)
+                    except Exception:
+                        pass
             else:
                 try:
                     from playwright_stealth import stealth_async
@@ -2323,7 +2639,6 @@ class GenericCheckoutEngine:
 
             # Auto-block heavy resources when using proxy (saves bandwidth)
             from .browser import auto_block_if_proxied
-            await auto_block_if_proxied(page)
 
             # CDP cache disable
             if config.disable_cache:
@@ -2333,13 +2648,11 @@ class GenericCheckoutEngine:
                 except Exception:
                     pass
 
-            step = "started"
             pax = passengers[0] if passengers else FAKE_PASSENGER
 
             # ── Homepage pre-load (Kasada, etc.) ─────────────────────
             if config.homepage_url:
                 logger.info("%s checkout: loading homepage %s", config.airline_name, config.homepage_url)
-                await page.goto(config.homepage_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
                 await page.wait_for_timeout(config.homepage_wait_ms)
                 await self._dismiss_cookies(page, config)
 
@@ -2359,28 +2672,34 @@ class GenericCheckoutEngine:
             # ── Step 1: Navigate to booking page ─────────────────────
 
             # Check for custom checkout handler (e.g. WizzAir needs Vue SPA injection)
+            custom_page_prepared = False
             if config.custom_checkout_handler:
                 handler = getattr(self, config.custom_checkout_handler, None)
                 if handler:
                     result = await handler(page, config, offer, offer_id, booking_url, passengers, t0)
-                    if result is not None:
+                    if isinstance(result, CheckoutProgress):
                         return result
+                    if result == "prepared":
+                        custom_page_prepared = True
                     # If handler returned None, fall through to generic flow
                 else:
                     logger.warning("%s checkout: custom handler '%s' not found, using generic flow",
                                    config.airline_name, config.custom_checkout_handler)
 
-            logger.info("%s checkout: navigating to %s", config.airline_name, booking_url)
-            try:
-                await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
-            except Exception as nav_err:
-                # Some SPAs return HTTP errors but still render via JS — continue if page loaded
-                logger.warning("%s checkout: goto error (%s) — continuing", config.airline_name, str(nav_err)[:100])
-            await page.wait_for_timeout(2000 if not config.homepage_url else 3000)
+            if custom_page_prepared:
+                logger.info("%s checkout: custom handler prepared the checkout surface", config.airline_name)
+            else:
+                logger.info("%s checkout: navigating to %s", config.airline_name, booking_url)
+                try:
+                    await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+                except Exception as nav_err:
+                    # Some SPAs return HTTP errors but still render via JS — continue if page loaded
+                    logger.warning("%s checkout: goto error (%s) — continuing", config.airline_name, str(nav_err)[:100])
+                await page.wait_for_timeout(2000 if not config.homepage_url else 3000)
             await self._dismiss_cookies(page, config)
 
             # Guard against SPA redirects (e.g. Ryanair → check-in page)
-            if booking_url.split("?")[0] not in page.url:
+            if not custom_page_prepared and booking_url.split("?")[0] not in page.url:
                 logger.warning("%s checkout: page redirected to %s — retrying", config.airline_name, page.url[:120])
                 try:
                     await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
@@ -2391,12 +2710,65 @@ class GenericCheckoutEngine:
 
             if config.source_tag == "aireuropa_direct":
                 await self._prepare_aireuropa_checkout_results(page, offer)
+            elif config.source_tag == "airasia_direct":
+                await self._prepare_airasia_results(page, booking_url)
+            elif config.source_tag == "volaris_direct":
+                await self._prepare_volaris_checkout_results(page, offer)
 
             step = "page_loaded"
+
+            security_gate = await self._detect_security_gate(page)
+            if security_gate:
+                screenshot = await take_screenshot_b64(page)
+                elapsed = time.monotonic() - t0
+                blocked_details = self._merge_checkout_details(
+                    captured_details,
+                    {
+                        "blocker": "anti_bot_verification",
+                        "checkout_page": "blocked",
+                        "current_url": security_gate.get("current_url") or booking_url,
+                        "page_title": security_gate.get("page_title") or "",
+                        "security_gate_observation": "Automation was blocked by a CAPTCHA or browser verification gate on the reachable airline surface.",
+                    },
+                )
+                return CheckoutProgress(
+                    status="in_progress",
+                    step=step,
+                    step_index=CHECKOUT_STEPS.index(step) if step in CHECKOUT_STEPS else 0,
+                    airline=config.airline_name,
+                    source=config.source_tag,
+                    offer_id=offer_id,
+                    total_price=offer.get("price", 0.0),
+                    currency=offer.get("currency", "EUR"),
+                    booking_url=security_gate.get("current_url") or booking_url,
+                    screenshot_b64=screenshot,
+                    message=(
+                        f"{config.airline_name} checkout is blocked by CAPTCHA or anti-bot verification. "
+                        "Manual verification is required before automation can continue."
+                    ),
+                    can_complete_manually=bool(security_gate.get("current_url") or booking_url),
+                    elapsed_seconds=elapsed,
+                    details=blocked_details,
+                )
 
             # ── Step 2: Select flights ───────────────────────────────
             try:
                 await page.wait_for_selector(config.flight_cards_selector, timeout=config.flight_cards_timeout)
+            except Exception:
+                if config.source_tag == "airasia_direct":
+                    await self._prepare_airasia_results(page, booking_url)
+                    try:
+                        await page.wait_for_selector(config.flight_cards_selector, timeout=5000)
+                    except Exception:
+                        pass
+                elif config.source_tag == "volaris_direct":
+                    await self._prepare_volaris_checkout_results(page, offer)
+                    try:
+                        await page.wait_for_selector(config.flight_cards_selector, timeout=5000)
+                    except Exception:
+                        pass
+            try:
+                await page.wait_for_selector(config.flight_cards_selector, timeout=1000)
             except Exception:
                 logger.warning("%s checkout: flight cards not visible", config.airline_name)
                 # Debug: screenshot + page URL + visible button count
@@ -2456,7 +2828,14 @@ class GenericCheckoutEngine:
                         await safe_click(page, sel, timeout=2000, desc="fare loop")
                     await self._dismiss_cookies(page, config)
             else:
-                if await safe_click_first(page, config.fare_selectors, timeout=3000, desc="select fare"):
+                fare_clicked = False
+                if config.source_tag == "aireuropa_direct":
+                    fare_clicked = await self._click_aireuropa_inline_fare(page)
+                elif config.source_tag == "aircairo_direct":
+                    fare_clicked = await self._click_aircairo_fare(page)
+                if not fare_clicked:
+                    fare_clicked = await safe_click_first(page, config.fare_selectors, timeout=3000, desc="select fare")
+                if fare_clicked:
                     await page.wait_for_timeout(1000)
                     await safe_click_first(page, config.fare_upsell_decline, timeout=1500, desc="decline upsell")
 
@@ -2479,14 +2858,12 @@ class GenericCheckoutEngine:
             # Title
             title_text = "Mr" if pax.get("gender", "m") == "m" else "Ms"
             if config.title_mode == "dropdown":
-                if await safe_click_first(page, config.title_dropdown_selectors, timeout=2000, desc="title dropdown"):
-                    await page.wait_for_timeout(500)
-                    await safe_click(page, f"button:has-text('{title_text}')", timeout=2000)
+                await self._choose_dropdown_option(page, config.title_dropdown_selectors, title_text, desc="title dropdown")
             elif config.title_mode == "select":
                 try:
                     await page.select_option(config.title_select_selector, label=title_text, timeout=2000)
                 except Exception:
-                    await safe_click(page, f"button:has-text('{title_text}')", timeout=1500, desc=f"title {title_text}")
+                    await self._choose_dropdown_option(page, [config.title_select_selector], title_text, desc=f"title {title_text}")
 
             # First name
             await safe_fill_first(page, config.first_name_selectors, pax.get("given_name", "Test"))
@@ -2518,14 +2895,13 @@ class GenericCheckoutEngine:
 
             # Nationality (if required)
             if config.nationality_enabled:
-                for sel in config.nationality_selectors:
-                    if await safe_fill(page, sel, "GB"):
-                        await page.wait_for_timeout(500)
-                        try:
-                            await page.locator(config.nationality_dropdown_item).first.click(timeout=2000)
-                        except Exception:
-                            pass
-                        break
+                await self._fill_autocomplete_field(
+                    page,
+                    config.nationality_selectors,
+                    config.nationality_fill_value or "GB",
+                    config.nationality_dropdown_item,
+                    desc="nationality",
+                )
 
             # Travel document fields (if required)
             if config.document_number_selectors:
@@ -2545,15 +2921,83 @@ class GenericCheckoutEngine:
                 document_expiry = self._format_checkout_date(document_expiry, default="15/06/2030")
                 await safe_fill_first(page, config.document_expiry_selectors, document_expiry)
 
+            if config.issuance_country_selectors:
+                await self._fill_autocomplete_field(
+                    page,
+                    config.issuance_country_selectors,
+                    config.issuance_country_fill_value or config.nationality_fill_value or "GB",
+                    config.issuance_country_dropdown_item,
+                    desc="issuance country",
+                )
+
             if config.contact_section_expand_selectors:
                 await safe_click_first(page, config.contact_section_expand_selectors, timeout=2000, desc="expand contact details")
                 await page.wait_for_timeout(500)
 
+            if config.contact_first_name_selectors:
+                await safe_fill_first(page, config.contact_first_name_selectors, pax.get("given_name", "Test"))
+
+            if config.contact_last_name_selectors:
+                await safe_fill_first(page, config.contact_last_name_selectors, pax.get("family_name", "Traveler"))
+
             # Email
             await safe_fill_first(page, config.email_selectors, pax.get("email", "test@example.com"))
 
+            if config.confirm_email_selectors:
+                await safe_fill_first(page, config.confirm_email_selectors, pax.get("email", "test@example.com"))
+
+            if config.phone_type_selectors:
+                await self._choose_dropdown_option(
+                    page,
+                    config.phone_type_selectors,
+                    option_selectors=config.phone_type_option_selectors,
+                    desc="phone type",
+                )
+
+            if config.phone_country_code_selectors:
+                await self._fill_autocomplete_field(
+                    page,
+                    config.phone_country_code_selectors,
+                    config.phone_country_code_value,
+                    config.phone_country_code_dropdown_item,
+                    desc="phone country code",
+                )
+
             # Phone
-            await safe_fill_first(page, config.phone_selectors, pax.get("phone_number", "+441234567890"))
+            phone_value = pax.get("phone_number", "+441234567890")
+            if config.phone_digits_only:
+                digits_only = re.sub(r"\D", "", phone_value)
+                if digits_only:
+                    phone_value = digits_only
+            if config.phone_local_digits_count > 0 and len(phone_value) > config.phone_local_digits_count:
+                phone_value = phone_value[-config.phone_local_digits_count:]
+            if config.phone_grouping and phone_value:
+                grouped_parts: list[str] = []
+                offset = 0
+                for group_size in config.phone_grouping:
+                    part = phone_value[offset:offset + group_size]
+                    if not part:
+                        break
+                    grouped_parts.append(part)
+                    offset += group_size
+                remainder = phone_value[offset:]
+                if remainder:
+                    grouped_parts.append(remainder)
+                phone_value = " ".join(grouped_parts)
+            if config.phone_type_delay_ms > 0:
+                await safe_type_first(
+                    page,
+                    config.phone_selectors,
+                    phone_value,
+                    delay_ms=config.phone_type_delay_ms,
+                    blur=True,
+                )
+            else:
+                await safe_fill_first(page, config.phone_selectors, phone_value)
+
+            if config.consent_checkbox_selectors:
+                await safe_click_first(page, config.consent_checkbox_selectors, timeout=2000, desc="accept consent")
+                await page.wait_for_timeout(300)
 
             captured_details = self._merge_checkout_details(
                 captured_details,
@@ -2586,8 +3030,27 @@ class GenericCheckoutEngine:
                             pass
 
             # Continue past passengers
-            await safe_click_first(page, config.passenger_continue_selectors, timeout=2000, desc="continue after passengers")
-            await page.wait_for_timeout(1500)
+            if config.pre_passenger_continue_settle_ms > 0:
+                await page.wait_for_timeout(config.pre_passenger_continue_settle_ms)
+            for attempt in range(max(config.passenger_continue_retries, 0) + 1):
+                await safe_click_first(page, config.passenger_continue_selectors, timeout=2000, desc="continue after passengers")
+                transition_wait_remaining = max(config.post_passenger_transition_timeout_ms, 0)
+                transition_snapshot = None
+                transition_page = ""
+                transition_url = ""
+                while transition_wait_remaining > 0:
+                    wait_chunk = min(1000, transition_wait_remaining)
+                    await page.wait_for_timeout(wait_chunk)
+                    transition_wait_remaining -= wait_chunk
+                    transition_snapshot = await self._snapshot_checkout_page(page)
+                    transition_page = self._infer_checkout_page(captured_details, transition_snapshot)
+                    transition_url = (transition_snapshot.get("current_url") or "").lower()
+                    if "cashier.airasia.com/payment" in transition_url or transition_page not in {"passengers", "guest_details"}:
+                        break
+                if "cashier.airasia.com/payment" in transition_url or transition_page not in {"passengers", "guest_details"}:
+                    break
+                if attempt < config.passenger_continue_retries:
+                    await page.wait_for_timeout(800)
             await self._dismiss_cookies(page, config)
 
             captured_details = self._merge_checkout_details(
@@ -2676,11 +3139,23 @@ class GenericCheckoutEngine:
 
             elapsed = time.monotonic() - t0
             if final_checkout_page != "payment":
+                blocker_code = "payment_page_not_reached"
+                status_message = (
+                    f"{config.airline_name} checkout did not reach payment. "
+                    f"Current surface looks like '{(final_checkout_page or 'unknown').replace('_', ' ')}'. "
+                    f"Visible price: {page_price} {offer.get('currency', 'EUR')}."
+                )
+                if final_checkout_page == "blocked":
+                    blocker_code = "anti_bot_verification"
+                    status_message = (
+                        f"{config.airline_name} checkout is blocked by CAPTCHA or anti-bot verification. "
+                        "Manual verification is required before automation can continue."
+                    )
                 step = self._checkout_step_for_page(final_checkout_page)
                 blocker_details = self._merge_checkout_details(
                     captured_details,
                     {
-                        "blocker": "payment_page_not_reached",
+                        "blocker": blocker_code,
                         "checkout_page": final_checkout_page or "unknown",
                         "current_url": final_snapshot.get("current_url") or booking_url,
                         "page_title": final_snapshot.get("page_title") or "",
@@ -2697,17 +3172,14 @@ class GenericCheckoutEngine:
                     currency=offer.get("currency", "EUR"),
                     booking_url=final_snapshot.get("current_url") or booking_url,
                     screenshot_b64=screenshot,
-                    message=(
-                        f"{config.airline_name} checkout did not reach payment. "
-                        f"Current surface looks like '{(final_checkout_page or 'unknown').replace('_', ' ')}'. "
-                        f"Visible price: {page_price} {offer.get('currency', 'EUR')}."
-                    ),
+                    message=status_message,
                     can_complete_manually=bool(booking_url),
                     elapsed_seconds=elapsed,
                     details=blocker_details,
                 )
 
             step = "payment_page_reached"
+            current_url = final_snapshot.get("current_url") or booking_url
             return CheckoutProgress(
                 status="payment_page_reached",
                 step=step,
@@ -2717,15 +3189,15 @@ class GenericCheckoutEngine:
                 offer_id=offer_id,
                 total_price=page_price,
                 currency=offer.get("currency", "EUR"),
-                booking_url=booking_url,
+                booking_url=current_url,
                 screenshot_b64=screenshot,
                 message=(
                     f"{config.airline_name} checkout complete — reached payment page in {elapsed:.0f}s. "
                     f"Price: {page_price} {offer.get('currency', 'EUR')}. "
                     f"Payment NOT submitted (safe mode). "
-                    f"Complete manually at: {booking_url}"
+                    f"Complete manually at: {current_url}"
                 ),
-                can_complete_manually=True,
+                can_complete_manually=bool(current_url),
                 elapsed_seconds=elapsed,
                 details=captured_details,
             )
@@ -2766,6 +3238,38 @@ class GenericCheckoutEngine:
             # Synchronous kill — guarantees browser dies even on CancelledError
             _force_kill_browser()
 
+    async def _detect_security_gate(self, page) -> dict | None:
+        snapshot = await self._snapshot_checkout_page(page)
+        title = str(snapshot.get("page_title") or "").strip().lower()
+        body = str(snapshot.get("body_snippet") or "").strip().lower()
+        combined = f"{title} {body}"
+        tokens = (
+            "pardon our interruption",
+            "made us think you were a bot",
+            "captcha below",
+            "i am human",
+            "hcaptcha",
+            "incident id",
+            "performing security verification",
+            "verifies you are not a bot",
+            "checking your browser",
+            "just a moment",
+            "please wait while we verify",
+        )
+        if any(token in combined for token in tokens):
+            return snapshot
+        try:
+            challenge_visible = await page.evaluate(
+                """() => Boolean(
+                    document.querySelector("iframe[src*='hcaptcha'], iframe[title*='hCaptcha'], .h-captcha, [data-hcaptcha-response], #challenge-running")
+                )"""
+            )
+            if challenge_visible:
+                return snapshot
+        except Exception:
+            pass
+        return None
+
     @staticmethod
     def _format_checkout_date(value: str, *, default: str) -> str:
         text = (value or default).strip()
@@ -2805,10 +3309,41 @@ class GenericCheckoutEngine:
         details = details or {}
         snapshot = snapshot or {}
         checkout_page = str(details.get("checkout_page") or "").strip().lower()
+        if checkout_page == "guest_details":
+            checkout_page = "passengers"
         current_url = str(snapshot.get("current_url") or "").strip().lower()
         title = str(snapshot.get("page_title") or "").strip().lower()
         body = str(snapshot.get("body_snippet") or "").strip().lower()
         combined = " ".join(part for part in (title, body) if part)
+        security_terms = (
+            "pardon our interruption",
+            "made us think you were a bot",
+            "captcha below",
+            "i am human",
+            "hcaptcha",
+            "incident id",
+            "performing security verification",
+            "verifies you are not a bot",
+            "checking your browser",
+            "just a moment",
+            "please wait while we verify",
+        )
+        if any(term in combined for term in security_terms):
+            return "blocked"
+        passenger_url_terms = ("/traveler", "/traveller", "/passenger", "guest-details")
+        passenger_form_terms = (
+            "enter your information",
+            "personal information",
+            "passport details",
+            "date of birth",
+            "document number",
+            "confirm email",
+            "remember passenger information",
+        )
+        if any(term in current_url for term in passenger_url_terms) or any(term in combined for term in passenger_form_terms):
+            return "passengers"
+        checkout_url_terms = ("/checkout", "guest-details", "add-ons", "addons", "seat", "payment")
+        on_checkout_surface = any(term in current_url for term in checkout_url_terms)
 
         payment_url_terms = ("/payment", "payment", "/review", "review-and-pay", "review-and-book")
         payment_text_terms = (
@@ -2836,11 +3371,28 @@ class GenericCheckoutEngine:
         if any(term in current_url for term in payment_url_terms) or any(term in combined for term in payment_text_terms):
             return "payment"
 
-        search_url_terms = ("/search", "fullsearch", "flight-search", "select-flight", "results")
+        passenger_terms = ("passenger details", "traveller details", "traveler details", "guest details", "contact details")
+        seat_terms = ("seat map", "select seat", "choose your seat", "hot seat")
+        extras_terms = ("baggage", "checked bag", "bags", "add-ons", "add ons", "extras")
+
+        if on_checkout_surface and checkout_page:
+            return checkout_page
+
+        if on_checkout_surface and any(term in combined for term in passenger_terms):
+            return "passengers"
+
+        if on_checkout_surface and any(term in combined for term in seat_terms):
+            return "seats"
+
+        if on_checkout_surface and any(term in combined for term in extras_terms):
+            return "extras"
+
+        search_url_terms = ("/search", "fullsearch", "flight-search", "select-flight", "results", "/availability", "booking/availability")
         search_text_terms = (
             "select cheap flights",
             "select flight",
             "choose flight",
+            "flight selection",
             "search results",
             "departure flights",
             "departing flights",
@@ -2856,15 +3408,12 @@ class GenericCheckoutEngine:
         if checkout_page:
             return checkout_page
 
-        passenger_terms = ("passenger details", "traveller details", "traveler details", "guest details", "contact details")
         if any(term in combined for term in passenger_terms):
             return "passengers"
 
-        seat_terms = ("seat map", "select seat", "choose your seat", "hot seat")
         if any(term in combined for term in seat_terms):
             return "seats"
 
-        extras_terms = ("baggage", "checked bag", "bags", "add-ons", "add ons", "extras")
         if any(term in combined for term in extras_terms):
             return "extras"
 
@@ -2877,6 +3426,8 @@ class GenericCheckoutEngine:
             "seats": "extras_skipped",
             "extras": "passengers_filled",
             "passengers": "login_bypassed",
+            "guest_details": "login_bypassed",
+            "blocked": "page_loaded",
             "select_flight": "page_loaded",
         }
         return mapping.get((checkout_page or "").strip().lower(), "started")
@@ -2995,6 +3546,11 @@ class GenericCheckoutEngine:
 
         logger.info("Air Europa checkout: redirected to homepage, replaying search widget for %s→%s", origin, destination)
         client = AirEuropaConnectorClient(timeout=60)
+        try:
+            await page.goto(client.HOMEPAGE, wait_until="domcontentloaded", timeout=25000)
+            await asyncio.sleep(2.0)
+        except Exception as exc:
+            logger.debug("Air Europa checkout: clean homepage reset failed: %s", exc)
         await _dismiss_overlays(page)
         await page.evaluate("""() => {
             document.querySelectorAll('.cdk-overlay-backdrop, .cdk-overlay-dark-backdrop').forEach(el => el.remove());
@@ -3038,18 +3594,49 @@ class GenericCheckoutEngine:
             return
 
         await page.evaluate("""() => {
-            const btn = document.querySelector('button.ae-btn-block.ae-btn-primary');
+            const btn = document.querySelector("button[data-testid='btn-searcher-submit-flights'], button[data-test='btn-searcher-submit-flights'], button[data-jto='btn-searcher-submit-flights']");
             if (btn && btn.offsetHeight > 0) { btn.click(); return; }
             const btns = document.querySelectorAll('button');
             for (const b of btns) {
                 const t = (b.textContent || '').trim().toLowerCase();
-                if ((t === 'search' || t.includes('search')) && b.offsetHeight > 0) {
+                if ((t === 'search flights' || t.includes('search flights') || t === 'search' || t.includes('search')) && b.offsetHeight > 0) {
                     b.click();
                     return;
                 }
             }
         }""")
         await asyncio.sleep(4.0)
+
+        try:
+            error_modal = page.locator("text=Sorry, there was an error").first
+            if await error_modal.count() > 0 and await error_modal.is_visible(timeout=1500):
+                logger.info("Air Europa checkout: retrying after blocking error modal")
+                await safe_click_first(
+                    page,
+                    [
+                        "button:has-text('Try again')",
+                        "button[aria-label='Close']",
+                        "button:has-text('Close')",
+                    ],
+                    timeout=2500,
+                    desc="Air Europa error modal",
+                )
+                await asyncio.sleep(1.5)
+                await page.evaluate("""() => {
+                    const btn = document.querySelector("button[data-testid='btn-searcher-submit-flights'], button[data-test='btn-searcher-submit-flights'], button[data-jto='btn-searcher-submit-flights']");
+                    if (btn && btn.offsetHeight > 0) { btn.click(); return; }
+                    const btns = document.querySelectorAll('button');
+                    for (const b of btns) {
+                        const t = (b.textContent || '').trim().toLowerCase();
+                        if ((t === 'search flights' || t.includes('search flights') || t === 'search' || t.includes('search')) && b.offsetHeight > 0) {
+                            b.click();
+                            return;
+                        }
+                    }
+                }""")
+                await asyncio.sleep(4.0)
+        except Exception:
+            pass
 
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -3065,6 +3652,926 @@ class GenericCheckoutEngine:
 
         await _dismiss_overlays(page)
 
+    async def _prepare_jetsmart_checkout_results(self, page, config: AirlineCheckoutConfig, offer: dict) -> bool:
+        segments = ((offer.get("outbound") or {}).get("segments") or []) if isinstance(offer.get("outbound"), dict) else []
+        if not segments:
+            return False
+
+        origin = str(segments[0].get("origin") or "").strip().upper()
+        destination = str(segments[-1].get("destination") or "").strip().upper()
+        departure_value = str(segments[0].get("departure") or "").strip()
+        departure_date = re.split(r"[T ]", departure_value, maxsplit=1)[0] if departure_value else ""
+        if not origin or not destination or not departure_date:
+            return False
+
+        try:
+            target_date = datetime.strptime(departure_date, "%Y-%m-%d").date()
+        except ValueError:
+            return False
+
+        month_names_es = {
+            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo",
+            6: "Junio", 7: "Julio", 8: "Agosto", 9: "Septiembre",
+            10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+        }
+        month_names_en = {
+            1: "January", 2: "February", 3: "March", 4: "April", 5: "May",
+            6: "June", 7: "July", 8: "August", 9: "September",
+            10: "October", 11: "November", 12: "December",
+        }
+        month_es = f"{month_names_es[target_date.month]} {target_date.year}"
+        month_en = f"{month_names_en[target_date.month]} {target_date.year}"
+
+        from . import jetsmart as jetsmart_module
+
+        helper = jetsmart_module.JetSmartConnectorClient(timeout=60.0)
+        market = jetsmart_module._MARKET_MAP.get(origin, "cl")
+        homepage = f"https://jetsmart.com/{market}/en"
+
+        try:
+            from .browser import auto_block_if_proxied
+            await auto_block_if_proxied(page)
+        except Exception:
+            pass
+
+        try:
+            from playwright_stealth import stealth_async
+            await stealth_async(page)
+        except Exception:
+            pass
+
+        logger.info("JetSMART checkout: replaying homepage search for %s→%s", origin, destination)
+
+        try:
+            await page.goto(homepage, wait_until="domcontentloaded", timeout=config.goto_timeout)
+        except Exception as nav_err:
+            logger.warning("JetSMART checkout: homepage goto failed (%s)", str(nav_err)[:100])
+            return False
+
+        await page.wait_for_timeout(3000)
+        await helper._remove_overlays(page)
+        await page.wait_for_timeout(500)
+        await helper._set_one_way(page)
+        await page.wait_for_timeout(500)
+        await helper._remove_overlays(page)
+
+        if not await helper._fill_airport(page, origin, is_origin=True):
+            logger.warning("JetSMART checkout: could not select origin %s", origin)
+            return False
+        await page.wait_for_timeout(1000)
+
+        if not await helper._fill_airport(page, destination, is_origin=False):
+            logger.warning("JetSMART checkout: could not select destination %s", destination)
+            return False
+        await page.wait_for_timeout(500)
+
+        clicked_date = await page.evaluate(
+            r'''([day, monthEs, monthEn]) => {
+                const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                const visible = (element) => {
+                    if (!element) return false;
+                    const style = window.getComputedStyle(element);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+                        return false;
+                    }
+                    return !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
+                };
+
+                const input = document.querySelector('input[placeholder="Fecha de ida"], input[placeholder="Departure"], input[placeholder="Date"]');
+                if (input && visible(input)) {
+                    input.click();
+                }
+
+                const dayStr = String(day);
+                const monthHeadings = Array.from(document.querySelectorAll('div')).filter((element) => {
+                    if (!visible(element)) return false;
+                    const text = normalize(element.textContent || '');
+                    return text === monthEs || text === monthEn;
+                });
+
+                for (const heading of monthHeadings) {
+                    let container = heading;
+                    for (let depth = 0; depth < 5 && container; depth += 1) {
+                        const text = normalize(container.innerText || '');
+                        if (text.includes(monthEs) || text.includes(monthEn)) {
+                            const cells = Array.from(container.querySelectorAll('div')).filter((element) => {
+                                if (!visible(element)) return false;
+                                const rect = element.getBoundingClientRect();
+                                const text = normalize(element.textContent || '');
+                                return text === dayStr && rect.width > 0 && rect.width <= 80 && rect.height > 0 && rect.height <= 80;
+                            });
+                            for (const cell of cells) {
+                                cell.click();
+                                return true;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }
+
+                return false;
+            }''',
+            [target_date.day, month_es, month_en],
+        )
+        if not clicked_date:
+            logger.warning("JetSMART checkout: could not select departure date %s", departure_date)
+            return False
+        await page.wait_for_timeout(500)
+
+        await helper._click_search(page)
+
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            await self._dismiss_cookies(page, config)
+            await helper._remove_overlays(page)
+            try:
+                if "chrome-error://" not in page.url.lower() and await page.locator(config.flight_cards_selector).count() > 0:
+                    return True
+            except Exception:
+                pass
+            if "chrome-error://" in page.url.lower():
+                break
+            await page.wait_for_timeout(500)
+
+        logger.warning("JetSMART checkout: homepage replay did not surface results (url=%s)", page.url[:120])
+        return False
+
+    async def _jetsmart_checkout(self, page, config, offer, offer_id, booking_url, passengers, t0):
+        if await self._prepare_jetsmart_checkout_results(page, config, offer):
+            return "prepared"
+        return None
+
+    async def _prepare_volaris_checkout_results(self, page, offer: dict) -> None:
+        try:
+            current_url = page.url.lower()
+        except Exception:
+            return
+
+        if "volaris.com" not in current_url:
+            return
+
+        segments = ((offer.get("outbound") or {}).get("segments") or []) if isinstance(offer.get("outbound"), dict) else []
+        if not segments:
+            return
+
+        origin = str(segments[0].get("origin") or "").strip().upper()
+        destination = str(segments[-1].get("destination") or "").strip().upper()
+        departure_value = str(segments[0].get("departure") or "").strip()
+        departure_date = departure_value.split("T", 1)[0] if departure_value else ""
+        if not origin or not destination or not departure_date:
+            return
+
+        try:
+            target_date = datetime.strptime(departure_date, "%Y-%m-%d").date()
+        except ValueError:
+            return
+
+        logger.info("Volaris checkout: replaying proven homepage search for %s→%s", origin, destination)
+
+        try:
+            await page.goto("https://www.volaris.com/es-mx", wait_until="domcontentloaded", timeout=45000)
+        except Exception:
+            return
+
+        from .volaris import VolarisConnectorClient
+
+        helper = VolarisConnectorClient(timeout=60.0)
+        await helper._dismiss_cookies(page)
+        await page.wait_for_timeout(500)
+        await helper._dismiss_cookies(page)
+
+        await helper._set_one_way(page)
+        await page.wait_for_timeout(500)
+
+        if not await helper._fill_airport_field(page, "From", "Desde", origin, 0):
+            return
+        await page.wait_for_timeout(500)
+
+        if not await helper._fill_airport_field(page, "To", "A", destination, 1):
+            return
+        await page.wait_for_timeout(500)
+
+        request_stub = type("_VolarisRequest", (), {"date_from": target_date})()
+        if not await helper._fill_date(page, request_stub):
+            return
+        await page.wait_for_timeout(300)
+
+        await helper._click_search(page)
+        await page.wait_for_timeout(4000)
+
+    async def _fill_volaris_airport(self, page, selector: str, iata: str, *, desc: str) -> bool:
+        if not selector or not iata:
+            return False
+        try:
+            field = page.locator(selector).first
+            if await field.count() == 0:
+                return False
+            await field.click(timeout=3000)
+            await page.wait_for_timeout(200)
+            try:
+                await field.fill("")
+            except Exception:
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+            await page.keyboard.type(iata, delay=80)
+            await page.wait_for_timeout(1200)
+
+            exact_option = page.locator(f"[role='option']:has([data-att='{iata.upper()}'])").first
+            if await exact_option.count() > 0:
+                await exact_option.click(timeout=3000)
+                await page.wait_for_timeout(300)
+                return True
+
+            partial_option = page.get_by_role("option").filter(
+                has_text=re.compile(re.escape(iata), re.IGNORECASE)
+            ).first
+            if await partial_option.count() > 0:
+                await partial_option.click(timeout=3000)
+                await page.wait_for_timeout(300)
+                return True
+
+            await page.keyboard.press("ArrowDown")
+            await page.wait_for_timeout(150)
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(300)
+            return True
+        except Exception as exc:
+            logger.debug("Volaris checkout: failed to fill %s airport %s: %s", desc, iata, exc)
+            return False
+
+    async def _select_volaris_date(self, page, target_date) -> bool:
+        day_str = target_date.strftime("%d/%m/%Y")
+        if not await safe_click_first(
+            page,
+            [
+                "#date-input-11-trigger",
+                "button[id^='date-input-'][id$='-trigger']",
+                "[aria-label='fc-booking-departure-date-aria-label']",
+            ],
+            timeout=3000,
+            desc="Volaris departure date",
+        ):
+            return False
+        await page.wait_for_timeout(500)
+
+        for _ in range(12):
+            day_button = page.locator(f"[role='gridcell'][aria-label*='{day_str}']").first
+            if await day_button.count() > 0:
+                await day_button.click(timeout=3000)
+                await page.wait_for_timeout(300)
+                await safe_click_first(
+                    page,
+                    ["button:has-text('Confirmar')", "button:has-text('Confirm')"],
+                    timeout=2000,
+                    desc="Volaris confirm date",
+                )
+                await page.wait_for_timeout(300)
+                return True
+            if not await safe_click_first(
+                page,
+                [
+                    "[aria-label='fc-booking-date-selector-next-month']",
+                    "[aria-label*='next-month']",
+                    "button[aria-label*='Next month']",
+                ],
+                timeout=1500,
+                desc="Volaris next month",
+            ):
+                break
+            await page.wait_for_timeout(300)
+        return False
+
+    async def _click_volaris_visible_text(self, page, texts: list[str]) -> bool:
+        if not texts:
+            return False
+        try:
+            clicked = await page.evaluate(
+                """(targets) => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const visible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                    };
+                    const nodes = Array.from(document.querySelectorAll(
+                        'button, a, label, mat-radio-button, .mat-radio-label, [role="button"], span, div'
+                    ));
+                    for (const target of targets) {
+                        const wanted = normalize(target);
+                        for (const node of nodes) {
+                            const text = normalize(node.innerText || node.textContent || '');
+                            if (!text || !text.includes(wanted) || !visible(node)) {
+                                continue;
+                            }
+                            node.scrollIntoView({ block: 'center', inline: 'center' });
+                            if (typeof node.click === 'function') {
+                                node.click();
+                            } else {
+                                node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                            }
+                            return true;
+                        }
+                    }
+                    return false;
+                }""",
+                texts,
+            )
+        except Exception:
+            return False
+        if clicked:
+            await page.wait_for_timeout(600)
+            return True
+        return False
+
+    async def _click_volaris_first_visible(self, page, selectors: list[str], *, timeout: int = 3000, desc: str = "") -> bool:
+        if not selectors:
+            return False
+        deadline = time.monotonic() + max(timeout, 250) / 1000.0
+        last_error = None
+        while time.monotonic() < deadline:
+            for selector in selectors:
+                locator = page.locator(selector)
+                try:
+                    count = await locator.count()
+                except Exception as exc:
+                    last_error = exc
+                    continue
+                for index in range(count):
+                    candidate = locator.nth(index)
+                    try:
+                        if not await candidate.is_visible():
+                            continue
+                        await candidate.scroll_into_view_if_needed()
+                        await page.wait_for_timeout(150)
+                        try:
+                            await candidate.click(timeout=1000)
+                        except Exception:
+                            handle = await candidate.element_handle()
+                            if handle is None:
+                                raise
+                            await page.evaluate(
+                                """(element) => {
+                                    if (typeof element.click === 'function') {
+                                        element.click();
+                                        return;
+                                    }
+                                    element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                                }""",
+                                handle,
+                            )
+                        await page.wait_for_timeout(500)
+                        logger.debug("Volaris checkout: clicked %s via %s", desc or "selector", selector)
+                        return True
+                    except Exception as exc:
+                        last_error = exc
+                        continue
+            await page.wait_for_timeout(200)
+        logger.debug("Volaris checkout: no visible selector matched for %s: %s", desc or "selector", last_error)
+        return False
+
+    async def _click_volaris_fare_select(self, page) -> bool:
+        if await self._click_volaris_first_visible(
+            page,
+            [
+                ".flightItem.faresVisibleBox button.btn-select",
+                ".flightItem.faresVisibleBox button:has-text('Seleccionar')",
+                ".flightItem.faresVisibleBox .mat-button-wrapper:has-text('Seleccionar')",
+                ".faresVisibleBox mbs-flight-fares button.btn-select",
+                ".faresVisibleBox button:has-text('Seleccionar')",
+                "mbs-flight-fares button.btn-select",
+            ],
+            timeout=4000,
+            desc="Volaris fare select",
+        ):
+            return True
+        return await self._click_volaris_visible_text(page, ["Seleccionar"])
+
+    async def _open_volaris_flight(self, page, dep_label: str, flight_numbers: list[str] | None = None) -> bool:
+        if not dep_label and not flight_numbers:
+            return False
+        try:
+            clicked = await page.evaluate(
+                """({ depTime, flightNos }) => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const compact = (value) => normalize(value).replace(/\s+/g, '');
+                    const items = Array.from(document.querySelectorAll('.flightItem'));
+                    let best = null;
+                    for (const item of items) {
+                        const text = normalize(item.innerText || item.textContent || '');
+                        const textCompact = compact(text);
+                        let score = 0;
+                        if (depTime && text.includes(normalize(depTime))) {
+                            score += 2;
+                        }
+                        for (const flightNo of flightNos || []) {
+                            const wanted = compact(flightNo);
+                            if (!wanted) {
+                                continue;
+                            }
+                            if (textCompact.includes(wanted)) {
+                                score += 1;
+                            }
+                        }
+                        if (!score) {
+                            continue;
+                        }
+                        if (!best || score > best.score) {
+                            best = { item, score };
+                        }
+                    }
+                    if (!best) {
+                        return false;
+                    }
+                    const opener = best.item.querySelector('a.panel-open, [role="button"].panel-open');
+                    if (!opener) {
+                        return false;
+                    }
+                    opener.scrollIntoView({ block: 'center', inline: 'center' });
+                    opener.click();
+                    return true;
+                }""",
+                {"depTime": dep_label, "flightNos": flight_numbers or []},
+            )
+        except Exception:
+            return False
+        if clicked:
+            await page.wait_for_timeout(1000)
+            return True
+        return False
+
+    async def _open_volaris_flight_by_time(self, page, dep_label: str) -> bool:
+        return await self._open_volaris_flight(page, dep_label, [])
+
+    async def _volaris_checkout(self, page, config, offer, offer_id, booking_url, passengers, t0):
+        step = "started"
+        captured_details: dict[str, Any] = {}
+
+        try:
+            logger.info("%s checkout: navigating to %s", config.airline_name, booking_url)
+            try:
+                await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+            except Exception as nav_err:
+                logger.warning("%s checkout: goto error (%s) — continuing", config.airline_name, str(nav_err)[:100])
+            await page.wait_for_timeout(3000)
+            await self._dismiss_cookies(page, config)
+
+            if booking_url.split("?")[0] not in page.url:
+                logger.warning("%s checkout: page redirected to %s — retrying", config.airline_name, page.url[:120])
+                try:
+                    await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(3000)
+                await self._dismiss_cookies(page, config)
+
+            await self._prepare_volaris_checkout_results(page, offer)
+            try:
+                await page.wait_for_selector(config.flight_cards_selector, timeout=config.flight_cards_timeout)
+            except Exception:
+                pass
+            settle_deadline = time.monotonic() + 10
+            while time.monotonic() < settle_deadline:
+                try:
+                    if "/flight" in page.url.lower() and await page.locator(config.flight_cards_selector).count() > 0:
+                        break
+                except Exception:
+                    pass
+                await page.wait_for_timeout(500)
+            await self._dismiss_cookies(page, config)
+
+            outbound = offer.get("outbound", {}) if isinstance(offer.get("outbound"), dict) else {}
+            segments = outbound.get("segments", []) if isinstance(outbound, dict) else []
+            dep_label = ""
+            flight_numbers: list[str] = []
+            if segments:
+                dep_value = str(segments[0].get("departure") or "")
+                if dep_value:
+                    try:
+                        dep_dt = datetime.fromisoformat(dep_value.replace("Z", "+00:00"))
+                        dep_label = dep_dt.strftime("%I:%M %p").lstrip("0")
+                    except Exception:
+                        dep_label = ""
+                for segment in segments:
+                    flight_no = str(segment.get("flight_no") or "").strip().upper()
+                    if not flight_no:
+                        continue
+                    flight_numbers.append(flight_no)
+                    compact_match = re.match(r"^([A-Z]{2})(\d+)$", flight_no)
+                    if compact_match:
+                        flight_numbers.append(f"{compact_match.group(1)} {compact_match.group(2)}")
+
+            opened = await self._open_volaris_flight(page, dep_label, flight_numbers)
+            if not opened:
+                await self._click_volaris_first_visible(
+                    page,
+                    config.first_flight_selectors,
+                    timeout=3000,
+                    desc="Volaris first flight",
+                )
+                await page.wait_for_timeout(1000)
+            step = "flights_selected"
+
+            await self._click_volaris_fare_select(page)
+            await page.wait_for_timeout(2000)
+            await self._click_volaris_first_visible(
+                page,
+                [
+                    "button:has-text('Mantener Zero')",
+                    "button:has-text('Mantener Básica')",
+                    "button:has-text('Keep Zero')",
+                    "button:has-text('Keep Basic')",
+                ],
+                timeout=4000,
+                desc="Volaris keep fare",
+            )
+            await page.wait_for_timeout(2500)
+            step = "fare_selected"
+
+            captured_details = self._merge_checkout_details(
+                captured_details,
+                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+            )
+
+            await self._click_volaris_first_visible(
+                page,
+                [
+                    "label[for='mat-radio-2-input']",
+                    "mat-radio-button[value='payNow'] .mat-radio-label",
+                    ".mat-radio-label:has-text('Paga ahora')",
+                    "label:has-text('Paga ahora')",
+                    "label:has-text('Paga después')",
+                ],
+                timeout=4000,
+                desc="Volaris TUA choice",
+            )
+            await page.wait_for_timeout(1000)
+            await self._click_volaris_first_visible(
+                page,
+                ["button:has-text('Continuar sin equipaje')"],
+                timeout=4000,
+                desc="Volaris skip baggage",
+            )
+            await page.wait_for_timeout(1200)
+            await self._click_volaris_first_visible(
+                page,
+                ["button:has-text('Continuar a asientos')"],
+                timeout=4000,
+                desc="Volaris continue to seats",
+            )
+            await page.wait_for_timeout(5000)
+            step = "extras_skipped"
+
+            captured_details = self._merge_checkout_details(
+                captured_details,
+                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+            )
+            seat_items = ((captured_details.get("available_add_ons") or {}).get("seat_selection") or []) if isinstance(captured_details.get("available_add_ons"), dict) else []
+            if not seat_items and not captured_details.get("seat_selection_observation"):
+                captured_details = self._merge_checkout_details(
+                    captured_details,
+                    {
+                        "seat_selection_observation": "Seat-selection page reached on Volaris, but no seat-specific numeric price surfaced before skipping seats.",
+                    },
+                )
+
+            await self._click_volaris_first_visible(
+                page,
+                [
+                    "button:has-text('Selecciona asientos después')",
+                    "button:has-text('Seleccionar asientos después')",
+                ],
+                timeout=4000,
+                desc="Volaris skip seats",
+            )
+            await page.wait_for_timeout(2000)
+            await self._click_volaris_first_visible(
+                page,
+                [
+                    "button:has-text('Continúa a pagos')",
+                    "button:has-text('Continua a pagos')",
+                    "button:has-text('Continuar a pagos')",
+                ],
+                timeout=4000,
+                desc="Volaris continue payment",
+            )
+            await page.wait_for_timeout(4000)
+            step = "seats_skipped"
+
+            captured_details = self._merge_checkout_details(
+                captured_details,
+                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+            )
+
+            screenshot = await take_screenshot_b64(page)
+            final_snapshot = await self._snapshot_checkout_page(page)
+            final_checkout_page = self._infer_checkout_page(captured_details, final_snapshot)
+            body_text = ""
+            try:
+                body_text = await page.evaluate("() => (document.body?.innerText || '')")
+            except Exception:
+                body_text = ""
+
+            if "volaris.com/payment" in page.url.lower() or re.search(
+                r"informaci[oó]n de pasajero y pago|pagar mi viaje|formas de pago",
+                body_text,
+                re.IGNORECASE,
+            ):
+                final_checkout_page = "payment"
+
+            if final_checkout_page:
+                captured_details = self._merge_checkout_details(
+                    captured_details,
+                    {"checkout_page": final_checkout_page},
+                )
+
+            page_price = offer.get("price", 0.0)
+            display_total = captured_details.get("display_total")
+            if isinstance(display_total, dict) and isinstance(display_total.get("amount"), (int, float)):
+                page_price = float(display_total["amount"])
+
+            elapsed = time.monotonic() - t0
+            current_url = final_snapshot.get("current_url") or booking_url
+            if final_checkout_page != "payment":
+                blocker_details = self._merge_checkout_details(
+                    captured_details,
+                    {
+                        "blocker": "payment_page_not_reached",
+                        "checkout_page": final_checkout_page or "unknown",
+                        "current_url": current_url,
+                        "page_title": final_snapshot.get("page_title") or "",
+                    },
+                )
+                step = self._checkout_step_for_page(final_checkout_page)
+                return CheckoutProgress(
+                    status="in_progress",
+                    step=step,
+                    step_index=CHECKOUT_STEPS.index(step) if step in CHECKOUT_STEPS else 0,
+                    airline=config.airline_name,
+                    source=config.source_tag,
+                    offer_id=offer_id,
+                    total_price=page_price,
+                    currency=offer.get("currency", "EUR"),
+                    booking_url=current_url,
+                    screenshot_b64=screenshot,
+                    message=(
+                        f"{config.airline_name} checkout did not reach payment. "
+                        f"Current surface looks like '{(final_checkout_page or 'unknown').replace('_', ' ')}'. "
+                        f"Visible price: {page_price} {offer.get('currency', 'EUR')}."
+                    ),
+                    can_complete_manually=bool(current_url),
+                    elapsed_seconds=elapsed,
+                    details=blocker_details,
+                )
+
+            return CheckoutProgress(
+                status="payment_page_reached",
+                step="payment_page_reached",
+                step_index=8,
+                airline=config.airline_name,
+                source=config.source_tag,
+                offer_id=offer_id,
+                total_price=page_price,
+                currency=offer.get("currency", "EUR"),
+                booking_url=current_url,
+                screenshot_b64=screenshot,
+                message=(
+                    f"{config.airline_name} checkout complete — reached payment page in {elapsed:.0f}s. "
+                    f"Price: {page_price} {offer.get('currency', 'EUR')}. "
+                    f"Payment NOT submitted (safe mode). "
+                    f"Complete manually at: {current_url}"
+                ),
+                can_complete_manually=bool(current_url),
+                elapsed_seconds=elapsed,
+                details=captured_details,
+            )
+        except Exception as exc:
+            screenshot = await take_screenshot_b64(page)
+            return CheckoutProgress(
+                status="failed",
+                step=step,
+                step_index=CHECKOUT_STEPS.index(step) if step in CHECKOUT_STEPS else 0,
+                airline=config.airline_name,
+                source=config.source_tag,
+                offer_id=offer_id,
+                total_price=offer.get("price", 0.0),
+                currency=offer.get("currency", "EUR"),
+                booking_url=page.url or booking_url,
+                screenshot_b64=screenshot,
+                message=f"{config.airline_name} checkout failed: {exc}",
+                can_complete_manually=bool(page.url or booking_url),
+                elapsed_seconds=time.monotonic() - t0,
+                details=self._merge_checkout_details(
+                    captured_details,
+                    {
+                        "blocker": "volaris_checkout_exception",
+                        "checkout_page": "unknown",
+                        "current_url": page.url or booking_url,
+                        "page_title": await page.title() if page else "",
+                    },
+                ),
+            )
+
+    async def _click_aireuropa_inline_fare(self, page) -> bool:
+        try:
+            result = await page.evaluate(
+                """() => {
+                    const visible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style && style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+                    };
+                    const textOf = (el) => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
+                    const clickElement = (el) => {
+                        if (!el) return false;
+                        if (typeof el.click === 'function') {
+                            el.click();
+                            return true;
+                        }
+                        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                        return true;
+                    };
+
+                    const blocks = Array.from(document.querySelectorAll('div, section, article, li, td'))
+                        .filter((el) => {
+                            const text = textOf(el);
+                            return visible(el)
+                                && /economy|business/i.test(text)
+                                && /\bfrom\b/i.test(text)
+                                && /(eur|pln|\$|€|£)/i.test(text);
+                        })
+                        .sort((a, b) => {
+                            const ar = a.getBoundingClientRect();
+                            const br = b.getBoundingClientRect();
+                            if (Math.abs(ar.top - br.top) > 4) return ar.top - br.top;
+                            if (Math.abs(ar.left - br.left) > 4) return ar.left - br.left;
+                            return (ar.width * ar.height) - (br.width * br.height);
+                        });
+
+                    const controlSelectors = [
+                        'mat-radio-button',
+                        '[role="radio"]',
+                        'mat-checkbox',
+                        '[role="checkbox"]',
+                        'label',
+                        'button',
+                        'input[type="radio"]',
+                        'input[type="checkbox"]',
+                    ];
+
+                    for (const block of blocks) {
+                        const blockText = textOf(block);
+                        if (!/economy|lite/i.test(blockText)) {
+                            continue;
+                        }
+                        for (const selector of controlSelectors) {
+                            const control = Array.from(block.querySelectorAll(selector)).find(visible);
+                            if (control && clickElement(control)) {
+                                return { clicked: true, via: selector, text: blockText.slice(0, 240) };
+                            }
+                        }
+                        const inlineCell = Array.from(block.querySelectorAll('div, span, td')).find((el) => {
+                            const text = textOf(el);
+                            return visible(el) && /economy|lite/i.test(text) && /\bfrom\b/i.test(text);
+                        });
+                        if (inlineCell && clickElement(inlineCell)) {
+                            return { clicked: true, via: 'inline-cell', text: (textOf(inlineCell) || blockText).slice(0, 240) };
+                        }
+                        if (clickElement(block)) {
+                            return { clicked: true, via: 'block', text: blockText.slice(0, 240) };
+                        }
+                    }
+                    return { clicked: false };
+                }"""
+            )
+        except Exception as exc:
+            logger.debug("Air Europa checkout: inline fare click failed: %s", exc)
+            return False
+
+        if result and result.get("clicked"):
+            logger.info(
+                "Air Europa checkout: clicked inline fare via %s (%s)",
+                result.get("via") or "unknown",
+                result.get("text") or "",
+            )
+            await page.wait_for_timeout(1500)
+            return True
+        return False
+
+    async def _click_aircairo_fare(self, page) -> bool:
+        try:
+            await safe_click_first(
+                page,
+                [
+                    "button.flight-card-button",
+                    "button[class*='flight-card-button']",
+                    "button:has-text('Economy from')",
+                    "button:has-text('4 seats left')",
+                ],
+                timeout=2500,
+                desc="Air Cairo flight option",
+            )
+            await page.wait_for_timeout(1500)
+
+            fare_label = ""
+            fare_choices = [
+                (
+                    "SUPER SAVER",
+                    [
+                        "label.price-card-input-label:has-text('SUPER SAVER')",
+                        ".fare-family-SUPERSS label.price-card-input-label",
+                        ".fare-family-SUPERSS mat-card.price-card",
+                    ],
+                ),
+                (
+                    "PROMOTIONAL",
+                    [
+                        "label.price-card-input-label:has-text('PROMOTIONAL')",
+                        "mat-card.price-card:has-text('PROMOTIONAL')",
+                    ],
+                ),
+                (
+                    "SPECIAL",
+                    [
+                        "label.price-card-input-label:has-text('SPECIAL')",
+                        "mat-card.price-card:has-text('SPECIAL')",
+                    ],
+                ),
+                (
+                    "ECONOMY",
+                    [
+                        "label.price-card-input-label:has-text('ECONOMY')",
+                        "mat-card.price-card:has-text('ECONOMY')",
+                    ],
+                ),
+                (
+                    "ECO FLEX",
+                    [
+                        "label.price-card-input-label:has-text('ECO FLEX')",
+                        "mat-card.price-card:has-text('ECO FLEX')",
+                    ],
+                ),
+            ]
+
+            for label, selectors in fare_choices:
+                if await safe_click_first(page, selectors, timeout=2000, desc=f"Air Cairo fare {label}"):
+                    fare_label = label
+                    break
+
+            if fare_label:
+                logger.info("Air Cairo checkout: selected fare family %s", fare_label)
+                await page.wait_for_timeout(1200)
+                confirm_clicked = await safe_click_first(
+                    page,
+                    [
+                        "button:has-text('Confirm and continue')",
+                        "button[aria-label='Confirm and continue']",
+                        "button:has-text('Continue')",
+                    ],
+                    timeout=2500,
+                    desc="Air Cairo confirm fare",
+                )
+                if not confirm_clicked:
+                    return False
+
+                await page.wait_for_timeout(1200)
+
+                # Air Cairo may interrupt the selected fare with an upgrade modal.
+                await safe_click_first(
+                    page,
+                    [
+                        "button:has-text('Keep Super Saver')",
+                        "button:has-text('Keep Promotional')",
+                        "button:has-text('Keep Special')",
+                        "button:has-text('Keep Economy')",
+                        "button:has-text('Keep Eco Flex')",
+                        "button:has-text('Keep')",
+                        "button:has-text('No thanks')",
+                    ],
+                    timeout=3000,
+                    desc="Air Cairo keep current fare",
+                )
+
+                try:
+                    await page.wait_for_function(
+                        "() => !window.location.pathname.includes('/availability/') || document.body.innerText.includes('Your selection')",
+                        timeout=12000,
+                    )
+                except Exception:
+                    pass
+
+                page_text = ""
+                try:
+                    page_text = await page.locator("body").inner_text(timeout=2000)
+                except Exception:
+                    pass
+
+                return "/availability/" not in page.url or "Your selection" in page_text or "Fill passenger details" in page_text
+            return False
+        except Exception:
+            return False
+
     async def _extract_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
         if not config.details_extractor_handler:
             return {}
@@ -3077,6 +4584,144 @@ class GenericCheckoutEngine:
         except Exception as exc:
             logger.debug("%s checkout: details extractor '%s' failed: %s", config.airline_name, config.details_extractor_handler, exc)
             return {}
+
+    async def _extract_aircairo_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
+        details = await self._extract_generic_visible_checkout_details(page, config, default_currency=default_currency)
+        checkout_page = str(details.get("checkout_page") or "").lower()
+        current_url = (page.url or "").lower()
+
+        if checkout_page == "select_flight":
+            available_add_ons = details.get("available_add_ons") if isinstance(details.get("available_add_ons"), dict) else {}
+            if isinstance(available_add_ons.get("seat_selection"), list):
+                available_add_ons = dict(available_add_ons)
+                available_add_ons.pop("seat_selection", None)
+                if available_add_ons:
+                    details["available_add_ons"] = available_add_ons
+                else:
+                    details.pop("available_add_ons", None)
+
+            price_breakdown = details.get("price_breakdown") if isinstance(details.get("price_breakdown"), list) else []
+            filtered_breakdown = [item for item in price_breakdown if item.get("type") != "seat_selection"]
+            if filtered_breakdown:
+                details["price_breakdown"] = filtered_breakdown
+            else:
+                details.pop("price_breakdown", None)
+            return details
+
+        if checkout_page == "extras" or "/booking/shopping-cart" in current_url:
+            details = self._merge_checkout_details(
+                details,
+                await self._extract_aircairo_seat_samples(page, default_currency=default_currency),
+            )
+        elif checkout_page == "seats" or "/booking/seatmap/" in current_url:
+            details = self._merge_checkout_details(
+                details,
+                await self._extract_aircairo_seat_prices(page, default_currency=default_currency),
+            )
+
+        return details
+
+    async def _extract_aircairo_seat_samples(self, page, default_currency: str = "EUR") -> dict:
+        current_url = (page.url or "").lower()
+        page_text = ""
+        try:
+            page_text = (await page.locator("body").inner_text(timeout=2000)).lower()
+        except Exception:
+            page_text = ""
+
+        opened_seatmap = False
+        on_seatmap = "/booking/seatmap/" in current_url or "select your seat" in page_text or "seat map" in page_text
+        if not on_seatmap:
+            if not await safe_click_first(page, ["button:has-text('Select your seats')"], timeout=2000, desc="Air Cairo seat map"):
+                return {}
+            opened_seatmap = True
+            try:
+                await page.wait_for_function(
+                    "() => window.location.pathname.includes('/seatmap/') || /select your seat|seat map/i.test(document.body.innerText || '')",
+                    timeout=12000,
+                )
+            except Exception:
+                await page.wait_for_timeout(1500)
+
+        seat_details = await self._extract_aircairo_seat_prices(page, default_currency=default_currency)
+
+        if opened_seatmap:
+            await safe_click_first(page, ["button:has-text('Back')"], timeout=1500, desc="Air Cairo back from seats")
+            await page.wait_for_timeout(800)
+
+        return seat_details
+
+    async def _extract_aircairo_seat_prices(self, page, default_currency: str = "EUR") -> dict:
+        sample_labels = ["Seat 1A", "Seat 2A", "Seat 2B"]
+        sampled_prices: list[dict] = []
+
+        for seat_label in sample_labels:
+            try:
+                seat_meta = await page.evaluate(
+                    r'''(targetSeat) => {
+                        const seat = Array.from(document.querySelectorAll('button.seat-button')).find((el) => (el.textContent || '').includes(targetSeat));
+                        if (!seat) return null;
+                        const seatText = (seat.textContent || '').replace(/\s+/g, ' ').trim();
+                        seat.click();
+                        return { seatText };
+                    }''',
+                    seat_label,
+                )
+            except Exception:
+                seat_meta = None
+
+            if not isinstance(seat_meta, dict):
+                continue
+
+            await page.wait_for_timeout(700)
+
+            try:
+                body_text = await page.locator("body").inner_text(timeout=2000)
+            except Exception:
+                continue
+
+            normalized_body = re.sub(r"\s+", " ", body_text)
+            match = re.search(rf"{re.escape(seat_label)}\s+([A-Z]{{3}})\s*([\d,.]+)", normalized_body)
+            if not match:
+                continue
+
+            amount = None
+            try:
+                amount = float(match.group(2).replace(",", ""))
+            except ValueError:
+                amount = None
+            if amount is None:
+                continue
+
+            descriptor = re.sub(r"\s+", " ", str(seat_meta.get("seatText") or "")).strip()
+            descriptor = descriptor.replace(seat_label, "", 1)
+            descriptor = descriptor.replace("Press enter to get more details.", "")
+            descriptor = descriptor.strip(" ,.-")
+            label = f"{seat_label} - {descriptor}" if descriptor else seat_label
+
+            sampled_prices.append(
+                {
+                    "label": label,
+                    "text": f"{seat_label} {match.group(1)}{amount:.2f}",
+                    "currency": match.group(1).upper() or (default_currency or "EUR"),
+                    "amount": amount,
+                    "included": False,
+                    "type": "seat_selection",
+                }
+            )
+
+        if not sampled_prices:
+            return {
+                "seat_selection_observation": "Seat map reached, but Air Cairo seat detail prices were not readable from the current surface.",
+            }
+
+        return {
+            "available_add_ons": {
+                "seat_selection": sampled_prices,
+            },
+            "price_breakdown": sampled_prices,
+            "seat_selection_observation": "Sampled Air Cairo seat-map seat prices directly from the visible seat detail panels.",
+        }
 
     async def _extract_airasia_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
         return await page.evaluate(
@@ -3147,7 +4792,16 @@ class GenericCheckoutEngine:
                 const result = {};
                 const bodyText = document.body?.innerText || '';
                 const pageSignals = normalize(`${document.title || ''} ${location.pathname || ''} ${location.href || ''} ${bodyText}`);
-                const homeSearchSurface = /search flights|flight deals|manage your reservation|before flying|promotional code|trip type/i.test(pageSignals);
+                const bookingWidgetControl = Array.from(document.querySelectorAll('input, select, button')).find((el) => {
+                    if (!isVisible(el)) return false;
+                    const controlSignals = normalize(`${el.getAttribute('name') || ''} ${el.getAttribute('id') || ''} ${el.getAttribute('placeholder') || ''} ${el.textContent || ''}`);
+                    return /departurefrom|departureto|triptype|promo|promotional code|book a flight|departure date|return date/.test(controlSignals);
+                });
+                const bookingLandingSurface = /\bbook a flight\b/i.test(document.title || '')
+                    && /\/book-flight\b/i.test(location.pathname || '');
+                const homeSearchSurface = bookingLandingSurface
+                    || Boolean(bookingWidgetControl)
+                    || /search flights|flight deals|manage your reservation|before flying|promotional code|trip type|book a flight|plan & book|plan and book/i.test(pageSignals);
                 const paymentControl = Array.from(document.querySelectorAll("input, iframe, [data-testid], [name], [autocomplete]"))
                     .find((el) => {
                         if (!isVisible(el)) return false;
@@ -3158,12 +4812,12 @@ class GenericCheckoutEngine:
                     result.checkout_page = 'payment';
                 } else if (homeSearchSurface) {
                     result.checkout_page = 'select_flight';
-                } else if (/seat map|pick a seat|select your seat|seat selection|choose your seats|quiet zone|hot seat|extra legroom|flatbed/i.test(pageSignals)) {
+                } else if (!homeSearchSurface && /seat map|pick a seat|select your seat|seat selection|choose your seats|quiet zone|hot seat|extra legroom|flatbed/i.test(pageSignals)) {
                     result.checkout_page = 'seats';
-                } else if (/baggage|checked bag|checked baggage|extra bag|carry-on|carry on|insurance|meal|food and drink|priority boarding|fast pass|add extras|choose extras|bundle|package|upgrade/i.test(pageSignals)) {
-                    result.checkout_page = 'extras';
                 } else if (/guest details|passenger|traveller details|contact details|customer details/i.test(pageSignals)) {
                     result.checkout_page = 'guest_details';
+                } else if (/baggage|checked bag|checked baggage|extra bag|carry-on|carry on|insurance|meal|food and drink|priority boarding|fast pass|add extras|choose extras|bundle|package|upgrade/i.test(pageSignals)) {
+                    result.checkout_page = 'extras';
                 }
 
                 const bodyLines = bodyText
@@ -3270,6 +4924,19 @@ class GenericCheckoutEngine:
                     return item;
                 };
 
+                const parsePersistedCheckoutSlice = (name) => {
+                    try {
+                        const rawStore = sessionStorage.getItem('persist:checkout_app');
+                        if (!rawStore) return null;
+                        const store = JSON.parse(rawStore);
+                        const rawSlice = store?.[name];
+                        if (!rawSlice) return null;
+                        return JSON.parse(rawSlice);
+                    } catch (_error) {
+                        return null;
+                    }
+                };
+
                 const countMoneyTokens = (text) => (
                     normalize(text).match(/[A-Z]{3}\s*[\d,]+(?:\.\d{1,2})?/g) || []
                 ).length;
@@ -3279,6 +4946,13 @@ class GenericCheckoutEngine:
                     if (/checked/.test(haystack)) return 'checked_bag';
                     if (/carry[- ]?on|carry on|cabin/.test(haystack)) return 'cabin_bag';
                     return 'baggage';
+                };
+
+                const baggageTypeFromPersistedData = (text) => {
+                    const haystack = normalize(text).toLowerCase();
+                    if (/checkedbaggage/.test(haystack)) return 'checked_bag';
+                    if (/handcarry/.test(haystack)) return 'cabin_bag';
+                    return baggageTypeFromText(text);
                 };
 
                 const isGenericBaggageHeading = (label) => /^(checked baggage|(carry[- ]?on|cabin) baggage)$/i.test(normalize(label));
@@ -3445,9 +5119,53 @@ class GenericCheckoutEngine:
                     });
                 }
 
+                const persistedAddonSelection = parsePersistedCheckoutSlice('addonSelected');
+                const persistedBaggageItems = [];
+                const buildPersistedBaggageLabel = (bagOption, baggageGroup) => {
+                    const title = Array.isArray(bagOption?.title) ? bagOption.title[0] : null;
+                    const weight = normalize(title?.weight || '');
+                    const type = baggageTypeFromPersistedData(baggageGroup?.baggageType || '');
+                    if (type === 'cabin_bag') {
+                        return normalize(`${weight ? `1 x ${weight} ` : ''}Carry-on baggage`);
+                    }
+                    return normalize(`${weight ? `${weight} ` : ''}checked baggage`);
+                };
+                const appendPersistedBaggageGroups = (perPassengerGroups) => {
+                    if (!Array.isArray(perPassengerGroups)) return;
+                    for (const passengerGroups of perPassengerGroups) {
+                        if (!Array.isArray(passengerGroups)) continue;
+                        for (const baggageGroup of passengerGroups) {
+                            if (!baggageGroup || typeof baggageGroup !== 'object') continue;
+                            for (const bagOption of Array.isArray(baggageGroup.baggageList) ? baggageGroup.baggageList : []) {
+                                if (!bagOption || typeof bagOption !== 'object') continue;
+                                const amount = Number(bagOption.amount);
+                                const money = Number.isFinite(amount) && amount > 0
+                                    ? {
+                                        currency: normalize(bagOption.currency) || inferredCurrency,
+                                        amount,
+                                    }
+                                    : null;
+                                const included = Boolean(bagOption.isIncluded || (bagOption.isPreSelected && amount === 0));
+                                if (!hasPositiveMoney(money) && !included) continue;
+                                persistedBaggageItems.push(
+                                    createItem(
+                                        buildPersistedBaggageLabel(bagOption, baggageGroup),
+                                        baggageTypeFromPersistedData(baggageGroup.baggageType || ''),
+                                        money,
+                                        included,
+                                    )
+                                );
+                            }
+                        }
+                    }
+                };
+                appendPersistedBaggageGroups(persistedAddonSelection?.baggage?.departPaxBaggages);
+                appendPersistedBaggageGroups(persistedAddonSelection?.baggage?.returnPaxBaggages);
+
                 const baggage = dedupeItems([
                     ...baggageItems,
                     ...baggageModalOptions,
+                    ...persistedBaggageItems,
                     ...collectItems(['baggage', 'checked bag', 'checked baggage', 'extra bag', 'carry-on', 'carry on', 'cabin bag', 'luggage', 'sports equipment'], 'baggage', ['baggage allowance', 'pre-book for the lowest price']).map((item) => ({
                         ...item,
                         type: baggageTypeFromText(item.label),
@@ -3589,6 +5307,352 @@ class GenericCheckoutEngine:
             default_currency
         )
 
+    async def _extract_volaris_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
+        return await page.evaluate(
+            r'''(defaultCurrency) => {
+                const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                const symbolCurrency = {
+                    '€': 'EUR',
+                    '£': 'GBP',
+                    '$': (defaultCurrency || 'MXN').toUpperCase(),
+                };
+                const knownCurrencies = new Set([
+                    'AED', 'ARS', 'AUD', 'BDT', 'BGN', 'BHD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'COP', 'CZK',
+                    'DKK', 'EGP', 'EUR', 'GBP', 'GEL', 'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'JOD', 'JPY', 'KRW',
+                    'KWD', 'KZT', 'MAD', 'MXN', 'MYR', 'NOK', 'NZD', 'OMR', 'PEN', 'PHP', 'PKR', 'PLN', 'QAR',
+                    'RON', 'RSD', 'SAR', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'UAH', 'USD', 'UZS', 'VND', 'ZAR'
+                ]);
+
+                const parseNumberToken = (token) => {
+                    const clean = normalize(token).replace(/[^\d.,-]/g, '');
+                    if (!clean) return null;
+
+                    let normalizedNumber = clean;
+                    if (normalizedNumber.includes('.') && normalizedNumber.includes(',')) {
+                        if (normalizedNumber.lastIndexOf('.') > normalizedNumber.lastIndexOf(',')) {
+                            normalizedNumber = normalizedNumber.replace(/,/g, '');
+                        } else {
+                            normalizedNumber = normalizedNumber.replace(/\./g, '').replace(',', '.');
+                        }
+                    } else if (normalizedNumber.includes(',')) {
+                        const parts = normalizedNumber.split(',');
+                        if (parts.length === 2 && parts[1].length <= 2) {
+                            normalizedNumber = `${parts[0].replace(/\./g, '')}.${parts[1]}`;
+                        } else {
+                            normalizedNumber = normalizedNumber.replace(/,/g, '');
+                        }
+                    } else {
+                        normalizedNumber = normalizedNumber.replace(/,/g, '');
+                    }
+
+                    const parsed = Number(normalizedNumber);
+                    return Number.isFinite(parsed) ? parsed : null;
+                };
+
+                const parseAllMoney = (text) => {
+                    const clean = normalize(text).replace(/\u00a0/g, ' ');
+                    const values = [];
+
+                    for (const regex of [
+                        /([A-Z]{3}|[€£$])\s*([\d.,]+(?:\s*[\d.,]+)?)/gi,
+                        /([\d.,]+(?:\s*[\d.,]+)?)\s*([A-Z]{3}|[€£$])\b/gi,
+                    ]) {
+                        let match;
+                        while ((match = regex.exec(clean)) !== null) {
+                            const currencyToken = regex === /([A-Z]{3}|[€£$])\s*([\d.,]+(?:\s*[\d.,]+)?)/gi ? match[1] : match[2];
+                            const amountToken = regex === /([A-Z]{3}|[€£$])\s*([\d.,]+(?:\s*[\d.,]+)?)/gi ? match[2] : match[1];
+                            const currencyCode = String(currencyToken || '').toUpperCase();
+                            if (currencyCode.length === 3 && !knownCurrencies.has(currencyCode)) {
+                                continue;
+                            }
+                            const amount = parseNumberToken(amountToken);
+                            if (amount === null || amount <= 0) {
+                                continue;
+                            }
+                            values.push({
+                                currency: symbolCurrency[currencyToken] || currencyCode,
+                                amount,
+                            });
+                        }
+                    }
+
+                    const seen = new Set();
+                    return values.filter((item) => {
+                        const key = `${item.currency}|${item.amount}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                };
+
+                const isVisible = (element) => {
+                    if (!element) return false;
+                    const style = window.getComputedStyle(element);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+                        return false;
+                    }
+                    return element.offsetParent !== null || style.position === 'fixed';
+                };
+
+                const cleanLabel = (text) => normalize(
+                    text
+                        .replace(/([A-Z]{3}|[€£$])\s*[\d.,]+(?:\s*[\d.,]+)?/gi, '')
+                        .replace(/[\d.,]+(?:\s*[\d.,]+)?\s*([A-Z]{3}|[€£$])\b/gi, '')
+                        .replace(/\b(desde|detalles|agregar|hasta|meses|sin intereses|keyboard_arrow_down|por pasajero|de tarifa aeroportuaria)\b/gi, '')
+                );
+
+                const dedupe = (items, limit = 20) => {
+                    const seen = new Set();
+                    const deduped = [];
+                    for (const item of Array.isArray(items) ? items : []) {
+                        if (!item || typeof item !== 'object') continue;
+                        const key = [
+                            normalize(item.label),
+                            normalize(item.type),
+                            normalize(item.currency),
+                            item.amount ?? '',
+                            item.base_amount ?? '',
+                            item.airport_fee_amount ?? '',
+                            Boolean(item.included),
+                        ].join('|').toLowerCase();
+                        if (!key.trim() || seen.has(key)) continue;
+                        seen.add(key);
+                        deduped.push(item);
+                        if (deduped.length >= limit) break;
+                    }
+                    return deduped;
+                };
+
+                const dedupeStrings = (items, limit = 400) => {
+                    const seen = new Set();
+                    const deduped = [];
+                    for (const item of Array.isArray(items) ? items : []) {
+                        const text = normalize(item);
+                        if (!text) continue;
+                        const key = text.toLowerCase();
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        deduped.push(text);
+                        if (deduped.length >= limit) break;
+                    }
+                    return deduped;
+                };
+
+                const rawBody = document.body?.innerText || '';
+                const bodyText = normalize(rawBody).toLowerCase();
+                const bodyLines = rawBody.split(/\n+/).map(normalize).filter(Boolean);
+                const title = normalize(document.title || '').toLowerCase();
+                const currentUrl = normalize(`${location.pathname || ''} ${location.hash || ''} ${location.href || ''}`).toLowerCase();
+                const pageSignals = `${title} ${currentUrl} ${bodyText}`;
+
+                const result = {};
+                if (/pasajeros\s*&\s*pago|formas de pago|pagar mi viaje|informaci[oó]n de pasajero y pago/.test(pageSignals)) {
+                    result.checkout_page = 'payment';
+                } else if (/\basientos\b|event_seat|selecciona asientos|seleccionar asientos|seat map/.test(pageSignals)) {
+                    result.checkout_page = 'seats';
+                } else if (/equipaje de mano|equipaje documentado|continuar sin equipaje|\bequipaje\b/.test(pageSignals)) {
+                    result.checkout_page = 'baggage';
+                } else if (/seguro|hotel|renta de auto|car hire|car rental/.test(pageSignals)) {
+                    result.checkout_page = 'extras';
+                } else if (/mantener zero|mantener b[áa]sica|seleccionar|asientos disponibles|tarifa aeroportuaria/.test(pageSignals)) {
+                    result.checkout_page = 'select_flight';
+                }
+
+                const elementTexts = [];
+                for (const element of document.querySelectorAll(
+                    'button, label, [role="button"], [data-test], [data-testid], [class*="summary"], [class*="price"], [class*="option"], [class*="extra"], [class*="seat"], [class*="bag"], [class*="fare"], [class*="card"]'
+                )) {
+                    if (!isVisible(element)) continue;
+                    const text = normalize(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
+                    if (!text || text.length > 320) continue;
+                    if (!/(mxn|\$|zero|b[áa]sica|plus|combo|equipaje|asiento|asientos|tarifa|pasajero|pago)/i.test(text)) continue;
+                    elementTexts.push(text);
+                }
+                const sourceTexts = dedupeStrings([...elementTexts, ...bodyLines]);
+
+                const packageItems = [];
+                const baggageItems = [];
+                const seatItems = [];
+                const airportFeeItems = [];
+                const perPassengerItems = [];
+
+                for (const text of sourceTexts) {
+                    const lower = text.toLowerCase();
+                    const monies = parseAllMoney(text);
+                    if (!monies.length) continue;
+
+                    if (/tarifa aeroportuaria/.test(lower)) {
+                        const feeMoney = monies[1] || monies[0];
+                        if (feeMoney) {
+                            airportFeeItems.push({
+                                label: 'Tarifa aeroportuaria',
+                                text,
+                                currency: feeMoney.currency,
+                                amount: feeMoney.amount,
+                                included: false,
+                                type: 'airport_fee',
+                            });
+                        }
+                    }
+
+                    if (/por pasajero/.test(lower)) {
+                        perPassengerItems.push({
+                            label: cleanLabel(text) || 'Cargo por pasajero',
+                            text,
+                            currency: monies[0].currency,
+                            amount: monies[0].amount,
+                            included: false,
+                            type: 'per_passenger',
+                        });
+                    }
+
+                    const fareLine = /salida -|cambiar el vuelo|precio por persona/.test(lower) && /tarifa aeroportuaria/.test(lower) && monies.length > 1;
+                    const optionalPackageLine = /combo|flexibilidad|combo business/.test(lower);
+
+                    if (fareLine || optionalPackageLine || /zero|b[áa]sica|plus|asientos disponibles/.test(lower)) {
+                        if (/meses sin intereses/.test(lower) && !fareLine && !optionalPackageLine) {
+                            continue;
+                        }
+                        const baseMoney = monies[0] || null;
+                        if (!baseMoney) {
+                            continue;
+                        }
+                        const airportFeeMoney = fareLine ? (monies[1] || null) : null;
+                        const totalAmount = airportFeeMoney ? baseMoney.amount + airportFeeMoney.amount : baseMoney.amount;
+                        let label = 'Package option';
+                        if (fareLine) {
+                            label = 'Selected fare';
+                        } else if (/zero/.test(lower)) {
+                            label = 'Zero';
+                        } else if (/b[áa]sica/.test(lower)) {
+                            label = 'Básica';
+                        } else if (/plus/.test(lower)) {
+                            label = 'Plus';
+                        } else if (/combo/.test(lower)) {
+                            label = 'Combo';
+                        } else {
+                            label = cleanLabel(text) || 'Package option';
+                        }
+                        packageItems.push({
+                            label,
+                            text,
+                            currency: baseMoney.currency,
+                            amount: totalAmount,
+                            base_amount: baseMoney.amount,
+                            airport_fee_amount: airportFeeMoney?.amount,
+                            included: false,
+                            type: 'package',
+                        });
+                        continue;
+                    }
+
+                    if (/equipaje de mano|equipaje documentado|\bequipaje\b|maleta/.test(lower)) {
+                        baggageItems.push({
+                            label: cleanLabel(text) || text,
+                            text,
+                            currency: monies[0].currency,
+                            amount: monies[0].amount,
+                            included: /incluido|gratis|sin costo/.test(lower),
+                            type: 'baggage',
+                        });
+                        continue;
+                    }
+
+                    if (/(asiento|seat|ventana|pasillo|fila|extra espacio|est[aá]ndar|premium)/.test(lower) && !/asientos disponibles/.test(lower)) {
+                        seatItems.push({
+                            label: cleanLabel(text) || text,
+                            text,
+                            currency: monies[0].currency,
+                            amount: monies[0].amount,
+                            included: /incluido|gratis|sin costo/.test(lower),
+                            type: 'seat_selection',
+                        });
+                    }
+                }
+
+                const packages = dedupe(packageItems, 12);
+                const baggage = dedupe(baggageItems, 12);
+                const seats = dedupe(seatItems, 12);
+                const airportFees = dedupe(airportFeeItems, 8);
+                const perPassenger = dedupe(perPassengerItems, 8);
+
+                const farePackages = packages.filter((item) => Number.isFinite(item.airport_fee_amount) && item.airport_fee_amount > 0);
+                if (farePackages.length) {
+                    const totalCandidate = farePackages.reduce((lowest, item) => {
+                        if (!lowest) return item;
+                        return item.amount < lowest.amount ? item : lowest;
+                    }, null);
+                    if (totalCandidate) {
+                        result.display_total = {
+                            label: 'Total price',
+                            currency: totalCandidate.currency,
+                            amount: totalCandidate.amount,
+                        };
+                    }
+                }
+
+                if (!result.display_total) {
+                    for (const text of sourceTexts) {
+                        const lower = text.toLowerCase();
+                        if (!/(total|pagar|resumen|monto|precio)/.test(lower) || /por pasajero/.test(lower)) continue;
+                        const money = parseAllMoney(text)[0];
+                        if (!money) continue;
+                        result.display_total = {
+                            label: 'Total price',
+                            currency: money.currency,
+                            amount: money.amount,
+                        };
+                        break;
+                    }
+                }
+
+                const availableAddOns = {};
+                if (packages.length) {
+                    availableAddOns.packages = packages;
+                }
+                if (baggage.length) {
+                    availableAddOns.baggage = baggage;
+                }
+                if (seats.length) {
+                    availableAddOns.seat_selection = seats;
+                }
+                if (Object.keys(availableAddOns).length) {
+                    result.available_add_ons = availableAddOns;
+                }
+
+                if (!seats.length && result.checkout_page === 'seats') {
+                    result.seat_selection_observation = 'Seat-selection page reached on Volaris, but no seat-specific numeric price was visible on the current surface.';
+                }
+                if (!baggage.length && (result.checkout_page === 'baggage' || result.checkout_page === 'extras')) {
+                    result.baggage_pricing_observation = 'Volaris baggage step was reached, but no numeric baggage price was visible on the current surface.';
+                }
+
+                const visiblePrices = dedupe([
+                    ...packages,
+                    ...baggage,
+                    ...seats,
+                    ...airportFees,
+                    ...perPassenger,
+                ], 24);
+                if (visiblePrices.length) {
+                    result.visible_price_options = visiblePrices;
+                }
+
+                const priceBreakdown = dedupe([
+                    ...airportFees,
+                    ...baggage,
+                    ...seats,
+                    ...perPassenger,
+                ], 16).filter((item) => !(result.display_total && item.amount === result.display_total.amount && item.currency === result.display_total.currency));
+                if (priceBreakdown.length) {
+                    result.price_breakdown = priceBreakdown;
+                }
+
+                return result;
+            }''',
+            default_currency
+        )
+
     async def _extract_generic_visible_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
         return await page.evaluate(
             r'''(defaultCurrency) => {
@@ -3714,9 +5778,38 @@ class GenericCheckoutEngine:
                 const title = normalize(document.title || '').toLowerCase();
                 const currentUrl = normalize(`${location.pathname || ''} ${location.hash || ''} ${location.href || ''}`).toLowerCase();
                 const pageSignals = `${title} ${currentUrl} ${bodyText}`;
+                const bookingWidgetControl = Array.from(document.querySelectorAll('input, select, button')).find((el) => {
+                    if (!isVisible(el)) return false;
+                    const controlSignals = normalize(`${el.getAttribute('name') || ''} ${el.getAttribute('id') || ''} ${el.getAttribute('placeholder') || ''} ${el.textContent || ''}`).toLowerCase();
+                    return /departurefrom|departureto|triptype|promo|promotional code|book a flight|departure date|return date/.test(controlSignals);
+                });
+                const bookingLandingSurface = /\bbook a flight\b/.test(title) && /\/book-flight\b/.test(currentUrl);
+                const homeSearchSurface = bookingLandingSurface
+                    || Boolean(bookingWidgetControl)
+                    || /search flights|flight deals|manage your reservation|before flying|promotional code|trip type|book a flight|plan & book|plan and book/.test(pageSignals);
+                const securityGate = /pardon our interruption|made us think you were a bot|captcha below|i am human|hcaptcha|incident id|performing security verification|verifies you are not a bot|checking your browser|just a moment|please wait while we verify/.test(pageSignals)
+                    || Boolean(document.querySelector("iframe[src*='hcaptcha'], iframe[title*='hCaptcha'], .h-captcha, [data-hcaptcha-response], #challenge-running"));
+                const passengerControl = Array.from(document.querySelectorAll('input, select, textarea, mat-select, [role="combobox"]')).find((el) => {
+                    if (!isVisible(el)) return false;
+                    const controlSignals = normalize(`${el.getAttribute('name') || ''} ${el.getAttribute('id') || ''} ${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''}`).toLowerCase();
+                    return /first.?name|last.?name|dob|birth|nationality|document|passport|confirmedemail|confirm email|phone|traveler|traveller|passenger/.test(controlSignals);
+                });
+                const passengerSurface = Boolean(passengerControl)
+                    || /enter your information|personal information|traveller details|traveler details|guest details|passenger details|passport details|date of birth|confirm email/.test(pageSignals);
+
+                const flightSelectionSurface = /\/booking\/availability/.test(currentUrl)
+                    || /flight selection/.test(title)
+                    || /select flight|choose flight|departing flights|returning flights/.test(bodyText);
 
                 const result = {};
-                if (/card number|billing address|secure payment|payment method|pay now|review and pay|expiry date|cvv|security code/.test(pageSignals)) {
+                if (securityGate) {
+                    result.checkout_page = 'blocked';
+                    result.security_gate_observation = 'Automation was blocked by a CAPTCHA or browser verification gate on the reachable airline surface.';
+                } else if (flightSelectionSurface || homeSearchSurface) {
+                    result.checkout_page = 'select_flight';
+                } else if (!homeSearchSurface && passengerSurface) {
+                    result.checkout_page = 'passengers';
+                } else if (/card number|billing address|secure payment|payment method|pay now|review and pay|expiry date|cvv|security code/.test(pageSignals)) {
                     result.checkout_page = 'payment';
                 } else if (/seat map|select your seat|seat selection|choose your seats|pick your seat|extra legroom/.test(pageSignals)) {
                     result.checkout_page = 'seats';
@@ -3881,6 +5974,9 @@ class GenericCheckoutEngine:
 
                 const visiblePrices = [];
                 for (const entry of [...elementTexts, ...bodyLines.map((text) => ({ text, haystack: text.toLowerCase() }))]) {
+                    if (homeSearchSurface && /^from\s+[A-Z]{3}\s*[\d,]+(?:\.\d{1,2})?$/i.test(normalize(entry.text))) {
+                        continue;
+                    }
                     const money = parseMoney(entry.text);
                     if (!hasPositiveMoney(money)) continue;
                     visiblePrices.push({
@@ -5465,6 +7561,18 @@ class GenericCheckoutEngine:
                 details={**details, "jetstar_debug": debug_info},
             )
 
+        conditions = offer.get("conditions") if isinstance(offer, dict) else {}
+        fare_note = str((conditions or {}).get("fare_note") or "").strip().lower()
+        cached_fare_offer = str(offer_id or "").startswith("jq_sale_") or "fare-cache" in fare_note
+        if cached_fare_offer:
+            debug_info["cached_fare_offer"] = True
+            debug_info["fare_note"] = fare_note
+            return await _result(
+                "failed",
+                "Jetstar checkout requires a live booking-session offer. Search fell back to Jetstar's public fare cache, so ancillaries cannot be driven from this offer.",
+                allow_manual=False,
+            )
+
         async def _click_action_card(text_fragment: str) -> bool:
             selectors = [
                 ".anchor-module_buttonLink__tLcNb",
@@ -6551,6 +8659,103 @@ class GenericCheckoutEngine:
                 except Exception:
                     pass
 
+    async def _prepare_airasia_results(self, page, booking_url: str = "") -> None:
+        """Wait out AirAsia WAF and clear results-page modals before selecting a flight."""
+        security_rounds = 0
+        select_cta_selectors = [
+            "[class*='JourneyPriceCTA'] a:has-text('Select')",
+            "[class*='JourneyPriceCTA'] [class*='Button__ButtonContainer']:has-text('Select')",
+            "main [class*='JourneyPriceCTA'] a",
+        ]
+        for attempt in range(18):
+            body_text = ""
+            title_text = ""
+            try:
+                body_text = (await page.locator("body").inner_text()).lower()
+            except Exception:
+                pass
+            try:
+                title_text = (await page.title()).lower()
+            except Exception:
+                pass
+
+            combined = f"{title_text} {body_text}"
+            on_security_gate = any(
+                token in combined
+                for token in (
+                    "performing security verification",
+                    "verifies you are not a bot",
+                    "just a moment",
+                    "checking your browser",
+                    "please wait while we verify",
+                )
+            )
+
+            if on_security_gate:
+                security_rounds += 1
+                await page.wait_for_timeout(1500)
+                if security_rounds % 4 == 0:
+                    try:
+                        if booking_url:
+                            await page.goto(booking_url, wait_until="domcontentloaded", timeout=20000)
+                        else:
+                            await page.reload(wait_until="domcontentloaded", timeout=20000)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(2500)
+                elif security_rounds % 2 == 0:
+                    try:
+                        await page.reload(wait_until="domcontentloaded", timeout=20000)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(2000)
+                continue
+
+            security_rounds = 0
+
+            await safe_click_first(
+                page,
+                [
+                    "#airasia-phoenix-modal-close-button",
+                    "button[aria-label='Close modal button']",
+                ],
+                timeout=1000,
+                desc="close AirAsia results modal",
+            )
+
+            await safe_click_first(
+                page,
+                ["#airasia-sso-modal-wrapper-close-button"],
+                timeout=1000,
+                desc="close AirAsia preselection login modal",
+            )
+
+            for selector in select_cta_selectors:
+                try:
+                    cta = page.locator(selector).first
+                    if await cta.is_visible(timeout=1000):
+                        return
+                except Exception:
+                    pass
+
+            if attempt in {5, 11}:
+                try:
+                    if booking_url:
+                        await page.goto(booking_url, wait_until="domcontentloaded", timeout=20000)
+                    else:
+                        await page.reload(wait_until="domcontentloaded", timeout=20000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(2500)
+                continue
+
+            try:
+                await page.mouse.wheel(0, 1200)
+            except Exception:
+                pass
+
+            await page.wait_for_timeout(1000)
+
     async def _dismiss_cookies(self, page, config: AirlineCheckoutConfig) -> None:
         """Dismiss cookie banners using airline-specific selectors (fast combined check)."""
         if not config.cookie_selectors:
@@ -6561,7 +8766,21 @@ class GenericCheckoutEngine:
                 combined = combined.or_(page.locator(sel))
             btn = combined.first
             if await btn.is_visible(timeout=800):
-                await btn.click(force=True)
+                try:
+                    await btn.click(force=True)
+                except Exception:
+                    handle = await btn.element_handle()
+                    if handle is not None:
+                        await page.evaluate(
+                            """(element) => {
+                                if (typeof element.click === 'function') {
+                                    element.click();
+                                    return;
+                                }
+                                element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                            }""",
+                            handle,
+                        )
                 await page.wait_for_timeout(500)
         except Exception:
             pass
@@ -6570,7 +8789,9 @@ class GenericCheckoutEngine:
             await page.evaluate("""() => {
                 for (const sel of ['#cookie-preferences', '#onetrust-consent-sdk',
                     '#CybotCookiebotDialog', '[class*="cookie-popup"]',
-                    '[class*="cookie-overlay"]', '[class*="consent-banner"]']) {
+                    '[class*="cookie-overlay"]', '[class*="consent-banner"]',
+                    '#airasia-phoenix-modal',
+                    '[class*="Modal__ModalWrapper"]', '[class*="Modal__Backdrop"]']) {
                     const el = document.querySelector(sel);
                     if (el) el.remove();
                 }

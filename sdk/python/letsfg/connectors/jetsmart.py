@@ -372,24 +372,22 @@ class JetSmartConnectorClient:
         - Typing in the input filters airports across all countries
         """
         field_name = "origin" if is_origin else "destination"
-        placeholder = "Origen" if is_origin else "Destino"
-
-        # Step 1: Click the input to open/focus the dropdown
-        opened = await page.evaluate("""(ph) => {
-            const inp = document.querySelector('input[placeholder="' + ph + '"]');
-            if (inp) { inp.focus(); inp.click(); return true; }
-            return false;
-        }""", placeholder)
-
-        if not opened:
-            # Fallback: find by index among visible text inputs
-            opened = await page.evaluate("""(isOrigin) => {
-                const inputs = document.querySelectorAll('input[type="text"]');
-                const visible = [...inputs].filter(i => i.offsetHeight > 0);
-                const idx = isOrigin ? 0 : 1;
-                if (visible.length > idx) { visible[idx].focus(); visible[idx].click(); return true; }
-                return false;
-            }""", is_origin)
+        # Step 1: Focus the visible booking-form input by index. Placeholder-only
+        # queries are too broad on the homepage because duplicate Destino fields exist.
+        opened = await page.evaluate("""(isOrigin) => {
+            const visible = (el) => {
+                const style = getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden' && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+            };
+            const inputs = Array.from(document.querySelectorAll('input'))
+                .filter((input) => visible(input))
+                .filter((input) => !input.type || input.type === 'text');
+            const target = inputs[isOrigin ? 0 : 1];
+            if (!target) return false;
+            target.focus();
+            target.click();
+            return true;
+        }""", is_origin)
 
         if not opened:
             logger.warning("JetSMART: could not open %s input", field_name)
@@ -399,38 +397,47 @@ class JetSmartConnectorClient:
         await self._remove_overlays(page)
 
         # Step 2: Type IATA code to trigger dropdown filtering
+        try:
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press("Backspace")
+        except Exception:
+            pass
         await page.keyboard.type(iata, delay=120)
         await asyncio.sleep(2.0)
 
-        # Step 3: Click the matching airport <li> via the IATA <span>
-        # JetSMART airports: <li class="...cursor-pointer...">City <span class="text-[#a1a1a1]...">IATA</span></li>
-        clicked = await page.evaluate("""(iata) => {
-            // Primary: find <span> elements with exact IATA text, click parent <li>
-            const spans = document.querySelectorAll('span');
-            for (const span of spans) {
-                if (span.textContent.trim() === iata && span.offsetHeight > 0) {
-                    const li = span.closest('li');
-                    if (li && li.className.includes('cursor-pointer')) {
-                        li.click();
-                        return 'span-li';
-                    }
-                    // Fallback: click the span's parent
-                    span.parentElement.click();
-                    return 'span-parent';
-                }
-            }
-            // Secondary: find li containing IATA text
-            const items = document.querySelectorAll('li');
+        # Step 3: Click the nearest matching airport option rather than any matching
+        # span on the page; the public homepage contains duplicate airport widgets.
+        clicked = await page.evaluate("""([iata, isOrigin]) => {
+            const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+            const visible = (el) => {
+                const style = getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden' && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+            };
+            const inputs = Array.from(document.querySelectorAll('input'))
+                .filter((input) => visible(input))
+                .filter((input) => !input.type || input.type === 'text');
+            const target = inputs[isOrigin ? 0 : 1];
+            const targetRect = target ? target.getBoundingClientRect() : null;
+            const items = Array.from(document.querySelectorAll('li'))
+                .filter((item) => visible(item) && String(item.className || '').includes('cursor-pointer'))
+                .filter((item) => {
+                    const text = normalize(item.textContent || '');
+                    return text.includes(iata) || text.includes(`(${iata})`);
+                })
+                .sort((left, right) => {
+                    if (!targetRect) return 0;
+                    const leftRect = left.getBoundingClientRect();
+                    const rightRect = right.getBoundingClientRect();
+                    const leftDistance = Math.abs(leftRect.top - targetRect.bottom) + Math.abs(leftRect.left - targetRect.left);
+                    const rightDistance = Math.abs(rightRect.top - targetRect.bottom) + Math.abs(rightRect.left - targetRect.left);
+                    return leftDistance - rightDistance;
+                });
             for (const item of items) {
-                const text = item.textContent || '';
-                if ((text.includes(iata) || text.includes('(' + iata + ')'))
-                    && item.offsetHeight > 0 && item.className.includes('cursor-pointer')) {
-                    item.click();
-                    return 'li-text';
-                }
+                item.click();
+                return normalize(item.textContent || '') || 'li-text';
             }
             return false;
-        }""", iata)
+        }""", [iata, is_origin])
 
         if clicked:
             logger.info("JetSMART: selected %s airport %s via %s", field_name, iata, clicked)
@@ -698,6 +705,7 @@ class JetSmartConnectorClient:
             )
             route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
             h = hashlib.md5(f"tt_{date_val}_{price}".encode()).hexdigest()[:12]
+            conditions = self._build_base_fare_conditions()
             offers.append(FlightOffer(
                 id=f"ja_{h}",
                 price=round(price, 2),
@@ -705,6 +713,7 @@ class JetSmartConnectorClient:
                 price_formatted=f"{price:.0f} {currency}" if currency == "CLP" else f"{price:.2f} {currency}",
                 outbound=route, inbound=None,
                 airlines=["JetSMART"], owner_airline="JA",
+                conditions=conditions,
                 booking_url=booking_url, is_locked=False,
                 source="jetsmart_direct", source_tier="free",
             ))
@@ -775,6 +784,7 @@ class JetSmartConnectorClient:
             stopovers=max(len(segments) - 1, 0),
         )
         flight_key = flight.get("journeyKey") or flight.get("id") or f"{flight.get('departureDate', '')}_{time.monotonic()}"
+        conditions = self._extract_offer_conditions(flight)
         return FlightOffer(
             id=f"ja_{hashlib.md5(str(flight_key).encode()).hexdigest()[:12]}",
             price=round(best_price, 2),
@@ -784,11 +794,121 @@ class JetSmartConnectorClient:
             inbound=None,
             airlines=["JetSMART"],
             owner_airline="JA",
+            conditions=conditions,
             booking_url=booking_url,
             is_locked=False,
             source="jetsmart_direct",
             source_tier="free",
         )
+
+    @staticmethod
+    def _build_base_fare_conditions() -> dict[str, str]:
+        return {
+            "fare_upgrade_note": "Search surface exposes base fare only; no baggage or seat pricing",
+        }
+
+    @classmethod
+    def _extract_offer_conditions(cls, flight: dict) -> dict[str, str]:
+        conditions = cls._build_base_fare_conditions()
+        selected_fare = cls._select_best_fare_entry(flight)
+        if not isinstance(selected_fare, dict):
+            return conditions
+
+        fare_family = cls._extract_fare_family(selected_fare)
+        if fare_family:
+            conditions["fare_family"] = fare_family
+
+        fare_note = cls._extract_fare_note(selected_fare)
+        if fare_note:
+            conditions["fare_upgrade_note"] = fare_note
+
+        return conditions
+
+    @classmethod
+    def _select_best_fare_entry(cls, flight: dict) -> Optional[dict]:
+        fares = flight.get("fares") or flight.get("fareProducts") or flight.get("bundles") or flight.get("fareBundles") or []
+        best_fare: Optional[dict] = None
+        best_price: float | None = None
+        for fare in fares:
+            if not isinstance(fare, dict):
+                continue
+            price = cls._extract_fare_entry_price(fare)
+            if price is None:
+                continue
+            if best_price is None or price < best_price:
+                best_price = price
+                best_fare = fare
+        return best_fare
+
+    @staticmethod
+    def _extract_fare_entry_price(fare: dict) -> Optional[float]:
+        pax_fares = fare.get("passengerFares") or fare.get("paxFares") or []
+        best: float | None = None
+        if isinstance(pax_fares, list):
+            for passenger_fare in pax_fares:
+                if not isinstance(passenger_fare, dict):
+                    continue
+                for key in ("fareAmount", "publishedFare", "fareTotal", "total"):
+                    value = passenger_fare.get(key)
+                    if value is None:
+                        continue
+                    try:
+                        numeric = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if numeric <= 0:
+                        continue
+                    if best is None or numeric < best:
+                        best = numeric
+        for key in ("price", "amount", "totalPrice", "basePrice", "fareAmount"):
+            value = fare.get(key)
+            if isinstance(value, dict):
+                value = value.get("amount") or value.get("value") or value.get("total")
+            if value is None:
+                continue
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+            if numeric <= 0:
+                continue
+            if best is None or numeric < best:
+                best = numeric
+        return best
+
+    @staticmethod
+    def _extract_fare_family(fare: dict) -> str:
+        for key in (
+            "bundleName",
+            "bundleLabel",
+            "serviceBundleCode",
+            "productClass",
+            "classOfService",
+            "fareClass",
+            "fareBasisCode",
+            "code",
+            "name",
+        ):
+            value = fare.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
+    @staticmethod
+    def _extract_fare_note(fare: dict) -> str:
+        for key in (
+            "bundleSubHeader",
+            "bundleDescription",
+            "description",
+            "fareBrandName",
+            "fareBrandDescription",
+        ):
+            value = fare.get(key)
+            if isinstance(value, str):
+                cleaned = " ".join(value.split()).strip()
+                if cleaned:
+                    return cleaned
+        return ""
 
     @staticmethod
     def _extract_best_price(flight: dict) -> Optional[float]:
@@ -884,6 +1004,23 @@ class JetSmartConnectorClient:
 
     @staticmethod
     def _combine_rt(ob: list, ib: list, req) -> list:
+        def merge_conditions(outbound: dict[str, str], inbound: dict[str, str]) -> dict[str, str]:
+            merged = dict(outbound or {})
+            for key, value in (inbound or {}).items():
+                if value in (None, ""):
+                    continue
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = value
+                    continue
+                if existing == value:
+                    continue
+                merged.pop(key, None)
+                if key in (outbound or {}):
+                    merged[f"outbound_{key}"] = outbound[key]
+                merged[f"inbound_{key}"] = value
+            return merged
+
         combos = []
         for o in sorted(ob, key=lambda x: x.price)[:15]:
             for i in sorted(ib, key=lambda x: x.price)[:10]:
@@ -891,13 +1028,14 @@ class JetSmartConnectorClient:
                     id=f"ja_rt_{o.id}_{i.id}",
                     price=round(o.price + i.price, 2),
                     currency=o.currency,
+                    price_formatted=f"{round(o.price + i.price, 2):.0f} {o.currency}" if o.currency == "CLP" else f"{round(o.price + i.price, 2):.2f} {o.currency}",
                     outbound=o.outbound,
                     inbound=i.outbound,
                     owner_airline=o.owner_airline,
                     airlines=list(set(o.airlines + i.airlines)),
                     source=o.source,
                     booking_url=o.booking_url,
-                    conditions=o.conditions,
+                    conditions=merge_conditions(o.conditions, i.conditions),
                 ))
         combos.sort(key=lambda x: x.price)
         return combos[:20]

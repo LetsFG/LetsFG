@@ -146,6 +146,16 @@ class VivaAerobusConnectorClient:
             logger.error("VivaAerobus API error: %s", e)
             return self._empty(req)
 
+    @staticmethod
+    def _extract_lowfare_conditions(fare: dict) -> dict[str, str]:
+        conditions = {
+            "fare_upgrade_note": "Lowfares search exposes base fare only; no baggage or seat pricing",
+        }
+        fare_family = str(fare.get("fareProductClass") or "").strip()
+        if fare_family:
+            conditions["fare_family"] = fare_family
+        return conditions
+
     def _parse_lowfares_return(self, api_json: dict, req: FlightSearchRequest) -> list[FlightOffer]:
         """Parse return leg lowfares from the API response (second route in response)."""
         data = api_json.get("data", {})
@@ -182,6 +192,7 @@ class VivaAerobusConnectorClient:
             )
             route = FlightRoute(segments=[segment], total_duration_seconds=0, stopovers=0)
             offer_key = f"vb_{origin_code}{dest_code}_{dep_date}_{price}"
+            conditions = self._extract_lowfare_conditions(fare)
             offers.append(FlightOffer(
                 id=f"vb_{hashlib.md5(offer_key.encode()).hexdigest()[:12]}",
                 price=round(float(price), 2),
@@ -191,6 +202,7 @@ class VivaAerobusConnectorClient:
                 inbound=None,
                 airlines=[fare.get("carrierCode", "VB")],
                 owner_airline="VB",
+                conditions=conditions,
                 booking_url=self._build_booking_url(req),
                 is_locked=False,
                 source="vivaaerobus_direct",
@@ -205,6 +217,23 @@ class VivaAerobusConnectorClient:
         req: FlightSearchRequest,
     ) -> list[FlightOffer]:
         """Combine outbound × inbound into RT offers."""
+        def merge_conditions(outbound_conditions: dict[str, str], inbound_conditions: dict[str, str]) -> dict[str, str]:
+            merged = dict(outbound_conditions or {})
+            for key, value in (inbound_conditions or {}).items():
+                if value in (None, ""):
+                    continue
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = value
+                    continue
+                if existing == value:
+                    continue
+                merged.pop(key, None)
+                if key in (outbound_conditions or {}):
+                    merged[f"outbound_{key}"] = outbound_conditions[key]
+                merged[f"inbound_{key}"] = value
+            return merged
+
         combos: list[FlightOffer] = []
         for ob in outbound[:15]:
             for ib in inbound[:10]:
@@ -219,6 +248,7 @@ class VivaAerobusConnectorClient:
                     inbound=ib.outbound,
                     airlines=list(set(ob.airlines + ib.airlines)),
                     owner_airline="VB",
+                    conditions=merge_conditions(ob.conditions, ib.conditions),
                     booking_url=self._build_booking_url(req),
                     is_locked=False,
                     source="vivaaerobus_direct",
@@ -262,6 +292,7 @@ class VivaAerobusConnectorClient:
             carrier = fare.get("carrierCode", "VB")
             avail = fare.get("availableCount")
             fare_class = fare.get("fareProductClass", "")
+            conditions = self._extract_lowfare_conditions(fare)
 
             # Build a segment for the date (VB calendar shows one fare per day)
             dep_dt = self._parse_dt(dep_date)
@@ -290,6 +321,7 @@ class VivaAerobusConnectorClient:
                 airlines=[carrier],
                 owner_airline="VB",
                 availability_seats=avail,
+                conditions=conditions,
                 booking_url=booking_url,
                 is_locked=False,
                 source="vivaaerobus_direct",
@@ -350,6 +382,23 @@ class VivaAerobusConnectorClient:
     def _combine_rt(
         ob: list[FlightOffer], ib: list[FlightOffer], req,
     ) -> list[FlightOffer]:
+        def merge_conditions(outbound_conditions: dict[str, str], inbound_conditions: dict[str, str]) -> dict[str, str]:
+            merged = dict(outbound_conditions or {})
+            for key, value in (inbound_conditions or {}).items():
+                if value in (None, ""):
+                    continue
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = value
+                    continue
+                if existing == value:
+                    continue
+                merged.pop(key, None)
+                if key in (outbound_conditions or {}):
+                    merged[f"outbound_{key}"] = outbound_conditions[key]
+                merged[f"inbound_{key}"] = value
+            return merged
+
         combos: list[FlightOffer] = []
         for o in ob[:15]:
             for i in ib[:10]:
@@ -357,9 +406,11 @@ class VivaAerobusConnectorClient:
                 cid = hashlib.md5(f"{o.id}_{i.id}".encode()).hexdigest()[:12]
                 combos.append(FlightOffer(
                     id=f"rt_viva_{cid}", price=price, currency=o.currency,
+                    price_formatted=f"{price:.2f} {o.currency}",
                     outbound=o.outbound, inbound=i.outbound,
                     airlines=list(dict.fromkeys(o.airlines + i.airlines)),
                     owner_airline=o.owner_airline,
+                    conditions=merge_conditions(o.conditions, i.conditions),
                     booking_url=o.booking_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
                 ))

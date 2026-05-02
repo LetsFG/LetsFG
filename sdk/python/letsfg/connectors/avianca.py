@@ -158,13 +158,22 @@ def _to_datetime(val) -> datetime:
     return datetime.strptime(str(val), "%Y-%m-%d")
 
 
-def _parse_dt(s: str) -> datetime:
+def _parse_dt(s: str) -> datetime | None:
+    if not s:
+        return None
+    s = str(s).strip().replace("Z", "+00:00")
+    if ":" not in s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
         try:
             return datetime.strptime(s[:len(fmt) + 3], fmt)
         except (ValueError, IndexError):
             continue
-    return datetime.strptime(s[:10], "%Y-%m-%d")
+    return None
 
 
 _SKIP = frozenset((
@@ -449,8 +458,11 @@ class AviancaConnectorClient:
 
                 carrier = finfo.get("marketingAirlineCode") or finfo.get("operatingAirlineCode") or "AV"
                 fno = finfo.get("marketingFlightNumber") or ""
-                dep_dt = _parse_dt(finfo.get("departure", {}).get("dateTime", "")) or _to_datetime(req.date_from)
-                arr_dt = _parse_dt(finfo.get("arrival", {}).get("dateTime", "")) or dep_dt + timedelta(hours=2)
+                dep_dt = _parse_dt(finfo.get("departure", {}).get("dateTime", ""))
+                arr_dt = _parse_dt(finfo.get("arrival", {}).get("dateTime", ""))
+                if not dep_dt or not arr_dt:
+                    segments = []
+                    break
                 dep_loc = finfo.get("departure", {}).get("locationCode", req.origin)
                 arr_loc = finfo.get("arrival", {}).get("locationCode", req.destination)
                 dur = finfo.get("duration", 0)
@@ -528,8 +540,10 @@ class AviancaConnectorClient:
             carrier = seg.get("airlineCode") or seg.get("carrierCode") or seg.get("operatingCarrier") or "AV"
             fno = seg.get("flightNumber") or seg.get("flightNo") or ""
 
-            dep_dt = _parse_dt(dep_str) if dep_str else _to_datetime(req.date_from)
-            arr_dt = _parse_dt(arr_str) if arr_str else dep_dt + timedelta(hours=3)
+            dep_dt = _parse_dt(dep_str)
+            arr_dt = _parse_dt(arr_str)
+            if not dep_dt or not arr_dt:
+                return []
             dur = int((arr_dt - dep_dt).total_seconds()) if arr_dt > dep_dt else 0
 
             _av_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")

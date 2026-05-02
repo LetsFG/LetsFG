@@ -7,12 +7,17 @@
     "build": "npm run test && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npm run test:locations && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:user-currency && npm run test:google-comparison",
+    "test": "npm run test:locations && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:user-currency && npm run test:mixed-currency-rendering && npm run test:results-rerun-state && npm run test:results-query-fallback && npm run test:results-expired-cache-state && npm run test:results-expired-response-state && npm run test:google-comparison",
     "test:locations": "tsx --test tests/location-resolution.test.ts",
     "test:ratelimit": "tsx --test tests/rate-limit.test.ts",
     "test:flight-datetime": "tsx --test tests/flight-datetime.test.ts",
     "test:flight-time-surfaces": "tsx --test tests/flight-time-surfaces.test.ts",
     "test:user-currency": "tsx --test tests/user-currency.test.ts",
+    "test:mixed-currency-rendering": "tsx --test tests/mixed-currency-rendering.test.ts",
+    "test:results-rerun-state": "tsx --test tests/results-rerun-state.test.ts",
+    "test:results-query-fallback": "tsx --test tests/results-query-fallback.test.ts",
+    "test:results-expired-cache-state": "tsx --test tests/results-expired-cache-state.test.ts",
+    "test:results-expired-response-state": "tsx --test tests/results-expired-response-state.test.ts",
     "test:google-comparison": "tsx --test tests/google-comparison.test.ts"
   },
   "dependencies": {

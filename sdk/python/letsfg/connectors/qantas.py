@@ -153,7 +153,7 @@ class QantasConnectorClient:
                 headers={"Authorization": f"Bearer {token}"},
             )
             if resp.status_code == 200:
-                offers = self._parse(resp.json(), req)
+                logger.info("Qantas: GraphQL deals API returned fare windows without schedule times; suppressing offers")
             else:
                 logger.warning("Qantas GQL %d: %s", resp.status_code, resp.text[:200])
         except Exception as e:
@@ -175,110 +175,8 @@ class QantasConnectorClient:
         )
 
     def _parse(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
-        offers: list[FlightOffer] = []
-        deals = (
-            data.get("data", {})
-            .get("flightDeals", {})
-            .get("data", [])
-        )
-        target = req.date_from.strftime("%Y-%m-%d")
-        # Normalise to date object regardless of whether date_from is date or datetime
-        target_date = (
-            req.date_from.date()
-            if isinstance(req.date_from, datetime)
-            else req.date_from
-        )
-
-        for deal in deals:
-            offer_data = deal.get("offer", {})
-            market = deal.get("market", {})
-            cp = market.get("cityPairCabin", {})
-
-            origin = cp.get("originAirport", {}).get("originAirport", req.origin)
-            dest = cp.get("destinationAirport", {}).get("destinationAirport", req.destination)
-
-            price_str = offer_data.get("aifFormatted", "0")
-            try:
-                price = float(price_str.replace(",", ""))
-            except (ValueError, TypeError):
-                continue
-            if price <= 0:
-                continue
-
-            currency = offer_data.get("currency", "AUD")
-            travel_start = offer_data.get("travelStart", "")
-            travel_end = offer_data.get("travelEnd", "")
-            trip_type = market.get("tripType", "RETURN")
-            fare_family = offer_data.get("fareFamily", "")
-
-            # Match: requested date falls within the deal's travel window
-            if travel_start and travel_end:
-                try:
-                    ts = datetime.strptime(travel_start, "%Y-%m-%d").date()
-                    te = datetime.strptime(travel_end, "%Y-%m-%d").date()
-                    if not (ts <= target_date <= te):
-                        continue
-                except ValueError:
-                    continue
-
-            dep_dt = datetime.strptime(target, "%Y-%m-%d").replace(hour=8)
-            seg = FlightSegment(
-                airline="QF",
-                airline_name="Qantas",
-                flight_no="QF",
-                origin=origin,
-                destination=dest,
-                departure=dep_dt,
-                arrival=dep_dt,
-            )
-            route = FlightRoute(
-                segments=[seg], total_duration_seconds=0, stopovers=0,
-            )
-
-            # RT deals: add placeholder inbound route (price already includes return)
-            ib_route = None
-            if trip_type == "RETURN" and req.return_from:
-                ret_dt = datetime.combine(req.return_from, datetime.min.time()) if not isinstance(req.return_from, datetime) else req.return_from
-                ib_seg = FlightSegment(
-                    airline="QF", airline_name="Qantas", flight_no="QF",
-                    origin=dest, destination=origin,
-                    departure=ret_dt, arrival=ret_dt,
-                )
-                ib_route = FlightRoute(segments=[ib_seg], total_duration_seconds=0, stopovers=0)
-
-            key = f"qf_{origin}{dest}{target}{price}{fare_family}"
-            oid = hashlib.md5(key.encode()).hexdigest()[:12]
-
-            booking_url = (
-                f"https://www.qantas.com/en-gb/book/flights?"
-                f"from={origin}&to={dest}"
-                f"&departure={target.replace('-', '')}"
-                f"&adults={req.adults or 1}"
-            )
-            if req.return_from:
-                ret_str = req.return_from.strftime("%Y%m%d") if hasattr(req.return_from, "strftime") else str(req.return_from).replace("-", "")
-                booking_url += f"&return={ret_str}"
-
-            offers.append(FlightOffer(
-                id=f"qf_rt_{oid}" if ib_route else f"qf_{oid}",
-                price=round(price, 2),
-                currency=currency,
-                price_formatted=f"{price:,.2f} {currency}",
-                outbound=route,
-                inbound=ib_route,
-                airlines=["Qantas"],
-                owner_airline="QF",
-                conditions={
-                    "price_type": "deal_fare",
-                    "trip_type": trip_type,
-                    "fare_family": fare_family,
-                    "travel_window": f"{travel_start} to {travel_end}",
-                },
-                booking_url=booking_url,
-                source="qantas_direct",
-            ))
-
-        return offers
+        logger.info("Qantas: fare-window parsing is disabled until real schedule times are available")
+        return []
 
 
     @staticmethod

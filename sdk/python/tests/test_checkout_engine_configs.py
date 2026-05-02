@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -73,6 +74,85 @@ AIRASIA_SEATS_HTML = """
     </body>
 </html>
 """
+
+AIRASIA_GUEST_DETAILS_HTML = """
+<html>
+    <head><title>Guest details | AirAsia</title></head>
+    <body>
+        <div>Guest details</div>
+        <div>Contact details</div>
+        <div class="Panel__MainWrapper">
+            <div>Fare summary</div>
+            <div>Base fare</div>
+            <div>EUR</div>
+            <div>101.43</div>
+            <div>Total amount</div>
+            <div>EUR</div>
+            <div>119.00</div>
+        </div>
+    </body>
+</html>
+"""
+
+AIRASIA_PERSISTED_CHECKOUT_STORAGE = {
+    "persist:checkout_app": json.dumps(
+        {
+            "checkoutForm": json.dumps([]),
+            "contactForm": json.dumps(
+                {
+                    "givenName": "Test",
+                    "familyName": "Traveler",
+                    "salutation": "MR",
+                    "email": "test@example.com",
+                    "countryCode": "PL",
+                    "mobileNumber": "",
+                }
+            ),
+            "addonSelected": json.dumps(
+                {
+                    "continueToAddons": False,
+                    "baggage": {
+                        "data": {"depart": [{"handCarry": [0]}]},
+                        "paxTitles": [{"givenName": "Adult 1", "familyName": "", "paxId": "adult_1"}],
+                        "departPaxBaggages": [[
+                            {
+                                "baggageList": [
+                                    {
+                                        "id": "hand_bag_ind_0.0",
+                                        "amount": 0,
+                                        "currency": "EUR",
+                                        "title": [{"dimension": "56 x 23 x 36 cm", "weight": "7 kg"}],
+                                        "isPreSelected": True,
+                                        "isIncluded": True,
+                                    }
+                                ],
+                                "baggageType": "handCarry",
+                            },
+                            {
+                                "baggageList": [
+                                    {
+                                        "id": "hold_bag_ind_0.0",
+                                        "amount": 16.57,
+                                        "currency": "EUR",
+                                        "title": [{"dimension": "78 x 28 x 52 cm", "weight": "15 kg"}],
+                                        "isIncluded": False,
+                                    }
+                                ],
+                                "baggageType": "checkedBaggage",
+                            },
+                        ]],
+                        "returnPaxBaggages": [],
+                    },
+                    "tripId": "demo-trip-id",
+                    "insurance": [],
+                }
+            ),
+            "companyDetails": json.dumps({}),
+            "ancillaryRecommendation": json.dumps({}),
+            "_persist": json.dumps({"version": -1, "rehydrated": True}),
+        }
+    )
+}
 
 
 class CheckoutEngineConfigTest(unittest.TestCase):
@@ -212,13 +292,26 @@ class CheckoutEngineConfigTest(unittest.TestCase):
 
 
 class AirAsiaCheckoutDetailsExtractionTest(unittest.IsolatedAsyncioTestCase):
-    async def _extract(self, source: str, html: str) -> dict:
+    async def _extract(self, source: str, html: str, session_storage: dict[str, str] | None = None) -> dict:
         engine = GenericCheckoutEngine()
         config = AIRLINE_CONFIGS[source]
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
             page = await browser.new_page()
-            await page.set_content(html)
+            await page.route(
+                "https://letsfg.test/**",
+                lambda route: route.fulfill(status=200, content_type="text/html", body=html),
+            )
+            await page.goto("https://letsfg.test/checkout")
+            if session_storage:
+                await page.evaluate(
+                    """(entries) => {
+                        for (const [key, value] of Object.entries(entries || {})) {
+                            sessionStorage.setItem(key, value);
+                        }
+                    }""",
+                    session_storage,
+                )
             details = await engine._extract_airasia_checkout_details(page, config, default_currency="MYR")
             await browser.close()
         return details
@@ -253,6 +346,35 @@ class AirAsiaCheckoutDetailsExtractionTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     seats["seat_selection_observation"],
                     "Numeric seat-selection pricing is visible on the AirAsia seat-selection surface.",
+                )
+
+    async def test_airasia_family_checkout_extractor_reads_baggage_from_persisted_checkout_store(self) -> None:
+        for source in ("airasia_direct", "airasiax_direct"):
+            with self.subTest(source=source):
+                details = await self._extract(
+                    source,
+                    AIRASIA_GUEST_DETAILS_HTML,
+                    session_storage=AIRASIA_PERSISTED_CHECKOUT_STORAGE,
+                )
+
+                self.assertEqual(details["checkout_page"], "guest_details")
+                baggage = details["available_add_ons"]["baggage"]
+                checked_bag = next(item for item in baggage if item["type"] == "checked_bag")
+                cabin_bag = next(item for item in baggage if item["type"] == "cabin_bag")
+
+                self.assertEqual(checked_bag["label"], "15 kg checked baggage")
+                self.assertEqual(checked_bag["currency"], "EUR")
+                self.assertEqual(checked_bag["amount"], 16.57)
+                self.assertEqual(cabin_bag["label"], "1 x 7 kg Carry-on baggage")
+                self.assertTrue(cabin_bag["included"])
+                self.assertNotIn("amount", cabin_bag)
+                self.assertEqual(
+                    details["baggage_pricing_observation"],
+                    "Numeric baggage pricing is visible on the reachable AirAsia checkout surface.",
+                )
+                self.assertEqual(
+                    details["seat_selection_observation"],
+                    "No visible seat-selection price surfaced on the reachable AirAsia guest-details/payment path.",
                 )
 
 

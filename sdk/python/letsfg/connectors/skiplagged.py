@@ -179,6 +179,7 @@ class SkiplaggedConnectorClient:
                 seg_list = flight_data.get("segments") or itin.get("segments") or []
 
                 segments: list[FlightSegment] = []
+                incomplete_schedule = False
                 for seg_data in seg_list:
                     carrier = seg_data.get("airline") or seg_data.get("carrier") or ""
                     flight_no = seg_data.get("flight_number") or seg_data.get("flightNumber") or ""
@@ -201,12 +202,16 @@ class SkiplaggedConnectorClient:
 
                     dur = seg_data.get("duration") or 0  # Skiplagged returns seconds
 
+                    if not dep_time or not arr_time:
+                        incomplete_schedule = True
+                        break
+
                     try:
-                        dep_dt = datetime.fromisoformat(dep_time.replace("Z", "+00:00")) if dep_time else datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                        arr_dt = datetime.fromisoformat(arr_time.replace("Z", "+00:00")) if arr_time else dep_dt
+                        dep_dt = datetime.fromisoformat(dep_time.replace("Z", "+00:00"))
+                        arr_dt = datetime.fromisoformat(arr_time.replace("Z", "+00:00"))
                     except (ValueError, TypeError):
-                        dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                        arr_dt = dep_dt
+                        incomplete_schedule = True
+                        break
 
                     segments.append(FlightSegment(
                         airline=carrier, flight_no=f"{carrier}{flight_no}",
@@ -215,15 +220,8 @@ class SkiplaggedConnectorClient:
                         duration_seconds=int(dur),  # already in seconds
                     ))
 
-                if not segments:
-                    # Use top-level itinerary info
-                    segments.append(FlightSegment(
-                        airline="", flight_no="",
-                        origin=req.origin, destination=req.destination,
-                        departure=datetime.combine(req.date_from, datetime.min.time().replace(hour=8)),
-                        arrival=datetime.combine(req.date_from, datetime.min.time().replace(hour=8)),
-                        duration_seconds=0,
-                    ))
+                if incomplete_schedule or not segments:
+                    continue
 
                 total_dur = sum(s.duration_seconds for s in segments)
                 route = FlightRoute(segments=segments, total_duration_seconds=total_dur, stopovers=max(0, len(segments) - 1))

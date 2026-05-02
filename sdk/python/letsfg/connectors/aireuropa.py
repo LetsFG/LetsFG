@@ -433,6 +433,12 @@ class AirEuropaConnectorClient:
             # First check if there's a button to click (Origin/Destination buttons)
             is_departure = "departure" in selector
             button_name = "Origin" if is_departure else "Destination"
+
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.2)
+            except Exception:
+                pass
             
             # Try clicking the button to open the dialog (2026 Angular UI)
             try:
@@ -448,6 +454,7 @@ class AirEuropaConnectorClient:
             if await field.count() == 0:
                 # Try broader selectors
                 for alt_sel in [
+                    f".cdk-overlay-pane input[aria-label='{button_name}']",
                     f"input#{selector.split('#')[-1]}" if "#" in selector else selector,
                     "input[placeholder*='Search for city']",
                     ".cdk-overlay-pane input[type='text']",
@@ -500,6 +507,11 @@ class AirEuropaConnectorClient:
                 await page.keyboard.press("Enter")
 
             await asyncio.sleep(0.5)
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.2)
+            except Exception:
+                pass
             logger.info("AirEuropa: airport %s → %s", selector, iata)
             return True
         except Exception as e:
@@ -516,7 +528,9 @@ class AirEuropaConnectorClient:
         target_year = str(dt.year)
         try:
             # Click the departure date input to open calendar
-            date_field = page.locator("input#mat-input-1, input[placeholder*='DD/MM']").first
+            date_field = page.locator(
+                "input.input-date:visible, input[placeholder*='DD/MM/YYYY']:visible, input[placeholder*='DD/MM']:visible"
+            ).first
             await date_field.click(timeout=5000, force=True)
             await asyncio.sleep(1.0)
 
@@ -586,44 +600,49 @@ class AirEuropaConnectorClient:
             groups = []
         dicts = data.get("dictionaries", {})
         flight_dict = dicts.get("flight", {}) if isinstance(dicts, dict) else {}
+        fare_family_dict = dicts.get("fareFamilyWithServices", {}) if isinstance(dicts, dict) else {}
 
         for group in (groups if isinstance(groups, list) else []):
             bound_details = group.get("boundDetails", {})
             seg_refs = bound_details.get("segments", [])
             duration_secs = bound_details.get("duration", 0)
-
-            # Build segments from dictionaries
-            segments = []
-            for seg_ref in seg_refs:
-                fid = seg_ref.get("flightId", "") if isinstance(seg_ref, dict) else str(seg_ref)
-                seg_data = flight_dict.get(fid, {})
-                dep_info = seg_data.get("departure", {})
-                arr_info = seg_data.get("arrival", {})
-                airline_code = seg_data.get("marketingAirlineCode") or self.IATA
-                flight_num = seg_data.get("marketingFlightNumber", "")
-                flight_no = f"{airline_code}{flight_num}" if flight_num else airline_code
-
-                dep_dt = self._parse_dt(dep_info.get("dateTime", ""), req.date_from)
-                arr_dt = self._parse_dt(arr_info.get("dateTime", ""), req.date_from)
-
-                _ux_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")
-                segments.append(FlightSegment(
-                    airline=airline_code[:2],
-                    airline_name=self.AIRLINE_NAME if airline_code == self.IATA else airline_code,
-                    flight_no=flight_no,
-                    origin=dep_info.get("locationCode", req.origin),
-                    destination=arr_info.get("locationCode", req.destination),
-                    departure=dep_dt, arrival=arr_dt, cabin_class=_ux_cabin,
-                ))
-
-            if not segments:
-                continue
-
-            route = FlightRoute(segments=segments, total_duration_seconds=duration_secs,
-                                stopovers=max(0, len(segments) - 1))
+            package_price_note = self._describe_group_package_prices(group.get("airBounds", []))
 
             # Each airBound is a fare option for this flight group
             for ab in group.get("airBounds", []):
+                fare_family = str(ab.get("fareFamilyCode", "") or "")
+                family_meta = fare_family_dict.get(fare_family, {}) if isinstance(fare_family_dict, dict) else {}
+
+                segments = []
+                for seg_ref in seg_refs:
+                    fid = seg_ref.get("flightId", "") if isinstance(seg_ref, dict) else str(seg_ref)
+                    seg_data = flight_dict.get(fid, {})
+                    dep_info = seg_data.get("departure", {})
+                    arr_info = seg_data.get("arrival", {})
+                    airline_code = seg_data.get("marketingAirlineCode") or self.IATA
+                    flight_num = seg_data.get("marketingFlightNumber", "")
+                    flight_no = f"{airline_code}{flight_num}" if flight_num else airline_code
+
+                    dep_dt = self._parse_dt(dep_info.get("dateTime", ""), req.date_from)
+                    arr_dt = self._parse_dt(arr_info.get("dateTime", ""), req.date_from)
+                    cabin_code = self._resolve_cabin_code(ab, family_meta, fid)
+                    segments.append(FlightSegment(
+                        airline=airline_code[:2],
+                        airline_name=self.AIRLINE_NAME if airline_code == self.IATA else airline_code,
+                        flight_no=flight_no,
+                        origin=dep_info.get("locationCode", req.origin),
+                        destination=arr_info.get("locationCode", req.destination),
+                        departure=dep_dt,
+                        arrival=arr_dt,
+                        cabin_class=self._normalize_cabin(cabin_code),
+                    ))
+
+                if not segments:
+                    continue
+
+                route = FlightRoute(segments=segments, total_duration_seconds=duration_secs,
+                                    stopovers=max(0, len(segments) - 1))
+
                 prices_block = ab.get("prices", {})
                 total_prices = prices_block.get("totalPrices", [{}])
                 tp = total_prices[0] if total_prices else {}
@@ -634,7 +653,14 @@ class AirEuropaConnectorClient:
                 if price <= 0:
                     continue
 
-                fare_family = ab.get("fareFamilyCode", "")
+                conditions: dict[str, str] = {}
+                if fare_family:
+                    conditions["fare_family"] = fare_family
+                if package_price_note:
+                    conditions["fare_package_prices"] = package_price_note
+                if fare_family == "NOBAG":
+                    conditions["checked_bag"] = "not included"
+
                 offer_id = hashlib.md5(
                     f"{self.IATA.lower()}_{req.origin}_{req.destination}_{req.date_from}_{price}_{fare_family}_{segments[0].flight_no}".encode()
                 ).hexdigest()[:12]
@@ -643,10 +669,70 @@ class AirEuropaConnectorClient:
                     id=f"{self.IATA.lower()}_{offer_id}", price=round(price, 2), currency=currency,
                     price_formatted=f"{currency} {price:,.2f}", outbound=route, inbound=None,
                     airlines=list({s.airline for s in segments}), owner_airline=self.IATA,
+                    conditions=conditions,
                     booking_url=self._booking_url(req), is_locked=False,
                     source=self.SOURCE, source_tier="free",
                 ))
         return offers
+
+    @staticmethod
+    def _resolve_cabin_code(air_bound: dict, family_meta: dict, flight_id: str) -> str:
+        for detail in air_bound.get("availabilityDetails", []):
+            if isinstance(detail, dict) and detail.get("flightId") == flight_id:
+                cabin = detail.get("cabin")
+                if isinstance(cabin, str) and cabin.strip():
+                    return cabin
+        cabin = family_meta.get("cabin") if isinstance(family_meta, dict) else ""
+        return cabin if isinstance(cabin, str) else ""
+
+    @staticmethod
+    def _normalize_cabin(cabin_code: str) -> str:
+        code = (cabin_code or "").strip().lower()
+        if code in {"business", "biz", "c"}:
+            return "business"
+        if code in {"premium", "premiumeconomy", "premium_economy", "w"}:
+            return "premium_economy"
+        if code in {"first", "f"}:
+            return "first"
+        return "economy"
+
+    @classmethod
+    def _describe_group_package_prices(cls, air_bounds: list) -> str:
+        package_prices: list[tuple[str, str, float]] = []
+        seen_families: set[str] = set()
+
+        for air_bound in air_bounds if isinstance(air_bounds, list) else []:
+            if not isinstance(air_bound, dict):
+                continue
+            fare_family = str(air_bound.get("fareFamilyCode") or "").strip()
+            if not fare_family or fare_family in seen_families:
+                continue
+
+            prices_block = air_bound.get("prices") if isinstance(air_bound.get("prices"), dict) else {}
+            total_prices = prices_block.get("totalPrices") if isinstance(prices_block.get("totalPrices"), list) else []
+            if not total_prices:
+                continue
+            first_total = total_prices[0] if isinstance(total_prices[0], dict) else {}
+            raw_total = first_total.get("total")
+            currency = str(first_total.get("currencyCode") or cls.DEFAULT_CURRENCY)
+            try:
+                price = round(float(raw_total) / 100.0, 2)
+            except (TypeError, ValueError):
+                continue
+            if price <= 0:
+                continue
+
+            seen_families.add(fare_family)
+            package_prices.append((fare_family, currency, price))
+
+        if len(package_prices) < 2:
+            return ""
+
+        package_prices.sort(key=lambda item: item[2])
+        return "; ".join(
+            f"{fare_family} {currency} {price:,.2f}"
+            for fare_family, currency, price in package_prices
+        )
 
     def _extract_currency(self, d: dict) -> str:
         for key in ("currency", "currencyCode"):
@@ -781,6 +867,7 @@ class AirEuropaConnectorClient:
         combos = []
         for o in sorted(ob, key=lambda x: x.price)[:15]:
             for i in sorted(ib, key=lambda x: x.price)[:10]:
+                merged_conditions, merged_bags = AirEuropaConnectorClient._merge_round_trip_metadata(o, i)
                 combos.append(FlightOffer(
                     id=f"ux_rt_{o.id}_{i.id}",
                     price=round(o.price + i.price, 2),
@@ -791,10 +878,36 @@ class AirEuropaConnectorClient:
                     airlines=list(set(o.airlines + i.airlines)),
                     source=o.source,
                     booking_url=o.booking_url,
-                    conditions=o.conditions,
+                    conditions=merged_conditions,
+                    bags_price=merged_bags,
                 ))
         combos.sort(key=lambda x: x.price)
         return combos[:20]
+
+    @staticmethod
+    def _merge_round_trip_metadata(outbound: FlightOffer, inbound: FlightOffer) -> tuple[dict[str, str], dict[str, float]]:
+        merged_conditions = dict(outbound.conditions or {})
+        merged_bags = dict(outbound.bags_price or {})
+
+        for key, value in (inbound.conditions or {}).items():
+            if not value:
+                continue
+            if key not in merged_conditions:
+                merged_conditions[key] = value
+            elif merged_conditions[key] != value:
+                merged_conditions.setdefault(f"outbound_{key}", merged_conditions[key])
+                merged_conditions[f"inbound_{key}"] = value
+
+        for key, value in (inbound.bags_price or {}).items():
+            if value is None:
+                continue
+            if key not in merged_bags:
+                merged_bags[key] = value
+            elif merged_bags[key] != value:
+                merged_bags.setdefault(f"outbound_{key}", merged_bags[key])
+                merged_bags[f"inbound_{key}"] = value
+
+        return merged_conditions, merged_bags
 
     def _empty(self, req: FlightSearchRequest) -> FlightSearchResponse:
         search_hash = hashlib.md5(f"aireuropa{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()).hexdigest()[:12]

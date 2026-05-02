@@ -622,13 +622,18 @@ class ITAAirwaysConnectorClient:
                             mkt_code = fl.get("marketingAirlineCode", "AZ")
                             mkt_num = fl.get("marketingFlightNumber", "")
                             aname = airline_dict.get(mkt_code, "ITA Airways")
+                            dep_dt = self._parse_dt(dep.get("dateTime"))
+                            arr_dt = self._parse_dt(arr.get("dateTime"))
+                            if dep_dt.year <= 2000 or arr_dt.year <= 2000:
+                                ib_segs = []
+                                break
                             ib_segs.append(FlightSegment(
                                 airline=mkt_code, airline_name=aname,
                                 flight_no=f"{mkt_code}{mkt_num}",
                                 origin=dep.get("locationCode", ""),
                                 destination=arr.get("locationCode", ""),
-                                departure=self._parse_dt(dep.get("dateTime")),
-                                arrival=self._parse_dt(arr.get("dateTime")),
+                                departure=dep_dt,
+                                arrival=arr_dt,
                             ))
                         if ib_segs:
                             ib_route = FlightRoute(
@@ -658,6 +663,11 @@ class ITAAirwaysConnectorClient:
                 mkt_num = fl.get("marketingFlightNumber", "")
                 airline_name = airline_dict.get(mkt_code, "ITA Airways")
                 airlines_set.add(airline_name)
+                dep_dt = self._parse_dt(dep.get("dateTime"))
+                arr_dt = self._parse_dt(arr.get("dateTime"))
+                if dep_dt.year <= 2000 or arr_dt.year <= 2000:
+                    segments = []
+                    break
 
                 segments.append(FlightSegment(
                     airline=mkt_code,
@@ -665,21 +675,21 @@ class ITAAirwaysConnectorClient:
                     flight_no=f"{mkt_code}{mkt_num}",
                     origin=dep.get("locationCode", origin_code),
                     destination=arr.get("locationCode", dest_code),
-                    departure=self._parse_dt(dep.get("dateTime")),
-                    arrival=self._parse_dt(arr.get("dateTime")),
+                    departure=dep_dt,
+                    arrival=arr_dt,
                 ))
 
+            if not segments:
+                continue
             stopovers = max(len(segments) - 1, 0)
             route = FlightRoute(
-                segments=segments or [FlightSegment(
-                    airline="AZ", airline_name="ITA Airways", flight_no="AZ",
-                    origin=req.origin, destination=req.destination,
-                    departure=datetime.combine(req.date_from, datetime.min.time().replace(hour=8)),
-                    arrival=datetime.combine(req.date_from, datetime.min.time().replace(hour=8)),
-                )],
+                segments=segments,
                 total_duration_seconds=route_dur,
                 stopovers=stopovers,
             )
+
+            if req.return_from and not ib_route:
+                continue
 
             # Take cheapest fare per group (first airBound is usually isCheapestOffer)
             for ab in group.get("airBounds", []):
@@ -727,50 +737,8 @@ class ITAAirwaysConnectorClient:
 
     async def _scrape_dom(self, page, req: FlightSearchRequest) -> list[FlightOffer]:
         """Fallback: scrape pricing from page DOM."""
-        booking_url = self._booking_url(req)
-        try:
-            data = await page.evaluate(r"""() => {
-                const results = [];
-                const body = document.body?.innerText || '';
-                const priceRe = /(?:EUR|€)\s*([\d.,]+)|(\d{1,4}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*(?:EUR|€)/gi;
-                let m;
-                while ((m = priceRe.exec(body)) !== null) {
-                    const raw = (m[1] || m[2] || '').replace(/\./g, '').replace(',', '.');
-                    const p = parseFloat(raw);
-                    if (p > 15 && p < 10000) results.push(p);
-                }
-                return [...new Set(results)].sort((a, b) => a - b).slice(0, 10);
-            }""")
-            offers = []
-            for price in (data or []):
-                dep_dt = datetime.combine(req.date_from, datetime.min.time().replace(hour=8))
-                seg = FlightSegment(
-                    airline="AZ", airline_name="ITA Airways", flight_no="AZ",
-                    origin=req.origin, destination=req.destination,
-                    departure=dep_dt, arrival=dep_dt,
-                )
-                route = FlightRoute(segments=[seg], total_duration_seconds=0, stopovers=0)
-                key = f"az_dom_{req.origin}{req.destination}{price}"
-                oid = hashlib.md5(key.encode()).hexdigest()[:12]
-                offers.append(FlightOffer(
-                    id=f"az_{oid}",
-                    price=round(price, 2),
-                    currency="EUR",
-                    price_formatted=f"{price:.2f} EUR",
-                    outbound=route,
-                    inbound=None,
-                    airlines=["ITA Airways"],
-                    owner_airline="AZ",
-                    conditions={"price_type": "starting_from"},
-                    booking_url=booking_url,
-                    is_locked=False,
-                    source="itaairways_direct",
-                    source_tier="free",
-                ))
-            return offers
-        except Exception as e:
-            logger.warning("ITA DOM scrape failed: %s", e)
-            return []
+        logger.info("ITA DOM fallback exposes price-only results without schedule times; suppressing offers")
+        return []
 
     # ---- Helpers ----
 

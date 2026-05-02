@@ -169,8 +169,17 @@ def _to_datetime(val) -> datetime:
     return datetime.strptime(str(val), "%Y-%m-%d")
 
 
-def _parse_dt(s: str) -> datetime:
+def _parse_dt(s: str) -> datetime | None:
     """Parse ISO-ish datetime strings from the WestJet API."""
+    if not s:
+        return None
+    s = str(s).strip().replace("Z", "+00:00")
+    if ":" not in s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        pass
     for fmt in (
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%dT%H:%M:%S.%f",
@@ -180,7 +189,7 @@ def _parse_dt(s: str) -> datetime:
             return datetime.strptime(s[:len(fmt) + 3], fmt)
         except (ValueError, IndexError):
             continue
-    return datetime.strptime(s[:10], "%Y-%m-%d")
+    return None
 
 
 def _cabin_label(codes: list) -> str:
@@ -370,8 +379,11 @@ class WestjetConnectorClient:
                 for seg in raw_segs:
                     dep_raw = seg.get("departureDateRaw", "")
                     arr_raw = seg.get("arrivalDateRaw", "")
-                    dep_dt = _parse_dt(dep_raw) if dep_raw else _to_datetime(req.date_from)
-                    arr_dt = _parse_dt(arr_raw) if arr_raw else dep_dt + timedelta(hours=2)
+                    dep_dt = _parse_dt(dep_raw)
+                    arr_dt = _parse_dt(arr_raw)
+                    if not dep_dt or not arr_dt:
+                        segments = []
+                        break
                     dur = int((arr_dt - dep_dt).total_seconds()) if arr_dt > dep_dt else 0
 
                     carrier = seg.get("operatingAirline", "WS")

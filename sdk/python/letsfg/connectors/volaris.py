@@ -40,6 +40,8 @@ from .browser import auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
 
+_SAFE_CHECKED_BAG_SSRS = {"BB15", "BGB1"}
+
 _VIEWPORTS = [
     {"width": 1366, "height": 768},
     {"width": 1440, "height": 900},
@@ -296,6 +298,11 @@ class VolarisConnectorClient:
             await page.keyboard.type(iata, delay=80)
             await asyncio.sleep(2.0)
 
+            exact_iata_opt = page.locator(f'[role="option"]:has([data-att="{iata.upper()}"])').first
+            if await exact_iata_opt.count() > 0:
+                await exact_iata_opt.click(timeout=3000)
+                return True
+
             # Pick the first matching option
             opt = page.get_by_role("option").filter(
                 has_text=re.compile(re.escape(iata), re.IGNORECASE)
@@ -474,6 +481,7 @@ class VolarisConnectorClient:
         # results[0].trips[0].journeysAvailableByMarket["ORIG|DEST"] → journeys
         # faresAvailable[fareAvailabilityKey] → {totals: {fareTotal}}
         fares_available = data.get("faresAvailable", {})
+        bundle_offer_lookup = self._build_bundle_offer_lookup(data.get("bundleOffers", {}))
         results = data.get("results", [])
         flights_raw = []
 
@@ -482,6 +490,10 @@ class VolarisConnectorClient:
                 for trip in result.get("trips", []):
                     markets = trip.get("journeysAvailableByMarket", {})
                     for market_key, journeys in markets.items():
+                        normalized_market = str(market_key or "").upper().replace("-", "|").replace("_", "|").replace("/", "|")
+                        target_market = f"{req.origin}|{req.destination}".upper()
+                        if target_market not in normalized_market:
+                            continue
                         flights_raw.extend(journeys)
 
         # Fallback for other Navitaire-style formats
@@ -503,13 +515,29 @@ class VolarisConnectorClient:
             flights_raw = []
 
         for flight in flights_raw:
-            offer = self._parse_single_flight(flight, currency, req, booking_url, fares_available)
+            offer = self._parse_single_flight(
+                flight,
+                currency,
+                req,
+                booking_url,
+                fares_available,
+                bundle_offer_lookup,
+            )
             if offer:
                 offers.append(offer)
         return offers
 
-    def _parse_single_flight(self, flight: dict, currency: str, req: FlightSearchRequest, booking_url: str, fares_available: dict = None) -> Optional[FlightOffer]:
-        best_price = self._extract_best_price(flight, fares_available or {})
+    def _parse_single_flight(
+        self,
+        flight: dict,
+        currency: str,
+        req: FlightSearchRequest,
+        booking_url: str,
+        fares_available: dict | None = None,
+        bundle_offer_lookup: dict[str, dict] | None = None,
+    ) -> Optional[FlightOffer]:
+        selected_fare = self._select_best_fare(flight, fares_available or {})
+        best_price = selected_fare.get("price") if selected_fare else self._extract_best_price(flight, fares_available or {})
         if best_price is None or best_price <= 0:
             return None
 
@@ -532,6 +560,11 @@ class VolarisConnectorClient:
             stopovers=max(len(segments) - 1, 0),
         )
         flight_key = flight.get("journeyKey") or flight.get("id") or f"{flight.get('departureDate', '')}_{time.monotonic()}"
+        conditions, bags_price = self._extract_bundle_truth(
+            selected_fare,
+            currency,
+            bundle_offer_lookup or {},
+        )
         return FlightOffer(
             id=f"y4_{hashlib.md5(str(flight_key).encode()).hexdigest()[:12]}",
             price=round(best_price, 2),
@@ -541,11 +574,253 @@ class VolarisConnectorClient:
             inbound=None,
             airlines=["Volaris"],
             owner_airline="Y4",
+            bags_price=bags_price,
+            conditions=conditions,
             booking_url=booking_url,
             is_locked=False,
             source="volaris_direct",
             source_tier="free",
         )
+
+    @staticmethod
+    def _extract_fare_total(fare_data: Any) -> Optional[float]:
+        if isinstance(fare_data, dict):
+            totals = fare_data.get("totals", {}) if isinstance(fare_data.get("totals"), dict) else {}
+            fare_total = totals.get("fareTotal")
+            if fare_total is not None:
+                try:
+                    value = float(fare_total)
+                    if value > 0:
+                        return value
+                except (TypeError, ValueError):
+                    pass
+        elif isinstance(fare_data, list):
+            best: float | None = None
+            for item in fare_data:
+                value = VolarisConnectorClient._extract_fare_total(item)
+                if value is None:
+                    continue
+                if best is None or value < best:
+                    best = value
+            return best
+        return None
+
+    def _select_best_fare(self, flight: dict, fares_available: dict) -> Optional[dict[str, Any]]:
+        best: dict[str, Any] | None = None
+        for fare_ref in flight.get("fares", []):
+            if not isinstance(fare_ref, dict):
+                continue
+            fare_key = fare_ref.get("fareAvailabilityKey", "")
+            fare_data = fares_available.get(fare_key)
+            price = self._extract_fare_total(fare_data)
+            if price is None:
+                continue
+            if best is None or price < best["price"]:
+                best = {
+                    "price": price,
+                    "fare": fare_ref,
+                    "fare_data": fare_data,
+                }
+        return best
+
+    @staticmethod
+    def _build_bundle_offer_lookup(bundle_offers: Any) -> dict[str, dict]:
+        lookup: dict[str, dict] = {}
+        if isinstance(bundle_offers, list):
+            for entry in bundle_offers:
+                if not isinstance(entry, dict):
+                    continue
+                key = str(entry.get("key") or "").strip()
+                value = entry.get("value") if isinstance(entry.get("value"), dict) else entry
+                if key and isinstance(value, dict):
+                    lookup[key] = value
+        elif isinstance(bundle_offers, dict):
+            for key, value in bundle_offers.items():
+                if isinstance(value, dict):
+                    lookup[str(key)] = value
+        return lookup
+
+    @staticmethod
+    def _extract_fare_family(selected_fare: Optional[dict[str, Any]]) -> str:
+        if not selected_fare:
+            return ""
+        fare_ref = selected_fare.get("fare")
+        if isinstance(fare_ref, dict):
+            for detail in fare_ref.get("details", []):
+                if not isinstance(detail, dict):
+                    continue
+                value = detail.get("serviceBundleSetCode")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        for candidate in (
+            selected_fare.get("fare_data"),
+            selected_fare.get("fare"),
+        ):
+            if isinstance(candidate, list):
+                for item in candidate:
+                    family = VolarisConnectorClient._extract_fare_family({"fare_data": item})
+                    if family:
+                        return family
+                continue
+            if not isinstance(candidate, dict):
+                continue
+            for key in (
+                "productClass",
+                "classOfService",
+                "fareClass",
+                "fareBasisCode",
+                "serviceBundleSetCode",
+                "bundleCode",
+            ):
+                value = candidate.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return ""
+
+    @staticmethod
+    def _collect_bundle_references(selected_fare: Optional[dict[str, Any]]) -> list[str]:
+        if not selected_fare:
+            return []
+        fare_ref = selected_fare.get("fare")
+        if not isinstance(fare_ref, dict):
+            return []
+
+        refs: list[str] = []
+        for detail in fare_ref.get("details", []):
+            if not isinstance(detail, dict):
+                continue
+            bundle_refs = detail.get("bundleReferences")
+            if isinstance(bundle_refs, list):
+                for ref in bundle_refs:
+                    ref_text = str(ref).strip()
+                    if ref_text and ref_text not in refs:
+                        refs.append(ref_text)
+            elif isinstance(bundle_refs, dict):
+                for ref in bundle_refs.values():
+                    ref_text = str(ref).strip()
+                    if ref_text and ref_text not in refs:
+                        refs.append(ref_text)
+            elif bundle_refs is not None:
+                ref_text = str(bundle_refs).strip()
+                if ref_text and ref_text not in refs:
+                    refs.append(ref_text)
+            single_ref = detail.get("bundleReference")
+            if single_ref is not None:
+                ref_text = str(single_ref).strip()
+                if ref_text and ref_text not in refs:
+                    refs.append(ref_text)
+        return refs
+
+    @staticmethod
+    def _extract_bundle_total(bundle_offer: dict) -> Optional[float]:
+        bundle_prices = bundle_offer.get("bundlePrices")
+        if not isinstance(bundle_prices, list):
+            return None
+        best_total: float | None = None
+        for price in bundle_prices:
+            if not isinstance(price, dict):
+                continue
+            total_price = price.get("totalPrice")
+            if total_price is None:
+                continue
+            try:
+                numeric = float(total_price)
+            except (TypeError, ValueError):
+                continue
+            if numeric < 0:
+                continue
+            if best_total is None or numeric < best_total:
+                best_total = numeric
+        return best_total
+
+    @staticmethod
+    def _extract_bundle_checked_bag_ssrs(bundle_offer: dict) -> list[str]:
+        codes: list[str] = []
+        bundle_prices = bundle_offer.get("bundlePrices")
+        if not isinstance(bundle_prices, list):
+            return codes
+        for bundle_price in bundle_prices:
+            if not isinstance(bundle_price, dict):
+                continue
+            for ssr in bundle_price.get("bundleSsrPrices", []):
+                if not isinstance(ssr, dict):
+                    continue
+                code = str(ssr.get("ssrCode") or "").strip().upper()
+                if code in _SAFE_CHECKED_BAG_SSRS and code not in codes:
+                    codes.append(code)
+        return codes
+
+    def _extract_bundle_truth(
+        self,
+        selected_fare: Optional[dict[str, Any]],
+        currency: str,
+        bundle_offer_lookup: dict[str, dict],
+    ) -> tuple[dict[str, str], dict[str, float]]:
+        conditions: dict[str, str] = {}
+        bags_price: dict[str, float] = {}
+
+        fare_family = self._extract_fare_family(selected_fare)
+        if fare_family:
+            conditions["fare_family"] = fare_family
+
+        if not selected_fare:
+            return conditions, bags_price
+
+        base_price = selected_fare.get("price")
+        try:
+            numeric_base_price = float(base_price)
+        except (TypeError, ValueError):
+            return conditions, bags_price
+
+        bundle_refs = self._collect_bundle_references(selected_fare)
+        if not bundle_refs:
+            return conditions, bags_price
+
+        included_bundle_code = ""
+        upgrade_notes: list[str] = []
+        saw_checked_bag_upgrade = False
+
+        for bundle_ref in bundle_refs:
+            bundle_offer = bundle_offer_lookup.get(bundle_ref)
+            if not isinstance(bundle_offer, dict):
+                continue
+
+            bundle_code = str(bundle_offer.get("bundleCode") or bundle_ref).strip()
+            bundle_total = self._extract_bundle_total(bundle_offer)
+            checked_bag_ssrs = self._extract_bundle_checked_bag_ssrs(bundle_offer)
+            has_checked_bag = bool(checked_bag_ssrs)
+            if has_checked_bag:
+                saw_checked_bag_upgrade = True
+
+            if bundle_total is not None and (abs(bundle_total - numeric_base_price) < 0.01 or abs(bundle_total) < 0.01):
+                if bundle_code and not conditions.get("fare_bundle"):
+                    conditions["fare_bundle"] = bundle_code
+                    included_bundle_code = bundle_code
+                if has_checked_bag:
+                    ssr_text = ", ".join(checked_bag_ssrs)
+                    conditions["checked_bag"] = f"included - bundle {bundle_code or bundle_ref} ({ssr_text})"
+                    bags_price["checked_bag"] = 0.0
+                continue
+
+            note_parts = [bundle_code or bundle_ref]
+            if bundle_total is not None and bundle_total > numeric_base_price:
+                note_parts.append(f"(+{bundle_total - numeric_base_price:.2f} {currency})")
+            if has_checked_bag:
+                note_parts.append(f"checked bag ({', '.join(checked_bag_ssrs)})")
+            note = " ".join(part for part in note_parts if part).strip()
+            if note and note not in upgrade_notes:
+                upgrade_notes.append(note)
+
+        if included_bundle_code and "fare_bundle" not in conditions:
+            conditions["fare_bundle"] = included_bundle_code
+
+        if upgrade_notes:
+            conditions["fare_upgrade_note"] = "; ".join(upgrade_notes[:3])
+
+        if saw_checked_bag_upgrade and "checked_bag" not in conditions:
+            conditions["checked_bag"] = "available via bundle upgrade; no standalone search price"
+
+        return conditions, bags_price
 
     @staticmethod
     def _extract_best_price(flight: dict, fares_available: dict = None) -> Optional[float]:
@@ -659,6 +934,40 @@ class VolarisConnectorClient:
 
     @staticmethod
     def _combine_rt(ob: list, ib: list, req) -> list:
+        def merge_conditions(outbound: dict[str, str], inbound: dict[str, str]) -> dict[str, str]:
+            merged = dict(outbound or {})
+            for key, value in (inbound or {}).items():
+                if value in (None, ""):
+                    continue
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = value
+                    continue
+                if existing == value:
+                    continue
+                merged.pop(key, None)
+                if key in (outbound or {}):
+                    merged[f"outbound_{key}"] = outbound[key]
+                merged[f"inbound_{key}"] = value
+            return merged
+
+        def merge_bags_price(outbound: dict[str, float], inbound: dict[str, float]) -> dict[str, float]:
+            merged = dict(outbound or {})
+            for key, value in (inbound or {}).items():
+                if value is None:
+                    continue
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = value
+                    continue
+                if existing == value:
+                    continue
+                merged.pop(key, None)
+                if key in (outbound or {}):
+                    merged[f"outbound_{key}"] = outbound[key]
+                merged[f"inbound_{key}"] = value
+            return merged
+
         combos = []
         for o in sorted(ob, key=lambda x: x.price)[:15]:
             for i in sorted(ib, key=lambda x: x.price)[:10]:
@@ -666,13 +975,15 @@ class VolarisConnectorClient:
                     id=f"y4_rt_{o.id}_{i.id}",
                     price=round(o.price + i.price, 2),
                     currency=o.currency,
+                    price_formatted=f"{round(o.price + i.price, 2):.2f} {o.currency}",
                     outbound=o.outbound,
                     inbound=i.outbound,
                     owner_airline=o.owner_airline,
                     airlines=list(set(o.airlines + i.airlines)),
                     source=o.source,
                     booking_url=o.booking_url,
-                    conditions=o.conditions,
+                    bags_price=merge_bags_price(o.bags_price, i.bags_price),
+                    conditions=merge_conditions(o.conditions, i.conditions),
                 ))
         combos.sort(key=lambda x: x.price)
         return combos[:20]
