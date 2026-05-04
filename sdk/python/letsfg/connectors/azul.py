@@ -195,14 +195,21 @@ class AzulConnectorClient:
         logger.info("Azul: searching %s→%s on %s", req.origin, req.destination, dep)
 
         try:
-            # Step 1: Warm session via passagens.voeazul.com.br (sets anti-bot cookies)
-            # Only needed once per process; skip if context already warmed.
+            # Step 1: Warm session — Akamai cookies are subdomain-specific.
+            # We must warm BOTH passagens.voeazul.com.br AND www.voeazul.com.br
+            # and allow enough time (~4s each) for the Akamai sensor JS to run
+            # and POST fingerprint data before the search triggers bot detection.
             if not _context_warmed:
+                logger.debug("Azul: warming passagens subdomain...")
                 await page.goto(_WARM_URL, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(4)  # Akamai sensors need ~3-4s to post fingerprint
                 await self._accept_cookies(page)
+                # Also warm the search subdomain (www.voeazul.com.br) directly
+                logger.debug("Azul: warming www subdomain...")
+                await page.goto(_SEARCH_HOST, wait_until="domcontentloaded", timeout=20000)
+                await asyncio.sleep(4)
                 _context_warmed = True
-                logger.debug("Azul: session warmed")
+                logger.info("Azul: session warmed on both subdomains")
 
             # Step 2: Navigate directly to the flight search deep-link
             search_url = (
@@ -220,7 +227,14 @@ class AzulConnectorClient:
             if "comportamento incomum" in page_text or (
                 "Ops!" in page_text and "IP:" in page_text
             ):
-                logger.warning("Azul: bot block detected — re-warming on next attempt")
+                logger.warning("Azul: bot block detected — re-warming www subdomain before retry")
+                # Re-warm the www subdomain specifically (it may not have been warmed yet
+                # in the current attempt, or Akamai _abck expired)
+                try:
+                    await page.goto(_SEARCH_HOST, wait_until="domcontentloaded", timeout=20000)
+                    await asyncio.sleep(5)
+                except Exception:
+                    pass
                 _context_warmed = False
                 return None
 

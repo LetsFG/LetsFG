@@ -273,27 +273,25 @@ class FlybondiConnectorClient:
     async def _attempt_search(
         self, url: str, req: FlightSearchRequest
     ) -> Optional[list[FlightOffer]]:
-        """Wizard flow: Homepage (session warmup + PromotionalFlightSectionFaresQuery)
-        → /search/destination → /search/dates (DatesContainerQuery).
+        """Homepage warmup → direct GraphQL fetch via page.evaluate().
 
-        The results page (/search/results) triggers a visible Cloudflare Turnstile when
-        loading actual flight data, so we use the calendar data instead:
-        - PromotionalFlightSectionFaresQuery: real lowestPrice, ~60 days ahead, featured routes
-        - DatesContainerQuery: real lowestPrice + fares[], Nov+ advance, any route
+        The PromotionalFlightSectionFaresQuery is the Flybondi fares API.
+        It fires for promo routes on the homepage, but the same query works for
+        ANY route when called directly via fetch() from within the browser context
+        (which already holds the Cloudflare session cookie).
+
+        The authorization key is embedded in the client JS bundle and captured
+        dynamically from the first GQL request that fires on the homepage.
         """
         from patchright.async_api import async_playwright as patchright_playwright
+        from datetime import timezone
 
         currency = req.currency or "ARS"
-        adults = getattr(req, "adults", 1) or 1
-        children = getattr(req, "children", 0) or 0
-        infants = getattr(req, "infants", 0) or 0
 
-        dates_url = (
-            f"https://flybondi.com/ar/search/dates"
-            f"?adults={adults}&children={children}&currency={currency}"
-            f"&fromCityCode={req.origin}&infants={infants}&toCityCode={req.destination}"
-            f"&utm_origin=search_bar"
-        )
+        # Flybondi uses metro/city codes, not airport codes (EZE/AEP → BUE)
+        _AIRPORT_TO_CITY = {"EZE": "BUE", "AEP": "BUE"}
+        from_city = _AIRPORT_TO_CITY.get(req.origin.upper(), req.origin.upper())
+        to_city = _AIRPORT_TO_CITY.get(req.destination.upper(), req.destination.upper())
 
         proxy = get_default_proxy()
         viewport = random.choice(_VIEWPORTS)
@@ -327,75 +325,114 @@ class FlybondiConnectorClient:
             page = await context.new_page()
             await auto_block_if_proxied(page)
 
-            all_departures: list[dict] = []
-            promo_event = asyncio.Event()
-            dates_event = asyncio.Event()
+            # Capture the authorization key + custom headers from the first GQL request.
+            # The key is embedded in the client bundle and is the same across sessions
+            # for a given app version.
+            captured_auth: dict[str, str] = {}
+            gql_intercepted = asyncio.Event()
 
-            async def on_response(response):
-                try:
-                    if response.status != 200:
-                        return
-                    if "flybondi.com" not in response.url:
-                        return
-                    ct = response.headers.get("content-type", "")
-                    if "json" not in ct:
-                        return
-                    body_text = (await response.body()).decode("utf-8", errors="replace")
-                    if '"departures"' not in body_text and '"lowestPrice"' not in body_text:
-                        return
-                    data = json.loads(body_text)
-                    if not isinstance(data, dict):
-                        return
-                    # Both PromotionalFlightSectionFaresQuery and DatesContainerQuery
-                    # return departures under these paths:
-                    deps = (
-                        data.get("data", {}).get("departures")
-                        or data.get("data", {}).get("viewer", {}).get("configuration", {}).get("departures")
-                        or data.get("data", {}).get("viewer", {}).get("departures")
-                        or []
-                    )
-                    if deps and isinstance(deps, list):
-                        all_departures.extend(deps)
-                        logger.debug("Flybondi: captured %d departures from %s", len(deps), response.url[:80])
-                        # Distinguish promo (small, near-term) from dates (large, advance)
-                        if len(body_text) < 50000:
-                            promo_event.set()
-                        else:
-                            dates_event.set()
-                except Exception:
-                    pass
+            async def handle_gql_route(route):
+                if not gql_intercepted.is_set():
+                    for k in ("authorization", "x-fo-flow", "x-fo-market-origin",
+                              "x-fo-ui-version", "x-fo-shopping-id"):
+                        v = route.request.headers.get(k)
+                        if v is not None:
+                            captured_auth[k] = v
+                    if captured_auth.get("authorization"):
+                        gql_intercepted.set()
+                await route.continue_()
 
-            page.on("response", on_response)
+            await page.route("**/graphql**", handle_gql_route)
 
-            # Step 1: Homepage — establishes CF session cookie + fires promo queries
+            # Step 1: Homepage — establishes CF session cookie + fires promo GQL requests
             logger.info("Flybondi: loading homepage for session warmup (%s→%s)", req.origin, req.destination)
             await page.goto("https://flybondi.com/ar", wait_until="domcontentloaded", timeout=30000)
             await self._dismiss_cookies(page)
             try:
-                await asyncio.wait_for(promo_event.wait(), timeout=8)
+                await asyncio.wait_for(gql_intercepted.wait(), timeout=10)
             except asyncio.TimeoutError:
-                pass
+                logger.warning("Flybondi: could not capture GQL auth headers from homepage promo requests")
 
-            # Step 2: Click "Buscar vuelos" to navigate to /search/destination
-            # This sets up the search session state before navigating to /search/dates
-            try:
-                submit = page.locator("button:has-text('Buscar vuelos')").first
-                if await submit.count() > 0 and await submit.is_visible(timeout=3000):
-                    await submit.click()
-                    await page.wait_for_url("**/search/destination**", timeout=10000)
-                    logger.debug("Flybondi: reached /search/destination")
-            except Exception as _e:
-                logger.debug("Flybondi: buscar vuelos click failed: %s", _e)
+            # Fallback to known static values if interception missed
+            if not captured_auth.get("authorization"):
+                captured_auth = {
+                    "authorization": "Key b64ead64fb26d64668838ac2ef8c0c3222c3d285cf5a2fd1ce49281c140bcdaa",
+                    "x-fo-flow": "ibe",
+                    "x-fo-market-origin": "ar",
+                    "x-fo-ui-version": "2.222.1",
+                    "x-fo-shopping-id": "",
+                }
+                logger.debug("Flybondi: using static fallback auth headers")
 
-            # Step 3: Navigate directly to dates page — fires DatesContainerQuery
-            logger.info("Flybondi: navigating to dates page %s", dates_url[:120])
-            await page.goto(dates_url, wait_until="domcontentloaded", timeout=20000)
-            try:
-                await asyncio.wait_for(dates_event.wait(), timeout=15)
-            except asyncio.TimeoutError:
-                logger.warning("Flybondi: timeout waiting for DatesContainerQuery for %s→%s", req.origin, req.destination)
+            # Step 2: Call the fares GraphQL API directly from the browser context.
+            # Using page.evaluate(fetch(...)) inherits the CF session cookies (same-origin).
+            today_ms = int(
+                datetime.now(tz=timezone.utc)
+                .replace(hour=0, minute=0, second=0, microsecond=0)
+                .timestamp() * 1000
+            )
+            end_ms = today_ms + 90 * 24 * 60 * 60 * 1000
 
-            return self._build_offers_from_departures(all_departures, req)
+            # Compact single-line GQL to avoid multi-line string escaping issues
+            gql_query = (
+                "query PromotionalFlightSectionFaresQuery("
+                "$origin:String!,$destination:String!,$currency:String!,"
+                "$start:Timestamp!,$end:Timestamp!){"
+                'departures:fares(origin:$origin,destination:$destination,currency:$currency,'
+                'start:$start,end:$end,sort:"departure"){'
+                "departure lowestPrice id}}"
+            )
+
+            logger.debug(
+                "Flybondi: calling fares GQL %s→%s %s [%s..%s]",
+                from_city, to_city, currency, today_ms, end_ms,
+            )
+            gql_result = await page.evaluate(
+                """async ([gqlUrl, authHeaders, query, variables]) => {
+                    try {
+                        const resp = await fetch(gqlUrl, {
+                            method: 'POST',
+                            headers: {
+                                'content-type': 'application/json',
+                                'accept': 'application/json',
+                                ...authHeaders,
+                            },
+                            body: JSON.stringify({query, variables}),
+                        });
+                        if (!resp.ok) return {ok: false, status: resp.status};
+                        const data = await resp.json();
+                        return {ok: true, data};
+                    } catch (e) {
+                        return {ok: false, error: String(e)};
+                    }
+                }""",
+                [
+                    "https://flybondi.com/graphql",
+                    captured_auth,
+                    gql_query,
+                    {
+                        "origin": from_city,
+                        "destination": to_city,
+                        "currency": currency,
+                        "start": today_ms,
+                        "end": end_ms,
+                    },
+                ],
+            )
+
+            if not gql_result.get("ok"):
+                logger.warning(
+                    "Flybondi: GQL fetch failed: %s",
+                    gql_result.get("error") or gql_result.get("status"),
+                )
+                return []
+
+            deps = gql_result.get("data", {}).get("data", {}).get("departures") or []
+            logger.info(
+                "Flybondi: GQL returned %d departures for %s→%s",
+                len(deps), from_city, to_city,
+            )
+            return self._build_offers_from_departures(deps, req)
 
         finally:
             await context.close()
@@ -426,8 +463,12 @@ class FlybondiConnectorClient:
                 continue
             seen_ids.add(dep_id)
 
-            # id format: "BUE-MDZ-ARS-2026-05-24" — check route prefix
-            route_prefix = f"{req.origin}-{req.destination}".upper()
+            # id format: "BUE-MDZ-ARS-2026-05-24" — Flybondi uses city codes
+            # (BUE) not airport codes (EZE/AEP), so normalise before comparing.
+            _AIRPORT_TO_CITY = {"EZE": "BUE", "AEP": "BUE"}
+            origin_code = _AIRPORT_TO_CITY.get(req.origin.upper(), req.origin.upper())
+            dest_code = _AIRPORT_TO_CITY.get(req.destination.upper(), req.destination.upper())
+            route_prefix = f"{origin_code}-{dest_code}"
             if dep_id and route_prefix not in dep_id.upper():
                 continue
 

@@ -131,6 +131,305 @@ def _gcs_save_probe(code: str, data: dict) -> None:
         logger.debug("GCS probe save %s: %s", code, exc)
 
 
+# ── GCS raw-response snapshot cache (3rd tier) ───────────────────────────────
+# Stores the raw intercepted API response so it can be REPLAYED WITHOUT a
+# browser on subsequent calls.  When the 7-day parsed result cache expires but
+# the snapshot is still fresh (30-day TTL), we re-parse the snapshot locally
+# instead of launching Chrome — saving all proxy + compute cost.
+#
+# Path:   gs://{bucket}/ancillary-snapshots/{code}.json
+# Format: {"ts": <unix>, "type": "<payload_type>", "data": {...}, "extra": {...}}
+# TTL:    30 days (configurable via ANCILLARY_SNAPSHOT_TTL)
+# Only for stable-pricing airlines (not in _GCS_BYPASS_CODES).
+
+_GCS_SNAPSHOT_TTL = int(os.environ.get("ANCILLARY_SNAPSHOT_TTL", str(30 * 24 * 3600)))
+
+
+def _gcs_load_snapshot(code: str) -> Optional[dict]:
+    """Synchronous — load a raw-response snapshot from GCS. Returns envelope if fresh."""
+    client = _get_gcs_probe_client()
+    if client is None:
+        return None
+    try:
+        bucket = client.bucket(_GCS_PROBE_BUCKET)
+        blob = bucket.blob(f"ancillary-snapshots/{code}.json")
+        if not blob.exists():
+            return None
+        raw = blob.download_as_bytes()
+        envelope = json.loads(raw)
+        age = time.time() - envelope.get("ts", 0)
+        if age > _GCS_SNAPSHOT_TTL:
+            logger.debug("GCS snapshot %s stale (%.0fd old)", code, age / 86400)
+            return None
+        logger.info("Ancillary snapshot %s: loaded from GCS (%.1fd old)", code, age / 86400)
+        return envelope
+    except Exception as exc:
+        logger.debug("GCS snapshot load %s: %s", code, exc)
+        return None
+
+
+def _gcs_save_snapshot(code: str, snap_type: str, data: dict, extra: Optional[dict] = None) -> None:
+    """Synchronous — save raw API response to GCS snapshot. Called in executor."""
+    client = _get_gcs_probe_client()
+    if client is None:
+        return
+    try:
+        envelope: dict = {"ts": time.time(), "type": snap_type, "data": data}
+        if extra:
+            envelope["extra"] = extra
+        bucket = client.bucket(_GCS_PROBE_BUCKET)
+        blob = bucket.blob(f"ancillary-snapshots/{code}.json")
+        blob.upload_from_string(
+            json.dumps(envelope, separators=(",", ":")),
+            content_type="application/json",
+        )
+        logger.info("Ancillary snapshot %s: saved to GCS (type=%s)", code, snap_type)
+    except Exception as exc:
+        logger.debug("GCS snapshot save %s: %s", code, exc)
+
+
+# ── Static-asset HAR snapshot (website bandwidth cache) ──────────────────────
+# Caches airline SPA static assets (JS/CSS/fonts) in GCS as a HAR file so
+# subsequent browser runs serve them from cache instead of re-downloading
+# through proxy. Only static asset URLs are matched; HTML and JSON API calls
+# always go to the real network so fare data is always live.
+
+_HAR_SNAPSHOT_TTL = int(os.environ.get("ANCILLARY_HAR_TTL", str(90 * 24 * 3600)))
+
+# Matches versioned JS bundles, CSS, fonts, images — NOT HTML or JSON/XHR.
+_HAR_STATIC_RE = re.compile(
+    r"\.(?:js|mjs|css|woff2?|ttf|eot|otf|png|jpe?g|gif|svg|ico|webp|avif|map)(\?[^'\"\s]*)?$",
+    re.IGNORECASE,
+)
+
+
+def _gcs_load_har(code: str) -> Optional[str]:
+    """Download static-asset HAR from GCS to a temp file.
+    Returns path (populated with decompressed HAR JSON) or None if not found/expired."""
+    client = _get_gcs_probe_client()
+    if client is None:
+        return None
+    try:
+        import gzip as _gz
+        import tempfile as _tmp
+        bucket = client.bucket(_GCS_PROBE_BUCKET)
+        blob = bucket.blob(f"ancillary-har/{code}.har.gz")
+        if not blob.exists():
+            return None
+        blob.reload()
+        ts = float((blob.metadata or {}).get("ts", "0"))
+        if time.time() - ts > _HAR_SNAPSHOT_TTL:
+            return None
+        fd, path = _tmp.mkstemp(suffix=".har")
+        os.close(fd)
+        with open(path, "wb") as f:
+            f.write(_gz.decompress(blob.download_as_bytes()))
+        logger.debug("GCS HAR load %s: %d KB", code, os.path.getsize(path) // 1024)
+        return path
+    except Exception as exc:
+        logger.debug("GCS HAR load %s: %s", code, exc)
+        return None
+
+
+def _gcs_save_har(code: str, har_path: str) -> None:
+    """Gzip-compress the HAR file and upload to GCS. Deletes the temp file when done."""
+    client = _get_gcs_probe_client()
+    try:
+        if client is None:
+            return
+        import gzip as _gz
+        if not os.path.exists(har_path) or os.path.getsize(har_path) < 100:
+            return  # empty / non-existent — nothing worth saving
+        with open(har_path, "rb") as f:
+            raw = f.read()
+        compressed = _gz.compress(raw, compresslevel=6)
+        bucket = client.bucket(_GCS_PROBE_BUCKET)
+        blob = bucket.blob(f"ancillary-har/{code}.har.gz")
+        blob.metadata = {"ts": str(time.time())}
+        blob.upload_from_string(compressed, content_type="application/gzip")
+        logger.info("Ancillary HAR %s: saved %d KB gzipped", code, len(compressed) // 1024)
+    except Exception as exc:
+        logger.debug("GCS HAR save %s: %s", code, exc)
+    finally:
+        try:
+            os.unlink(har_path)
+        except Exception:
+            pass
+
+
+def _prepare_har_tmp(code: str) -> str:
+    """Sync: load HAR from GCS into a fresh temp file, or create a valid empty HAR skeleton.
+    The returned path is always a valid, writable file. Call via run_in_executor."""
+    import json as _json
+    import tempfile as _tmp
+    fd, path = _tmp.mkstemp(suffix=".har")
+    os.close(fd)
+    existing = _gcs_load_har(code)
+    if existing:
+        import shutil as _sh
+        _sh.copy2(existing, path)
+        try:
+            os.unlink(existing)
+        except Exception:
+            pass
+    else:
+        # Write a minimal valid HAR so Playwright can use update=True mode on first run
+        _skeleton = {
+            "log": {
+                "version": "1.2",
+                "creator": {"name": "letsfg-probe", "version": "1"},
+                "entries": [],
+            }
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            _json.dump(_skeleton, f)
+    return path
+
+
+async def _setup_har_route(context, code: str, har_path: str) -> None:
+    """Wire route_from_har on a browser context for static-asset caching.
+    Matching static assets are served from HAR (update=True fills new entries).
+    Non-matching URLs (HTML, XHR/JSON) go directly to the real network."""
+    try:
+        await context.route_from_har(
+            har_path,
+            url=_HAR_STATIC_RE,
+            update=True,
+            not_found="fallback",
+        )
+    except Exception as exc:
+        logger.debug("HAR route %s: %s", code, exc)
+
+
+# ── Snapshot replay functions ─────────────────────────────────────────────────
+# Each function takes a loaded GCS envelope ({"ts":…,"type":…,"data":…,"extra":…})
+# and returns a probe result dict (or None if the snapshot is unparseable).
+# No network calls, no browser — pure local re-parse of cached API data.
+
+def _snap_replay_xq(snap: dict) -> Optional[dict]:
+    raw = snap.get("data")
+    if not raw:
+        return None
+    val = _xq_bag_price(raw)
+    if not val or val <= 0:
+        return None
+    return {
+        "checked_bag_note": f"checked bag not included (Essential fare) – add-on from EUR {val:.0f}",
+        "bags_note": "cabin bag 8 kg included free (Essential fare)",
+        "checked_bag_from": val,
+        "currency": "EUR",
+        "seat_note": "seat selection add-on available",
+    }
+
+
+def _snap_replay_sz(snap: dict) -> Optional[dict]:
+    raw = snap.get("data")
+    if not raw:
+        return None
+    bag_from = _sz_bag_price_from_search_shop(raw)
+    if not bag_from or bag_from <= 0:
+        return None
+    return {
+        "checked_bag_note": f"checked bag not included in base fare – add-on from EUR {bag_from:.0f}",
+        "bags_note": "hand luggage 8 kg + 1 personal item included in base fare",
+        "checked_bag_from": bag_from,
+        "currency": "EUR",
+        "seat_note": "seat selection add-on available",
+    }
+
+
+def _snap_replay_af(snap: dict) -> Optional[dict]:
+    """Shared by AF and KL — both use the same GQL format."""
+    raw = snap.get("data")
+    if not raw:
+        return None
+    snap_type = snap.get("type", "")
+    extra = snap.get("extra", {})
+    currency = extra.get("currency", "EUR")
+    price: Optional[float] = None
+    if snap_type == "af_upsell_gql":
+        price = _af_bag_price_from_gql_upsell(raw)
+    elif snap_type == "af_ancillaries_gql":
+        result = _af_bag_price_from_ancillaries_gql(raw)
+        if result:
+            price, currency = result
+    if not price or price <= 0:
+        return None
+    return {
+        "checked_bag_note": f"checked bag not included (Light fare) – add-on from {currency} {price:.0f}",
+        "bags_note": "cabin bag 12 kg included free (Light fare)",
+        "checked_bag_from": price,
+        "checked_bag_price": price,
+        "currency": currency,
+        "seat_note": "seat selection add-on available",
+    }
+
+
+def _snap_replay_f3(snap: dict) -> Optional[dict]:
+    fare_cards = snap.get("data", {}).get("fare_cards", [])
+    if not fare_cards:
+        return None
+    with_bag = [f for f in fare_cards if f.get("hasChecked") and (f.get("price") or 0) > 0]
+    if not with_bag:
+        return None
+    bag_price = min(f["price"] for f in with_bag)
+    seat_min = 28.0
+    return {
+        "checked_bag_note": f"checked bag not included (fly fare) – add-on from SAR {bag_price:.0f}",
+        "bags_note": "cabin bag 7 kg included free",
+        "checked_bag_from": bag_price,
+        "currency": "SAR",
+        "seat_from": seat_min,
+        "seat_note": f"seat selection add-on from SAR {seat_min:.0f}",
+    }
+
+
+def _snap_replay_generic(
+    snap: dict,
+    no_bag_label: str,
+    carry_on_note: str,
+    default_currency: str,
+) -> Optional[dict]:
+    """Generic replay for BA, LH, IB, AC, AY, A3, NZ, QF (fare-family intercept)."""
+    raw = snap.get("data")
+    if not raw:
+        return None
+    b, s = _extract_bag_seat_prices(raw)
+    diff = _af_bag_price_from_fare_families(raw)
+    if diff:
+        b.append(diff)
+    if not b:
+        return None
+    min_bag = min(p for p in b if p > 0)
+    extra = snap.get("extra", {})
+    currency = extra.get("currency", default_currency)
+    result: dict = {
+        "checked_bag_note": f"checked bag not included ({no_bag_label}) – add-on from {currency} {min_bag:.0f}",
+        "bags_note": carry_on_note,
+        "checked_bag_from": min_bag,
+        "checked_bag_price": min_bag,
+        "currency": currency,
+        "seat_note": "seat selection add-on available",
+    }
+    if s:
+        result["seat_from"] = min(s)
+        result["seat_note"] = f"seat selection add-on from {currency} {min(s):.0f}"
+    return result
+
+
+# ── Snapshot replay dispatch ──────────────────────────────────────────────────
+# Maps airline code → callable(snap_envelope) → Optional[dict]
+# Only codes eligible for snapshots are listed here (i.e. not _GCS_BYPASS_CODES).
+
+def _make_generic_replayer(no_bag_label: str, carry_on: str, cur: str):
+    def _replay(snap: dict) -> Optional[dict]:
+        return _snap_replay_generic(snap, no_bag_label, carry_on, cur)
+    return _replay
+
+
+_SNAPSHOT_REPLAY: Dict[str, Any] = {}  # populated at bottom of module after all helpers defined
+
+
 async def probe_ancillaries(
     code: str,
     origin: str,
@@ -539,6 +838,16 @@ async def _probe_f3(
     probe_origin = "JED"
     probe_dest = "RUH"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _f3_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "F3")
+    if _f3_snap is not None:
+        _f3_result = _snap_replay_f3(_f3_snap)
+        if _f3_result:
+            logger.info("F3 probe: replayed from GCS snapshot (no browser)")
+            return _f3_result
+
+    _f3_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "F3")
+
     try:
         from patchright.async_api import async_playwright as _patchright_playwright
 
@@ -559,6 +868,7 @@ async def _probe_f3(
                     locale="en-US",
                     timezone_id="Asia/Riyadh",
                 )
+                await _setup_har_route(ctx, "F3", _f3_har_tmp)
                 page = await ctx.new_page()
 
                 # ── Load homepage (establishes Cloudflare clearance) ──────────
@@ -746,6 +1056,11 @@ async def _probe_f3(
                 ]
                 if with_bag:
                     bag_price = min(f["price"] for f in with_bag)
+                    # Save snapshot so future calls skip the browser entirely
+                    asyncio.get_event_loop().run_in_executor(
+                        None, _gcs_save_snapshot, "F3", "f3_fare_cards",
+                        {"fare_cards": fare_cards}, None,
+                    )
                     # Seat prices from GetSeatMap (probed 2026-05-03, JED→RUH):
                     # Group 5 (exit rows) SAR 28.26, Group 6 (standard) SAR 36.74
                     seat_min = 28.0
@@ -766,6 +1081,7 @@ async def _probe_f3(
 
     except Exception as exc:
         logger.debug("F3 probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "F3", _f3_har_tmp)
 
     logger.debug("F3 probe: no bag prices captured for %s→%s", probe_origin, probe_dest)
     return None
@@ -1071,9 +1387,18 @@ async def _probe_xq(
     probe_origin = "AYT"
     probe_dest = "DUS"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _xq_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "XQ")
+    if _xq_snap is not None:
+        _xq_result = _snap_replay_xq(_xq_snap)
+        if _xq_result:
+            logger.info("XQ probe: replayed from GCS snapshot (no browser)")
+            return _xq_result
+
     xq_bag_price_val: Optional[float] = None
     seat_prices: List[float] = []
     cap_event = asyncio.Event()
+    _xq_raw_snap: Optional[dict] = None  # raw API data for GCS snapshot save
 
     try:
         context = await _get_context()
@@ -1081,7 +1406,7 @@ async def _probe_xq(
         await auto_block_if_proxied(page)
 
         async def _on_resp(resp):
-            nonlocal xq_bag_price_val
+            nonlocal xq_bag_price_val, _xq_raw_snap
             ct = resp.headers.get("content-type", "")
             if resp.status != 200 or "json" not in ct:
                 return
@@ -1097,6 +1422,7 @@ async def _probe_xq(
                 p = _xq_bag_price(data)
                 if p and p > 0:
                     xq_bag_price_val = p
+                    _xq_raw_snap = data  # save for GCS snapshot
                     cap_event.set()
                     return
                 # Fallback: generic SSR extractor
@@ -1104,6 +1430,7 @@ async def _probe_xq(
                 seat_prices.extend(s)
                 if b:
                     xq_bag_price_val = min(b)
+                    _xq_raw_snap = data  # save for GCS snapshot
                     cap_event.set()
             except Exception:
                 pass
@@ -1146,6 +1473,11 @@ async def _probe_xq(
         logger.debug("XQ Playwright probe error: %s", exc)
 
     if xq_bag_price_val and xq_bag_price_val > 0:
+        # Save raw API response to GCS snapshot (future calls skip browser)
+        if _xq_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "XQ", "xq_journeys", _xq_raw_snap, None,
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Essential fare) "
@@ -1250,12 +1582,22 @@ async def _probe_sz(
     if probe_dest == probe_origin:
         probe_dest = "HER"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _sz_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "SZ")
+    if _sz_snap is not None:
+        _sz_result = _snap_replay_sz(_sz_snap)
+        if _sz_result:
+            logger.info("SZ probe: replayed from GCS snapshot (no browser)")
+            return _sz_result
+
     dep_date = _dt.strptime(dep, "%Y-%m-%d")
     target_month_name = dep_date.strftime("%B")
     target_day_str = str(dep_date.day)
 
     search_shop_data: Optional[dict] = None
     cap_event = asyncio.Event()
+
+    _sz_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "SZ")
 
     try:
         async with async_playwright() as pw:
@@ -1270,6 +1612,7 @@ async def _probe_sz(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "SZ", _sz_har_tmp)
             page = await ctx.new_page()
 
             async def _on_resp(resp):
@@ -1407,10 +1750,15 @@ async def _probe_sz(
             await browser.close()
     except Exception as exc:
         logger.debug("SZ Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "SZ", _sz_har_tmp)
 
     if search_shop_data:
         bag_from = _sz_bag_price_from_search_shop(search_shop_data)
         if bag_from and bag_from > 0:
+            # Save raw SearchShop response to GCS snapshot
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "SZ", "sz_search_shop", search_shop_data, None,
+            )
             return {
                 "checked_bag_note": (
                     f"checked bag not included in base fare "
@@ -2978,11 +3326,26 @@ async def _probe_af(
     if probe_dest == probe_origin:
         probe_dest = "LHR"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _af_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "AF")
+    if (
+        _af_snap is not None
+        and _af_snap.get("extra", {}).get("origin") == probe_origin
+        and _af_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _af_result = _snap_replay_af(_af_snap)
+        if _af_result:
+            logger.info("AF probe: replayed from GCS snapshot (no browser)")
+            return _af_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "PLN"
     upsell_event = asyncio.Event()
     results_event = asyncio.Event()
+    _af_raw_snap: Optional[dict] = None
+    _af_snap_type: str = ""
+    _af_snap_extra: Optional[dict] = None
 
     async def _on_resp(resp):
         if "/gql/v1" not in resp.url:
@@ -3001,6 +3364,9 @@ async def _probe_af(
                 price = _af_bag_price_from_gql_upsell(data)
                 if price and price > 0:
                     bag_prices.append(price)
+                    nonlocal _af_raw_snap, _af_snap_type, _af_snap_extra
+                    _af_raw_snap = data
+                    _af_snap_type = "af_upsell_gql"
                     upsell_event.set()
             elif op == "AncillariesBaggageQuery":
                 body = await resp.body()
@@ -3012,6 +3378,9 @@ async def _probe_af(
                         bag_prices.append(p)
                         nonlocal currency
                         currency = cur
+                        _af_raw_snap = data
+                        _af_snap_type = "af_ancillaries_gql"
+                        _af_snap_extra = {"currency": cur}
                         upsell_event.set()
         except Exception as exc:
             logger.debug("AF GQL parse %s: %s", op, exc)
@@ -3021,6 +3390,8 @@ async def _probe_af(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _af_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "AF")
 
     try:
         async with _patchright_playwright() as pw:
@@ -3047,6 +3418,7 @@ async def _probe_af(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "AF", _af_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -3211,9 +3583,16 @@ async def _probe_af(
             await browser.close()
     except Exception as exc:
         logger.debug("AF probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "AF", _af_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        # Save raw GQL response to GCS snapshot (future calls skip browser)
+        if _af_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "AF", _af_snap_type, _af_raw_snap,
+                {**(_af_snap_extra or {}), "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Light fare) "
@@ -3435,11 +3814,26 @@ async def _probe_kl(
     if probe_dest == probe_origin:
         probe_dest = "LHR"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _kl_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "KL")
+    if (
+        _kl_snap is not None
+        and _kl_snap.get("extra", {}).get("origin") == probe_origin
+        and _kl_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _kl_result = _snap_replay_af(_kl_snap)  # same GQL format as AF
+        if _kl_result:
+            logger.info("KL probe: replayed from GCS snapshot (no browser)")
+            return _kl_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "EUR"
     upsell_event = asyncio.Event()
     results_event = asyncio.Event()
+    _kl_raw_snap: Optional[dict] = None
+    _kl_snap_type: str = ""
+    _kl_snap_extra: Optional[dict] = None
 
     async def _on_resp(resp):
         if "/gql/v1" not in resp.url:
@@ -3458,6 +3852,9 @@ async def _probe_kl(
                 price = _af_bag_price_from_gql_upsell(data)
                 if price and price > 0:
                     bag_prices.append(price)
+                    nonlocal _kl_raw_snap, _kl_snap_type
+                    _kl_raw_snap = data
+                    _kl_snap_type = "af_upsell_gql"
                     upsell_event.set()
             elif op == "AncillariesBaggageQuery":
                 body = await resp.body()
@@ -3467,8 +3864,11 @@ async def _probe_kl(
                     p, cur = result
                     if p > 0:
                         bag_prices.append(p)
-                        nonlocal currency
+                        nonlocal currency, _kl_snap_extra
                         currency = cur
+                        _kl_raw_snap = data
+                        _kl_snap_type = "af_ancillaries_gql"
+                        _kl_snap_extra = {"currency": cur}
                         upsell_event.set()
         except Exception as exc:
             logger.debug("KL GQL parse %s: %s", op, exc)
@@ -3478,6 +3878,8 @@ async def _probe_kl(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _kl_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "KL")
 
     try:
         async with _patchright_playwright() as pw:
@@ -3504,6 +3906,7 @@ async def _probe_kl(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "KL", _kl_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -3667,9 +4070,16 @@ async def _probe_kl(
             await browser.close()
     except Exception as exc:
         logger.debug("KL probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "KL", _kl_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        # Save raw GQL response to GCS snapshot (future calls skip browser)
+        if _kl_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "KL", _kl_snap_type, _kl_raw_snap,
+                {**(_kl_snap_extra or {}), "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Light fare) "
@@ -3724,12 +4134,26 @@ async def _probe_ba(
     if probe_dest == probe_origin:
         probe_dest = "CDG"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _ba_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "BA")
+    if (
+        _ba_snap is not None
+        and _ba_snap.get("extra", {}).get("origin") == probe_origin
+        and _ba_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _ba_result = _snap_replay_generic(_ba_snap, "Hand Baggage Only", "cabin bag 23 kg included free (Hand Baggage Only fare)", "GBP")
+        if _ba_result:
+            logger.info("BA probe: replayed from GCS snapshot (no browser)")
+            return _ba_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "GBP"
     cap_event = asyncio.Event()
+    _ba_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _ba_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -3745,7 +4169,10 @@ async def _probe_ba(
             diff = _ba_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _ba_raw_snap is None:
+                _ba_raw_snap = data  # capture first response that yielded prices
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -3755,6 +4182,8 @@ async def _probe_ba(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _ba_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "BA")
 
     try:
         async with _patchright_playwright() as pw:
@@ -3781,6 +4210,7 @@ async def _probe_ba(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "BA", _ba_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -3854,9 +4284,15 @@ async def _probe_ba(
             await browser.close()
     except Exception as exc:
         logger.debug("BA Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "BA", _ba_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _ba_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "BA", "ba_fare_family", _ba_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Hand Baggage Only) – add-on from GBP {min_bag:.0f}"
@@ -3957,12 +4393,26 @@ async def _probe_lh(
     if probe_dest == probe_origin:
         probe_dest = "LHR"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _lh_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "LH")
+    if (
+        _lh_snap is not None
+        and _lh_snap.get("extra", {}).get("origin") == probe_origin
+        and _lh_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _lh_result = _snap_replay_generic(_lh_snap, "Economy Light", "cabin bag 8 kg included free (Economy Light)", "EUR")
+        if _lh_result:
+            logger.info("LH probe: replayed from GCS snapshot (no browser)")
+            return _lh_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "EUR"
     cap_event = asyncio.Event()
+    _lh_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _lh_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -3977,7 +4427,10 @@ async def _probe_lh(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _lh_raw_snap is None:
+                _lh_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -3987,6 +4440,8 @@ async def _probe_lh(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _lh_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "LH")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4013,6 +4468,7 @@ async def _probe_lh(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "LH", _lh_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4065,9 +4521,15 @@ async def _probe_lh(
             await browser.close()
     except Exception as exc:
         logger.debug("LH Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "LH", _lh_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _lh_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "LH", "lh_fare_family", _lh_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Economy Light) – add-on from EUR {min_bag:.0f}"
@@ -4114,12 +4576,26 @@ async def _probe_ib(
     if probe_dest == probe_origin:
         probe_dest = "LHR"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _ib_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "IB")
+    if (
+        _ib_snap is not None
+        and _ib_snap.get("extra", {}).get("origin") == probe_origin
+        and _ib_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _ib_result = _snap_replay_generic(_ib_snap, "Basic fare", "cabin bag included free (Basic fare)", "EUR")
+        if _ib_result:
+            logger.info("IB probe: replayed from GCS snapshot (no browser)")
+            return _ib_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "EUR"
     cap_event = asyncio.Event()
+    _ib_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _ib_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -4134,7 +4610,10 @@ async def _probe_ib(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _ib_raw_snap is None:
+                _ib_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -4144,6 +4623,8 @@ async def _probe_ib(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _ib_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "IB")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4170,6 +4651,7 @@ async def _probe_ib(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "IB", _ib_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4218,9 +4700,15 @@ async def _probe_ib(
             await browser.close()
     except Exception as exc:
         logger.debug("IB Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "IB", _ib_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _ib_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "IB", "ib_fare_family", _ib_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Basic fare) – add-on from EUR {min_bag:.0f}"
@@ -4268,12 +4756,26 @@ async def _probe_ac(
     if probe_dest == probe_origin:
         probe_dest = "JFK"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _ac_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "AC")
+    if (
+        _ac_snap is not None
+        and _ac_snap.get("extra", {}).get("origin") == probe_origin
+        and _ac_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _ac_result = _snap_replay_generic(_ac_snap, "Basic fare", "carry-on bag included free (Basic fare)", "CAD")
+        if _ac_result:
+            logger.info("AC probe: replayed from GCS snapshot (no browser)")
+            return _ac_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "CAD"
     cap_event = asyncio.Event()
+    _ac_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _ac_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -4288,7 +4790,10 @@ async def _probe_ac(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _ac_raw_snap is None:
+                _ac_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -4298,6 +4803,8 @@ async def _probe_ac(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _ac_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "AC")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4324,6 +4831,7 @@ async def _probe_ac(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "AC", _ac_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4372,9 +4880,15 @@ async def _probe_ac(
             await browser.close()
     except Exception as exc:
         logger.debug("AC Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "AC", _ac_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _ac_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "AC", "ac_fare_family", _ac_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Basic fare) – add-on from CAD {min_bag:.0f}"
@@ -4421,12 +4935,26 @@ async def _probe_ay(
     if probe_dest == probe_origin:
         probe_dest = "LHR"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _ay_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "AY")
+    if (
+        _ay_snap is not None
+        and _ay_snap.get("extra", {}).get("origin") == probe_origin
+        and _ay_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _ay_result = _snap_replay_generic(_ay_snap, "Light fare", "cabin bag 8 kg included free (Light fare)", "EUR")
+        if _ay_result:
+            logger.info("AY probe: replayed from GCS snapshot (no browser)")
+            return _ay_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "EUR"
     cap_event = asyncio.Event()
+    _ay_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _ay_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -4441,7 +4969,10 @@ async def _probe_ay(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _ay_raw_snap is None:
+                _ay_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -4451,6 +4982,8 @@ async def _probe_ay(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _ay_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "AY")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4477,6 +5010,7 @@ async def _probe_ay(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "AY", _ay_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4525,9 +5059,15 @@ async def _probe_ay(
             await browser.close()
     except Exception as exc:
         logger.debug("AY Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "AY", _ay_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _ay_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "AY", "ay_fare_family", _ay_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Light fare) – add-on from EUR {min_bag:.0f}"
@@ -4573,12 +5113,26 @@ async def _probe_a3(
     if probe_dest == probe_origin:
         probe_dest = "LHR"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _a3_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "A3")
+    if (
+        _a3_snap is not None
+        and _a3_snap.get("extra", {}).get("origin") == probe_origin
+        and _a3_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _a3_result = _snap_replay_generic(_a3_snap, "Basic fare", "cabin bag 8 kg included free (Basic fare)", "EUR")
+        if _a3_result:
+            logger.info("A3 probe: replayed from GCS snapshot (no browser)")
+            return _a3_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "EUR"
     cap_event = asyncio.Event()
+    _a3_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _a3_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -4593,7 +5147,10 @@ async def _probe_a3(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _a3_raw_snap is None:
+                _a3_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -4603,6 +5160,8 @@ async def _probe_a3(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _a3_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "A3")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4629,6 +5188,7 @@ async def _probe_a3(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "A3", _a3_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4676,9 +5236,15 @@ async def _probe_a3(
             await browser.close()
     except Exception as exc:
         logger.debug("A3 Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "A3", _a3_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _a3_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "A3", "a3_fare_family", _a3_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Basic fare) – add-on from EUR {min_bag:.0f}"
@@ -4725,12 +5291,26 @@ async def _probe_nz(
     if probe_dest == probe_origin:
         probe_dest = "SYD"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _nz_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "NZ")
+    if (
+        _nz_snap is not None
+        and _nz_snap.get("extra", {}).get("origin") == probe_origin
+        and _nz_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _nz_result = _snap_replay_generic(_nz_snap, "Seat fare", "cabin bag included free (Seat fare)", "NZD")
+        if _nz_result:
+            logger.info("NZ probe: replayed from GCS snapshot (no browser)")
+            return _nz_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "NZD"
     cap_event = asyncio.Event()
+    _nz_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _nz_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -4745,7 +5325,10 @@ async def _probe_nz(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _nz_raw_snap is None:
+                _nz_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -4755,6 +5338,8 @@ async def _probe_nz(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _nz_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "NZ")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4781,6 +5366,7 @@ async def _probe_nz(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "NZ", _nz_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4829,9 +5415,15 @@ async def _probe_nz(
             await browser.close()
     except Exception as exc:
         logger.debug("NZ Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "NZ", _nz_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _nz_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "NZ", "nz_fare_family", _nz_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Seat fare) – add-on from NZD {min_bag:.0f}"
@@ -4878,12 +5470,26 @@ async def _probe_qf(
     if probe_dest == probe_origin:
         probe_dest = "MEL"
 
+    # ── Snapshot fast-path (no browser needed) ────────────────────────────────
+    _qf_snap = await asyncio.get_event_loop().run_in_executor(None, _gcs_load_snapshot, "QF")
+    if (
+        _qf_snap is not None
+        and _qf_snap.get("extra", {}).get("origin") == probe_origin
+        and _qf_snap.get("extra", {}).get("dest") == probe_dest
+    ):
+        _qf_result = _snap_replay_generic(_qf_snap, "Economy Lite", "cabin bag included free (Economy Lite)", "AUD")
+        if _qf_result:
+            logger.info("QF probe: replayed from GCS snapshot (no browser)")
+            return _qf_result
+
     bag_prices: List[float] = []
     seat_prices: List[float] = []
     currency = "AUD"
     cap_event = asyncio.Event()
+    _qf_raw_snap: Optional[dict] = None
 
     async def _on_resp(resp):
+        nonlocal _qf_raw_snap
         ct = resp.headers.get("content-type", "")
         if resp.status != 200 or "json" not in ct:
             return
@@ -4898,7 +5504,10 @@ async def _probe_qf(
             diff = _af_bag_price_from_fare_families(data)
             if diff:
                 bag_prices.append(diff)
-            if bag_prices:
+            if bag_prices and _qf_raw_snap is None:
+                _qf_raw_snap = data
+                cap_event.set()
+            elif bag_prices:
                 cap_event.set()
         except Exception:
             pass
@@ -4908,6 +5517,8 @@ async def _probe_qf(
         chrome_path = find_chrome()
     except RuntimeError:
         pass
+
+    _qf_har_tmp = await asyncio.get_event_loop().run_in_executor(None, _prepare_har_tmp, "QF")
 
     try:
         async with _patchright_playwright() as pw:
@@ -4934,6 +5545,7 @@ async def _probe_qf(
                     "Chrome/135.0.0.0 Safari/537.36"
                 ),
             )
+            await _setup_har_route(ctx, "QF", _qf_har_tmp)
             page = await ctx.new_page()
             page.on("response", _on_resp)
 
@@ -4982,9 +5594,15 @@ async def _probe_qf(
             await browser.close()
     except Exception as exc:
         logger.debug("QF Playwright probe error: %s", exc)
+    asyncio.get_event_loop().run_in_executor(None, _gcs_save_har, "QF", _qf_har_tmp)
 
     if bag_prices:
         min_bag = min(p for p in bag_prices if p > 0)
+        if _qf_raw_snap is not None:
+            asyncio.get_event_loop().run_in_executor(
+                None, _gcs_save_snapshot, "QF", "qf_fare_family", _qf_raw_snap,
+                {"currency": currency, "origin": probe_origin, "dest": probe_dest},
+            )
         result: dict = {
             "checked_bag_note": (
                 f"checked bag not included (Economy Lite) – add-on from AUD {min_bag:.0f}"
@@ -5037,3 +5655,23 @@ _PROBERS = {
     "NZ": _probe_nz,
     "QF": _probe_qf,
 }
+
+# ── Snapshot replay dispatch (populated here so all helper fns are in scope) ──
+_SNAPSHOT_REPLAY.update({
+    "XQ": _snap_replay_xq,
+    "SZ": _snap_replay_sz,
+    "AF": _snap_replay_af,
+    "KL": _snap_replay_af,          # identical GQL structure
+    "F3": _snap_replay_f3,
+    "BA": _make_generic_replayer("Hand Baggage Only", "cabin bag 23 kg included free (Hand Baggage Only fare)", "GBP"),
+    "LH": _make_generic_replayer("Economy Light", "cabin bag 8 kg included free (Economy Light)", "EUR"),
+    "OS": _make_generic_replayer("Economy Light", "cabin bag 8 kg included free (Economy Light)", "EUR"),
+    "LX": _make_generic_replayer("Economy Light", "cabin bag 8 kg included free (Economy Light)", "EUR"),
+    "SN": _make_generic_replayer("Economy Light", "cabin bag 8 kg included free (Economy Light)", "EUR"),
+    "IB": _make_generic_replayer("Basic fare", "cabin bag included free (Basic fare)", "EUR"),
+    "AC": _make_generic_replayer("Basic fare", "carry-on bag included free (Basic fare)", "CAD"),
+    "AY": _make_generic_replayer("Light fare", "cabin bag 8 kg included free (Light fare)", "EUR"),
+    "A3": _make_generic_replayer("Basic fare", "cabin bag 8 kg included free (Basic fare)", "EUR"),
+    "NZ": _make_generic_replayer("Seat fare", "cabin bag included free (Seat fare)", "NZD"),
+    "QF": _make_generic_replayer("Economy Lite", "cabin bag included free (Economy Lite)", "AUD"),
+})

@@ -826,7 +826,16 @@ class CopaConnectorClient:
                 inbound=None,
                 airlines=["Copa Airlines"],
                 owner_airline="CM",
-                conditions={"carry_on": "carry-on included; checked bag from ~USD 30 — check at checkout"},
+                conditions={
+                    "carry_on": "carry-on included (Economy)",
+                    "checked_bag": "checked bag from ~USD 30 — add at checkout",
+                    "seat": "seat selection from ~USD 15 — add-on (Economy Basic); included in higher fares",
+                },
+                bags_price={
+                    "carry_on": 0.0,
+                    "checked_bag": 30.0,
+                    "seat": 15.0,
+                },
                 booking_url=(
                     f"https://shopping.copaair.com/?roundtrip=false&area1={req.origin}&area2={req.destination}"
                     f"&date1={target_date}&adults={req.adults or 1}&langid=en"

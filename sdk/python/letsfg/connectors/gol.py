@@ -98,27 +98,14 @@ async def _ensure_persistent_page():
 
     ctx = await _get_context()
 
-    # Pre-set OneTrust consent cookies to suppress the cookie banner
+    # Only pre-set the "alert seen" cookie — NOT OptanonConsent.
+    # Pre-setting OptanonConsent suppresses the banner but bypasses the consent
+    # events that GOL's gol-auth-api listener depends on for token generation.
     try:
         await ctx.add_cookies([
             {
                 "name": "OptanonAlertBoxClosed",
                 "value": "2025-01-01T00:00:00.000Z",
-                "domain": ".voegol.com.br",
-                "path": "/",
-                "httpOnly": False,
-                "secure": False,
-                "sameSite": "Lax",
-            },
-            {
-                "name": "OptanonConsent",
-                "value": (
-                    "isGpcEnabled=0&datestamp=Wed+Jan+01+2025&version=202510.2.0"
-                    "&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=gol"
-                    "&interactionCount=1&isAnonUser=1&landingPath=NotLandingPage"
-                    "&groups=C0001%3A1%2CC0002%3A1%2CC0003%3A1%2CC0004%3A1"
-                    "&geolocation=BR%3BSP&AwaitingReconsent=false"
-                ),
                 "domain": ".voegol.com.br",
                 "path": "/",
                 "httpOnly": False,
@@ -134,17 +121,49 @@ async def _ensure_persistent_page():
 
     logger.info("GOL: loading Angular SPA...")
     await page.goto(f"{_GOL_BASE}/compra", wait_until="domcontentloaded", timeout=30000)
-    # Wait for network to settle so Angular boots fully and populates sessionStorage
+    # Wait for network to settle so Angular boots fully
     try:
         await page.wait_for_load_state("networkidle", timeout=15000)
     except Exception:
         pass
-    await asyncio.sleep(2)
+    await asyncio.sleep(1.5)
 
-    # Dismiss LGPD/cookie overlays (multiple attempts)
-    await _dismiss_cookies(page)
-    await asyncio.sleep(1)
-    await _dismiss_cookies(page)
+    # Poll for OneTrust consent button up to 25s and click it.
+    # Actual button click fires the consent events that trigger gol-auth-api.
+    consent_clicked = False
+    for _attempt in range(25):
+        try:
+            clicked = await page.evaluate("""() => {
+                // Try OneTrust public API first (fires all consent events)
+                if (window.OneTrust && typeof window.OneTrust.acceptAllCookies === 'function') {
+                    window.OneTrust.acceptAllCookies();
+                    return 'api';
+                }
+                // Click the visible accept button
+                const selectors = [
+                    '#onetrust-accept-btn-handler',
+                    'button[id*="accept"]',
+                ];
+                for (const sel of selectors) {
+                    const btn = document.querySelector(sel);
+                    if (btn && btn.offsetParent !== null) {
+                        btn.click();
+                        return 'click';
+                    }
+                }
+                return null;
+            }""")
+            if clicked:
+                logger.info("GOL: consent accepted via %s", clicked)
+                consent_clicked = True
+                await asyncio.sleep(1)
+                break
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+
+    if not consent_clicked:
+        logger.warning("GOL: could not click consent button after 25s")
 
     # Wait for Angular to boot and populate session UUID
     try:
@@ -167,17 +186,17 @@ async def _ensure_persistent_page():
     except Exception:
         logger.warning("GOL: Angular UUID not found after 25s")
 
-    # Wait for auth token — set by gol-auth-api after cookie consent is accepted
+    # Wait for auth token — set by gol-auth-api after consent events fire
     try:
         await page.wait_for_function("""() => {
             const uuid = sessionStorage.getItem('currentTabUUID');
             if (!uuid) return null;
             const token = sessionStorage.getItem(uuid + '_@SiteGolB2C:token');
             return token ? uuid : null;
-        }""", timeout=20000)
+        }""", timeout=40000)
         logger.info("GOL: auth token ready")
     except Exception:
-        logger.warning("GOL: auth token not found in 20s — banner may still be blocking")
+        logger.warning("GOL: auth token not found after 40s")
 
     _persistent_page = page
     return page
@@ -231,7 +250,7 @@ async def _dismiss_cookies(page) -> None:
 class GolConnectorClient:
     """GOL scraper — CDP Chrome + Angular navigation."""
 
-    def __init__(self, timeout: float = 45.0):
+    def __init__(self, timeout: float = 90.0):
         self.timeout = timeout
 
     async def close(self):
@@ -293,6 +312,24 @@ class GolConnectorClient:
             }""")
             if not uuid:
                 return self._empty(req)
+
+        # Ensure auth token is present before navigating to search results.
+        # On a cold start the token may arrive up to 30s after UUID is set.
+        has_token = await page.evaluate("""(uuid) => {
+            return Boolean(sessionStorage.getItem(uuid + '_@SiteGolB2C:token'));
+        }""", uuid)
+        if not has_token:
+            logger.info("GOL: waiting for auth token before search...")
+            for _tok_i in range(30):
+                await asyncio.sleep(1)
+                has_token = await page.evaluate("""(uuid) => {
+                    return Boolean(sessionStorage.getItem(uuid + '_@SiteGolB2C:token'));
+                }""", uuid)
+                if has_token:
+                    logger.info("GOL: auth token arrived after %ds", _tok_i + 1)
+                    break
+            if not has_token:
+                logger.warning("GOL: auth token still absent after 30s — proceeding anyway")
 
         # Build sessionStorage search payload
         dep_date = req.date_from.isoformat()
@@ -389,7 +426,7 @@ class GolConnectorClient:
             await page.goto(f"{_GOL_BASE}/compra/selecao-de-voo2/ida",
                             wait_until="domcontentloaded", timeout=int(self.timeout * 1000))
 
-            remaining = max(self.timeout - (time.monotonic() - t0), 10)
+            remaining = max(self.timeout - (time.monotonic() - t0), 30)
             try:
                 await asyncio.wait_for(api_event.wait(), timeout=remaining)
             except asyncio.TimeoutError:
