@@ -140,7 +140,7 @@ function normalizeOffer(raw: any, idx: number): any {
     price: Math.round((raw.price || 0) * 100) / 100,
     google_flights_price: raw.google_flights_price
       ? Math.round(raw.google_flights_price * 100) / 100
-      : Math.round((raw.price || 0) * 1.12 * 100) / 100,
+      : undefined,
     currency: raw.currency || 'EUR',
     airline: airlineName,
     airline_code: airlineCode,

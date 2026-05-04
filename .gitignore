@@ -79,3 +79,16 @@ _*_sample.json
 .github/agent-registry.json
 .github/agent-pings.json
 .mcpregistry_*
+
+# Debug run logs and temp scripts
+sdk/python/*_run*.txt
+sdk/python/_*_run*.py
+sdk/python/_checkout_screenshots/
+sdk/python/_patch_*.py
+sdk/python/_tmp_*.py
+sdk/python/_*_pre_*.png
+sdk/python/_*_pre_*.jpg
+
+# Private service directories (not part of public SDK)
+services_flight-search-worker/
+services_connector-worker/

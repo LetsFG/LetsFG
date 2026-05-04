@@ -361,6 +361,7 @@ interface Props {
   searchId?: string
   trackingSearchId?: string | null
   isTestSearch?: boolean
+  onTrackPrices?: () => void
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -372,6 +373,7 @@ export default function ResultsPanel({
   searchId,
   trackingSearchId,
   isTestSearch = false,
+  onTrackPrices,
 }: Props) {
   const t = useTranslations('ResultsPanel')
   const locale = useLocale()
@@ -854,6 +856,17 @@ export default function ResultsPanel({
 
         {/* Flight list */}
         <div className="rf-list">
+          {onTrackPrices && (
+            <div className="mon-strip">
+              <div className="mon-strip-copy">
+                <span className="mon-strip-title">Track prices for this route</span>
+                <span className="mon-strip-sub">Daily price alerts · Get notified when prices drop · 1 free booking unlock/week · $5/week</span>
+              </div>
+              <button className="mon-strip-btn" onClick={onTrackPrices} aria-haspopup="dialog">
+                Track prices
+              </button>
+            </div>
+          )}
           {visibleOffers.map((offer, index) => {
             const isBestValue = sort === 'price' && index === 0
             const isExpanded = expandedId === offer.id

@@ -21,6 +21,7 @@ const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
 const X_URL = 'https://x.com/LetsFG_'
 const SESSION_RESULT_CACHE_LIMIT = 500
 const SearchingTasks = dynamic(() => import('./SearchingTasks'), { ssr: false })
+const MonitorModal = dynamic(() => import('./MonitorModal'), { ssr: false })
 
 function GitHubIcon() {
   return (
@@ -142,6 +143,7 @@ export default function SearchPageClient({
   const [progress, setProgress] = useState(initialProgress)
   const [offers, setOffers] = useState(initialOffers)
   const [displayCurrency, setDisplayCurrency] = useState(initialCurrency)
+  const [monitorOpen, setMonitorOpen] = useState(false)
   const trackedResultsViewRef = useRef(false)
   const trackedExpiredRef = useRef(false)
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
@@ -475,6 +477,21 @@ export default function SearchPageClient({
           searchId={searchId}
                 trackingSearchId={analyticsSearchId}
                 isTestSearch={isTestSearch}
+          onTrackPrices={parsed.origin && parsed.destination && parsed.date ? () => setMonitorOpen(true) : undefined}
+        />
+      )}
+
+      {monitorOpen && parsed.origin && parsed.destination && parsed.date && (
+        <MonitorModal
+          origin={parsed.origin}
+          originName={parsed.origin_name || parsed.origin}
+          destination={parsed.destination}
+          destinationName={parsed.destination_name || parsed.destination}
+          departureDate={parsed.date}
+          returnDate={parsed.return_date || undefined}
+          adults={parsed.passengers || 1}
+          cabinClass={parsed.cabin || undefined}
+          onClose={() => setMonitorOpen(false)}
         />
       )}
 
