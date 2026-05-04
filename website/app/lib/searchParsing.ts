@@ -368,6 +368,18 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'queenstown': { code: 'ZQN', name: 'Queenstown' },
   'nadi': { code: 'NAN', name: 'Nadi (Fiji)' },
   'fiji': { code: 'NAN', name: 'Nadi (Fiji)' },
+  // ── Hawaii ───────────────────────────────────────────────────────────────────
+  'honolulu': { code: 'HNL', name: 'Honolulu' },
+  'hawaii': { code: 'HNL', name: 'Honolulu' },
+  'oahu': { code: 'HNL', name: 'Honolulu' },
+  'maui': { code: 'OGG', name: 'Maui (Kahului)' },
+  'kahului': { code: 'OGG', name: 'Maui (Kahului)' },
+  'kona': { code: 'KOA', name: 'Kona (Big Island)' },
+  'kailua-kona': { code: 'KOA', name: 'Kona (Big Island)' },
+  'big island': { code: 'KOA', name: 'Kona (Big Island)' },
+  'kauai': { code: 'LIH', name: 'Kauai (Lihue)' },
+  'lihue': { code: 'LIH', name: 'Kauai (Lihue)' },
+  'hilo': { code: 'ITO', name: 'Hilo' },
   'papeete': { code: 'PPT', name: 'Papeete (Tahiti)' },
   'tahiti': { code: 'PPT', name: 'Papeete (Tahiti)' },
   'noumea': { code: 'NOU', name: 'Nouméa' },
@@ -459,8 +471,13 @@ function resolveCity(raw: string): { code: string; name: string } | null {
 
   const explicitCodeTokens = stripped.match(/\b[a-z]{3}\b/g) || []
   for (let idx = explicitCodeTokens.length - 1; idx >= 0; idx -= 1) {
-    const mapped = CITY_TO_IATA[explicitCodeTokens[idx]]
+    const token = explicitCodeTokens[idx]
+    // Check CITY_TO_IATA first (city codes like LON, NYC that map to metro areas)
+    const mapped = CITY_TO_IATA[token]
     if (mapped) return mapped
+    // Then check the full airport database for explicit IATA codes (e.g. "Hawaii KOA" → KOA)
+    const airportMatch = findExactLocationMatch(token)
+    if (airportMatch) return { code: airportMatch.code, name: airportMatch.name }
   }
 
   // Boundary-aware contained phrase: longest key first so "new york" beats "york"

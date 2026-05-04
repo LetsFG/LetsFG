@@ -425,6 +425,8 @@ function toGeneratedAirport(entry: GeneratedLocationEntry): Airport {
 
 const EXTRA_LOCATION_ALIASES: Record<string, string[]> = {
   BDL: ['hartford', 'hartford connecticut', 'connecticut'],
+  KOA: ['kona', 'kona big island'],
+  OGG: ['maui', 'maui island'],
 }
 
 const ALL_GENERATED_LOCATIONS = dedupeGeneratedLocations([
@@ -504,7 +506,7 @@ function scoreLocationEntry(entry: GeneratedLocationEntry, normalizedQuery: stri
       continue
     }
 
-    if (normalizedQuery.includes(alias) && alias.length >= 3) {
+    if (alias.length >= 3 && new RegExp(`(?:^|[^a-z0-9])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`).test(normalizedQuery)) {
       score = Math.max(score, entry.type === 'airport' ? 575 : 550)
       continue
     }

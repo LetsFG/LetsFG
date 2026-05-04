@@ -222,3 +222,30 @@ test('homepage airport matching uses generated aliases and expanded airport cove
   const hartfordResults = searchAirports('Hartford', 'en', 5)
   assert.ok(hartfordResults.some((airport) => airport.code === 'BDL'))
 })
+
+test('Hawaii airports resolve correctly and do not produce false positives via substring', () => {
+  withFixedNow('2026-05-01T12:00:00Z', () => {
+    // "hawaii" in a query should not match AII (Ali-Sabieh) via substring "aii" inside "hawaii"
+    const detroitToHawaii = parseNLQuery('Detroit to Hawaii KOA June 15')
+    assert.equal(detroitToHawaii.origin, 'DTW')
+    assert.equal(detroitToHawaii.destination, 'KOA')
+
+    const detroitToHonolulu = parseNLQuery('Detroit to Honolulu June 15')
+    assert.equal(detroitToHonolulu.origin, 'DTW')
+    assert.equal(detroitToHonolulu.destination, 'HNL')
+
+    const detroitToMaui = parseNLQuery('Detroit to Maui June 15')
+    assert.equal(detroitToMaui.origin, 'DTW')
+    assert.equal(detroitToMaui.destination, 'OGG')
+
+    const detroitToKona = parseNLQuery('Detroit to Kona June 15')
+    assert.equal(detroitToKona.origin, 'DTW')
+    assert.equal(detroitToKona.destination, 'KOA')
+
+    // Direct findBestLocationMatch checks
+    assert.equal(findBestLocationMatch('hawaii koa')?.code, 'KOA')
+    assert.equal(findBestLocationMatch('honolulu')?.code, 'HNL')
+    assert.equal(findBestLocationMatch('kona')?.code, 'KOA')
+    assert.equal(findBestLocationMatch('maui')?.code, 'OGG')
+  })
+})
