@@ -1843,17 +1843,24 @@ input {
 .lp-sf-ghost {
   position: absolute;
   left: var(--lp-sf-leading-offset);
+  right: 0;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
   pointer-events: none;
+  overflow: hidden;
+}
+
+.lp-sf-ghost-inner {
+  display: flex;
+  align-items: center;
   white-space: pre;
   font-size: 1.08rem;
   font-weight: 600;
   font-family: inherit;
   padding-right: 12px;
-  overflow: hidden;
+  min-width: max-content;
 }
 
 .lp-sf-ghost-hidden {
@@ -1901,6 +1908,75 @@ input {
 .lp-sf-submit-icon {
   width: 24px;
   height: 24px;
+}
+
+/* Search form — airport dropdown */
+
+.lp-sf-frame-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.lp-sf-dropdown {
+  /* position/top/left/width set via inline styles by the portal */
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 220, 235, 0.8);
+  border-radius: 20px;
+  box-shadow:
+    0 20px 44px rgba(56, 117, 148, 0.18),
+    0 4px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  z-index: 200;
+}
+
+.lp-sf-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 20px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  color: #0f0f0f;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.lp-sf-dropdown-item:hover,
+.lp-sf-dropdown-item--active {
+  background: rgba(56, 117, 148, 0.08);
+}
+
+.lp-sf-dropdown-item + .lp-sf-dropdown-item {
+  border-top: 1px solid rgba(200, 220, 235, 0.45);
+}
+
+.lp-sf-dropdown-flag {
+  font-size: 1.15rem;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+}
+
+.lp-sf-dropdown-name {
+  flex: 1;
+  font-size: 0.94rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-sf-dropdown-code {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(14, 31, 43, 0.38);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 
 /* Destination cards — photo cards with hover lift */

@@ -1,9 +1,10 @@
 'use client'
 
-import { FormEvent, useState, useRef, useEffect, KeyboardEvent } from 'react'
+import { FormEvent, useState, useRef, useEffect, KeyboardEvent, startTransition } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport } from './airports'
+import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport, searchAirports } from './airports'
 import {
   CURRENCY_CHANGE_EVENT,
   readBrowserSearchCurrency,
@@ -216,12 +217,19 @@ function SearchIcon() {
   )
 }
 
+function countryFlag(countryCode: string): string {
+  const code = countryCode.toUpperCase()
+  if (code.length !== 2) return '\u{1F30D}'
+  return String.fromCodePoint(
+    0x1F1E6 + code.charCodeAt(0) - 65,
+    0x1F1E6 + code.charCodeAt(1) - 65,
+  )
+}
+
 interface ParsedQuery {
   origin: string | null
-  originMatch: Airport | null
   toKeyword: string | null
   destination: string | null
-  destMatch: Airport | null
   hasOutboundDate: boolean
   hasReturnKeyword: boolean
   hasReturnDate: boolean
@@ -283,15 +291,10 @@ function parseQuery(query: string, locale: string): ParsedQuery {
                          /\b\d{1,2}(:|h)\d{0,2}\s*(am|pm)?\b/i.test(query) ||
                          /\b(after|before|between)\s+\d/i.test(query)
   
-  const originMatch = origin ? findBestMatch(origin, locale) : null
-  const destMatch = destination ? findBestMatch(destination, locale) : null
-  
   return {
     origin,
-    originMatch,
     toKeyword,
     destination,
-    destMatch,
     hasOutboundDate: dateCount >= 1,
     hasReturnKeyword,
     hasReturnDate: dateCount >= 2 || (hasReturnKeyword && dateCount >= 1),
@@ -371,14 +374,15 @@ function getSuggestion(query: string, locale: string): string {
   
   // Stage 3+: Has "to" and destination (possibly partial)
   if (parsed.toKeyword && parsed.destination) {
-    const match = findBestMatch(parsed.destination, locale)
-    
-    // Still typing destination
-    if (match) {
-      const completion = getNameCompletion(parsed.destination, match)
-      if (completion) {
-        // Suggest rest of destination + outbound date
-        return completion + ' ' + generateDateSuggestion(locale)
+    // Only do airport matching while destination is still being typed (no date yet)
+    if (!parsed.hasOutboundDate) {
+      const match = findBestMatch(parsed.destination, locale)
+      if (match) {
+        const completion = getNameCompletion(parsed.destination, match)
+        if (completion) {
+          // Suggest rest of destination + outbound date
+          return completion + ' ' + generateDateSuggestion(locale)
+        }
       }
     }
     
@@ -486,6 +490,43 @@ function getSuggestion(query: string, locale: string): string {
   return ''
 }
 
+// Determine which slot the user is currently filling and return top airport suggestions
+function computeDropdown(query: string, locale: string): { airports: Airport[]; slot: 'origin' | 'destination' } {
+  if (!query || query.length < 2) return { airports: [], slot: 'origin' }
+  const parsed = parseQuery(query, locale)
+  // Don't show while typing dates/return/etc.
+  if (parsed.hasOutboundDate) return { airports: [], slot: 'origin' }
+  // Destination slot
+  if (parsed.toKeyword && parsed.destination && parsed.destination.trim().length >= 2) {
+    return { airports: searchAirports(parsed.destination.trim(), locale, 6), slot: 'destination' }
+  }
+  // Origin slot (no "to" yet)
+  if (!parsed.toKeyword && parsed.origin && parsed.origin.trim().length >= 2) {
+    return { airports: searchAirports(parsed.origin.trim(), locale, 6), slot: 'origin' }
+  }
+  return { airports: [], slot: 'origin' }
+}
+
+// Build the new query string after selecting an airport from the dropdown
+function insertAirport(
+  parsed: ParsedQuery,
+  airport: Airport,
+  slot: 'origin' | 'destination',
+  locale: string,
+): string {
+  const name = getAirportName(airport, locale)
+  if (slot === 'origin') {
+    if (parsed.toKeyword) {
+      return `${name} ${parsed.toKeyword}${parsed.destination ? ' ' + parsed.destination : ' '}`
+    }
+    return name + ' '
+  }
+  // destination: keep origin + toKeyword, replace destination text
+  const originPart = parsed.origin || ''
+  const toWord = parsed.toKeyword || (TO_KEYWORDS[locale] || TO_KEYWORDS.en)[0]
+  return `${originPart} ${toWord} ${name}`
+}
+
 // Set to true to skip the API call and go straight to the loading UI demo
 const DEMO_LOADING = false
 
@@ -509,11 +550,21 @@ export default function HomeSearchForm({
   const locale = (params?.locale as string) || 'en'
   const td = useTranslations('destinations')
   const th = useTranslations('hero')
+  const [inputValue, setInputValue] = useState(initialQuery)
   const [query, setQuery] = useState(initialQuery)
   const [prefCurrency, setPrefCurrency] = useState<CurrencyCode>(initialCurrency)
   const [suggestion, setSuggestion] = useState('')
+  const [inputScrollLeft, setInputScrollLeft] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+  const [dropdownItems, setDropdownItems] = useState<Airport[]>([])
+  const [dropdownSlot, setDropdownSlot] = useState<'origin' | 'destination'>('origin')
+  const [dropdownActiveIdx, setDropdownActiveIdx] = useState(-1)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [mounted, setMounted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
+  const dropdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
 
   const DESTINATIONS = DESTINATION_KEYS.map((d) => ({
@@ -562,6 +613,15 @@ export default function HomeSearchForm({
   }, [])
 
   useEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+    const onScroll = () => setInputScrollLeft(input.scrollLeft)
+    input.addEventListener('scroll', onScroll)
+    return () => input.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    setInputValue(initialQuery)
     setQuery(initialQuery)
   }, [initialQuery])
 
@@ -573,7 +633,7 @@ export default function HomeSearchForm({
   }, [initialCurrency])
 
   const handleSearch = (event: FormEvent) => {
-    if (!query.trim()) {
+    if (!inputValue.trim()) {
       event.preventDefault()
       return
     }
@@ -585,19 +645,108 @@ export default function HomeSearchForm({
     }
   }
 
-  // Update suggestion when query changes
+  // Select an airport from the dropdown and insert it into the query
+  const handleDropdownSelect = (airport: Airport) => {
+    const parsed = parseQuery(inputValue, locale)
+    const newQuery = insertAirport(parsed, airport, dropdownSlot, locale)
+    setInputValue(newQuery)
+    setQuery(newQuery)
+    setDropdownItems([])
+    setDropdownActiveIdx(-1)
+    setDropdownPos(null)
+    setTimeout(() => {
+      const input = inputRef.current
+      if (input) {
+        input.focus()
+        input.setSelectionRange(newQuery.length, newQuery.length)
+      }
+    }, 0)
+  }
+
+  // Set mounted flag for portal
+  useEffect(() => { setMounted(true) }, [])
+
+  // Debounce syncing inputValue → query (drives suggestion + dropdown).
+  // The input itself always updates instantly via inputValue.
   useEffect(() => {
-    const newSuggestion = getSuggestion(query, locale)
-    setSuggestion(newSuggestion)
+    if (queryTimerRef.current) clearTimeout(queryTimerRef.current)
+    queryTimerRef.current = setTimeout(() => {
+      startTransition(() => { setQuery(inputValue) })
+    }, 80)
+    return () => { if (queryTimerRef.current) clearTimeout(queryTimerRef.current) }
+  }, [inputValue])
+
+  // Suggestion updates when query settles
+  useEffect(() => {
+    setSuggestion(getSuggestion(query, locale))
   }, [query, locale])
 
-  // Handle Tab to accept suggestion
+  // Dropdown updates debounced + deferred via startTransition so typing is never blocked
+  useEffect(() => {
+    if (dropdownTimerRef.current) clearTimeout(dropdownTimerRef.current)
+    dropdownTimerRef.current = setTimeout(() => {
+      const { airports, slot } = computeDropdown(query, locale)
+      startTransition(() => {
+        setDropdownItems(airports)
+        setDropdownSlot(slot)
+        setDropdownActiveIdx(-1)
+        if (airports.length > 0 && frameRef.current) {
+          const r = frameRef.current.getBoundingClientRect()
+          setDropdownPos({ top: r.bottom + 8, left: r.left, width: r.width })
+        } else {
+          setDropdownPos(null)
+        }
+      })
+    }, 120)
+    return () => { if (dropdownTimerRef.current) clearTimeout(dropdownTimerRef.current) }
+  }, [query, locale])
+
+  // Recompute dropdown position on scroll/resize while it's open
+  useEffect(() => {
+    if (!dropdownItems.length) return
+    const update = () => {
+      if (frameRef.current) {
+        const r = frameRef.current.getBoundingClientRect()
+        setDropdownPos({ top: r.bottom + 8, left: r.left, width: r.width })
+      }
+    }
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [dropdownItems.length])
+
+  // Handle keyboard navigation for dropdown + Tab to accept ghost suggestion
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (dropdownItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setDropdownActiveIdx(prev => Math.min(prev + 1, dropdownItems.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setDropdownActiveIdx(prev => Math.max(prev - 1, -1))
+        return
+      }
+      if (e.key === 'Enter' && dropdownActiveIdx >= 0) {
+        e.preventDefault()
+        handleDropdownSelect(dropdownItems[dropdownActiveIdx])
+        return
+      }
+      if (e.key === 'Escape') {
+        setDropdownItems([])
+        setDropdownActiveIdx(-1)
+        return
+      }
+    }
     if (e.key === 'Tab' && suggestion && !e.shiftKey) {
       e.preventDefault()
-      // Accept the suggestion
-      setQuery(query + suggestion)
-      setSuggestion('')
+      const newVal = inputValue + suggestion
+      setInputValue(newVal)
+      setQuery(newVal)
     }
   }
 
@@ -622,6 +771,7 @@ export default function HomeSearchForm({
       <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
         {probeMode && <input type="hidden" name="probe" value="1" />}
         <input type="hidden" name="cur" value={prefCurrency} readOnly aria-hidden="true" />
+        <div className="lp-sf-frame-wrap" ref={frameRef}>
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
             <span className="lp-sf-leading" aria-hidden="true">
@@ -634,9 +784,10 @@ export default function HomeSearchForm({
               type="text"
               className="lp-sf-input"
               placeholder={th('placeholder')}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
               onKeyDown={handleKeyDown}
+              onBlur={() => setTimeout(() => { setDropdownItems([]); setDropdownActiveIdx(-1); setDropdownPos(null) }, 150)}
               disabled={DEMO_LOADING && isLoading}
               autoFocus={autoFocus}
               autoComplete="off"
@@ -644,8 +795,10 @@ export default function HomeSearchForm({
             />
             {suggestion && (
               <span className="lp-sf-ghost" aria-hidden="true">
-                <span className="lp-sf-ghost-hidden">{query}</span>
-                <span className="lp-sf-ghost-suggestion">{suggestion}</span>
+                <span className="lp-sf-ghost-inner" style={{ transform: `translateX(-${inputScrollLeft}px)` }}>
+                  <span className="lp-sf-ghost-hidden">{inputValue}</span>
+                  <span className="lp-sf-ghost-suggestion">{suggestion}</span>
+                </span>
               </span>
             )}
           </div>
@@ -658,6 +811,31 @@ export default function HomeSearchForm({
             <PlaneIcon />
           </button>
         </div>
+        </div>
+        {mounted && dropdownItems.length > 0 && dropdownPos && createPortal(
+          <div
+            className="lp-sf-dropdown"
+            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+            role="listbox"
+            aria-label="Airport suggestions"
+          >
+            {dropdownItems.map((airport, idx) => (
+              <button
+                key={airport.code}
+                type="button"
+                role="option"
+                aria-selected={idx === dropdownActiveIdx}
+                className={'lp-sf-dropdown-item' + (idx === dropdownActiveIdx ? ' lp-sf-dropdown-item--active' : '')}
+                onMouseDown={(e) => { e.preventDefault(); handleDropdownSelect(airport) }}
+              >
+                <span className="lp-sf-dropdown-flag" aria-hidden="true">{countryFlag(airport.country)}</span>
+                <span className="lp-sf-dropdown-name">{getAirportName(airport, locale)}</span>
+                <span className="lp-sf-dropdown-code">{airport.code}</span>
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
       </form>
 
       {!compact && (
@@ -669,6 +847,7 @@ export default function HomeSearchForm({
                 type="button"
                 className="lp-dest-card"
                 onClick={() => {
+                  setInputValue(dest.query)
                   setQuery(dest.query)
                   setTimeout(() => {
                     const input = inputRef.current

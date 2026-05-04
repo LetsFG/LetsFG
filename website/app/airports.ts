@@ -425,8 +425,11 @@ function toGeneratedAirport(entry: GeneratedLocationEntry): Airport {
 
 const EXTRA_LOCATION_ALIASES: Record<string, string[]> = {
   BDL: ['hartford', 'hartford connecticut', 'connecticut'],
-  KOA: ['kona', 'kona big island'],
-  OGG: ['maui', 'maui island'],
+  HNL: ['hawaii', 'honolulu hawaii', 'oahu'],
+  KOA: ['kona', 'kona big island', 'big island kona'],
+  OGG: ['maui', 'maui island', 'kahului maui'],
+  ITO: ['hilo', 'big island hilo'],
+  LIH: ['kauai', 'lihue kauai'],
 }
 
 const ALL_GENERATED_LOCATIONS = dedupeGeneratedLocations([
@@ -507,7 +510,9 @@ function scoreLocationEntry(entry: GeneratedLocationEntry, normalizedQuery: stri
     }
 
     if (alias.length >= 3 && new RegExp(`(?:^|[^a-z0-9])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`).test(normalizedQuery)) {
-      score = Math.max(score, entry.type === 'airport' ? 575 : 550)
+      // Explicit IATA code present as a word in the query → stronger signal than a general alias
+      const isCodeAlias = alias === entry.code.toLowerCase()
+      score = Math.max(score, isCodeAlias ? 700 : (entry.type === 'airport' ? 575 : 550))
       continue
     }
 
@@ -544,35 +549,69 @@ export function findBestLocationMatch(query: string): LocationMatch | null {
   return bestMatch ? toLocationMatch(bestMatch.entry) : null
 }
 
+// Set of curated high-importance airport codes (the hand-picked list in AIRPORTS above)
+const CURATED_AIRPORT_CODES = new Set(AIRPORTS.map(a => a.code))
+
+// Pre-compute search terms for every airport once at module load.
+// getAirportSearchTerms touches Object.values + Set + aliases — too expensive to call per keystroke.
+const AIRPORT_TERMS_CACHE = new Map<string, string[]>()
+for (const airport of ALL_AIRPORTS) {
+  AIRPORT_TERMS_CACHE.set(airport.code, getAirportSearchTerms(airport))
+}
+
+// Prefix index: first 1–4 chars of any search term → airports that have a term starting with that prefix.
+// searchAirports uses this to skip the full 8k+ scan — typical bucket is 50–300 entries.
+const AIRPORT_PREFIX_INDEX = new Map<string, Airport[]>()
+for (const airport of ALL_AIRPORTS) {
+  const terms = AIRPORT_TERMS_CACHE.get(airport.code)!
+  const seen = new Set<string>()
+  for (const term of terms) {
+    for (let len = 1; len <= Math.min(4, term.length); len++) {
+      const prefix = term.slice(0, len)
+      if (!seen.has(prefix)) {
+        seen.add(prefix)
+        if (!AIRPORT_PREFIX_INDEX.has(prefix)) AIRPORT_PREFIX_INDEX.set(prefix, [])
+        AIRPORT_PREFIX_INDEX.get(prefix)!.push(airport)
+      }
+    }
+  }
+}
+
 /**
  * Find airports matching a query string
  */
 export function searchAirports(query: string, locale: string, limit = 10): Airport[] {
   if (!query || query.length < 2) return []
-  
+
   const normalizedQuery = normalizeForSearch(query)
-  
-  // Score airports by match quality
-  const scored = ALL_AIRPORTS.map(airport => {
-    const name = getAirportName(airport, locale)
-    const searchTerms = getAirportSearchTerms(airport)
+
+  // Use prefix index: only score airports with a matching term prefix
+  const prefix = normalizedQuery.slice(0, Math.min(4, normalizedQuery.length))
+  const candidates = AIRPORT_PREFIX_INDEX.get(prefix) ?? []
+  if (candidates.length === 0) return []
+
+  const scored = candidates.map(airport => {
+    const searchTerms = AIRPORT_TERMS_CACHE.get(airport.code)!
     const codeMatch = airport.code.toLowerCase() === normalizedQuery
     const codeStartsWith = airport.code.toLowerCase().startsWith(normalizedQuery)
     const nameStartsWith = searchTerms.some(term => term.startsWith(normalizedQuery))
     const nameContains = searchTerms.some(term => term.includes(normalizedQuery))
-    
+
     let score = 0
     if (codeMatch) score += 120
     if (codeStartsWith) score += 100
     if (nameStartsWith) score += 50
     if (nameContains) score += 10
-    
-    return { airport, score, name }
+
+    // Importance bonus for major curated airports so they beat obscure matches
+    if (score > 0 && CURATED_AIRPORT_CODES.has(airport.code)) score += 30
+
+    return { airport, score }
   })
   .filter(({ score }) => score > 0)
   .sort((a, b) => b.score - a.score)
   .slice(0, limit)
-  
+
   return scored.map(({ airport }) => airport)
 }
 
@@ -584,30 +623,36 @@ export function findBestMatch(query: string, locale: string): Airport | null {
   
   const normalizedQuery = normalizeForSearch(query)
   
-  // First try exact code match
+  // Exact IATA code match
   const codeMatch = ALL_AIRPORTS.find(a => a.code.toLowerCase() === normalizedQuery)
   if (codeMatch) return codeMatch
 
+  // Exact alias/name match
   for (const airport of ALL_AIRPORTS) {
     const searchTerms = getAirportSearchTerms(airport)
     if (searchTerms.some(term => term === normalizedQuery)) {
       return airport
     }
   }
-  
-  // Then try name prefix match
+
+  // Use scored best-location algorithm (handles aliases, word-boundary, importance)
+  const bestLocation = findBestLocationMatch(query)
+  if (bestLocation) {
+    const airport = ALL_AIRPORTS.find(a => a.code === bestLocation.code)
+    if (airport) return airport
+  }
+
+  // Fallback: locale-aware prefix match (handles localized names not in generated data, e.g. "München" → MUC)
   for (const airport of ALL_AIRPORTS) {
     const searchTerms = getAirportSearchTerms(airport)
     if (searchTerms.some(term => term.startsWith(normalizedQuery))) {
       return airport
     }
   }
-  
-  // Then try code prefix
+
+  // Code prefix
   for (const airport of ALL_AIRPORTS) {
-    if (airport.code.toLowerCase().startsWith(normalizedQuery)) {
-      return airport
-    }
+    if (airport.code.toLowerCase().startsWith(normalizedQuery)) return airport
   }
   
   return null
