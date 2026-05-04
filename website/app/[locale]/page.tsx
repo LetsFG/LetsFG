@@ -145,7 +145,18 @@ export default async function Home({ params, searchParams }: { params: Promise<{
       />
 
       <section className="lp-hero" id="search">
-        <div className="lp-hero-sky" aria-hidden="true" />
+        <div className="lp-hero-sky" aria-hidden="true">
+          <Image
+            src="/chatgpt-sky-bg.jpg"
+            alt=""
+            fill
+            priority
+            unoptimized
+            sizes="(max-width: 767px) 1px, 1440px"
+            className="lp-hero-sky-img"
+            style={{ objectFit: 'cover', objectPosition: 'center 46%' }}
+          />
+        </div>
         <div className="lp-hero-fade" aria-hidden="true" />
 
         <div className="lp-topbar">

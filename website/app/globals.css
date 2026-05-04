@@ -1644,7 +1644,8 @@ input {
   justify-content: flex-start;
   padding: 0 24px 0;
   gap: 0;
-  background: transparent;
+  /* Sky-blue gradient as fallback — visible immediately, before any image loads */
+  background: linear-gradient(180deg, #62b0e0 0%, #9ed0ec 30%, #cde9f7 55%, #ffffff 100%);
 }
 
 .lp-hero-sky {
@@ -1718,7 +1719,7 @@ input {
 .lp-hero-sub {
   font-size: 1rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: rgba(255, 255, 255, 0.97);
   text-align: center;
   max-width: 700px;
   margin: 2px 0 0;
@@ -1977,6 +1978,12 @@ input {
   color: rgba(14, 31, 43, 0.38);
   letter-spacing: 0.04em;
   flex-shrink: 0;
+}
+
+.lp-sf-dropdown-any {
+  font-size: 0.82em;
+  font-weight: 400;
+  color: rgba(14, 31, 43, 0.45);
 }
 
 /* Destination cards — photo cards with hover lift */
@@ -2834,13 +2841,29 @@ body:has(.res-page) {
     #acd8f0;
 }
 
+.lp-hero-sky-img {
+  /* Hidden on mobile — CSS gradients + solid color are sufficient */
+  display: none;
+  z-index: -1; /* renders behind the CSS gradient overlays */
+  opacity: 0;
+  animation: lp-hero-img-in 0.5s ease-out forwards;
+}
+
+@keyframes lp-hero-img-in {
+  to { opacity: 1; }
+}
+
 @media (min-width: 768px) {
+  .lp-hero-sky-img {
+    display: block;
+  }
+
   .lp-hero-sky {
     background:
       linear-gradient(180deg, rgba(11, 71, 107, 0.22) 0%, rgba(11, 71, 107, 0.06) 18%, rgba(255, 255, 255, 0) 40%),
-      url('/chatgpt-sky-bg.png');
-    background-size: cover;
-    background-position: center 46%;
+      radial-gradient(circle at 84% 26%, rgba(255, 213, 122, 0.22), transparent 18%),
+      radial-gradient(circle at 18% 24%, rgba(255, 255, 255, 0.16), transparent 16%);
+    /* No background-image URL — the <Image> component child handles it */
   }
 
   .res-page--completed {

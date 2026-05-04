@@ -1,114 +1,77 @@
 """
-Azul Brazilian Airlines scraper — headed Chrome + form fill + API capture.
+Azul Brazilian Airlines connector — direct API (no browser required).
 
 Azul (IATA: AD) is Brazil's third-largest airline with the widest domestic network.
-Website: passagens.voeazul.com.br — booking portal with form-based search.
+Website: www.voeazul.com.br — React SPA with Navitaire/New Skies backend.
 
 Architecture:
-- React SPA frontend (Next.js) on passagens.voeazul.com.br
-- Akamai Bot Manager blocks headless Chrome and non-browser HTTP
-- Form fill triggers availability API automatically
-- Capture availability response → parse Navitaire format → FlightOffer objects
+- b2c-api.voeazul.com.br is the REST backend, separate from the Akamai-protected SPA
+- Auth: POST /authentication/v1/token -> JWT (no credentials needed, empty body)
+- Search: POST /reservationavailability/v5/availability with JWT + static subscription key
+- Static OCP-APIM key is embedded in the SPA JS bundle
 
 Strategy:
-1. Launch persistent headed Chrome (Akamai blocks headless)
-2. Navigate to passagens.voeazul.com.br/en → accept cookies
-3. Fill origin/destination comboboxes, set one-way, adjust date
-4. Click Search → capture availability API response
-5. Parse Navitaire format → FlightOffer objects
+1. POST auth endpoint -> get short-lived JWT token
+2. POST availability endpoint with criteria -> parse Navitaire format -> FlightOffer objects
 
-Performance: ~8-15s per search (form fill is slower than deep link).
+Performance: ~2-5s per search (2 HTTP calls, no Chrome needed).
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
-import os
 import time
 from datetime import datetime, date
 from typing import Any, Optional
+from urllib.parse import urlparse, urlunparse
 
-from ..models.flights import (
+import httpx
+
+from letsfg.models.flights import (
     FlightOffer,
     FlightRoute,
     FlightSearchRequest,
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import auto_block_if_proxied, proxy_chrome_args
+from letsfg.connectors.browser import get_proxy
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ────────────────────────────────────────────────────────────
+# -- Constants -------------------------------------------------------------
+
+_AUTH_URL = "https://b2c-api.voeazul.com.br/authentication/api/authentication/v1/token"
+_AVAIL_URL = (
+    "https://b2c-api.voeazul.com.br"
+    "/reservationavailability/api/reservation/availability/v5/availability"
+)
+_OCP_KEY = "fb38e642c899485e893eb8d0a373cc17"  # static, embedded in SPA JS bundle
+
+_COMMON_HEADERS = {
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-ch-ua": '"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+    "sec-ch-ua-mobile": "?0",
+    "device": "novosite",
+    "ocp-apim-subscription-key": _OCP_KEY,
+    "accept": "application/json, text/plain, */*",
+    "culture": "pt-BR",
+    "referer": "https://www.voeazul.com.br/",
+    "origin": "https://www.voeazul.com.br",
+    "user-agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/147.0.0.0 Safari/537.36"
+    ),
+}
 
 _MAX_ATTEMPTS = 2
-_API_WAIT = 55  # seconds — Azul availability API can take up to 30s server-side
-_WARM_URL = "https://passagens.voeazul.com.br/en"  # session warm-up domain
-_SEARCH_HOST = "https://www.voeazul.com.br"  # search results domain
-
-_USER_DATA_DIR = os.path.join(
-    os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp")), "..", ".azul_chrome_data"
-)
-
-# ── Persistent browser context (headed to bypass Akamai) ────────────────
-
-_pw_instance = None
-_pw_context = None
-_browser_lock: Optional[asyncio.Lock] = None
-_context_warmed: bool = False  # True once we've visited passagens.voeazul.com.br in this process
-
-
-def _get_lock() -> asyncio.Lock:
-    global _browser_lock
-    if _browser_lock is None:
-        _browser_lock = asyncio.Lock()
-    return _browser_lock
-
-
-async def _get_context():
-    """Persistent headed Chrome context — cookies survive across searches."""
-    global _pw_instance, _pw_context
-    lock = _get_lock()
-    async with lock:
-        if _pw_context:
-            try:
-                _pw_context.pages
-                return _pw_context
-            except Exception:
-                _pw_context = None
-
-        from playwright.async_api import async_playwright
-
-        os.makedirs(os.path.abspath(_USER_DATA_DIR), exist_ok=True)
-        _pw_instance = await async_playwright().start()
-
-        extra_args = [a for a in proxy_chrome_args() if a not in (
-            "--disable-blink-features=AutomationControlled",
-        )]
-        _pw_context = await _pw_instance.chromium.launch_persistent_context(
-            os.path.abspath(_USER_DATA_DIR),
-            channel="chrome",
-            headless=False,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--window-position=-2400,-2400",
-                "--window-size=1366,768",
-                *extra_args,
-            ],
-            viewport={"width": 1366, "height": 768},
-            locale="pt-BR",
-            timezone_id="America/Sao_Paulo",
-            service_workers="block",
-        )
-        logger.info("Azul: persistent Chrome context ready")
-        return _pw_context
+_TIMEOUT = 30.0
 
 
 class AzulConnectorClient:
-    """Azul scraper — headed Chrome + form fill + API capture."""
+    """Azul connector -- direct REST API (auth token + availability)."""
 
     def __init__(self, timeout: float = 60.0):
         self.timeout = timeout
@@ -133,10 +96,10 @@ class AzulConnectorClient:
 
         if req.return_from and ob_result.total_results > 0:
             ib_req = req.model_copy(update={
-                "origin": req.destination, 
-                "destination": req.origin, 
-                "date_from": req.return_from, 
-                "return_from": None
+                "origin": req.destination,
+                "destination": req.origin,
+                "date_from": req.return_from,
+                "return_from": None,
             })
             ib_result = None
             for attempt in range(1, _MAX_ATTEMPTS + 1):
@@ -155,191 +118,91 @@ class AzulConnectorClient:
     async def _attempt_search(
         self, req: FlightSearchRequest, t0: float
     ) -> Optional[FlightSearchResponse]:
-        """Single attempt: warm session → deep-link → capture v5/availability API."""
-        global _context_warmed
-        ctx = await _get_context()
-        page = await ctx.new_page()
-        await auto_block_if_proxied(page)
-
-        # Capture v5 (or v6) availability API response
-        captured: dict = {}
-        api_event = asyncio.Event()
-
-        async def on_response(response):
-            try:
-                url = response.url
-                # Only care about the Azul reservation-availability v5/v6 endpoint
-                if "reservationavailability" not in url:
-                    return
-                if "/availability/v" not in url:
-                    return
-                if response.status != 200:
-                    return
-                ct = response.headers.get("content-type", "")
-                if "json" not in ct:
-                    return
-                body = await response.json()
-                # Successful responses have non-empty data
-                if isinstance(body, dict) and body.get("data") and body["data"] != {}:
-                    captured["avail"] = body
-                    api_event.set()
-                    logger.debug("Azul: captured availability response")
-            except Exception as e:
-                logger.debug("Azul: response capture error: %s", e)
-
-        page.on("response", on_response)
-
         dep = req.date_from
-        dep_str = dep.strftime("%m/%d/%Y")
+        dep_mm_dd_yyyy = dep.strftime("%m/%d/%Y")
+        dep_iso = dep.strftime("%Y-%m-%d")
         n_pax = max(1, req.adults)
-        logger.info("Azul: searching %s→%s on %s", req.origin, req.destination, dep)
+        currency = req.currency or "BRL"
+        logger.info("Azul: searching %s->%s on %s", req.origin, req.destination, dep_iso)
 
-        try:
-            # Step 1: Warm session — Akamai cookies are subdomain-specific.
-            # We must warm BOTH passagens.voeazul.com.br AND www.voeazul.com.br
-            # and allow enough time (~4s each) for the Akamai sensor JS to run
-            # and POST fingerprint data before the search triggers bot detection.
-            if not _context_warmed:
-                logger.debug("Azul: warming passagens subdomain...")
-                await page.goto(_WARM_URL, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(4)  # Akamai sensors need ~3-4s to post fingerprint
-                await self._accept_cookies(page)
-                # Also warm the search subdomain (www.voeazul.com.br) directly
-                logger.debug("Azul: warming www subdomain...")
-                await page.goto(_SEARCH_HOST, wait_until="domcontentloaded", timeout=20000)
-                await asyncio.sleep(4)
-                _context_warmed = True
-                logger.info("Azul: session warmed on both subdomains")
+        # Build proxy URL for httpx (if configured)
+        proxy_url: Optional[str] = None
+        raw_proxy = get_proxy("AZUL_PROXY")
+        if raw_proxy:
+            server = raw_proxy.get("server", "")
+            username = raw_proxy.get("username")
+            password = raw_proxy.get("password")
+            if username and password:
+                p = urlparse(server)
+                proxy_url = urlunparse(p._replace(
+                    netloc=f"{username}:{password}@{p.hostname}:{p.port}"
+                ))
+            else:
+                proxy_url = server
+            logger.debug("Azul: using proxy")
 
-            # Step 2: Navigate directly to the flight search deep-link
-            search_url = (
-                f"{_SEARCH_HOST}/us/en/home/selecao-voo"
-                f"?c[0].ds={req.origin}&c[0].as={req.destination}"
-                f"&c[0].std={dep_str}"
-                f"&p[0].t=ADT&p[0].c={n_pax}&p[0].cp=false&cc=BRL"
-            )
-            await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(1)
-            await self._accept_cookies(page)
-
-            # Check for bot block (IP geo-restriction page)
-            page_text = await page.evaluate("() => document.body.innerText.slice(0, 400)")
-            if "comportamento incomum" in page_text or (
-                "Ops!" in page_text and "IP:" in page_text
-            ):
-                logger.warning("Azul: bot block detected — re-warming www subdomain before retry")
-                # Re-warm the www subdomain specifically (it may not have been warmed yet
-                # in the current attempt, or Akamai _abck expired)
-                try:
-                    await page.goto(_SEARCH_HOST, wait_until="domcontentloaded", timeout=20000)
-                    await asyncio.sleep(5)
-                except Exception:
-                    pass
-                _context_warmed = False
+        async with httpx.AsyncClient(
+            proxy=proxy_url,
+            timeout=_TIMEOUT,
+            verify=True,
+            follow_redirects=True,
+        ) as client:
+            # Step 1: get auth token
+            try:
+                auth_resp = await client.post(
+                    _AUTH_URL,
+                    headers={**_COMMON_HEADERS, "authorization": ""},
+                    content=b"",
+                )
+                auth_resp.raise_for_status()
+                token = auth_resp.json().get("data", "")
+                if not token:
+                    logger.warning("Azul: empty auth token in response")
+                    return None
+                logger.debug("Azul: auth token obtained")
+            except Exception as e:
+                logger.warning("Azul: auth error: %s", e)
                 return None
 
-            # Step 3: Wait for availability API response (up to _API_WAIT seconds)
-            await asyncio.wait_for(api_event.wait(), timeout=_API_WAIT)
-
-        except asyncio.TimeoutError:
-            logger.warning("Azul: availability API timed out after %ds", _API_WAIT)
-            return None
-        except Exception as e:
-            logger.warning("Azul: search error: %s", e)
-            return None
-        finally:
+            # Step 2: availability
+            avail_body = {
+                "criteria": [{
+                    "departureStation": req.origin,
+                    "arrivalStation": req.destination,
+                    "std": dep_mm_dd_yyyy,
+                    "departureDate": dep_iso,
+                }],
+                "passengers": [{
+                    "type": "ADT",
+                    "count": str(n_pax),
+                    "companionPass": False,
+                }],
+                "flexibleDays": {"daysToLeft": "0", "daysToRight": "0"},
+                "currencyCode": currency,
+            }
             try:
-                page.remove_listener("response", on_response)
-            except Exception:
-                pass
-            try:
-                await page.close()
-            except Exception:
-                pass
-
-        data = captured.get("avail")
-        if data is None:
-            return None
+                avail_resp = await client.post(
+                    _AVAIL_URL,
+                    headers={
+                        **_COMMON_HEADERS,
+                        "authorization": f"Bearer {token}",
+                        "content-type": "application/json",
+                    },
+                    json=avail_body,
+                )
+                avail_resp.raise_for_status()
+                data = avail_resp.json()
+                logger.debug("Azul: availability response received (status=%d)", avail_resp.status_code)
+            except Exception as e:
+                logger.warning("Azul: availability error: %s", e)
+                return None
 
         elapsed = time.monotonic() - t0
         offers = self._parse_availability(data, req)
+        logger.info("Azul: parsed %d offers in %.1fs", len(offers), elapsed)
         return self._build_response(offers, req, elapsed)
 
-    async def _accept_cookies(self, page) -> None:
-        """Click cookie consent button if present."""
-        try:
-            btn = page.locator('button:has-text("Accept"), button:has-text("Aceitar")')
-            if await btn.count() > 0:
-                await btn.first.click(timeout=3000)
-                await asyncio.sleep(0.5)
-        except Exception:
-            pass
-
-    async def _set_one_way(self, page) -> None:
-        """Switch to one-way trip mode."""
-        try:
-            # Click journey type dropdown
-            jt_btn = page.locator('button[aria-label*="journey-type"]')
-            if await jt_btn.count() > 0:
-                await jt_btn.first.click(timeout=3000)
-                await asyncio.sleep(0.3)
-                # Select one-way
-                ow = page.locator('*[role="radio"]:has-text("One-way")')
-                if await ow.count() > 0:
-                    await ow.first.click(timeout=2000)
-                    await asyncio.sleep(0.3)
-                else:
-                    # Close dropdown
-                    await page.keyboard.press("Escape")
-        except Exception as e:
-            logger.debug("Azul: one-way toggle error: %s", e)
-
-    async def _fill_airport(self, page, field_type: str, iata: str) -> None:
-        """Fill origin or destination airport combobox."""
-        aria = "origin" if field_type == "origin" else "destination"
-        try:
-            # Click the airport button to open the combobox
-            btn = page.locator(f'button[aria-label*="{aria}"]')
-            await btn.first.click(timeout=5000)
-            await asyncio.sleep(0.5)
-
-            # Type into the combobox
-            cb = page.locator(f'*[role="combobox"][aria-label*="{aria}"]')
-            await cb.fill(iata, timeout=3000)
-            await asyncio.sleep(0.8)
-
-            # Click the first option
-            opt = page.locator('*[role="option"]').first
-            await opt.click(timeout=3000)
-            await asyncio.sleep(0.3)
-        except Exception as e:
-            logger.debug("Azul: airport fill error (%s): %s", field_type, e)
-            # Press escape to close any open dropdown
-            await page.keyboard.press("Escape")
-
-    async def _set_date(self, page, dep_date: date) -> None:
-        """Set departure date using the date picker."""
-        try:
-            # Click departure date button
-            date_btn = page.locator('button[aria-label*="departure-date"]')
-            await date_btn.first.click(timeout=5000)
-            await asyncio.sleep(0.5)
-
-            # The date picker should be open - type the date in MM/DD/YYYY format
-            date_str = dep_date.strftime("%m/%d/%Y")
-            date_input = page.locator('input[type="text"]').first
-            if await date_input.count() > 0:
-                await date_input.fill(date_str, timeout=3000)
-                await asyncio.sleep(0.3)
-                await page.keyboard.press("Enter")
-            else:
-                # Fallback: close the picker (use default date)
-                await page.keyboard.press("Escape")
-        except Exception as e:
-            logger.debug("Azul: date set error: %s", e)
-            await page.keyboard.press("Escape")
-
-    # ── Navitaire availability parsing ───────────────────────────────────
+    # -- Navitaire availability parsing ------------------------------------
 
     def _parse_availability(self, data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
         booking_url = self._build_booking_url(req)
@@ -360,13 +223,11 @@ class AzulConnectorClient:
     def _parse_journey(
         self, journey: dict, req: FlightSearchRequest, booking_url: str
     ) -> Optional[FlightOffer]:
-        """Parse a single Navitaire journey into a FlightOffer."""
         best_price = self._extract_journey_price(journey)
         if best_price is None or best_price <= 0:
             return None
 
         currency = self._extract_currency(journey) or "BRL"
-
         identifier = journey.get("identifier") or journey.get("designator") or {}
         segments_raw = journey.get("segments", [])
         segments: list[FlightSegment] = []
@@ -421,7 +282,6 @@ class AzulConnectorClient:
 
     @staticmethod
     def _extract_azul_bag_info(journey: dict, currency: str) -> tuple[dict, dict]:
-        """Extract bag allowance from cheapest Navitaire fare on the Azul journey."""
         conditions: dict[str, str] = {}
         bags_price: dict[str, float] = {}
 
@@ -429,7 +289,6 @@ class AzulConnectorClient:
         if not fares:
             return conditions, bags_price
 
-        # Find the fare entry that gave the cheapest price
         best_price = float("inf")
         cheapest_fare: dict = {}
         for fare in fares:
@@ -454,48 +313,33 @@ class AzulConnectorClient:
         if not cheapest_fare and fares:
             cheapest_fare = fares[0] if isinstance(fares[0], dict) else {}
 
+        product_class = cheapest_fare.get("productClass") or {}
         bundle_code = str(
-            cheapest_fare.get("bundleCode") or cheapest_fare.get("bundleInformation")
+            product_class.get("code")
+            or cheapest_fare.get("bundleCode") or cheapest_fare.get("bundleInformation")
             or cheapest_fare.get("fareClass") or cheapest_fare.get("fareName")
             or cheapest_fare.get("fareCode") or cheapest_fare.get("fareSellKey") or ""
         ).upper()
 
         if bundle_code:
-            conditions["fare_family"] = bundle_code
+            conditions["fare_family"] = product_class.get("name") or bundle_code
 
-        # Azul Navitaire bundleCodes: AZUL (no bag), BLUE (1×23kg), BLACK (2×23kg)
-        if "AZUL" in bundle_code or bundle_code in ("A", "AZ"):
+        if bundle_code in ("F+", "F"):
             conditions["checked_bag"] = "no free checked bag (Azul base fare)"
-        elif "BLACK" in bundle_code or bundle_code in ("BL", "BLK"):
+        elif bundle_code in ("PR",):
+            conditions["checked_bag"] = "1x 23kg bag included"
+            bags_price["checked_bag"] = 0.0
+        elif "BLACK" in bundle_code:
             conditions["checked_bag"] = "2x 23kg bags included"
             bags_price["checked_bag"] = 0.0
         elif "BLUE" in bundle_code or bundle_code in ("BU", "XTRA", "XT"):
             conditions["checked_bag"] = "1x 23kg bag included"
             bags_price["checked_bag"] = 0.0
-        elif bundle_code:
-            # Unknown bundle code — try to detect from Navitaire fare services
-            services = cheapest_fare.get("bundleInformation") or cheapest_fare.get("services") or []
-            if isinstance(services, list):
-                for svc in services:
-                    svc_str = str(svc).upper()
-                    if any(k in svc_str for k in ("CHECKED", "BAG", "BAGGAGE", "MALA")):
-                        conditions["checked_bag"] = "checked bag included"
-                        bags_price["checked_bag"] = 0.0
-                        break
 
-        # Carry-on: infer from Azul bundle code
-        if "carry_on" not in conditions:
-            if "AZUL" in bundle_code or bundle_code in ("A", "AZ"):
-                conditions["carry_on"] = "1x 10kg carry-on included (no free checked bag on base fare)"
-                bags_price["carry_on"] = 0.0
-            else:
-                conditions["carry_on"] = "1x 10kg carry-on included"
-                bags_price["carry_on"] = 0.0
-
-        # Seat selection
-        if "seat" not in conditions:
-            conditions["seat"] = "seat selection from ~BRL 30 — add at checkout"
-            bags_price.setdefault("seat", 30.0)  # ~BRL 30 seat selection add-on
+        conditions["carry_on"] = "1x 10kg carry-on included"
+        bags_price["carry_on"] = 0.0
+        conditions["seat"] = "seat selection from ~BRL 30 -- add at checkout"
+        bags_price.setdefault("seat", 30.0)
 
         return conditions, bags_price
 
@@ -575,13 +419,11 @@ class AzulConnectorClient:
     @staticmethod
     def _build_booking_url(req: FlightSearchRequest) -> str:
         dep = req.date_from.strftime("%m/%d/%Y")
-        from urllib.parse import quote
+        n_pax = max(1, req.adults)
         return (
-            f"https://www.voeazul.com.br/us/en/home/selecao-voo"
-            f"?c%5B0%5D.ds={req.origin}&c%5B0%5D.as={req.destination}"
-            f"&c%5B0%5D.std={quote(dep, safe='')}"
-            f"&p%5B0%5D.t=ADT&p%5B0%5D.c={req.adults}"
-            f"&p%5B0%5D.cp=false&cc=BRL"
+            f"https://www.voeazul.com.br/br/pt/home/selecao-voo"
+            f"?c[0].ds={req.origin}&c[0].as={req.destination}&c[0].std={dep}"
+            f"&p[0].t=ADT&p[0].c={n_pax}&p[0].cp=false&cc=BRL&f.dl=3&f.dr=3"
         )
 
     @staticmethod
@@ -609,20 +451,26 @@ class AzulConnectorClient:
             f"azul{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
-            search_id=f"fs_{h}", origin=req.origin, destination=req.destination,
-            currency=req.currency, offers=[], total_results=0,
+            connector_id="azul_direct",
+            search_id=h,
+            origin=req.origin, destination=req.destination,
+            date_from=req.date_from, return_from=req.return_from,
+            currency=req.currency or "BRL",
+            offers=[], total_results=0,
         )
 
     def _build_response(
         self, offers: list[FlightOffer], req: FlightSearchRequest, elapsed: float
     ) -> FlightSearchResponse:
-        offers.sort(key=lambda o: o.price)
-        logger.info("Azul %s→%s returned %d offers in %.1fs", req.origin, req.destination, len(offers), elapsed)
         h = hashlib.md5(
             f"azul{req.origin}{req.destination}{req.date_from}{req.return_from or ''}".encode()
         ).hexdigest()[:12]
         return FlightSearchResponse(
-            search_id=f"fs_{h}", origin=req.origin, destination=req.destination,
-            currency=offers[0].currency if offers else req.currency,
+            connector_id="azul_direct",
+            search_id=h,
+            origin=req.origin, destination=req.destination,
+            date_from=req.date_from, return_from=req.return_from,
+            elapsed_seconds=round(elapsed, 1),
+            currency=offers[0].currency if offers else req.currency or "BRL",
             offers=offers, total_results=len(offers),
         )

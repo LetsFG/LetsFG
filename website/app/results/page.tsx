@@ -271,6 +271,8 @@ async function startFSWSearch(
   }
 
   try {
+    const reqHeaders = await headers()
+    const userIp = reqHeaders.get('x-forwarded-for')?.split(',')[0].trim() || undefined
     const result = await startWebSearch({
       origin: parsed.origin,
       destination: parsed.destination,
@@ -287,7 +289,7 @@ async function startFSWSearch(
       source: 'website-results-page',
       source_path: getTrackedSourcePath('/results', isProbe),
       is_test_search: isProbe,
-    })
+    }, userIp)
     return result
   } catch {
     return { searchId: null, cache: 'miss' }

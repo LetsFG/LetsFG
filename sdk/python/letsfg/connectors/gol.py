@@ -32,7 +32,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
-from .browser import auto_block_if_proxied
+from .browser import auto_block_if_proxied, get_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +67,25 @@ async def _get_context():
     os.makedirs(os.path.abspath(_USER_DATA_DIR), exist_ok=True)
     _pw_instance = await patchright_playwright().start()
 
-    _pw_context = await _pw_instance.chromium.launch_persistent_context(
-        os.path.abspath(_USER_DATA_DIR),
-        headless=False,
-        args=[
+    _proxy = get_proxy("GOL_PROXY")
+    _ctx_kwargs: dict = {
+        "headless": False,
+        "args": [
             "--disable-blink-features=AutomationControlled",
             "--window-position=-2400,-2400",
             "--window-size=1366,768",
         ],
-        viewport={"width": 1366, "height": 768},
-        locale="pt-BR",
-        timezone_id="America/Sao_Paulo",
-        service_workers="block",
+        "viewport": {"width": 1366, "height": 768},
+        "locale": "pt-BR",
+        "timezone_id": "America/Sao_Paulo",
+        "service_workers": "block",
+    }
+    if _proxy:
+        _ctx_kwargs["proxy"] = _proxy
+        logger.info("GOL: using proxy %s", _proxy.get("server", ""))
+    _pw_context = await _pw_instance.chromium.launch_persistent_context(
+        os.path.abspath(_USER_DATA_DIR),
+        **_ctx_kwargs,
     )
     logger.info("GOL: persistent Chrome context ready")
     return _pw_context
@@ -399,8 +406,6 @@ class GolConnectorClient:
 
         async def on_response(response):
             try:
-                if response.status != 200:
-                    return
                 url = response.url
                 if "voegol.com.br" not in url:
                     return
@@ -408,6 +413,13 @@ class GolConnectorClient:
                 if "json" not in ct:
                     return
                 if any(s in url for s in ["/assets/", "/i18n/", "channelcfg-api", "cookielaw", "onetrust", "datadoghq", "/M45P/", "gol-auth-api"]):
+                    return
+                if response.status == 406 and "bff-flight" in url:
+                    logger.warning("GOL: BFF returned 406 (Akamai blocked) — proxy required")
+                    captured_data["blocked"] = True
+                    api_event.set()
+                    return
+                if response.status != 200:
                     return
                 data = await response.json()
                 if not isinstance(data, dict):

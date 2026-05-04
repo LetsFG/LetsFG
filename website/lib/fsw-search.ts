@@ -36,13 +36,17 @@ export interface StartWebSearchResult {
 export async function startWebSearch(
   params: WebSearchParams,
   analytics?: WebSearchAnalyticsContext,
+  userIp?: string,
 ): Promise<StartWebSearchResult> {
   const startedAt = new Date().toISOString()
+  const extraHeaders: Record<string, string> = {}
+  if (userIp) extraHeaders['X-Client-IP'] = userIp
   const res = await fetch(`${FSW_URL}/web-search`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${FSW_SECRET}`,
+      ...extraHeaders,
     },
     body: JSON.stringify({
       origin: params.origin,

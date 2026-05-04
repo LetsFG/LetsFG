@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
 
     recordLocalSearch()
 
+    const userIp = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || undefined
+
     const { searchId, cache } = await startWebSearch({
       origin,
       destination,
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
       source_path: getTrackedSourcePath('/api/search', isProbeSearch),
       session_uid: getSessionUid(request) ?? undefined,
       is_test_search: isProbeSearch,
-    })
+    }, userIp)
 
     if (!searchId) {
       return NextResponse.json({ error: 'Search service unavailable' }, { status: 502 })

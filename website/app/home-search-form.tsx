@@ -829,7 +829,10 @@ export default function HomeSearchForm({
                 onMouseDown={(e) => { e.preventDefault(); handleDropdownSelect(airport) }}
               >
                 <span className="lp-sf-dropdown-flag" aria-hidden="true">{countryFlag(airport.country)}</span>
-                <span className="lp-sf-dropdown-name">{getAirportName(airport, locale)}</span>
+                <span className="lp-sf-dropdown-name">
+                  {getAirportName(airport, locale)}
+                  {airport.isCity && <span className="lp-sf-dropdown-any"> · Any airport</span>}
+                </span>
                 <span className="lp-sf-dropdown-code">{airport.code}</span>
               </button>
             ))}
@@ -869,7 +872,7 @@ export default function HomeSearchForm({
                   e.currentTarget.style.setProperty('--my', '0px')
                 }}
               >
-                <img src={dest.img} alt={dest.city} className="lp-dest-img" draggable={false} />
+                <img src={dest.img} alt={dest.city} className="lp-dest-img" loading="lazy" draggable={false} />
                 <div className="lp-dest-overlay" />
                 <img src={dest.flag} alt="" className="lp-dest-flag" draggable={false} />
                 <span className="lp-dest-city">{dest.city}</span>
