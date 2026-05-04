@@ -8,6 +8,7 @@ export interface Airport {
   code: string
   names: Record<string, string>
   country: string
+  isCity?: boolean  // true for multi-airport city entries (LON, NYC, PAR, …)
 }
 
 // Top 200+ airports worldwide with localized names where relevant
@@ -577,6 +578,30 @@ for (const airport of ALL_AIRPORTS) {
   }
 }
 
+// City-level prefix index (multi-airport cities: LON, NYC, PAR, …)
+// Built once at module load, used by searchAirports to prepend the city option.
+const CITY_PREFIX_INDEX = new Map<string, Array<Airport & { isCity: true }>>()
+for (const entry of ALL_GENERATED_LOCATIONS) {
+  if (entry.type !== 'city' || !entry.airports || entry.airports.length <= 1) continue
+  const cityAirport: Airport & { isCity: true } = {
+    code: entry.code,
+    names: { en: entry.name },
+    country: entry.country,
+    isCity: true,
+  }
+  const seen = new Set<string>()
+  for (const alias of getLocationAliases(entry)) {
+    for (let len = 1; len <= Math.min(4, alias.length); len++) {
+      const prefix = alias.slice(0, len)
+      if (!seen.has(prefix)) {
+        seen.add(prefix)
+        if (!CITY_PREFIX_INDEX.has(prefix)) CITY_PREFIX_INDEX.set(prefix, [])
+        CITY_PREFIX_INDEX.get(prefix)!.push(cityAirport)
+      }
+    }
+  }
+}
+
 /**
  * Find airports matching a query string
  */
@@ -584,11 +609,25 @@ export function searchAirports(query: string, locale: string, limit = 10): Airpo
   if (!query || query.length < 2) return []
 
   const normalizedQuery = normalizeForSearch(query)
+  const prefix = normalizedQuery.slice(0, Math.min(4, normalizedQuery.length))
+
+  // Check city-level entries first (LON, NYC, PAR …)
+  const cityCandidates = CITY_PREFIX_INDEX.get(prefix) ?? []
+  const cityResults: Array<Airport & { isCity: true }> = []
+  const seenCityCodes = new Set<string>()
+  for (const cityAirport of cityCandidates) {
+    if (seenCityCodes.has(cityAirport.code)) continue
+    const entry = GENERATED_LOCATION_BY_CODE.get(cityAirport.code)
+    if (!entry) continue
+    const aliases = getLocationAliases(entry)
+    if (aliases.some(a => a === normalizedQuery || a.startsWith(normalizedQuery))) {
+      cityResults.push(cityAirport)
+      seenCityCodes.add(cityAirport.code)
+    }
+  }
 
   // Use prefix index: only score airports with a matching term prefix
-  const prefix = normalizedQuery.slice(0, Math.min(4, normalizedQuery.length))
   const candidates = AIRPORT_PREFIX_INDEX.get(prefix) ?? []
-  if (candidates.length === 0) return []
 
   const scored = candidates.map(airport => {
     const searchTerms = AIRPORT_TERMS_CACHE.get(airport.code)!
@@ -612,7 +651,10 @@ export function searchAirports(query: string, locale: string, limit = 10): Airpo
   .sort((a, b) => b.score - a.score)
   .slice(0, limit)
 
-  return scored.map(({ airport }) => airport)
+  const airports = scored.map(({ airport }) => airport)
+
+  // City entries go first (at most 1), then individual airports up to limit
+  return [...cityResults.slice(0, 1), ...airports].slice(0, limit)
 }
 
 /**
@@ -640,6 +682,10 @@ export function findBestMatch(query: string, locale: string): Airport | null {
   if (bestLocation) {
     const airport = ALL_AIRPORTS.find(a => a.code === bestLocation.code)
     if (airport) return airport
+    // City code (e.g. LON) — not in ALL_AIRPORTS; return as a city Airport so ghost text says "London to …"
+    if (bestLocation.type === 'city') {
+      return { code: bestLocation.code, names: { en: bestLocation.name }, country: bestLocation.country, isCity: true }
+    }
   }
 
   // Fallback: locale-aware prefix match (handles localized names not in generated data, e.g. "München" → MUC)

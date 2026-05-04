@@ -21,6 +21,61 @@ import { getStripe } from '../../../../lib/stripe'
 // Must run on Node.js to access the raw request body for signature verification.
 export const runtime = 'nodejs'
 
+const ANALYTICS_API_BASE = (
+  process.env.LETSFG_ANALYTICS_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
+).replace(/\/$/, '')
+
+/**
+ * Fire the payment_verified analytics event from the server side.
+ * This is the authoritative source — reliable regardless of client-side issues
+ * (browser closed, JS error, slow network on the success redirect).
+ * Fire-and-forget: failures are logged but never bubble up to Stripe.
+ */
+async function trackPaymentVerified(session: Stripe.Checkout.Session) {
+  const searchId = session.metadata?.search_id
+  if (!searchId) {
+    console.warn('[webhook] checkout.session.completed missing search_id in metadata — skipping analytics')
+    return
+  }
+
+  const fee = session.amount_total != null ? session.amount_total / 100 : undefined
+
+  const payload = {
+    search_id: searchId,
+    event: {
+      type: 'payment_verified',
+      at: new Date().toISOString(),
+      data: {
+        offer_id: session.metadata?.offer_id ?? '',
+        stripe_session_id: session.id,
+        source: 'webhook',
+      },
+    },
+    ...(fee != null ? { revenue: fee } : {}),
+  }
+
+  try {
+    const res = await fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'https://letsfg.co',
+        'Referer': 'https://letsfg.co/',
+        'User-Agent': 'LetsFG Webhook/1.0',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) {
+      console.error('[webhook] analytics upsert failed:', res.status, await res.text().catch(() => ''))
+    } else {
+      console.log('[webhook] analytics payment_verified recorded for search_id:', searchId)
+    }
+  } catch (err) {
+    console.error('[webhook] analytics upsert threw:', err)
+  }
+}
+
 export async function POST(req: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   if (!webhookSecret) {
@@ -59,10 +114,10 @@ export async function POST(req: NextRequest) {
             amount: session.amount_total,
             currency: session.currency,
           })
-          // NOTE: Unlocks are cookie-based (set by /api/checkout/verify on redirect).
-          // This webhook is the production audit trail and handles cases where the
-          // Stripe redirect back to success_url fails (browser closed, network error).
-          // If you add a DB later, persist the unlock here keyed on lfg_uid + search_id.
+          // Fire analytics from the server side so the purchase is always recorded,
+          // even if the Stripe redirect fails or client-side JS doesn't execute
+          // (browser closed, network error, JS exception).
+          await trackPaymentVerified(session)
         }
         break
       }
