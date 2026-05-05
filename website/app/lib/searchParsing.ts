@@ -743,6 +743,8 @@ export function parseNLQuery(query: string): ParsedQuery {
   if (destStr) {
     // Stop destination string at common date lead-ins that weren't caught by the regex
     destStr = destStr
+      // "next month" and multilingual equivalents must come first (before the next/this weekday rule)
+      .replace(/\s+(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+mjesec|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b.*/i, '')
       .replace(/\s+(?:(?:next|this)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend)|(?:the\s+week\s+of\s+thanksgiving|thanksgiving\s+week|thanksgiving))\b.*/i, '')
       .replace(/\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na|dne|dia|den|am)\s.*/i, '')
       .replace(/\s+\d{1,2}(?:st|nd|rd|th)?\s.*/i, '')
@@ -837,6 +839,12 @@ export function parseNLQuery(query: string): ParsedQuery {
         if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
+    }
+
+    // "next month" and multilingual equivalents → 1st of next calendar month
+    if (/\b(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+mjesec|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b/i.test(tl)) {
+      const d = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+      return toLocalDateStr(d)
     }
 
     if (THANKSGIVING_WEEK_RE.test(tl)) {
