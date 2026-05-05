@@ -12,6 +12,9 @@ Thumbs.db
 .idea/
 site/
 
+# Backend service — lives in LetsFG/LetsFG-private (security-sensitive)
+growth-ops/
+
 # Diagnostic probe directories (debug artifacts)
 .*_diag*/
 .*_probe*/
