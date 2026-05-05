@@ -9,6 +9,7 @@ import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
 import ResultsSearchForm from '../ResultsSearchForm'
 import ResultsPanel from './ResultsPanel'
+import { SearchProgressBarFull } from './SearchProgressBar'
 import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type CurrencyCode } from '../../../lib/currency-preference'
 import { formatOfferDisplayPrice, getOfferDisplayTotalPrice } from '../../../lib/display-price'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
@@ -95,7 +96,7 @@ export interface SearchPageClientProps {
   query: string
   parsed: ParsedQuery
   initialStatus: 'searching' | 'completed' | 'expired'
-  initialProgress?: { checked: number; total: number; found: number }
+  initialProgress?: { checked: number; total: number; found: number; pending_connectors?: string[] }
   initialOffers: FlightOffer[]
   searchedAt?: string
   expiresAt?: string
@@ -144,6 +145,8 @@ export default function SearchPageClient({
   const [offers, setOffers] = useState(initialOffers)
   const [displayCurrency, setDisplayCurrency] = useState(initialCurrency)
   const [monitorOpen, setMonitorOpen] = useState(false)
+  const [newOfferIds, setNewOfferIds] = useState<Set<string>>(new Set())
+  const knownOfferIdsRef = useRef<Set<string>>(new Set(initialOffers.map(o => o.id)))
   const trackedResultsViewRef = useRef(false)
   const trackedExpiredRef = useRef(false)
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
@@ -153,6 +156,11 @@ export default function SearchPageClient({
 
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
+  // Streaming: still searching but partial offers have arrived — render the
+  // exact same layout as the completed results page (sky bg, compact hero,
+  // scrollable). Only the progress bar differs from the completed state.
+  // build:2026-05-05
+  const isStreaming = isSearching && offers.length > 0
 
   useEffect(() => {
     trackedResultsViewRef.current = false
@@ -163,6 +171,12 @@ export default function SearchPageClient({
     setOffers(initialOffers)
     setDisplayCurrency(initialCurrency)
   }, [searchId, initialCurrency])
+
+  // Reset progressive-reveal state when search changes
+  useEffect(() => {
+    knownOfferIdsRef.current = new Set(initialOffers.map(o => o.id))
+    setNewOfferIds(new Set())
+  }, [searchId])
 
   // React to currency changes made via the CurrencyButton (persist behavior).
   // Immediately reconvert displayed prices without rerunning the search.
@@ -205,8 +219,14 @@ export default function SearchPageClient({
   // Client-side poll — replaces SearchPoller + router.refresh().
   // SearchingTasks stays mounted throughout the search; its animation state is
   // never lost because we never touch the server component during the search.
+  // Adaptive interval: 2 s for first 12 s, then 5 s. Partial offers are
+  // merged in as they arrive, triggering progressive card reveal.
   useEffect(() => {
     if (!isSearching) return
+
+    const pollStartTime = Date.now()
+    let timeoutId: ReturnType<typeof setTimeout>
+    let newIdsTimer: ReturnType<typeof setTimeout> | null = null
 
     const poll = async () => {
       try {
@@ -217,17 +237,55 @@ export default function SearchPageClient({
         if (!res.ok) return
         const data = await res.json()
         if (data.progress) setProgress(data.progress)
+
+        // Merge partial offers even while still searching
+        if (data.offers?.length) {
+          const incoming = data.offers as FlightOffer[]
+          const freshIds = incoming
+            .filter(o => !knownOfferIdsRef.current.has(o.id))
+            .map(o => o.id)
+          freshIds.forEach(id => knownOfferIdsRef.current.add(id))
+
+          if (freshIds.length > 0) {
+            setNewOfferIds(new Set(freshIds))
+            if (newIdsTimer) clearTimeout(newIdsTimer)
+            newIdsTimer = setTimeout(() => setNewOfferIds(new Set()), 900)
+          }
+
+          setOffers(prev => dedup([...prev, ...incoming]))
+        }
+
         if (data.status !== 'searching') {
           setStatus(data.status)
-          if (data.offers?.length) setOffers(dedup(data.offers))
+          return // stop polling
         }
       } catch {
         // Network error — silently retry next interval
       }
+
+      const elapsed = Date.now() - pollStartTime
+      const interval = elapsed < 12000 ? 2000 : 5000
+      timeoutId = setTimeout(poll, interval)
     }
 
-    const id = setInterval(poll, 5000)
-    return () => clearInterval(id)
+    timeoutId = setTimeout(poll, 1800)
+
+    // When the user returns to this tab after switching away, browsers throttle
+    // setTimeout heavily (up to 60 s). Fire an immediate poll on tab-focus-return
+    // so partial results appear right away instead of waiting for the next tick.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        clearTimeout(timeoutId)
+        poll()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearTimeout(timeoutId)
+      if (newIdsTimer) clearTimeout(newIdsTimer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [searchId, isSearching, isTestSearch])
 
   useEffect(() => {
@@ -368,12 +426,12 @@ export default function SearchPageClient({
   }
 
   return (
-    <main className={`res-page${isSearching ? ' res-page--searching' : status === 'completed' ? ' res-page--completed' : ''}`}>
-      <section className={`res-hero${isSearching ? ' res-hero--searching' : status === 'completed' ? ' res-hero--results' : ''}`}>
+    <main className={`res-page${isStreaming || status === 'completed' ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
+      <section className={`res-hero${isStreaming || status === 'completed' ? ' res-hero--results' : isSearching ? ' res-hero--searching' : ''}`}>
         <div className="res-hero-backdrop" aria-hidden="true" />
 
         <div className="res-hero-inner">
-          <div className={`res-topbar${isSearching ? ' res-topbar--searching' : status === 'completed' ? ' res-topbar--results' : ''}`}>
+          <div className={`res-topbar${isStreaming || status === 'completed' ? ' res-topbar--results' : isSearching ? ' res-topbar--searching' : ''}`}>
             <Link href={homeHref} className="res-topbar-logo-link" aria-label="LetsFG home" onClick={handleNavigateHome}>
               <Image
                 src="/lfg_ban.png"
@@ -413,17 +471,19 @@ export default function SearchPageClient({
                 <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
               </div>
 
-              <div className="res-searching-stage">
-                <SearchingTasks
-                  originLabel={parsed.origin_name || parsed.origin}
-                  originCode={parsed.origin}
-                  destinationLabel={parsed.destination_name || parsed.destination}
-                  destinationCode={parsed.destination}
-                  progress={progress}
-                  searchedAt={searchedAt}
-                  searchId={searchId}
-                />
-              </div>
+              {offers.length === 0 && (
+                <div className="res-searching-stage">
+                  <SearchingTasks
+                    originLabel={parsed.origin_name || parsed.origin}
+                    originCode={parsed.origin}
+                    destinationLabel={parsed.destination_name || parsed.destination}
+                    destinationCode={parsed.destination}
+                    progress={progress}
+                    searchedAt={searchedAt}
+                    searchId={searchId}
+                  />
+                </div>
+              )}
             </>
           ) : status === 'completed' ? (
             <div className="res-meta-bar">
@@ -468,16 +528,19 @@ export default function SearchPageClient({
         </div>
       </section>
 
-      {status === 'completed' && allOffers.length > 0 && (
+      {(status === 'completed' || (isSearching && allOffers.length > 0)) && (
         <ResultsPanel
           allOffers={allOffers}
           currency={displayCurrency}
           priceMin={priceMin}
           priceMax={priceMax}
           searchId={searchId}
-                trackingSearchId={analyticsSearchId}
-                isTestSearch={isTestSearch}
+          trackingSearchId={analyticsSearchId}
+          isTestSearch={isTestSearch}
           onTrackPrices={parsed.origin && parsed.destination && parsed.date ? () => setMonitorOpen(true) : undefined}
+          newOfferIds={isSearching ? newOfferIds : undefined}
+          isSearching={isSearching}
+          progress={progress}
         />
       )}
 
@@ -495,7 +558,7 @@ export default function SearchPageClient({
         />
       )}
 
-      {!isSearching && (
+      {(!isSearching || allOffers.length > 0) && (
         <footer className="res-search-footer" aria-label="LetsFG footer">
           <div className="res-search-footer-inner">
             <span className="res-search-footer-copy">{t('copyright')}</span>

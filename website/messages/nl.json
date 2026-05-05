@@ -56,7 +56,7 @@
     "titlePost": " voor jouw reis vinden",
     "subtitle": "Alle airlines, OTA's en verborgen combinaties worden tegelijk doorzocht.",
     "step_searching": "Zoeken",
-    "step_searchingHint": "{airline} wordt gecontroleerd",
+    "step_searchingHint": "{airline} wordt doorzocht…",
     "step_comparing": "Prijzen vergelijken",
     "step_comparingHint": "Tarieven rangschikken & deals beoordelen",
     "step_sorting": "Resultaten sorteren",

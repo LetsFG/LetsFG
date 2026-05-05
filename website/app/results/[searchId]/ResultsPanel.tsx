@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import { getAirlineCodeFromName, getAirlineLogoUrl, getAirlineNameFromCode, looksLikeIataCode } from '../../airlineLogos'
 import {
   convertCurrencyAmount,
@@ -19,6 +20,8 @@ import {
   hasPaidAncillary,
 } from '../../../lib/offer-pricing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
+import { SearchProgressBarInline } from './SearchProgressBar'
+// build:2026-05-05b
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FlightSegment {
@@ -352,6 +355,16 @@ function ArrowIcon() {
   )
 }
 
+// Sources shown as logos after search completes
+const CHECKED_SOURCES = [
+  'Google Flights', 'Kiwi.com', 'Skyscanner', 'Kayak', 'Momondo',
+  'Ryanair', 'EasyJet', 'Wizz Air', 'Norwegian', 'Vueling',
+  'Transavia', 'Iberia', 'British Airways', 'Air France', 'KLM',
+  'Lufthansa', 'Eurowings', 'Southwest', 'JetBlue', 'Spirit',
+  'AirAsia', 'IndiGo', 'LATAM', 'FlyDubai', 'Air Arabia',
+  'TAP Air', 'Jet2', 'Volotea', 'Corendon', 'SunExpress',
+]
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   allOffers: FlightOffer[]
@@ -362,6 +375,9 @@ interface Props {
   trackingSearchId?: string | null
   isTestSearch?: boolean
   onTrackPrices?: () => void
+  newOfferIds?: Set<string>
+  isSearching?: boolean
+  progress?: { checked: number; total: number; found: number }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -374,9 +390,14 @@ export default function ResultsPanel({
   trackingSearchId,
   isTestSearch = false,
   onTrackPrices,
+  newOfferIds,
+  isSearching = false,
+  progress,
 }: Props) {
   const t = useTranslations('ResultsPanel')
   const locale = useLocale()
+  const searchParams = useSearchParams()
+  const emailUnlockToken = searchParams.get('mt')
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(searchId ? `/results/${searchId}` : '/results', isTestSearch)
   // ── Filter state ──────────────────────────────────────────────────────────
@@ -824,19 +845,35 @@ export default function ResultsPanel({
       {/* ── Results card ───────────────────────────────────────────────────── */}
       <div className="rf-card-shell">
         {/* Sort bar */}
-        <div className="rf-bar">
+        <div className={`rf-bar${isSearching ? ' rf-bar--searching' : ''}`}>
           <div className="rf-bar-meta">
             <span className="rf-bar-count">
               {displayOffers.length === 1 ? t('flightSingular', { count: 1 }) : t('flightPlural', { count: displayOffers.length })}
             </span>
-            {displayOffers[0] && (
-              <span className="rf-bar-from">
-                {t('fromPrice', {
-                  price: fmt(getOfferDisplayTotalPrice(displayOffers[0], currency)),
-                })}
-              </span>
+            {isSearching ? (
+              <SearchProgressBarInline progress={progress} />
+            ) : (
+              displayOffers[0] && (
+                <span className="rf-bar-from">
+                  {t('fromPrice', {
+                    price: fmt(getOfferDisplayTotalPrice(displayOffers[0], currency)),
+                  })}
+                </span>
+              )
             )}
           </div>
+          {!isSearching && (
+            <div className="rf-bar-checked" aria-label="Sources checked">
+              <span className="rf-bar-checked-label">checked:</span>
+              <div className="rf-bar-checked-logos">
+                {CHECKED_SOURCES.map((src) => (
+                  <span key={src} className="rf-bar-checked-chip" title={src}>
+                    {src}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="rf-bar-controls">
             <span className="rf-bar-label">{t('sort')}</span>
             <button
@@ -860,7 +897,7 @@ export default function ResultsPanel({
             <div className="mon-strip">
               <div className="mon-strip-copy">
                 <span className="mon-strip-title">Track prices for this route</span>
-                <span className="mon-strip-sub">Daily price alerts · Get notified when prices drop · 1 free booking unlock/week · $5/week</span>
+                <span className="mon-strip-sub">Daily price alerts from Google Flights, Kayak, Kiwi, direct airlines, over 200 websites · Get notified when prices drop · Free booking unlock/week · $5/week</span>
               </div>
               <button className="mon-strip-btn" onClick={onTrackPrices} aria-haspopup="dialog">
                 Track prices
@@ -917,7 +954,7 @@ export default function ResultsPanel({
             const sourceLabel = revealedSources[offer.id]
 
             return (
-              <div key={offer.id} className={`rf-card${isBestValue ? ' rf-card--best' : ''}${isExpanded ? ' rf-card--expanded' : ''}`}>
+              <div key={offer.id} className={`rf-card${isBestValue ? ' rf-card--best' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offer.id) ? ' rf-card--new' : ''}`}>
                 {googleFlightsSavingsLabel && (
                   <div className="rf-card-badges">
                     <span className="rf-card-badge rf-card-badge--savings">{googleFlightsSavingsLabel}</span>
@@ -1064,6 +1101,7 @@ export default function ResultsPanel({
                       const params = new URLSearchParams()
                       if (searchId) params.set('from', searchId)
                       if (offer.offer_ref) params.set('ref', offer.offer_ref)
+                      if (emailUnlockToken) params.set('mt', emailUnlockToken)
                       appendProbeParam(params, isTestSearch)
                       const query = params.toString()
                       return `/book/${offer.id}${query ? `?${query}` : ''}`

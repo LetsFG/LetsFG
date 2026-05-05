@@ -56,7 +56,7 @@
     "titlePost": " f\u00f6r din resa",
     "subtitle": "S\u00f6ker igenom flygbolag, OTA:er och dolda kombinationer p\u00e5 en g\u00e5ng.",
     "step_searching": "S\u00f6ker",
-    "step_searchingHint": "Kontrollerar {airline}",
+    "step_searchingHint": "S\u00f6ker {airline}…",
     "step_comparing": "J\u00e4mf\u00f6r priser",
     "step_comparingHint": "Rangordnar priser & utv\u00e4rderar erbjudanden",
     "step_sorting": "Sorterar resultat",

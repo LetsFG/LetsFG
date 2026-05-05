@@ -9,7 +9,7 @@ interface Props {
   originCode?: string
   destinationLabel?: string
   destinationCode?: string
-  progress?: { checked: number; total: number; found: number }
+  progress?: { checked: number; total: number; found: number; pending_connectors?: string[] }
   searchedAt?: string
 }
 
@@ -21,6 +21,155 @@ const SAMPLE_AIRLINES = [
   'indigo.co.in', 'southwest.com', 'jetblue.com', 'latam.com',
   'volotea.com', 'wizz.com', 'corendon.com', 'sunexpress.com',
 ]
+
+/** Corrections where auto-derived `{name}.com` would be wrong or ugly. */
+const CONNECTOR_DOMAIN_OVERRIDES: Record<string, string> = {
+  kiwi_connector: 'kiwi.com',
+  ryanair_direct: 'ryanair.com',
+  wizzair_direct: 'wizzair.com',
+  britishairways_direct: 'britishairways.com',
+  airfrance_direct: 'airfrance.com',
+  airbaltic_direct: 'airbaltic.com',
+  airasia_direct: 'airasia.com',
+  airindia_direct: 'airindia.com',
+  airindiaexpress_direct: 'airindiaexpress.in',
+  airniugini_direct: 'airniugini.com.pg',
+  airmauritius_direct: 'airmauritius.com',
+  airgreenland_direct: 'airgreenland.com',
+  airarabia_direct: 'airarabia.com',
+  airpeace_direct: 'flyairpeace.com',
+  airseychelles_direct: 'airseychelles.com',
+  airtahitinui_direct: 'airtahitinui.com',
+  airvanuatu_direct: 'airvanuatu.com',
+  aircalin_direct: 'aircalin.com',
+  aircanada_direct: 'aircanada.com',
+  airnewzealand_direct: 'airnewzealand.com',
+  airnorth_direct: 'airnorth.com.au',
+  aerolineas_direct: 'aerolineas.com.ar',
+  aerlingus_direct: 'aerlingus.com',
+  alaska_direct: 'alaskaair.com',
+  allegiant_direct: 'allegiantair.com',
+  avelo_direct: 'aveloair.com',
+  bangladeshairlines_direct: 'biman-airlines.com',
+  biman_direct: 'biman-airlines.com',
+  caribbeanairlines_direct: 'caribbean-airlines.com',
+  cathay_direct: 'cathaypacific.com',
+  cebupacific_direct: 'cebupacificair.com',
+  chinaairlines_direct: 'china-airlines.com',
+  chinaeastern_direct: 'ceair.com',
+  chinasouthern_direct: 'csair.com',
+  cleartrip_ota: 'cleartrip.com',
+  despegar_ota: 'despegar.com',
+  easemytrip_ota: 'easemytrip.com',
+  egyptair_direct: 'egyptair.com',
+  elal_direct: 'elal.co.il',
+  ethiopian_direct: 'ethiopianairlines.com',
+  evaair_direct: 'evaair.com',
+  fijiairways_direct: 'fijiairways.com',
+  flair_direct: 'flyflair.com',
+  flybondi_direct: 'flybondi.com',
+  flysafair_direct: 'flysafair.co.za',
+  frontier_direct: 'flyfrontier.com',
+  garuda_direct: 'garuda-indonesia.com',
+  gol_direct: 'voegol.com.br',
+  azul_direct: 'voeazul.com.br',
+  hainan_direct: 'hnair.com',
+  hawaiian_direct: 'hawaiianairlines.com',
+  icelandair_direct: 'icelandair.com',
+  indigo_direct: 'goindigo.in',
+  itaairways_direct: 'itaairways.com',
+  iwantthatflight_direct: 'iwantthatflight.com.au',
+  jal_direct: 'jal.com',
+  jazeera_direct: 'jazeeraairways.com',
+  jejuair_direct: 'jejuair.com',
+  jetsmart_direct: 'jetsmart.com',
+  kenyaairways_direct: 'kenya-airways.com',
+  korean_direct: 'koreanair.com',
+  kuwaitairways_direct: 'kuwaitairways.com',
+  level_direct: 'flylevel.com',
+  linkairways_direct: 'linkairways.com',
+  lot_direct: 'lot.com',
+  luckyair_direct: 'luckyair.net',
+  malaysia_direct: 'malaysiaairlines.com',
+  mea_direct: 'mea.com.lb',
+  nh_direct: 'ana.co.jp',
+  nokair_direct: 'nokair.com',
+  norwegianair_direct: 'norwegian.com',
+  norwegian_direct: 'norwegian.com',
+  omanair_direct: 'omanair.com',
+  olympicair_direct: 'aegeanair.com',
+  peach_direct: 'flypeach.com',
+  pegasus_direct: 'flypgs.com',
+  philippineairlines_direct: 'philippineairlines.com',
+  pia_direct: 'piac.com.pk',
+  pngair_direct: 'pngair.com.pg',
+  porter_direct: 'flyporter.com',
+  qatar_direct: 'qatarairways.com',
+  rex_direct: 'rex.com.au',
+  royalairmaroc_direct: 'royalairmaroc.com',
+  royaljordanian_direct: 'rj.com',
+  rwandair_direct: 'rwandair.com',
+  saa_direct: 'flysaa.com',
+  samoaairways_direct: 'samoaairways.com',
+  salamair_direct: 'salamair.com',
+  sas_direct: 'flysas.com',
+  saudia_direct: 'saudia.com',
+  scoot_direct: 'flyscoot.com',
+  serpapi_google: 'google.com/flights',
+  singapore_direct: 'singaporeair.com',
+  skyairline_direct: 'skyairline.cl',
+  skyexpress_direct: 'sky.gr',
+  solomonairlines_direct: 'flysolomons.com',
+  spicejet_direct: 'spicejet.com',
+  spring_direct: 'ch.com',
+  srilankan_direct: 'srilankan.com',
+  starlux_direct: 'starlux-airlines.com',
+  starair_direct: 'star-air.in',
+  suncountry_direct: 'suncountry.com',
+  superairjet_direct: 'superairjet.com',
+  tap_direct: 'tap.pt',
+  thai_direct: 'thaiairways.com',
+  tiket_ota: 'tiket.com',
+  traveloka_ota: 'traveloka.com',
+  tripcom_ota: 'trip.com',
+  turkish_direct: 'turkishairlines.com',
+  twayair_direct: 't-way.co.kr',
+  usbangla_direct: 'usbanglaairlines.com',
+  vietjet_direct: 'vietjetair.com',
+  vietnamairlines_direct: 'vietnamairlines.com',
+  virginatlantic_direct: 'virginatlantic.com',
+  virginaustralia_direct: 'virginaustralia.com',
+  vivaaerobus_direct: 'vivaaerobus.com',
+  webjet_ota: 'webjet.com.au',
+  westjet_direct: 'westjet.com',
+  zipair_direct: 'zip.co.jp',
+  '9air_direct': '9air.com',
+  azerbaijanairlines_direct: 'azal.az',
+  azoresairlines_direct: 'azoresairlines.pt',
+}
+
+/** Auto-derives a display domain from a connector_id.
+ *  e.g. 'skyscanner_meta' → 'skyscanner.com', 'airbaltic_direct' → 'airbaltic.com' */
+function connectorIdToDomain(id: string): string {
+  if (CONNECTOR_DOMAIN_OVERRIDES[id]) return CONNECTOR_DOMAIN_OVERRIDES[id]
+  // Strip trailing suffix and append .com
+  const name = id.replace(/_(direct|meta|ota|connector|google)$/, '')
+  return `${name}.com`
+}
+
+/** Returns the list of domains still pending, using real connector data when
+ *  available and falling back to the simulated shrinking pool. */
+function getRemainingDomains(checked: number, total: number, pendingConnectors?: string[]): string[] {
+  if (pendingConnectors && pendingConnectors.length > 0) {
+    const domains = pendingConnectors.map(connectorIdToDomain)
+    if (domains.length > 0) return domains
+  }
+  // Fallback: simulated shrinking pool based on progress ratio
+  if (total <= 0) return SAMPLE_AIRLINES
+  const ratio = Math.max(0, Math.min(1, checked / total))
+  const remaining = Math.max(1, Math.ceil(SAMPLE_AIRLINES.length * (1 - ratio)))
+  return SAMPLE_AIRLINES.slice(SAMPLE_AIRLINES.length - remaining)
+}
 
 type StepState = 'done' | 'active' | 'pending'
 
@@ -766,16 +915,23 @@ export default function SearchingTasks({
     return 0
   }, [elapsed])
 
-  // Fast airline cycling during phases 0 and 1
+  // Shrinking pool: real pending connectors from backend, falling back to
+  // simulated pool based on progress ratio when backend data is unavailable.
+  const remainingDomains = useMemo(
+    () => getRemainingDomains(simChecked, TOTAL, progress?.pending_connectors),
+    [simChecked, TOTAL, progress?.pending_connectors],
+  )
+
+  // Cycle through remaining domains at a readable pace (1 s per name)
   useEffect(() => {
     if (phaseIndex > 1) return
     const id = setInterval(() => {
-      setAirlineIdx(i => (i + 1) % SAMPLE_AIRLINES.length)
-    }, 200)
+      setAirlineIdx(i => (i + 1) % remainingDomains.length)
+    }, 1000)
     return () => clearInterval(id)
-  }, [phaseIndex])
+  }, [phaseIndex, remainingDomains.length])
 
-  const currentAirline = SAMPLE_AIRLINES[airlineIdx]
+  const currentAirline = remainingDomains[airlineIdx % remainingDomains.length]
 
   const steps = useMemo(() => {
     const resolveState = (index: number): StepState => {

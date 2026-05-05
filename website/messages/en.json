@@ -56,7 +56,7 @@
     "titlePost": " for your trip",
     "subtitle": "Scanning airlines, OTAs, and hidden combinations all at once.",
     "step_searching": "Searching",
-    "step_searchingHint": "Checking {airline}",
+    "step_searchingHint": "Searching {airline}…",
     "step_comparing": "Comparing prices",
     "step_comparingHint": "Ranking fares & scoring deals",
     "step_sorting": "Sorting results",

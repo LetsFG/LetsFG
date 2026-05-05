@@ -591,10 +591,11 @@ export default function CheckoutPanel({
     return () => window.removeEventListener('pagehide', handlePageHide)
   }, [analyticsSearchId, checkoutSourcePath, isTestSearch, offer.id, step.type])
 
-  // ── On mount: verify payment redirect OR check stored unlock ────────────
+  // ── On mount: verify payment redirect OR consume email token OR check stored unlock ────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const stripeSession = params.get('stripe_session')
+    const emailToken = params.get('mt')
 
     if (stripeSession) {
       // Returned from Stripe — verify the payment server-side
@@ -633,6 +634,44 @@ export default function CheckoutPanel({
 
     if (!searchId) {
       setStep({ type: 'locked' })
+      return
+    }
+
+    // Email single-use token path — consume the mt token to get a checkout_token
+    if (emailToken) {
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? ''
+      fetch(
+        `${apiBase}/api/v1/monitors/use-email-unlock?token=${encodeURIComponent(emailToken)}&offer_id=${encodeURIComponent(offer.id)}`,
+        { method: 'POST', credentials: 'same-origin' },
+      )
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(async (data: { checkout_token?: string }) => {
+          if (data.checkout_token) {
+            persistUnlockToken(searchId, data.checkout_token)
+            // Remove mt from URL so refresh/back doesn't try to reuse the token
+            const cleanUrl = new URL(window.location.href)
+            cleanUrl.searchParams.delete('mt')
+            window.history.replaceState({}, '', cleanUrl.toString())
+          }
+          // Fall through to regular unlock check (which will find the stored token)
+          const unlocked = await checkUnlockStatus()
+          if (unlocked) {
+            setStep({ type: 'unlocked', via: 'existing' })
+            await loadUnlockedBookingLink()
+          } else {
+            setStep({ type: 'locked' })
+          }
+        })
+        .catch(async () => {
+          // Token was invalid/used — fall back to normal unlock check
+          const unlocked = await checkUnlockStatus()
+          if (unlocked) {
+            setStep({ type: 'unlocked', via: 'existing' })
+            await loadUnlockedBookingLink()
+          } else {
+            setStep({ type: 'locked' })
+          }
+        })
       return
     }
 

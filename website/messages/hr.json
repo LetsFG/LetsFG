@@ -56,7 +56,7 @@
     "titlePost": " za va\u0161e putovanje",
     "subtitle": "Istovremeno pretra\u017eivanje zrakoplovnih kompanija, OTA-a i skrivenih kombinacija.",
     "step_searching": "Pretra\u017eivanje",
-    "step_searchingHint": "Provjera {airline}",
+    "step_searchingHint": "Pretra\u017eivanje {airline}…",
     "step_comparing": "Usporedba cijena",
     "step_comparingHint": "Rangiranje cijena & procjena ponuda",
     "step_sorting": "Sortiranje rezultata",

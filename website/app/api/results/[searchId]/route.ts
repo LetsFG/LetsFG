@@ -233,12 +233,13 @@ export async function GET(
   }
 
   if (searchId === 'demo-completed') {
-    const offers = Array.from({ length: 8 }, (_, i) => mockOffer(i, 'LON', 'BCN', ''))
+    const demoDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+    const offers = Array.from({ length: 8 }, (_, i) => mockOffer(i, 'LON', 'BCN', demoDate))
     return NextResponse.json({
       search_id: 'demo-completed',
       status: 'completed',
       query: 'cheapest flight London to Barcelona next Friday',
-      parsed: { origin: 'LON', origin_name: 'London', destination: 'BCN', destination_name: 'Barcelona' },
+      parsed: { origin: 'LON', origin_name: 'London', destination: 'BCN', destination_name: 'Barcelona', date: demoDate },
       offers,
       total_results: offers.length,
       searched_at: new Date(Date.now() - 2 * 60000).toISOString(),
@@ -355,6 +356,16 @@ export async function GET(
       value: nonNegativeDiff,
       savings_vs_google_flights: nonNegativeDiff,
       elapsed_seconds: data.elapsed_seconds,
+      // Synthesise asymptotic progress so bar never gets stuck near 100%.
+      // Formula: checked = 180 * (1 - e^(-elapsed/25))  →  64% at 25s, 82% at 40s, 92% at 60s
+      progress: data.status === 'searching'
+        ? {
+            checked: Math.min(170, Math.round(180 * (1 - Math.exp(-(data.elapsed_seconds || 0) / 25)))),
+            total: 180,
+            found: normalized.length,
+            pending_connectors: Array.isArray(data.pending_connectors) ? data.pending_connectors as string[] : undefined,
+          }
+        : undefined,
       searched_at: new Date(now.getTime() - createdAgo).toISOString(),
       expires_at: new Date(now.getTime() + (data.expires_in_seconds ?? 1200) * 1000).toISOString(),
     }
