@@ -56,7 +56,7 @@
     "titlePost": " dla Twojej podr\u00f3\u017cy",
     "subtitle": "Jednoczesne skanowanie linii lotniczych, OTA i ukrytych kombinacji.",
     "step_searching": "Wyszukiwanie",
-    "step_searchingHint": "Sprawdzanie {airline}",
+    "step_searchingHint": "Wyszukiwanie {airline}…",
     "step_comparing": "Por\u00f3wnywanie cen",
     "step_comparingHint": "Ranking ofert & ocena okazji",
     "step_sorting": "Sortowanie wynik\u00f3w",

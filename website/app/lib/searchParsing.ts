@@ -690,6 +690,25 @@ export function parseNLQuery(query: string): ParsedQuery {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
+  // ── 0. Fast path: raw IATA format "AAA BBB YYYY-MM-DD [YYYY-MM-DD]" ──────
+  // This is what monitor email links use: ?q=LON+BCN+2026-06-16
+  const iataFastRe = /^([A-Z]{3})\s+([A-Z]{3})\s+(\d{4}-\d{2}-\d{2})(?:\s+(\d{4}-\d{2}-\d{2}))?$/i
+  const iataFast = q.trim().match(iataFastRe)
+  if (iataFast) {
+    const [, orig, dest, dep, ret] = iataFast
+    const originUpper = orig.toUpperCase()
+    const destUpper = dest.toUpperCase()
+    const originEntry = Object.values(CITY_TO_IATA).find(v => v.code === originUpper)
+    const destEntry = Object.values(CITY_TO_IATA).find(v => v.code === destUpper)
+    result.origin = originUpper
+    result.origin_name = originEntry?.name ?? originUpper
+    result.destination = destUpper
+    result.destination_name = destEntry?.name ?? destUpper
+    result.date = dep
+    if (ret) result.return_date = ret
+    return result
+  }
+
   // ── 1. Split at return keywords ──────────────────────────────────────────
   const returnSplitMatch = ql.match(RETURN_SPLIT_RE)
   const returnSplitIdx = returnSplitMatch ? ql.indexOf(returnSplitMatch[0]) : -1

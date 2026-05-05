@@ -385,12 +385,14 @@ async function SearchContent({
   started,
   isProbe,
   currency,
+  mt,
 }: {
   query: string
   sid?: string
   started?: string
   isProbe: boolean
   currency: CurrencyCode
+  mt?: string
 }) {
   const parsed = parseNLQuery(query)
   const routeLabel = [
@@ -478,7 +480,7 @@ async function SearchContent({
   // Hand off immediately to the stable search page so the browser can leave
   // the homepage without waiting for server-side polling on /results.
   const startedTs = started || Date.now().toString()
-  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}`, isProbe))
+  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}${mt ? `&mt=${encodeURIComponent(mt)}` : ''}`, isProbe))
 }
 
 // ── Suspense fallback (shown instantly while SearchContent runs) ───────────────
@@ -538,9 +540,9 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 export default async function ResultsQueryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sid?: string; started?: string; probe?: string; cur?: string }>
+  searchParams: Promise<{ q?: string; sid?: string; started?: string; probe?: string; cur?: string; mt?: string }>
 }) {
-  const { q, sid, started, probe, cur } = await searchParams
+  const { q, sid, started, probe, cur, mt } = await searchParams
   const isProbe = isProbeModeValue(probe)
   const requestHeaders = await headers()
   const cookieStore = await cookies()
@@ -558,7 +560,7 @@ export default async function ResultsQueryPage({
 
   return (
     <Suspense fallback={<SearchFallback query={query} isProbe={isProbe} initialCurrency={resolvedCurrency} />}>
-      <SearchContent query={query} sid={sid?.trim()} started={started?.trim()} isProbe={isProbe} currency={resolvedCurrency} />
+      <SearchContent query={query} sid={sid?.trim()} started={started?.trim()} isProbe={isProbe} currency={resolvedCurrency} mt={mt?.trim()} />
     </Suspense>
   )
 }

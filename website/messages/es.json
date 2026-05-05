@@ -56,7 +56,7 @@
     "titlePost": " para tu viaje",
     "subtitle": "Buscando en aerolineas, OTAs y combinaciones ocultas a la vez.",
     "step_searching": "Buscando",
-    "step_searchingHint": "Revisando {airline}",
+    "step_searchingHint": "Buscando {airline}…",
     "step_comparing": "Comparando precios",
     "step_comparingHint": "Clasificando tarifas & evaluando ofertas",
     "step_sorting": "Ordenando resultados",

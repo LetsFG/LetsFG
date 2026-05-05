@@ -56,7 +56,7 @@
     "titlePost": " per il tuo viaggio",
     "subtitle": "Scansione di compagnie aeree, OTA e combinazioni nascoste in simultanea.",
     "step_searching": "Ricerca",
-    "step_searchingHint": "Controllo di {airline}",
+    "step_searchingHint": "Ricerca su {airline}…",
     "step_comparing": "Confronto prezzi",
     "step_comparingHint": "Classificazione tariffe & selezione offerte",
     "step_sorting": "Ordinamento risultati",

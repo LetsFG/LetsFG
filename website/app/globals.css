@@ -2725,6 +2725,23 @@ body:has(.res-page) {
   gap: 4px;
 }
 
+/* Streaming state: searching but partial offers already visible.
+   Uses page-level sky background (res-page--completed); hero is compact
+   but has enough breathing room for the search form + progress bar. */
+.res-hero--streaming {
+  overflow: visible;
+  padding-bottom: 16px;
+}
+
+.res-hero--streaming .res-hero-backdrop {
+  display: none; /* page background (res-page--completed) takes over */
+}
+
+.res-hero--streaming .res-hero-inner {
+  padding-top: 16px;
+  gap: 12px;
+}
+
 /* Topbar for completed state: logo left, actions right only (no search inline) */
 .res-topbar--results {
   grid-template-columns: clamp(132px, 11vw, 168px) auto;
@@ -3370,17 +3387,17 @@ body:has(.res-page) {
 .rf-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px 16px;
+  gap: 12px;
   padding: 18px 22px;
   border-bottom: 1px solid rgba(20, 45, 60, 0.07);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .rf-bar-meta {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .rf-bar-count {
@@ -3404,6 +3421,7 @@ body:has(.res-page) {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .rf-bar-label {
@@ -3459,6 +3477,11 @@ body:has(.res-page) {
   flex-direction: column;
   gap: 8px;
   padding: 22px 16px 20px;
+}
+
+/* More breathing room between the Monitor strip and the first flight card */
+.rf-list > .mon-strip {
+  margin-bottom: 12px;
 }
 
 .rf-card {
@@ -4332,6 +4355,219 @@ body:has(.res-page) {
 .rf-card-shell .rf-card {
   box-shadow: none;
   border-radius: 10px;
+}
+
+/* ── Card enter animation (progressive results) ──────────────────────────── */
+@keyframes rf-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rf-card--new {
+  animation: rf-card-in 0.4s ease-out both;
+}
+
+/* ── Search Progress Bar ──────────────────────────────────────────────────── */
+.spb-wrap {
+  width: 100%;
+  padding: 6px 0 20px;
+}
+
+.spb-inner {
+  width: min(720px, calc(100vw - 48px));
+  margin: 0 auto;
+}
+
+.spb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.spb-source {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(20, 45, 60, 0.62);
+}
+
+.spb-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0ba360;
+  flex-shrink: 0;
+  animation: spb-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes spb-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.75); }
+}
+
+.spb-source-name {
+  color: rgba(20, 45, 60, 0.88);
+  font-weight: 700;
+  transition: opacity 0.3s;
+}
+
+.spb-found {
+  color: rgba(20, 45, 60, 0.62);
+  white-space: nowrap;
+}
+
+.spb-bar-track {
+  height: 4px;
+  background: rgba(20, 45, 60, 0.09);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.spb-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0ba360, #3cba92);
+  border-radius: 2px;
+  transition: width 1.8s ease-out;
+  min-width: 2%;
+}
+
+.spb-bottom {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.4);
+}
+
+.spb-more-coming {
+  color: rgba(20, 45, 60, 0.4);
+  font-style: italic;
+}
+
+/* ── Inline progress bar (inside rf-bar while streaming) ─────────────────── */
+.spb-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  max-width: 340px;
+}
+
+.spb-inline-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.55);
+  flex-shrink: 0;
+}
+
+.spb-inline-left strong {
+  color: rgba(20, 45, 60, 0.82);
+  font-weight: 700;
+}
+
+.spb-inline-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(20, 45, 60, 0.09);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 48px;
+}
+
+.spb-inline-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0ba360, #3cba92);
+  border-radius: 2px;
+  transition: width 1.6s ease-out;
+  min-width: 4%;
+}
+
+.spb-inline-pct {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(20, 45, 60, 0.38);
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ── rf-bar searching state ───────────────────────────────────────────────── */
+.rf-bar--searching .rf-bar-meta {
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+}
+
+/* ── Checked sources strip (after search completes) ──────────────────────── */
+.rf-bar-checked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.rf-bar-checked-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.38);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rf-bar-checked-logos {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* fade-out on the right */
+  -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+  mask-image: linear-gradient(to right, black 80%, transparent 100%);
+}
+
+.rf-bar-checked-logos::-webkit-scrollbar {
+  display: none;
+}
+
+.rf-bar-checked-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(20, 45, 60, 0.52);
+  background: rgba(20, 45, 60, 0.05);
+  border: 1px solid rgba(20, 45, 60, 0.08);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
+  transition: background 0.12s, color 0.12s;
+}
+
+.rf-bar-checked-chip:hover {
+  background: rgba(20, 45, 60, 0.09);
+  color: rgba(20, 45, 60, 0.75);
 }
 
 /* Right action sidebar (save / share) - removed */
@@ -5626,7 +5862,6 @@ body:has(.res-page) {
 
   .rf-bar {
     padding: 10px 14px;
-    flex-wrap: nowrap;
   }
 
   /* ── Mobile card layout ──────────────────────────────────────────────── */

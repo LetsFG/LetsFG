@@ -56,7 +56,7 @@
     "titlePost": " für deine Reise finden",
     "subtitle": "Airlines, OTAs und verborgene Kombinationen werden gleichzeitig gescannt.",
     "step_searching": "Suche läuft",
-    "step_searchingHint": "{airline} wird geprüft",
+    "step_searchingHint": "Suche bei {airline}…",
     "step_comparing": "Preise vergleichen",
     "step_comparingHint": "Preise werden bewertet & Angebote verglichen",
     "step_sorting": "Ergebnisse sortieren",

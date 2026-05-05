@@ -244,7 +244,7 @@ export default function MonitorModal({
               'Preparing checkout…'
             ) : (
               <>
-                Finalize · <span className="mon-submit-price">${totalPrice} total</span>
+                Start monitoring · <span className="mon-submit-price">${totalPrice} total</span>
               </>
             )}
           </button>

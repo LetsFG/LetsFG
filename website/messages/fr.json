@@ -56,7 +56,7 @@
     "titlePost": " pour votre voyage",
     "subtitle": "Analyse des compagnies, OTA et combinaisons cach\u00e9es en simultan\u00e9.",
     "step_searching": "Recherche",
-    "step_searchingHint": "V\u00e9rification de {airline}",
+    "step_searchingHint": "Recherche de {airline}…",
     "step_comparing": "Comparaison des prix",
     "step_comparingHint": "Classement des tarifs & s\u00e9lection des meilleures offres",
     "step_sorting": "Tri des r\u00e9sultats",

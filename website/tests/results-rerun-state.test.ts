@@ -16,6 +16,6 @@ test('results client resets visible state when a new searchId loads', () => {
 
   assert.match(
     source,
-    /useEffect\(\(\) => \{\s*trackedResultsViewRef\.current = false\s*trackedExpiredRef\.current = false\s*scrollMilestonesRef\.current = new Set\(\)\s*setStatus\(initialStatus\)\s*setProgress\(initialProgress\)\s*setOffers\(initialOffers\)\s*setDisplayCurrency\(initialCurrency\)\s*\}, \[searchId, initialCurrency\]\)/s,
+    /useEffect\(\(\) => \{\s*trackedResultsViewRef\.current = false\s*trackedExpiredRef\.current = false\s*scrollMilestonesRef\.current = new Set\(\)[\s\S]*?setStatus\(initialStatus\)\s*setProgress\(initialProgress\)\s*setOffers\(initialOffers\)\s*setDisplayCurrency\(initialCurrency\)[\s\S]*?\}, \[searchId, initialCurrency\]\)/s,
   )
 })
