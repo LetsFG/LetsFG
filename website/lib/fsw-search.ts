@@ -105,3 +105,42 @@ export async function startWebSearch(
     cache: data.cache_hit ? 'hit' : 'miss',
   }
 }
+
+export interface ExploreSearchParams {
+  origin: string
+  date_from: string
+  adults: number
+  currency: string
+  max_price?: number
+  return_days?: number
+}
+
+export async function startExploreSearch(
+  params: ExploreSearchParams,
+): Promise<StartWebSearchResult> {
+  const res = await fetch(`${FSW_URL}/web-explore`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${FSW_SECRET}`,
+    },
+    body: JSON.stringify({
+      origin: params.origin,
+      date_from: params.date_from,
+      adults: params.adults,
+      currency: params.currency,
+      ...(params.max_price !== undefined ? { max_price: params.max_price } : {}),
+      ...(params.return_days !== undefined ? { return_days: params.return_days } : {}),
+    }),
+    signal: AbortSignal.timeout(10_000),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    return { searchId: null, cache: 'miss' }
+  }
+
+  const data = await res.json()
+  const searchId = typeof data.search_id === 'string' ? data.search_id : null
+  return { searchId, cache: 'miss' }
+}

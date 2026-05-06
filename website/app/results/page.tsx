@@ -16,7 +16,7 @@ import {
 } from '../../lib/currency-preference'
 import { parseNLQuery } from '../lib/searchParsing'
 import { IATA_TO_NAME, getAirlineNameFromCode, looksLikeIataCode } from '../airlineLogos'
-import { startWebSearch } from '../../lib/fsw-search'
+import { startWebSearch, startExploreSearch } from '../../lib/fsw-search'
 import { upsertSearchSessionServer } from '../../lib/search-session-analytics-server'
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
@@ -273,6 +273,9 @@ async function startFSWSearch(
   try {
     const reqHeaders = await headers()
     const userIp = reqHeaders.get('x-forwarded-for')?.split(',')[0].trim() || undefined
+
+    // For flexible trips: if caller gave us a mid-point return_date derived from
+    // trip duration, honour it; the UI will display the duration range as context.
     const result = await startWebSearch({
       origin: parsed.origin,
       destination: parsed.destination,
@@ -395,10 +398,16 @@ async function SearchContent({
   mt?: string
 }) {
   const parsed = parseNLQuery(query)
+
+  // Build route label — include flexible date/duration context when relevant
+  const destLabel = parsed.anywhere_destination
+    ? 'Anywhere'
+    : (parsed.destination_name || parsed.destination)
   const routeLabel = [
     parsed.origin_name || parsed.origin,
-    parsed.destination_name || parsed.destination,
+    destLabel,
   ].filter(Boolean).join(' → ')
+
   const homeHref = isProbe ? '/en?probe=1' : '/en'
 
   let searchId = sid
@@ -406,23 +415,70 @@ async function SearchContent({
 
   // Start a new search if no sid provided
   if (!searchId) {
+    // "Anywhere" mode — start an explore search and redirect to the explore page
+    if (parsed.anywhere_destination && !parsed.destination) {
+      let exploreSearchId: string | null = null
+      if (parsed.origin && parsed.date) {
+        try {
+          const returnDays = parsed.min_trip_days
+            ? Math.round(((parsed.min_trip_days ?? 0) + (parsed.max_trip_days ?? parsed.min_trip_days ?? 0)) / 2)
+            : undefined
+          const result = await startExploreSearch({
+            origin: parsed.origin,
+            date_from: parsed.date,
+            adults: 1,
+            currency,
+            max_price: parsed.max_price,
+            return_days: returnDays,
+          })
+          exploreSearchId = result.searchId
+        } catch {
+          // FSW unavailable — fall through to error UI
+        }
+      }
+      if (exploreSearchId) {
+        const exploreUrl = `/results/explore/${exploreSearchId}?q=${encodeURIComponent(query)}&currency=${currency}`
+        redirect(exploreUrl)
+      }
+      const originLabel = parsed.origin_name || parsed.origin || 'your city'
+      return (
+        <main className="res-page">
+          <section className="res-hero res-hero--results">
+            <div className="res-hero-backdrop" aria-hidden="true" />
+            <div className="res-hero-inner">
+              <PageTopbar homeHref={homeHref} initialCurrency={currency} searchQuery={query} probeMode={isProbe} />
+              <div className="res-search-shell">
+                <ResultsSearchForm initialQuery={query} initialCurrency={currency} trackingSearchId={searchId} trackingSourcePath={getTrackedSourcePath('/results', isProbe)} probeMode={isProbe} />
+              </div>
+              <div className="res-hero-copy">
+                <p className="res-hero-kicker">{parsed.origin ? 'Explore search unavailable' : 'Where are you flying from?'}</p>
+                <h1 className="res-hero-route">{originLabel} → Anywhere</h1>
+                <p className="res-hero-status">{parsed.origin ? 'Try a specific destination below, or check back soon.' : `Try "${originLabel || 'London'} to anywhere"`}</p>
+              </div>
+            </div>
+          </section>
+          <PageFooter />
+        </main>
+      )
+    }
+
     if (!parsed.origin || !parsed.destination) {
       // Build a specific, helpful error message
       let errKicker: string
       let errRoute: string
       if (parsed.failed_origin_raw && parsed.failed_destination_raw) {
         errKicker = `Couldn\u2019t find airports for \u201c${parsed.failed_origin_raw}\u201d or \u201c${parsed.failed_destination_raw}\u201d`
-        errRoute = 'Try \u201cLondon to Barcelona\u201d'
+        errRoute = 'Try a city name, country, or airport code \u2014 e.g. \u201cLondon to Switzerland\u201d'
       } else if (parsed.failed_origin_raw) {
         errKicker = `Couldn\u2019t find an airport for \u201c${parsed.failed_origin_raw}\u201d`
         errRoute = parsed.destination_name
-          ? `Try a different origin \u2192 ${parsed.destination_name}`
-          : 'Try \u201cLondon to Barcelona\u201d'
+          ? `Try a city or country name \u2192 ${parsed.destination_name}`
+          : 'Try a city name or country, e.g. \u201cSwitzerland to Spain\u201d'
       } else if (parsed.failed_destination_raw) {
         errKicker = `Couldn\u2019t find an airport for \u201c${parsed.failed_destination_raw}\u201d`
         errRoute = parsed.origin_name
-          ? `${parsed.origin_name} \u2192 try a different destination`
-          : 'Try \u201cLondon to Barcelona\u201d'
+          ? `${parsed.origin_name} \u2192 try a city name or country`
+          : 'Try a city name or country, e.g. \u201cLondon to Switzerland\u201d'
       } else {
         errKicker = 'Couldn\u2019t find a route in that'
         errRoute = 'Try \u201cLondon to Barcelona, 15 May\u201d'
@@ -480,16 +536,21 @@ async function SearchContent({
   // Hand off immediately to the stable search page so the browser can leave
   // the homepage without waiting for server-side polling on /results.
   const startedTs = started || Date.now().toString()
-  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}${mt ? `&mt=${encodeURIComponent(mt)}` : ''}`, isProbe))
+  const tripCtx = (parsed.min_trip_days !== undefined && parsed.max_trip_days !== undefined)
+    ? `&trip_min=${parsed.min_trip_days}&trip_max=${parsed.max_trip_days}`
+    : (parsed.min_trip_days !== undefined ? `&trip_min=${parsed.min_trip_days}` : '')
+  const monthCtx = parsed.date_month_only ? '&month_only=1' : ''
+  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}${mt ? `&mt=${encodeURIComponent(mt)}` : ''}${tripCtx}${monthCtx}`, isProbe))
 }
 
 // ── Suspense fallback (shown instantly while SearchContent runs) ───────────────
 
 function SearchFallback({ query, isProbe, initialCurrency }: { query: string; isProbe: boolean; initialCurrency: CurrencyCode }) {
   const parsed = parseNLQuery(query)
+  const destLabel = parsed.anywhere_destination ? 'Anywhere' : (parsed.destination_name || parsed.destination)
   const routeLabel = [
     parsed.origin_name || parsed.origin,
-    parsed.destination_name || parsed.destination,
+    destLabel,
   ].filter(Boolean).join(' → ')
   const homeHref = isProbe ? '/en?probe=1' : '/en'
 
@@ -530,9 +591,15 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const { q } = await searchParams
   if (!q?.trim()) return { title: 'Flight Search — LetsFG' }
   const parsed = parseNLQuery(q)
-  const route = [parsed.origin_name || parsed.origin, parsed.destination_name || parsed.destination].filter(Boolean).join(' → ')
+  const destLabel = parsed.anywhere_destination ? 'Anywhere' : (parsed.destination_name || parsed.destination)
+  const route = [parsed.origin_name || parsed.origin, destLabel].filter(Boolean).join(' → ')
+  const durationSuffix = parsed.min_trip_days !== undefined
+    ? parsed.min_trip_days === parsed.max_trip_days
+      ? ` · ${parsed.min_trip_days} days`
+      : ` · ${parsed.min_trip_days}–${parsed.max_trip_days} days`
+    : ''
   return {
-    title: route ? `Flights ${route} — LetsFG` : `"${q}" — LetsFG`,
+    title: route ? `Flights ${route}${durationSuffix} — LetsFG` : `"${q}" — LetsFG`,
     description: `Search 180+ airlines for ${route || q}. Zero markup, raw airline prices.`,
   }
 }

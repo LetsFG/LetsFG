@@ -249,8 +249,26 @@ export async function GET(
   }
 
   // Real search: poll FSW
-  if (!searchId.startsWith('ws_')) {
+  if (!searchId.startsWith('ws_') && !searchId.startsWith('we_')) {
     return NextResponse.json({ error: 'Search not found' }, { status: 404 })
+  }
+
+  // Explore search (we_) — pass through directly; no offer normalization needed
+  if (searchId.startsWith('we_')) {
+    try {
+      const res = await fetch(`${FSW_URL}/web-status/${searchId}`, {
+        headers: { 'Authorization': `Bearer ${FSW_SECRET}` },
+        signal: AbortSignal.timeout(8_000),
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        return NextResponse.json({ error: 'Search service error' }, { status: 502 })
+      }
+      const data = await res.json()
+      return NextResponse.json(data)
+    } catch {
+      return NextResponse.json({ error: 'Search service unavailable' }, { status: 503 })
+    }
   }
 
   try {

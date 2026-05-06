@@ -484,6 +484,17 @@ export default function SearchPageClient({
   }
 
   const handleSearchSubmit = (nextQuery: string) => {
+    // Fire-and-forget cancel of the current search so the FSW stops Phase 2
+    // connector fan-out for the old search ID. We use sendBeacon so the signal
+    // is delivered even if the browser navigates away immediately.
+    if (searchId) {
+      const cancelUrl = `/api/results/cancel/${encodeURIComponent(searchId)}`
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        navigator.sendBeacon(cancelUrl)
+      } else {
+        fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
+      }
+    }
     trackSearchSessionEvent(analyticsSearchId, 'new_search_started', {
       next_query: nextQuery,
     }, {

@@ -933,6 +933,37 @@ const REL_WEEKEND_RE = /\b(?:weekend|this weekend|wochenende|fin de semana|week-
 const THANKSGIVING_WEEK_RE = /\b(?:(?:the\s+)?week\s+of\s+thanksgiving|thanksgiving\s+week)\b/i
 const THANKSGIVING_RE = /\bthanksgiving\b/i
 
+// ── Two-city bare match helper ────────────────────────────────────────────────
+// Scans `text` for the two earliest-occurring city names from CITY_TO_IATA.
+// Used as a fallback when no route separator ("to", "→", etc.) is found.
+function findTwoCitiesInText(
+  text: string,
+): [{ code: string; name: string }, { code: string; name: string }] | null {
+  const t = stripAccents(text.toLowerCase())
+  const ranges: Array<{ start: number; end: number; code: string; name: string }> = []
+  // Longest key first so "new york" is matched before "york"
+  const entries = Object.entries(CITY_TO_IATA)
+    .filter(([k]) => k.length >= 3)
+    .sort((a, b) => b[0].length - a[0].length)
+
+  for (const [k, v] of entries) {
+    const needle = stripAccents(k.toLowerCase())
+    const re = new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(needle)}(?:$|[^a-z0-9])`, 'i')
+    const m = re.exec(t)
+    if (!m) continue
+    const leadOffset = /[^a-z0-9]/i.test(m[0][0]) ? 1 : 0
+    const start = m.index + leadOffset
+    const end = start + needle.length
+    if (!ranges.some(r => start < r.end && end > r.start)) {
+      ranges.push({ start, end, code: v.code, name: v.name })
+    }
+  }
+
+  if (ranges.length < 2) return null
+  ranges.sort((a, b) => a.start - b.start)
+  return [ranges[0], ranges[1]]
+}
+
 // ── Main parse function ───────────────────────────────────────────────────────
 
 export function parseNLQuery(query: string): ParsedQuery {
@@ -1017,6 +1048,27 @@ export function parseNLQuery(query: string): ParsedQuery {
     const r = resolveLocation(destStr)
     if (r) { result.destination = r.code; result.destination_name = r.name }
     else result.failed_destination_raw = destStr
+  }
+
+  // ── 2b. Two-city fallback: no separator, no route match ─────────────────────
+  // Handles bare city-pair queries: "Stuttgart Gdansk", "Berlin Rome June", etc.
+  if (!result.origin && !result.destination && !result.anywhere_destination) {
+    const cleaned = ql
+      .replace(/\b\d{4}\b/g, ' ')
+      .replace(/\b\d{1,2}(?:st|nd|rd|th)?\b/g, ' ')
+      .replace(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\b/gi, ' ')
+      .replace(/\b(?:januar|februar|m(?:ae|ä)rz|mai|juni|juli|oktober|dezember|avril|mayo|junio|julio|agosto|enero|diciembre)\b/gi, ' ')
+      .replace(/\b(?:next|this|in|on|for|at|around|under|below|over|above|max|budget|up|to|less|than)\b/gi, ' ')
+      .replace(/\b(?:weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi, ' ')
+      .replace(/[$€£¥₹]\s*\d+|\b\d+\s*(?:dollars?|euros?|pounds?|usd|eur|gbp)\b/gi, ' ')
+      .replace(/\s+/g, ' ').trim()
+    const pair = findTwoCitiesInText(cleaned)
+    if (pair) {
+      result.origin = pair[0].code
+      result.origin_name = pair[0].name
+      result.destination = pair[1].code
+      result.destination_name = pair[1].name
+    }
   }
 
   // ── 3. Date extraction helper ────────────────────────────────────────────

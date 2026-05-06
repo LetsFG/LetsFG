@@ -374,6 +374,12 @@ function getSuggestion(query: string, locale: string): string {
   
   // Stage 3+: Has "to" and destination (possibly partial)
   if (parsed.toKeyword && parsed.destination) {
+    // If user is typing "anywhere" / "wherever" / etc — confirm the open-search intent
+    const anywhereRe = /^(?:anywhere|wherever|any(?:\s+(?:destination|place|airport|country))?|surprise\s*me)/i
+    if (anywhereRe.test(parsed.destination.trim())) {
+      return ''
+    }
+
     // Only do airport matching while destination is still being typed (no date yet)
     if (!parsed.hasOutboundDate) {
       const match = findBestMatch(parsed.destination, locale)
@@ -391,7 +397,7 @@ function getSuggestion(query: string, locale: string): string {
       return ' ' + generateDateSuggestion(locale)
     }
     
-    // Stage 5: Have outbound date, suggest return (or complete partial return keyword)
+    // Stage 5: Have outbound date, suggest return or trip duration
     if (parsed.hasOutboundDate && !parsed.hasReturnKeyword && !parsed.hasReturnDate) {
       const trailing = getTrailingPartial()
       const returnKeywords = RETURN_KEYWORDS[locale] || RETURN_KEYWORDS.en
@@ -411,9 +417,16 @@ function getSuggestion(query: string, locale: string): string {
         }
         return completion
       }
-      // Check if query ends with comma or space (ready for return keyword)
+      // Check if query ends with comma or space (ready for return keyword or trip duration)
       const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
       if (endsWithSep) {
+        // Alternate between suggesting a return date and a trip duration range
+        if (Math.random() < 0.4) {
+          // Suggest trip duration style: "for 7-10 days"
+          const durSuggestion = generateTripDurationSuggestion(locale)
+          const trimmed = durSuggestion.replace(/^[,\s]+/, '')
+          return (query.endsWith(', ') || query.endsWith(' ')) ? trimmed : ' ' + trimmed
+        }
         // Suggest full return phrase but without leading comma/space
         const returnKw = returnKeywords[0]
         const months = MONTH_NAMES[locale] || MONTH_NAMES.en
@@ -490,14 +503,36 @@ function getSuggestion(query: string, locale: string): string {
   return ''
 }
 
+// Trip duration suffix suggestions for ghost text
+// Used after a date is typed: "... for 14 days" or "... for 7-10 days"
+function generateTripDurationSuggestion(locale: string): string {
+  const examples: Record<string, string[]> = {
+    en: [', for 7 days', ', for 10-14 days', ', for 2 weeks', ', back 14-18 days later'],
+    pl: [', na 7 dni', ', na 10-14 dni', ', na 2 tygodnie'],
+    de: [', für 7 Tage', ', für 10-14 Tage', ', für 2 Wochen'],
+    es: [', por 7 días', ', por 10-14 días', ', por 2 semanas'],
+    fr: [', pour 7 jours', ', pour 10-14 jours', ', pour 2 semaines'],
+    it: [', per 7 giorni', ', per 10-14 giorni', ', per 2 settimane'],
+    pt: [', por 7 dias', ', por 10-14 dias', ', por 2 semanas'],
+    nl: [', voor 7 dagen', ', voor 10-14 dagen', ', voor 2 weken'],
+    sv: [', i 7 dagar', ', i 10-14 dagar', ', i 2 veckor'],
+    hr: [', za 7 dana', ', za 10-14 dana'],
+    sq: [', për 7 ditë', ', për 10-14 ditë'],
+  }
+  const list = examples[locale] || examples.en
+  return list[Math.floor(Math.random() * list.length)]
+}
+
 // Determine which slot the user is currently filling and return top airport suggestions
 function computeDropdown(query: string, locale: string): { airports: Airport[]; slot: 'origin' | 'destination' } {
   if (!query || query.length < 2) return { airports: [], slot: 'origin' }
   const parsed = parseQuery(query, locale)
   // Don't show while typing dates/return/etc.
   if (parsed.hasOutboundDate) return { airports: [], slot: 'origin' }
-  // Destination slot
+  // Destination slot — suppress if user is typing an "anywhere" keyword
+  const anywhereRe = /^(?:anywhere|wherever|any\s+(?:destination|place|airport|country)|surprise\s+me)/i
   if (parsed.toKeyword && parsed.destination && parsed.destination.trim().length >= 2) {
+    if (anywhereRe.test(parsed.destination.trim())) return { airports: [], slot: 'destination' }
     return { airports: searchAirports(parsed.destination.trim(), locale, 6), slot: 'destination' }
   }
   // Origin slot (no "to" yet)

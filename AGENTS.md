@@ -37,11 +37,11 @@ Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate price
 
 | Step | Cost | What You Get |
 |------|------|--------------|
-| **Search** | FREE | Price, times, duration, stops, airline names. Completely free, unlimited. |
-| **Unlock** | FREE | Confirms live price with airline. Locks offer for 30 min. Requires GitHub star. |
-| **Book** | Ticket price | Exact airline price + Stripe processing (2.9% + 30¢). Zero markup. |
+| **Search** | FREE | Price, times, duration, stops, airline names. Completely free, unlimited. No booking links. |
+| **Unlock** | 1% of ticket (min $3) | Direct airline booking URLs for your chosen flights. Charged to your card. |
+| **Book** | Ticket price | Complete the booking directly on the airline's website using the booking URL. |
 
-**GitHub star required:** Star the repo and verify via `letsfg star --github <username>` to unlock and book.
+**Setup required:** Add a payment card once with `letsfg setup-payment`, then unlock works automatically.
 
 ## How It Works (3 Steps)
 
@@ -63,26 +63,25 @@ result = await search_local("GDN", "BCN", "2026-06-15", mode="fast")
 result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 ```
 
-### 2. Unlock (FREE with GitHub star)
+### 2. Unlock (1% fee, min $3)
 ```
 POST /api/v1/bookings/unlock
 ```
-Confirm the live price with the airline.
+Pay a small fee to reveal the direct airline booking URLs for your chosen flights.
 
 **What happens when you unlock:**
-1. LetsFG confirms the offer with the airline
-2. Airline confirms **current live price** (may differ from search)
-3. Offer **reserved for 30 minutes** — you must book within this window
+1. LetsFG confirms the offer is still available with the airline
+2. Charges 1% of the ticket price (minimum $3) to your saved card
+3. Returns `booking_url` — direct link to complete the booking on the airline's site
 
-**Requirements:** GitHub star verified via `letsfg star --github <username>`.
+**Requirements:** Payment card on file — run `letsfg setup-payment` once before your first unlock.
 
 **Key unlock details:**
 - Input: `offer_id` (from search results) — this is the only required parameter
-- Cost: FREE (requires verified GitHub star)
-- HTTP 403 → GitHub star not verified — run `letsfg star --github <username>`
+- Cost: 1% of ticket price, minimum $3, charged to your saved card
+- HTTP 402 → No payment method — response includes `payment_setup_url` (open in browser to add a card)
 - HTTP 410 → Offer expired (airline sold the seats) — search again
 - The `confirmed_price` may differ from search price (airline prices change in real-time)
-- If 30-minute window expires without booking, search and unlock again (another fee)
 
 ```python
 from letsfg import LetsFG, PaymentRequiredError, OfferExpiredError
@@ -94,9 +93,13 @@ flights = bt.search("LHR", "JFK", "2026-06-01")
 try:
     unlocked = bt.unlock(flights.cheapest.id)
     print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
-    print(f"Expires: {unlocked.offer_expires_at}")
-except PaymentRequiredError:
-    print("Star the repo first: letsfg star --github <username>")
+    print(f"Fee charged: ${unlocked.unlock_fee:.2f}")
+    print(f"Booking URL: {unlocked.booking_url}")
+    # Open booking_url to complete the booking on the airline's site
+except PaymentRequiredError as e:
+    print("No card on file.")
+    if e.payment_setup_url:
+        print(f"Open this URL to add your card: {e.payment_setup_url}")
 except OfferExpiredError:
     print("Offer expired — search again")
 ```
@@ -104,35 +107,22 @@ except OfferExpiredError:
 ```bash
 # CLI
 letsfg unlock off_xxx
-# Output: Confirmed price: EUR 189.50, Expires: 2026-06-01T15:30:00Z
+# Output: Confirmed price: EUR 189.50, Fee: $3.00, Booking URL: https://...
 
 # cURL
 curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"offer_id": "off_xxx"}'
-# Response: {"offer_id":"off_xxx","confirmed_price":189.50,"confirmed_currency":"EUR","offer_expires_at":"..."}
+# Response: {"offer_id":"off_xxx","confirmed_price":189.50,"unlock_fee":3.00,"booking_url":"https://..."}
 ```
 
-### 3. Book (ticket price)
-```
-POST /api/v1/bookings/book
-```
-Book the flight with real passenger details. **You are charged the ticket price** (plus Stripe processing fee of 2.9% + 30¢) via the payment method attached with `setup-payment`. LetsFG adds zero markup — you pay only what the airline charges.
+### 3. Book (on the airline's site)
+No API call needed — just open the `booking_url` returned by unlock.
 
-**Before your first booking**, attach a payment method:
-```bash
-letsfg setup-payment --token tok_visa  # test mode
-```
-Or via Python: `bt.setup_payment(token="tok_visa")`
+The booking URL takes you (or your user) directly to the airline's checkout with the itinerary pre-loaded. You pay the airline directly at their exact listed price — zero markup from LetsFG.
 
-## ⚠️ CRITICAL: Use REAL Passenger Details
-
-When booking, you **MUST** use the real passenger's:
-- **Email address** — the airline sends the e-ticket and booking confirmation here
-- **Full legal name** — must match the passenger's passport or government ID exactly
-
-Do NOT use placeholder emails, agent emails, or fake names. The booking will fail or the passenger will not receive their ticket.
+> **Direct booking via LetsFG API** is coming soon.
 
 ## Installation & CLI Usage
 
@@ -147,8 +137,8 @@ This gives you the `letsfg` CLI command. **Everything works immediately — no A
 # Search flights — completely free, no setup
 letsfg search LHR BCN 2026-06-15
 
-# Star the repo for unlock/book access
-letsfg star --github your-username
+# Add a payment card (one-time setup, required before unlock)
+letsfg setup-payment
 
 # Round trip
 letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
@@ -165,13 +155,8 @@ letsfg search JFK LHR 2026-05-01 --max-stops 0
 # Resolve city to IATA codes
 letsfg locations "New York"
 
-# Unlock an offer (free)
+# Unlock an offer (1% fee, min $3) — reveals direct airline booking URL
 letsfg unlock off_xxx
-
-# Book the flight (free after unlock)
-letsfg book off_xxx \
-  --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
-  --email john.doe@example.com
 
 # Check profile & usage
 letsfg me
@@ -258,7 +243,7 @@ npx letsfg-mcp
 }
 ```
 
-> **Star verification required.** Star this repo, then call `link_github` with your GitHub username. Once verified, all tools are unlocked forever. First 1,000 stars only.
+> **Payment card required for unlock.** Add your card once with `letsfg setup-payment`. Each unlock charges 1% of the ticket price (min $3).
 
 ## CLI Commands
 
@@ -266,12 +251,10 @@ npx letsfg-mcp
 |---------|-------------|------|
 | `letsfg register` | Get your API key | Free |
 | `letsfg recover --email <email>` | Recover lost API key via email | Free |
-| `letsfg search <origin> <dest> <date>` | Search flights (star = airline names visible) | Free |
+| `letsfg search <origin> <dest> <date>` | Search flights (no booking links) | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
-| `letsfg unlock <offer_id>` | Reveal airline + confirm price | 1% (min $1) |
-| `letsfg book <offer_id>` | Book the flight | Ticket price |
-| `letsfg star --github <username>` | Link GitHub to see airline names in search | Free |
-| `letsfg setup-payment` | Attach payment card (required for unlock/book) | Free |
+| `letsfg setup-payment` | Add a payment card (one-time) | Free |
+| `letsfg unlock <offer_id>` | Get direct airline booking URL | 1% of ticket, min $3 |
 | `letsfg me` | View profile & usage | Free |
 
 ## Authentication — How to Use Your API Key
@@ -325,14 +308,14 @@ creds = LetsFG.register("my-agent", "agent@example.com")
 bt = LetsFG(api_key=creds["api_key"])
 ```
 
-### Link GitHub (Required Before Unlock)
+### Add a Payment Card (Required Before Unlock)
 
 ```bash
-letsfg star --github your-username  # verify GitHub star for free access
+letsfg setup-payment  # add a card once; charged 1% (min $3) per unlock
 ```
 
 ```python
-bt.link_github("your-username")  # GitHub username
+bt.setup_payment(token="tok_visa")  # Stripe token from your frontend
 ```
 
 ## Resolve Locations Before Searching
@@ -444,18 +427,14 @@ The SDK raises specific exceptions for each failure mode. All errors include mac
 | `NETWORK_ERROR` | transient | 0 | Client-side connection failure |
 | `INVALID_IATA` | validation | 422 | Bad airport/city code — use resolve_location |
 | `INVALID_DATE` | validation | 422 | Date in wrong format or in the past |
-| `INVALID_PASSENGERS` | validation | 422 | Passenger data missing or malformed |
 | `UNSUPPORTED_ROUTE` | validation | 422 | No providers serve this route |
 | `MISSING_PARAMETER` | validation | 422 | Required field missing |
 | `INVALID_PARAMETER` | validation | 422 | Field value out of range or wrong type |
 | `AUTH_INVALID` | business | 401 | API key missing or invalid |
-| `PAYMENT_REQUIRED` | business | 402 | Legacy — no payment method |
+| `PAYMENT_REQUIRED` | business | 402 | No payment card on file — response includes `payment_setup_url` to add one |
 | `PAYMENT_DECLINED` | business | 402 | Stripe charge failed |
 | `OFFER_EXPIRED` | business | 410 | Offer no longer available — search again |
-| `OFFER_NOT_UNLOCKED` | business | 403 | Tried to book without unlocking first |
 | `FARE_CHANGED` | business | 409 | Price changed since search — re-unlock |
-| `ALREADY_BOOKED` | business | 409 | Duplicate booking (idempotency_key matched) |
-| `BOOKING_FAILED` | business | 500 | Booking failed at airline level |
 
 ### Exception Classes
 
@@ -481,14 +460,7 @@ bt = LetsFG()
 try:
     flights = bt.search("LHR", "JFK", "2026-04-15")
     unlocked = bt.unlock(flights.cheapest.id)
-    booking = bt.book(
-        offer_id=unlocked.offer_id,
-        passengers=[{"id": flights.passenger_ids[0], "given_name": "John", "family_name": "Doe",
-                     "born_on": "1990-01-15", "gender": "m", "title": "mr",
-                     "email": "john@example.com"}],
-        contact_email="john@example.com",
-        idempotency_key="booking-attempt-abc123",  # prevents double-booking on retry
-    )
+    print(f"Booking URL: {unlocked.booking_url}")
 except LetsFGError as e:
     if e.is_retryable:
         # Transient error — safe to retry after delay
@@ -506,7 +478,8 @@ except LetsFGError as e:
 import { LetsFG, LetsFGError, ErrorCode, ErrorCategory } from 'letsfg';
 
 try {
-  const booking = await bt.book(offerId, passengers, email, '', 'booking-attempt-abc123');
+  const unlocked = await bt.unlock(offerId);
+  console.log(`Booking URL: ${unlocked.bookingUrl}`);
 } catch (e) {
   if (e instanceof LetsFGError) {
     if (e.isRetryable) { /* retry after delay */ }
@@ -528,63 +501,49 @@ This section documents the safety guarantees that make LetsFG safe for autonomou
 | `resolve_location` | None (read-only) | Free | Yes | Yes |
 | `get_agent_profile` | None (read-only) | Free | Yes | Yes |
 | `setup_payment` | Updates payment method | Free | Yes | Yes (last write wins) |
-| `link_github` | Verifies GitHub star | Free | Yes | Yes |
-| `unlock_flight_offer` | Charges fee, reserves offer | 1% (min $1) | **No** — charges fee each time | **No** |
-| `book_flight` | Creates airline reservation | Ticket price | **Only with idempotency_key** | **With key: yes** |
+| `unlock_flight_offer` | Charges fee | 1% (min $3) | **No** — charges fee each time | **No** |
 
-### Idempotency Keys (Preventing Double-Bookings)
+### Don't Double-Unlock
 
-LLMs and MCP clients (Claude, Cursor) may retry tool calls on timeout or error. Without protection, a retried `book_flight` could create a duplicate reservation.
+LLMs and MCP clients (Claude, Cursor) may retry tool calls on timeout or error. Without protection, a retried `unlock_flight_offer` could charge the fee twice.
 
-**Always provide `idempotency_key` when booking:**
+**Cache the booking_url and reuse it — do not re-unlock the same offer:**
 
 ```python
-import uuid
+# Good: check if already unlocked before calling again
+if not cached_booking_url:
+    unlocked = bt.unlock(offer_id)
+    cached_booking_url = unlocked.booking_url
 
-# Generate a deterministic key per booking attempt
-key = f"{offer_id}-{passenger_name}-{datetime.utcnow().strftime('%Y%m%d')}"
-# Or use a random UUID stored in agent memory
-key = str(uuid.uuid4())
-
-booking = bt.book(
-    offer_id=unlocked.offer_id,
-    passengers=[...],
-    contact_email="john@example.com",
-    idempotency_key=key,
-)
+# Use the cached URL
+print(f"Booking URL: {cached_booking_url}")
 ```
 
-**How it works:**
-- First call with key `"abc123"` → creates booking, returns `BookingResult`
-- Second call with same key `"abc123"` → returns the **same** `BookingResult` (no duplicate)
-- Different key `"def456"` → creates a **new** booking
+### The Search-Unlock-Book Pattern
 
-### The Quote-Before-Book Pattern
-
-LetsFG enforces a mandatory "quote" step (unlock) before booking:
+LetsFG uses a two-step model before you book:
 
 ```
 search_flights (free, read-only)
     ↓
-unlock_flight_offer (free, confirms live price)
-    ↓  ← agent shows confirmed price to user, gets approval
-book_flight (free, creates reservation)
+  Filter & rank by preference (no cost)
+    ↓
+unlock_flight_offer (1% fee, min $3 — reveals booking_url)
+    ↓  ← show confirmed price + booking URL to user
+  Open booking_url on airline's site to complete purchase
 ```
 
 **Why this matters for agents:**
 1. Search prices are snapshots — the airline may have changed the price
 2. The unlock step confirms the **actual current price** with the airline
-3. If the confirmed price differs from the search price, the agent should inform the user
-4. The user can decide whether to proceed at the new price or search again
-5. The 30-minute reservation window prevents stale bookings
+3. If the confirmed price differs from the search price, inform the user before they book
+4. The booking URL takes the user directly to the airline checkout with the fare pre-loaded
 
 ### Error Recovery Patterns
 
 ```python
-def safe_book(bt, origin, dest, date, passengers, email, max_retries=2):
-    """Book with automatic retry on transient errors and offer expiry."""
-    idempotency_key = str(uuid.uuid4())
-
+def safe_unlock(bt, origin, dest, date, max_retries=2):
+    """Unlock with automatic retry on transient errors and offer expiry."""
     for attempt in range(max_retries + 1):
         flights = bt.search(origin, dest, date)
         if not flights.offers:
@@ -593,15 +552,10 @@ def safe_book(bt, origin, dest, date, passengers, email, max_retries=2):
         try:
             unlocked = bt.unlock(flights.cheapest.id)
 
-            # Show price to user if it changed significantly
-            # (agent should implement this check)
-
-            return bt.book(
-                offer_id=unlocked.offer_id,
-                passengers=[{**p, "id": pid} for p, pid in zip(passengers, flights.passenger_ids)],
-                contact_email=email,
-                idempotency_key=idempotency_key,
-            )
+            # Show confirmed price to user before they follow the link
+            print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
+            print(f"Fee charged: ${unlocked.unlock_fee:.2f}")
+            return unlocked.booking_url  # give to user to complete on airline's site
         except OfferExpiredError:
             if attempt < max_retries:
                 continue  # Search again, fresh offers
@@ -614,7 +568,7 @@ def safe_book(bt, origin, dest, date, passengers, email, max_retries=2):
             raise
 ```
 
-## Complete Search-to-Booking Workflow
+## Complete Search-to-Unlock Workflow
 
 ### Python — Full Workflow with Error Handling
 
@@ -624,7 +578,7 @@ from letsfg import (
     PaymentRequiredError, OfferExpiredError,
 )
 
-def search_and_book(origin_city, dest_city, date, passenger_info, email):
+def search_and_unlock(origin_city, dest_city, date):
     bt = LetsFG()  # reads LETSFG_API_KEY
 
     # Step 1: Resolve locations
@@ -636,92 +590,37 @@ def search_and_book(origin_city, dest_city, date, passenger_info, email):
     dest_iata = dests[0]["iata_code"]
 
     # Step 2: Search (free, unlimited)
-    flights = bt.search(origin_iata, dest_iata, date, adults=len(passenger_info), sort="price")
+    flights = bt.search(origin_iata, dest_iata, date, sort="price")
     if not flights.offers:
         print(f"No flights {origin_iata} → {dest_iata} on {date}")
         return None
 
     print(f"Found {flights.total_results} offers, cheapest: {flights.cheapest.price} {flights.cheapest.currency}")
 
-    # Step 3: Unlock (free) — confirms price, reserves 30min
+    # Step 3: Unlock (1% fee, min $3) — reveals booking URL
     try:
         unlocked = bt.unlock(flights.cheapest.id)
         print(f"Confirmed: {unlocked.confirmed_currency} {unlocked.confirmed_price}")
+        print(f"Fee charged: ${unlocked.unlock_fee:.2f}")
+        print(f"Booking URL: {unlocked.booking_url}")
+        # Hand the booking_url to the user to complete the purchase on the airline's site
+        return unlocked.booking_url
     except PaymentRequiredError:
-        print("Star the repo first: letsfg star --github <username>")
+        print("No card on file — run: letsfg setup-payment")
         return None
     except OfferExpiredError:
         print("Offer expired — search again")
         return None
 
-    # Step 4: Book (free) — map passenger_info to passenger_ids
-    passengers = [{**info, "id": pid} for info, pid in zip(passenger_info, flights.passenger_ids)]
-
-    try:
-        booking = bt.book(offer_id=unlocked.offer_id, passengers=passengers, contact_email=email)
-        print(f"Booked! PNR: {booking.booking_reference}")
-        return booking
-    except OfferExpiredError:
-        print("30-minute window expired — search and unlock again")
-        return None
-    except LetsFGError as e:
-        print(f"Booking failed: {e.message}")
-        return None
-
-# Example: 2 passengers
-search_and_book(
-    "London", "Barcelona", "2026-04-01",
-    passenger_info=[
-        {"given_name": "John", "family_name": "Doe", "born_on": "1990-01-15", "gender": "m", "title": "mr"},
-        {"given_name": "Jane", "family_name": "Doe", "born_on": "1992-03-20", "gender": "f", "title": "ms"},
-    ],
-    email="john.doe@example.com",
-)
-```
-
-### Bash — CLI Workflow (Production)
-
-```bash
-#!/bin/bash
-set -euo pipefail
-export LETSFG_API_KEY=trav_...
-
-# Step 1: Resolve locations (with validation)
-ORIGIN=$(letsfg locations "London" --json | jq -r '.[0].iata_code')
-DEST=$(letsfg locations "Barcelona" --json | jq -r '.[0].iata_code')
-
-if [ -z "$ORIGIN" ] || [ -z "$DEST" ]; then
-  echo "Error: Could not resolve locations" >&2
-  exit 1
-fi
-
-# Step 2: Search
-RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
-OFFER=$(echo "$RESULTS" | jq -r '.offers[0].id')
-TOTAL=$(echo "$RESULTS" | jq '.total_results')
-
-if [ "$OFFER" = "null" ] || [ -z "$OFFER" ]; then
-  echo "No flights found $ORIGIN → $DEST" >&2
-  exit 1
-fi
-echo "Found $TOTAL offers, best: $OFFER"
-
-# Step 3: Unlock (free) — with error check
-if ! letsfg unlock "$OFFER" --json > /dev/null 2>&1; then
-  echo "Unlock failed — check GitHub star (letsfg star --github <username>)" >&2
-  exit 1
-fi
-
-# Step 4: Book (free after unlock)
-letsfg book "$OFFER" \
-  --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
-  --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
-  --email john.doe@example.com
+# Example
+booking_url = search_and_unlock("London", "Barcelona", "2026-04-01")
+if booking_url:
+    print(f"Open this URL to book: {booking_url}")
 ```
 
 ## Unlock Best Practices
 
-Searching is **completely free** — unlock is also free with GitHub star. Best practices:
+Searching is **completely free**. Unlock costs 1% of ticket price (min $3) — so filter aggressively before you unlock.
 
 ### Search Wide, Unlock Narrow
 
@@ -734,8 +633,9 @@ for date in dates:
     if result.offers and (best is None or result.cheapest.price < best[1].price):
         best = (date, result.cheapest)
 
-# Only unlock the winner
+# Only unlock the winner (1% fee, min $3)
 unlocked = bt.unlock(best[1].id)
+print(f"Booking URL: {unlocked.booking_url}")
 ```
 
 ### Filter Before Unlocking
@@ -753,12 +653,9 @@ candidates = [
 
 if candidates:
     best = min(candidates, key=lambda o: o.price)
-    unlocked = bt.unlock(best.id)  # free with GitHub star
+    unlocked = bt.unlock(best.id)  # 1% fee, min $3
+    print(f"Booking URL: {unlocked.booking_url}")
 ```
-
-### Use the 30-Minute Window
-
-After unlock, the price is held for 30 minutes. Use this to present options to the user, verify details, and complete the booking without re-searching.
 
 ### Cost Summary
 
@@ -767,8 +664,8 @@ After unlock, the price is held for 30 minutes. Use this to present options to t
 | Search | FREE | Unlimited — any route, any date, any number of searches |
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
-| Unlock | FREE | Confirms price, holds 30 minutes |
-| Book | FREE | After unlock — real airline PNR |
+| Unlock | 1% of ticket, min $3 | Charged to saved card. Reveals direct airline booking URL. |
+| Book | Ticket price | Paid directly to the airline on their website. |
 
 ## Rate Limits and Timeouts
 
@@ -779,7 +676,6 @@ The API has generous limits. Search is completely free and unlimited.
 | Search | 60 req/min per agent | 2-15s (depends on airline APIs) | 30s |
 | Resolve location | 120 req/min per agent | <1s | 5s |
 | Unlock | 20 req/min per agent | 2-5s | 15s |
-| Book | 10 req/min per agent | 3-10s | 30s |
 
 **Rate limit handling:**
 
@@ -809,18 +705,18 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 ```
 User request → Parse intent → Resolve locations → Search (free)
-  → Filter & rank → Present options → Unlock best (free) → Collect passenger details → Book (free)
+  → Filter & rank → Present options to user → Unlock best (1% fee, min $3)
+  → Show booking_url to user → User completes booking on airline's site
 ```
 
 ### Best Practices
 
 1. **Resolve locations first.** "London" = 5+ airports. Use `resolve_location()` to get IATA codes.
 2. **Search liberally.** It's free. Search multiple dates, cabin classes, and airport combinations.
-3. **Filter before unlocking.** Apply all preferences (airline, stops, duration, conditions) on free search results.
-4. **Manage the 30-minute window.** Unlock → collect passenger details → book. If window expires, search+unlock again (free).
-5. **Handle price changes.** Unlock confirms the real-time airline price. It may differ slightly from search. Inform the user.
-6. **Map passenger IDs.** Search returns `passenger_ids` (e.g., `["pas_0", "pas_1"]`). Each booking passenger must include the correct `id`.
-7. **Use REAL details.** Airlines send e-tickets to the contact email. Names must match passport/ID.
+3. **Filter before unlocking.** Apply all preferences (airline, stops, duration, conditions) on free search results. Unlock only the winner.
+4. **Show booking_url to user.** After unlock, open the `booking_url` to complete the purchase on the airline's site.
+5. **Handle price changes.** Unlock confirms the real-time airline price. It may differ slightly from search. Inform the user before they click through.
+6. **Don't double-unlock.** Unlock is charged each time. Cache the booking_url and reuse it.
 
 ### Retry Logic for Expired Offers
 
@@ -830,19 +726,14 @@ from letsfg import (
     PaymentRequiredError, OfferExpiredError,
 )
 
-def resilient_book(bt, origin, dest, date, passengers, email, max_retries=2):
+def resilient_unlock(bt, origin, dest, date, max_retries=2):
     for attempt in range(max_retries + 1):
-        flights = bt.search(origin, dest, date, adults=len(passengers))
+        flights = bt.search(origin, dest, date)
         if not flights.offers:
             return None
         try:
             unlocked = bt.unlock(flights.cheapest.id)
-            booking = bt.book(
-                offer_id=unlocked.offer_id,
-                passengers=[{**p, "id": pid} for p, pid in zip(passengers, flights.passenger_ids)],
-                contact_email=email,
-            )
-            return booking
+            return unlocked.booking_url  # open this to complete booking
         except OfferExpiredError:
             if attempt < max_retries:
                 continue  # search again, get fresh offers
@@ -1001,19 +892,16 @@ class FlightAgent:
         
         return sorted(scored, key=lambda x: x[0])
     
-    def search_and_book(self, origin_city, dest_city, date, passengers, email,
-                        preferences=None, max_retries=2):
-        """Full autonomous workflow: resolve → search → evaluate → unlock → book.
-        
-        Returns booking result or None if no suitable flights found.
-        """
+    def search_and_unlock(self, origin_city, dest_city, date,
+                          preferences=None, max_retries=2):
+        """Full autonomous workflow: resolve → search → evaluate → unlock → return booking URL."""
         # Step 1: Resolve locations (free)
         origin = self.resolve_city(origin_city)
         dest = self.resolve_city(dest_city)
         
         for attempt in range(max_retries + 1):
             # Step 2: Search (free, unlimited)
-            flights = self.bt.search(origin, dest, date, adults=len(passengers))
+            flights = self.bt.search(origin, dest, date)
             if not flights.offers:
                 return None
             
@@ -1024,7 +912,7 @@ class FlightAgent:
             else:
                 best_offer = flights.cheapest
             
-            # Step 4: Unlock (free) — confirms live price with airline
+            # Step 4: Unlock (1% fee, min $3) — confirms price, returns booking URL
             try:
                 unlocked = self.bt.unlock(best_offer.id)
                 
@@ -1033,6 +921,8 @@ class FlightAgent:
                 if price_diff > best_offer.price * 0.1:  # >10% price change
                     print(f"Warning: Price changed from {best_offer.price} to {unlocked.confirmed_price}")
                 
+                return unlocked.booking_url  # give this URL to the user to complete booking
+                
             except OfferExpiredError:
                 if attempt < max_retries:
                     time.sleep(1)
@@ -1040,44 +930,22 @@ class FlightAgent:
                 raise
             except PaymentRequiredError:
                 raise  # Can't retry — need payment setup
-            
-            # Step 5: Book (free after unlock) — map passenger IDs
-            try:
-                mapped_passengers = [
-                    {**p, "id": pid}
-                    for p, pid in zip(passengers, flights.passenger_ids)
-                ]
-                booking = self.bt.book(
-                    offer_id=unlocked.offer_id,
-                    passengers=mapped_passengers,
-                    contact_email=email,
-                )
-                return booking
-            except OfferExpiredError:
-                if attempt < max_retries:
-                    continue  # 30-min window expired, retry full flow
-                raise
 
 # Usage
 agent = FlightAgent()
 
-booking = agent.search_and_book(
+booking_url = agent.search_and_unlock(
     origin_city="London",
     dest_city="New York",
     date="2026-06-15",
-    passengers=[
-        {"given_name": "John", "family_name": "Doe", "born_on": "1990-01-15",
-         "gender": "m", "title": "mr"},
-    ],
-    email="john@example.com",
     preferences={
         "price": 0.3, "duration": 0.4, "stops": 0.2, "airline": 0.1,
         "preferred_airlines": {"British Airways", "Delta"},
     },
 )
 
-if booking:
-    print(f"Booked! PNR: {booking.booking_reference}")
+if booking_url:
+    print(f"Open to book: {booking_url}")
 ```
 
 ## Get an API Key
