@@ -535,7 +535,6 @@ const COUNTRY_TO_IATA: Record<string, { code: string; name: string }> = {
   'chine': { code: 'PEK', name: 'China' },
   'japan': { code: 'TYO', name: 'Japan' },
   'japon': { code: 'TYO', name: 'Japan' },
-  'japan': { code: 'TYO', name: 'Japan' },
   'south korea': { code: 'ICN', name: 'South Korea' },
   'korea': { code: 'ICN', name: 'South Korea' },
   'sudkorea': { code: 'ICN', name: 'South Korea' },
@@ -582,8 +581,6 @@ const COUNTRY_TO_IATA: Record<string, { code: string; name: string }> = {
   'oman': { code: 'MCT', name: 'Oman' },
   'qatar': { code: 'DOH', name: 'Qatar' },
   'katar': { code: 'DOH', name: 'Qatar' },
-  'kuwait': { code: 'KWI', name: 'Kuwait' },
-  'bahrain': { code: 'BAH', name: 'Bahrain' },
   // Africa
   'egypt': { code: 'CAI', name: 'Egypt' },
   'agypten': { code: 'CAI', name: 'Egypt' },
@@ -642,6 +639,7 @@ export interface ParsedQuery {
   max_trip_days?: number             // upper bound of trip duration range
   date_month_only?: boolean          // true when user typed "in September" (no specific day)
   anywhere_destination?: boolean     // true for "to anywhere", "wherever is cheapest", etc.
+  max_price?: number                 // "for $200 or less", "under €150", "max 300 EUR"
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1315,6 +1313,20 @@ export function parseNLQuery(query: string): ParsedQuery {
     const dep = new Date(result.date)
     dep.setDate(dep.getDate() + mid)
     result.return_date = toLocalDateStr(dep)
+  }
+
+  // ── 8b. Budget constraint parsing ─────────────────────────────────────────
+  // Matches: "for $200 or less", "under €150", "max 300 EUR", "within 250 dollars",
+  //          "up to 180 pounds", "budget of 400", "at most $500", "less than 120 EUR"
+  // The pattern tries to capture the numeric amount; currency symbol/name is optional.
+  const budgetRe = /(?:for\s+)?(?:under|below|less\s+than|at\s+most|no\s+more\s+than|up\s+to|within|max(?:imum)?|budget(?:\s+of)?|costing?(?:\s+up\s+to)?)\s*[$€£¥]\s*(\d+(?:[.,]\d+)?)|(?:for\s+)?[$€£¥]\s*(\d+(?:[.,]\d+)?)\s*(?:or\s+less|max(?:imum)?|budget)|(\d+(?:[.,]\d+)?)\s*(?:USD|EUR|GBP|PLN|dollars?|euros?|pounds?|z[lł]oty)\s*(?:or\s+less|max(?:imum)?|budget|or\s+under|or\s+below)?/i
+  const budgetMatch = q.match(budgetRe)
+  if (budgetMatch) {
+    const raw = (budgetMatch[1] || budgetMatch[2] || budgetMatch[3] || '').replace(',', '.')
+    const parsed = parseFloat(raw)
+    if (!isNaN(parsed) && parsed > 0) {
+      result.max_price = parsed
+    }
   }
 
   // ── 8. "Anywhere" / open destination detection ──────────────────────────
