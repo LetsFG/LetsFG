@@ -190,7 +190,7 @@ export function computeSessionStats(offers: NormalizedOffer[]): ComputedStats {
   const bagsOffers = offers.filter(o => Object.keys(o.bagsPrice ?? {}).length > 0)
   const hiddenFeesAvg = bagsOffers.length > 0
     ? bagsOffers.reduce((s, o) => {
-        const fee = Object.values(o.bagsPrice).reduce((a, v) => a + (v ?? 0), 0)
+        const fee = Object.values(o.bagsPrice).reduce((a: number, v) => a + (v ?? 0), 0)
         return s + fee
       }, 0) / bagsOffers.length
     : null

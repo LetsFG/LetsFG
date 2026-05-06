@@ -97,11 +97,11 @@ export function selectVariant<T extends keyof FlightPageFlags>(
   for (const variant of experiment.variants) {
     cumulative += variant.traffic_pct
     if (bucket < cumulative) {
-      return variant as VariantDefinition<T>
+      return variant as unknown as VariantDefinition<FlightPageFlags[T]>
     }
   }
   // Fallback to the first variant (should never happen if pcts sum to 100)
-  return experiment.variants[0] as VariantDefinition<T>
+  return experiment.variants[0] as unknown as VariantDefinition<FlightPageFlags[T]>
 }
 
 // ─── All active experiments ───────────────────────────────────────────────────

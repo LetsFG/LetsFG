@@ -12,7 +12,7 @@
  *   - Minimum quality floor: silently skips if <15 offers or <2 carriers.
  */
 
-import { normalizeSession } from './normalizer.ts'
+import { normalizeSession, computeSessionStats } from './normalizer.ts'
 import type { RawSearchPayload } from './normalizer.ts'
 import { getRouteDistributionData } from '../distribution/distribution-service.ts'
 import { ContentQualityGate } from '../quality/content-quality-gate.ts'
@@ -61,13 +61,15 @@ export async function triggerPfpIngest(input: PfpTriggerInput): Promise<void> {
     }
 
     const session = normalizeSession(rawPayload)
+    const computedStats = computeSessionStats(session.offers)
 
     // ── 2. Quality gate check ─────────────────────────────────────────────────
-    const gateResult = ContentQualityGate.evaluate({
-      offerCount: session.priceStats.offerCount,
-      carrierCount: session.priceStats.carrierCount,
-      connectorCount: session.priceStats.connectorCount,
-      priceCV: session.priceStats.priceCV,
+    const gate = new ContentQualityGate()
+    const gateResult = gate.evaluate({
+      offerCount: session.stats.offerCount,
+      carrierCount: session.stats.carrierCount,
+      connectorCount: session.stats.connectorCount,
+      priceCV: computedStats.priceCV,
     })
 
     // Draft pages are never published — skip ingesting them to avoid noise
