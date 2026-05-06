@@ -23,26 +23,43 @@ import type { RouteDistributionData } from '../../../../lib/pfp/types/route-dist
 
 export const revalidate = 86400
 
-// ─── Static params (populated from DB in Session 5/6) ────────────────────────
+// ─── API base ─────────────────────────────────────────────────────────────────
+
+const API_BASE = (
+  process.env.LETSFG_ANALYTICS_API_URL ||
+  'https://letsfg-api-876385716101.us-central1.run.app'
+).replace(/\/$/, '')
+
+// ─── Static params ────────────────────────────────────────────────────────────
 
 export async function generateStaticParams(): Promise<{ route: string }[]> {
-  // Returns [] until the DB layer is wired up (Session 5/6).
-  // When connected, will read all routes with page_status IN ('published', 'noindex')
-  // from flight_routes and return their slugs.
-  return []
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/flights/pfp/routes`, {
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const routes: Array<{ slug: string }> = await res.json()
+    return routes.map((r) => ({ route: r.slug }))
+  } catch {
+    return []
+  }
 }
 
-// ─── Data fetching (stub — real implementation in Session 5/6) ───────────────
+// ─── Data fetching ────────────────────────────────────────────────────────────
 
 async function fetchRouteSnapshot(
   routeSlug: string,
 ): Promise<RouteDistributionData | null> {
-  // Placeholder. Will be replaced with:
-  //   const db = getDb()
-  //   return db.getRouteDistributionSnapshot(routeSlug)
-  // where routeSlug is e.g. 'gdn-bcn'
-  void routeSlug
-  return null
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/v1/flights/pfp/${encodeURIComponent(routeSlug)}`,
+      { next: { revalidate: 86400 } },
+    )
+    if (!res.ok) return null
+    return res.json() as Promise<RouteDistributionData>
+  } catch {
+    return null
+  }
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────

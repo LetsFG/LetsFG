@@ -3604,6 +3604,25 @@ body:has(.res-page) {
   border-radius: 4px;
 }
 
+.rf-airline-badge--hidden {
+  background: rgba(20, 45, 60, 0.07);
+  color: rgba(20, 45, 60, 0.35);
+  border: 1.5px dashed rgba(20, 45, 60, 0.18);
+}
+
+.rf-airline-name--hidden {
+  color: rgba(20, 45, 60, 0.65);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.rf-airline-cabin {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(20, 45, 60, 0.45);
+  margin-top: 1px;
+}
+
 .rf-airline-name {
   font-size: 0.9rem;
   font-weight: 700;
@@ -3794,6 +3813,45 @@ body:has(.res-page) {
 .rf-price-note {
   font-size: 0.68rem;
   color: rgba(20, 45, 60, 0.46);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rf-price-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 5px;
+  width: 100%;
+}
+
+.rf-price-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  color: rgba(20, 45, 60, 0.48);
+}
+
+.rf-price-breakdown-row--on {
+  background: rgba(244, 122, 28, 0.1);
+  color: #142d3e;
+  font-weight: 700;
+}
+
+.rf-price-breakdown-row--incl {
+  color: #2a8a4a;
+  font-weight: 600;
+}
+
+.rf-price-breakdown-label {
+  white-space: nowrap;
+}
+
+.rf-price-breakdown-value {
   font-weight: 600;
   white-space: nowrap;
 }
@@ -6346,10 +6404,10 @@ body:has(.res-page) {
   justify-content: space-between;
   gap: 12px;
   padding: 18px 22px;
-  background: #fff;
+  background: #fff8f1;
   border-radius: 16px;
-  border: 1.5px solid rgba(20, 45, 60, 0.12);
-  box-shadow: 0 2px 8px rgba(20, 53, 76, 0.08);
+  border: 1.5px solid rgba(244, 122, 28, 0.3);
+  box-shadow: 0 2px 12px rgba(244, 122, 28, 0.12);
 }
 
 .mon-strip-copy {

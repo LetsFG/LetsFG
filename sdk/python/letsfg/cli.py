@@ -139,7 +139,7 @@ _IATA_TO_AIRLINE: dict[str, str] = {
     # North America
     "AA": "American Airlines", "DL": "Delta Air Lines", "UA": "United Airlines",
     "WN": "Southwest Airlines", "AS": "Alaska Airlines", "B6": "JetBlue Airways",
-    "HA": "Hawaiian Airlines", "F9": "Frontier Airlines", "NK": "Spirit Airlines",
+    "HA": "Hawaiian Airlines", "F9": "Frontier Airlines",
     "G4": "Allegiant", "XP": "Avelo Airlines", "MX": "Breeze Airways",
     "SY": "Sun Country Airlines",
     # Canada

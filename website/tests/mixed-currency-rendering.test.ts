@@ -29,7 +29,7 @@ test('results panel formats visible prices in the selected currency', () => {
 
   assert.match(
     resultsPanel,
-    /fmt\(getOfferDisplayTotalPrice\(displayOffers\[0\], currency\)\)/,
+    /getSortEffectivePrice\(displayOffers\[0\], sort, currency\)/,
   )
 
   assert.match(

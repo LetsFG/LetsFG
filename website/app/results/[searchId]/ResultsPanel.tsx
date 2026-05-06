@@ -15,6 +15,7 @@ import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount } from '../..
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import {
+  getOfferBaseTotal,
   getOfferKnownTotalPrice,
   hasIncludedAncillary,
   hasPaidAncillary,
@@ -263,6 +264,45 @@ function findCheapestOffer(offers: FlightOffer[], displayCurrency: string): Flig
   return cheapestOffer
 }
 
+// ── Airline category classification ──────────────────────────────────────────
+// Used to show "Low-cost carrier" / "Full-service carrier" when airline is hidden (pre-unlock).
+const LCC_IATA = new Set([
+  'FR', 'U2', 'W6', 'DY', 'VY', 'HV', 'V7', 'LS', 'NK', 'F9', 'G4', 'WN',
+  'AK', 'D7', 'VJ', 'DD', 'QP', 'SG', '5J', 'QG', 'JT', 'IU', 'TR', 'MM',
+  'ZG', 'BC', 'KC', 'FO', 'F3', 'XY', 'FA', 'XP', 'MX', 'F8', 'PD', 'SY',
+  'B6', '7C', 'TW', 'LJ', 'I2', 'J9', 'OV', 'JA', 'H2', 'UO', 'AQ', '8L',
+  'IJ', 'FZ', 'G9', '4D', 'VB', 'Y4', 'P5', 'BX', 'PC', 'FC', '5R',
+])
+
+const FSC_IATA = new Set([
+  'BA', 'LH', 'AF', 'KL', 'EK', 'QR', 'EY', 'SQ', 'CX', 'TK', 'VS', 'IB',
+  'TP', 'AY', 'SK', 'LO', 'OS', 'LX', 'SN', 'AA', 'DL', 'UA', 'AC', 'QF',
+  'JL', 'NH', 'KE', 'OZ', 'CA', 'CZ', 'MU', 'TG', 'GA', 'MH', 'PR', 'AI',
+  'ET', 'ME', 'UL', 'WY', 'GF', 'KU', 'KQ', 'RJ', 'SA', 'WB', 'AT', 'JU',
+  'GL', 'SB', 'TN', 'NF', 'PX', 'MK', 'FJ', 'WS', 'HA', 'AS', 'VA', 'NZ',
+  'SV', 'MS', 'LY', 'PK', 'OA', 'CY', 'CM', 'AV', 'LA', 'AR', 'BW', 'FI',
+  'BT', 'BG', 'S4', 'TS', 'PG', 'ID', 'IX', 'UX', 'EI', 'A3', 'CI', 'BR',
+  'J2', 'AD', 'G3', 'HU', 'JX', 'JJ', 'DM', 'JQ', 'ZL', 'MS', 'LY',
+])
+
+function getAirlineCategory(code: string): string {
+  const c = code.toUpperCase()
+  if (LCC_IATA.has(c)) return 'Low-cost carrier'
+  if (FSC_IATA.has(c)) return 'Full-service carrier'
+  return 'Airline'
+}
+
+// ── Hidden airline placeholder (shown before unlock) ─────────────────────────
+function HiddenAirlineLogo() {
+  return (
+    <div className="rf-airline-badge rf-airline-badge--hidden" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true">
+        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+      </svg>
+    </div>
+  )
+}
+
 // ── Airline logo with IATA-code fallback ──────────────────────────────────────
 function AirlineLogo({ code, name }: { code: string; name: string }) {
   const [failed, setFailed] = useState(false)
@@ -365,6 +405,22 @@ const CHECKED_SOURCES = [
   'TAP Air', 'Jet2', 'Volotea', 'Corendon', 'SunExpress',
 ]
 
+function getSortEffectivePrice(offer: FlightOffer, sortMode: string, displayCurrency: string): number {
+  if (sortMode === 'price_with_bag') {
+    const bag = offer.ancillaries?.checked_bag
+    if (hasIncludedAncillary(bag)) return convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency)
+    const total = getOfferDisplayTotalWithAncillary(offer, bag, displayCurrency)
+    return total ?? getOfferDisplayTotalPrice(offer, displayCurrency)
+  }
+  if (sortMode === 'price_with_seat') {
+    const seat = offer.ancillaries?.seat_selection
+    if (hasIncludedAncillary(seat)) return convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency)
+    const total = getOfferDisplayTotalWithAncillary(offer, seat, displayCurrency)
+    return total ?? getOfferDisplayTotalPrice(offer, displayCurrency)
+  }
+  return getOfferDisplayTotalPrice(offer, displayCurrency)
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   allOffers: FlightOffer[]
@@ -401,7 +457,7 @@ export default function ResultsPanel({
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(searchId ? `/results/${searchId}` : '/results', isTestSearch)
   // ── Filter state ──────────────────────────────────────────────────────────
-  const [sort, setSort] = useState<'price' | 'duration'>('price')
+  const [sort, setSort] = useState<'price' | 'price_with_bag' | 'price_with_seat' | 'duration'>('price')
   const [stopsFilter, setStopsFilter] = useState<string[]>([])          // [] = all
   const [airlinesFilter, setAirlinesFilter] = useState<string[]>([])    // [] = all
   const [amenityFilters, setAmenityFilters] = useState<string[]>([])
@@ -514,7 +570,7 @@ export default function ResultsPanel({
     if (sort === 'duration') {
       list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
     } else {
-      list = [...list].sort((a, b) => getOfferDisplayTotalPrice(a, currency) - getOfferDisplayTotalPrice(b, currency))
+      list = [...list].sort((a, b) => getSortEffectivePrice(a, sort, currency) - getSortEffectivePrice(b, sort, currency))
     }
     return list
   }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency])
@@ -667,7 +723,7 @@ export default function ResultsPanel({
     })
   }, [analyticsSearchId, isTestSearch, priceMax, priceMin, resultsSourcePath])
 
-  const handleSortChange = useCallback((nextSort: 'price' | 'duration') => {
+  const handleSortChange = useCallback((nextSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'duration') => {
     setSort(nextSort)
     setVisibleCount(20)
     trackSearchSessionEvent(analyticsSearchId, 'sort_changed', { sort: nextSort }, {
@@ -718,6 +774,8 @@ export default function ResultsPanel({
         <div className="rf-mobile-sort">
           <span className="rf-bar-label">{t('sort')}</span>
           <button className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price')}>{t('sortPrice')}</button>
+          <button className={`rf-chip${sort === 'price_with_bag' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_bag')}>+ Bag</button>
+          <button className={`rf-chip${sort === 'price_with_seat' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_seat')}>+ Seat</button>
           <button className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('duration')}>{t('sortDuration')}</button>
         </div>
       </div>
@@ -856,7 +914,7 @@ export default function ResultsPanel({
               displayOffers[0] && (
                 <span className="rf-bar-from">
                   {t('fromPrice', {
-                    price: fmt(getOfferDisplayTotalPrice(displayOffers[0], currency)),
+                    price: fmt(getSortEffectivePrice(displayOffers[0], sort, currency)),
                   })}
                 </span>
               )
@@ -883,6 +941,18 @@ export default function ResultsPanel({
               {t('sortPrice')}
             </button>
             <button
+              className={`rf-chip${sort === 'price_with_bag' ? ' rf-chip--on' : ''}`}
+              onClick={() => handleSortChange('price_with_bag')}
+            >
+              + Bag
+            </button>
+            <button
+              className={`rf-chip${sort === 'price_with_seat' ? ' rf-chip--on' : ''}`}
+              onClick={() => handleSortChange('price_with_seat')}
+            >
+              + Seat
+            </button>
+            <button
               className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`}
               onClick={() => handleSortChange('duration')}
             >
@@ -905,7 +975,7 @@ export default function ResultsPanel({
             </div>
           )}
           {visibleOffers.map((offer, index) => {
-            const isBestValue = sort === 'price' && index === 0
+            const isBestValue = sort !== 'duration' && index === 0
             const isExpanded = expandedId === offer.id
             const offerCarriers = getOfferCarriers(offer)
             const airlineLabel = getOfferAirlineLabel(offer)
@@ -962,29 +1032,40 @@ export default function ResultsPanel({
                 )}
                 <div className="rf-card-row">
                   <div className={`rf-airline${offerCarriers.length > 1 ? ' rf-airline--multi' : ''}`}>
-                    <div className={`rf-airline-logos${offerCarriers.length > 1 ? ' rf-airline-logos--multi' : ''}`}>
-                      {offerCarriers.map((carrier) => (
-                        <AirlineLogo key={`${carrier.code}-${carrier.name}`} code={carrier.code} name={carrier.name} />
-                      ))}
-                    </div>
-                    <div className={`rf-airline-copy${offerCarriers.length > 1 ? ' rf-airline-copy--multi' : ''}`}>
-                      <div
-                        className={`rf-airline-name${offerCarriers.length > 1 ? ' rf-airline-name--multi' : ''}`}
-                        title={offerCarriers.length > 1 ? airlineLabel : undefined}
-                      >
-                        {airlineLabel}
-                      </div>
-                      {isUnlocked && sourceLabel && (
-                        <div className="rf-source-pill">Deal from {sourceLabel}</div>
-                      )}
-                      {ancillaryBadges.length > 0 && (
-                        <div className="rf-pill-row">
-                          {ancillaryBadges.map((label) => (
-                            <div key={label} className="rf-source-pill rf-source-pill--neutral">{label}</div>
+                    {isUnlocked ? (
+                      /* ── Revealed: real logo + airline name ── */
+                      <>
+                        <div className={`rf-airline-logos${offerCarriers.length > 1 ? ' rf-airline-logos--multi' : ''}`}>
+                          {offerCarriers.map((carrier) => (
+                            <AirlineLogo key={`${carrier.code}-${carrier.name}`} code={carrier.code} name={carrier.name} />
                           ))}
                         </div>
-                      )}
-                    </div>
+                        <div className={`rf-airline-copy${offerCarriers.length > 1 ? ' rf-airline-copy--multi' : ''}`}>
+                          <div
+                            className={`rf-airline-name${offerCarriers.length > 1 ? ' rf-airline-name--multi' : ''}`}
+                            title={offerCarriers.length > 1 ? airlineLabel : undefined}
+                          >
+                            {airlineLabel}
+                          </div>
+                          {sourceLabel && (
+                            <div className="rf-source-pill">Deal from {sourceLabel}</div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      /* ── Hidden: generic placeholder until unlocked ── */
+                      <>
+                        <div className="rf-airline-logos">
+                          <HiddenAirlineLogo />
+                        </div>
+                        <div className="rf-airline-copy">
+                          <div className="rf-airline-name rf-airline-name--hidden">
+                            {getAirlineCategory(offerCarriers[0]?.code || '')}
+                          </div>
+                          <div className="rf-airline-cabin">Economy class</div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {offer.inbound ? (
@@ -1082,15 +1163,31 @@ export default function ResultsPanel({
                   )}
 
                   <div className="rf-price-wrap">
-                    <span className="rf-price">{fmt(fullOfferPrice)}</span>
+                    <span className="rf-price">{fmt(getSortEffectivePrice(offer, sort, currency))}</span>
                     <span className="rf-price-sub">{t('perPerson')}</span>
-                    {(checkedBagTotal || seatSelectionTotal) && (
-                      <div className="rf-price-notes">
-                        {checkedBagTotal && (
-                          <span className="rf-price-note">{t('withCheckedBag', { price: fmt(checkedBagTotal) })}</span>
+                    {(checkedBag || seatSelection) && (
+                      <div className="rf-price-breakdown">
+                        {hasPaidAncillary(checkedBag) && checkedBagTotal !== null && (
+                          <div className={`rf-price-breakdown-row${sort === 'price_with_bag' ? ' rf-price-breakdown-row--on' : ''}`}>
+                            <span className="rf-price-breakdown-label">🧳 + bag</span>
+                            <span className="rf-price-breakdown-value">{fmt(checkedBagTotal)}</span>
+                          </div>
                         )}
-                        {seatSelectionTotal && (
-                          <span className="rf-price-note">{t('withSeatSelection', { price: fmt(seatSelectionTotal) })}</span>
+                        {hasIncludedAncillary(checkedBag) && (
+                          <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
+                            <span className="rf-price-breakdown-label">🧳 bag incl.</span>
+                          </div>
+                        )}
+                        {hasPaidAncillary(seatSelection) && seatSelectionTotal !== null && (
+                          <div className={`rf-price-breakdown-row${sort === 'price_with_seat' ? ' rf-price-breakdown-row--on' : ''}`}>
+                            <span className="rf-price-breakdown-label">💺 + seat</span>
+                            <span className="rf-price-breakdown-value">{fmt(seatSelectionTotal)}</span>
+                          </div>
+                        )}
+                        {hasIncludedAncillary(seatSelection) && (
+                          <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
+                            <span className="rf-price-breakdown-label">💺 seat incl.</span>
+                          </div>
                         )}
                       </div>
                     )}
@@ -1164,7 +1261,11 @@ export default function ResultsPanel({
                           <div className="rf-leg">
                             <div className="rf-leg-header">
                               <span className="rf-leg-num">{t('leg', { number: si + 1 })}</span>
-                              <span className="rf-leg-flight">{seg.flight_number} · {getSegmentAirlineLabel(seg, mainAirline)}</span>
+                              <span className="rf-leg-flight">
+                                {isUnlocked
+                                  ? `${seg.flight_number} · ${getSegmentAirlineLabel(seg, mainAirline)}`
+                                  : 'Economy class · Unlock to reveal'}
+                              </span>
                             </div>
                             <div className="rf-leg-body">
                               <div className="rf-leg-spine" />

@@ -149,6 +149,7 @@ export default function SearchPageClient({
   const knownOfferIdsRef = useRef<Set<string>>(new Set(initialOffers.map(o => o.id)))
   const trackedResultsViewRef = useRef(false)
   const trackedExpiredRef = useRef(false)
+  const trackedStreamingRef = useRef(false)
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
@@ -288,17 +289,62 @@ export default function SearchPageClient({
     }
   }, [searchId, isSearching, isTestSearch])
 
+  // Track when first partial results arrive while search is still running.
+  // This lets stats reflect real progress counts even if the user navigates away mid-search.
   useEffect(() => {
-    if (status !== 'completed' || trackedResultsViewRef.current) return
-    trackedResultsViewRef.current = true
-    trackSearchSessionEvent(analyticsSearchId, 'results_viewed', {
+    if (!isStreaming || trackedStreamingRef.current) return
+    trackedStreamingRef.current = true
+    const durationMs = searchedAt ? Date.now() - new Date(searchedAt).getTime() : undefined
+    const cheapestOffer = offers.reduce<FlightOffer | null>(
+      (best, o) => (!best || o.price < best.price ? o : best),
+      null,
+    )
+    trackSearchSessionEvent(analyticsSearchId, 'partial_results_available', {
       offers_count: offers.length,
     }, {
+      status: 'searching',
       source: 'website-results-client',
       source_path: resultsSourcePath,
       is_test_search: isTestSearch || undefined,
+      search_duration_ms: durationMs,
+      results_count: offers.length,
+      cheapest_price: cheapestOffer?.price,
+      google_flights_price: cheapestOffer?.google_flights_price,
     })
-  }, [analyticsSearchId, isTestSearch, offers.length, resultsSourcePath, status])
+  }, [analyticsSearchId, isStreaming, isTestSearch, offers, resultsSourcePath, searchedAt])
+
+  useEffect(() => {
+    if (status !== 'completed' || trackedResultsViewRef.current) return
+    trackedResultsViewRef.current = true
+    const completedAt = new Date().toISOString()
+    const durationMs = searchedAt ? Date.now() - new Date(searchedAt).getTime() : undefined
+    const cheapestOffer = offers.reduce<FlightOffer | null>(
+      (best, o) => (!best || o.price < best.price ? o : best),
+      null,
+    )
+    const cheapestPrice = cheapestOffer?.price
+    const gfPrice = cheapestOffer?.google_flights_price
+    const savings =
+      cheapestPrice != null && gfPrice != null ? Math.max(0, gfPrice - cheapestPrice) : undefined
+    const value =
+      cheapestPrice != null && gfPrice != null ? Math.round((gfPrice - cheapestPrice) * 100) / 100 : undefined
+    trackSearchSessionEvent(analyticsSearchId, 'results_viewed', {
+      offers_count: offers.length,
+    }, {
+      status: 'completed',
+      source: 'website-results-client',
+      source_path: resultsSourcePath,
+      is_test_search: isTestSearch || undefined,
+      search_completed_at: completedAt,
+      search_duration_ms: durationMs,
+      search_duration_seconds: durationMs != null ? Math.round(durationMs / 1000) : undefined,
+      results_count: offers.length,
+      cheapest_price: cheapestPrice,
+      google_flights_price: gfPrice,
+      value,
+      savings_vs_google_flights: savings,
+    })
+  }, [analyticsSearchId, isTestSearch, offers.length, resultsSourcePath, searchedAt, status])
 
   useEffect(() => {
     if (status !== 'expired' || trackedExpiredRef.current) return
@@ -314,6 +360,11 @@ export default function SearchPageClient({
   useEffect(() => {
     const handlePageHide = () => {
       if (status === 'searching') {
+        const partialCheapest = offers.reduce<FlightOffer | null>(
+          (best, o) => (!best || o.price < best.price ? o : best),
+          null,
+        )
+        const durationMsSoFar = searchedAt ? Date.now() - new Date(searchedAt).getTime() : undefined
         trackSearchSessionEvent(analyticsSearchId, 'pagehide_searching', {
           progress_checked: progress?.checked ?? null,
           progress_total: progress?.total ?? null,
@@ -321,24 +372,41 @@ export default function SearchPageClient({
           source: 'website-results-client',
           source_path: resultsSourcePath,
           is_test_search: isTestSearch || undefined,
+          results_count: offers.length || undefined,
+          search_duration_ms: durationMsSoFar,
+          cheapest_price: partialCheapest?.price,
+          google_flights_price: partialCheapest?.google_flights_price,
         }, { beacon: true })
         return
       }
 
       if (status === 'completed') {
+        const cheapestOffer = offers.reduce<FlightOffer | null>(
+          (best, o) => (!best || o.price < best.price ? o : best),
+          null,
+        )
+        const cheapestPrice = cheapestOffer?.price
+        const gfPrice = cheapestOffer?.google_flights_price
+        const savings =
+          cheapestPrice != null && gfPrice != null ? Math.max(0, gfPrice - cheapestPrice) : undefined
         trackSearchSessionEvent(analyticsSearchId, 'pagehide_results', {
           offers_count: offers.length,
         }, {
+          status: 'completed',
           source: 'website-results-client',
           source_path: resultsSourcePath,
           is_test_search: isTestSearch || undefined,
+          results_count: offers.length,
+          cheapest_price: cheapestPrice,
+          google_flights_price: gfPrice,
+          savings_vs_google_flights: savings,
         }, { beacon: true })
       }
     }
 
     window.addEventListener('pagehide', handlePageHide)
     return () => window.removeEventListener('pagehide', handlePageHide)
-  }, [analyticsSearchId, isTestSearch, offers.length, progress?.checked, progress?.total, resultsSourcePath, status])
+  }, [analyticsSearchId, isTestSearch, offers.length, progress?.checked, progress?.total, resultsSourcePath, searchedAt, status])
 
   useEffect(() => {
     if (status !== 'completed') return

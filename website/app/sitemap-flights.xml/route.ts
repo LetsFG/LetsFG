@@ -17,12 +17,34 @@ import type { SitemapRoute } from '../../lib/pfp/seo/sitemap-generator.ts'
 export const dynamic = 'force-dynamic'
 export const revalidate = 3600 // 1 hour
 
+const API_BASE = (
+  process.env.LETSFG_ANALYTICS_API_URL ||
+  'https://letsfg-api-876385716101.us-central1.run.app'
+).replace(/\/$/, '')
+
 async function fetchRoutes(): Promise<SitemapRoute[]> {
-  // Stub — real implementation wired in Session 5/6.
-  // Will query: SELECT slug, page_status, staleness, session_count, snapshot_computed_at
-  //             FROM flight_routes
-  //             WHERE page_status IN ('published', 'noindex')
-  return []
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/flights/pfp/routes`, {
+      next: { revalidate: 3600 },
+    })
+    if (!res.ok) return []
+    const routes: Array<{
+      slug: string
+      page_status: string
+      staleness: string
+      session_count: number
+      snapshot_computed_at: string
+    }> = await res.json()
+    return routes.map((r) => ({
+      slug: r.slug,
+      page_status: r.page_status as SitemapRoute['page_status'],
+      staleness: r.staleness as SitemapRoute['staleness'],
+      session_count: r.session_count,
+      snapshot_computed_at: r.snapshot_computed_at,
+    }))
+  } catch {
+    return []
+  }
 }
 
 export async function GET(): Promise<NextResponse> {

@@ -331,6 +331,12 @@ function parsePositiveComparisonPrice(value: unknown): number | undefined {
   return typeof price === 'number' && price > 0 ? price : undefined
 }
 
+// Maps common currency symbols to ISO codes for embedded-price extraction.
+const _CURRENCY_SYMBOL_MAP: Record<string, string> = {
+  '€': 'EUR', '$': 'USD', '£': 'GBP', '¥': 'JPY', '₹': 'INR',
+  '₽': 'RUB', '₩': 'KRW', '₺': 'TRY', '฿': 'THB', 'zł': 'PLN',
+}
+
 function parseLegacyPriceAndCurrency(value: unknown): {
   price?: number
   currency?: string
@@ -344,6 +350,7 @@ function parseLegacyPriceAndCurrency(value: unknown): {
     return {}
   }
 
+  // "EUR 49" or "EUR 49.00"
   const leadingCurrencyMatch = normalized.match(/^([A-Z]{3})\s+(-?\d+(?:[.,]\d+)?)/i)
   if (leadingCurrencyMatch) {
     const [, currency, amount] = leadingCurrencyMatch
@@ -354,6 +361,7 @@ function parseLegacyPriceAndCurrency(value: unknown): {
     }
   }
 
+  // "49 EUR" (exact, trailing — must be end of string)
   const trailingCurrencyMatch = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s+([A-Z]{3})$/i)
   if (trailingCurrencyMatch) {
     const [, amount, currency] = trailingCurrencyMatch
@@ -361,6 +369,35 @@ function parseLegacyPriceAndCurrency(value: unknown): {
     return {
       price,
       currency: currency.toUpperCase(),
+    }
+  }
+
+  // Embedded pattern: "from ~49 €", "~52 €", "from EUR 15", "€49" etc.
+  // Used for Kiwi static fallback notes like "cabin bag add-on from ~49 € at Kiwi checkout"
+  const symbolStr = Object.keys(_CURRENCY_SYMBOL_MAP).join('|').replace(/[$]/g, '\\$')
+  const embeddedSymbolRe = new RegExp(
+    `(?:from\\s+)?~?(\\d+(?:[.,]\\d+)?)\\s*(${symbolStr})` +
+    `|(?:from\\s+)?~?([A-Z]{3})\\s+(\\d+(?:[.,]\\d+)?)` +
+    `|(?:from\\s+)?~?(\\d+(?:[.,]\\d+)?)\\s+([A-Z]{3})\\b`,
+    'i',
+  )
+  const embeddedMatch = normalized.match(embeddedSymbolRe)
+  if (embeddedMatch) {
+    // Group 1+2: "49 €" / "~49 €"
+    if (embeddedMatch[1] && embeddedMatch[2]) {
+      const price = parsePriceValue(embeddedMatch[1].replace(',', '.'))
+      const currency = _CURRENCY_SYMBOL_MAP[embeddedMatch[2]] ?? embeddedMatch[2].toUpperCase()
+      if (price != null) return { price, currency }
+    }
+    // Group 3+4: "EUR 49" embedded
+    if (embeddedMatch[3] && embeddedMatch[4]) {
+      const price = parsePriceValue(embeddedMatch[4].replace(',', '.'))
+      if (price != null) return { price, currency: embeddedMatch[3].toUpperCase() }
+    }
+    // Group 5+6: "49 EUR" embedded
+    if (embeddedMatch[5] && embeddedMatch[6]) {
+      const price = parsePriceValue(embeddedMatch[5].replace(',', '.'))
+      if (price != null) return { price, currency: embeddedMatch[6].toUpperCase() }
     }
   }
 
@@ -727,9 +764,11 @@ function getAncillaryTarget(key: string): keyof TrustedAncillaries | undefined {
     return 'seat_selection'
   }
 
+  // "carry_on", "carry-on", "carryon", etc. are always cabin/carry-on bag
+  const carryOnKey = /^carry[-_]?on/i.test(normalized)
   const cabinLike = normalized.includes('cabin') || normalized.includes('carry') || normalized.includes('hand') || normalized.includes('personal')
   const bagLike = normalized.includes('bag') || normalized.includes('baggage') || normalized.includes('luggage')
-  if (cabinLike && bagLike) {
+  if (carryOnKey || (cabinLike && bagLike)) {
     return 'cabin_bag'
   }
 
@@ -760,6 +799,8 @@ function buildAncillaries(raw: any): TrustedAncillaries | undefined {
   const bagsPrice = raw.bags_price ?? raw.bagsPrice
   if (isRecord(bagsPrice)) {
     for (const [key, value] of Object.entries(bagsPrice)) {
+      // Skip metadata keys like _currency — they're not prices
+      if (key.startsWith('_')) continue
       const target = getAncillaryTarget(key) || 'checked_bag'
       assign(target, value)
     }

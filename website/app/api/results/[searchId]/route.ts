@@ -6,6 +6,7 @@ import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../
 import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
+import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -279,7 +280,9 @@ export async function GET(
       rawOffers.map((offer: any, idx: number) => normalizeTrustedOffer(offer, idx)),
       data.google_flights_price,
     )
-    const normalized = trustedOffers.map((offer) => toPublicOffer(offer))
+    const normalized = trustedOffers
+      .map((offer) => toPublicOffer(offer))
+      .filter((offer) => (offer.duration_minutes ?? 0) > 0)
     const cheapestPrice = normalized.length > 0
       ? Math.min(...normalized.map((offer) => getOfferKnownTotalPrice(offer)))
       : undefined
@@ -333,6 +336,19 @@ export async function GET(
           },
         },
       })
+
+      // Fire-and-forget PFP ingest — non-blocking, never throws
+      if (!isProbeSearch && data.origin && data.destination) {
+        triggerPfpIngest({
+          searchId: analyticsSearchId,
+          origin: data.origin,
+          destination: data.destination,
+          originName: data.origin_name || data.origin,
+          destName: data.destination_name || data.destination,
+          currency: rawOffers[0]?.currency || 'EUR',
+          rawOffers,
+        }).catch(() => {})
+      }
     }
 
     const now = new Date()

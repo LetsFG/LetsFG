@@ -162,7 +162,11 @@ export default function MonitorModal({
         <ul className="mon-features" aria-label="What's included">
           <li className="mon-feature">
             <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
-            Daily price updates
+            Daily price alerts from Google Flights, Kayak, Kiwi, direct airlines, over 200 websites
+          </li>
+          <li className="mon-feature">
+            <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
+            Uncovers hidden fees — baggage pricing, seat selection & more
           </li>
           <li className="mon-feature">
             <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>

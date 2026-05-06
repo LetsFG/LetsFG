@@ -89,7 +89,6 @@
 |---|-----------|------|-------|--------|--------|
 | 26 | allegiant | G4 | [#38](https://github.com/LetsFG/LetsFG/issues/38) | `done` | **US IP required.** Headed Chrome + GraphQL interception. Set ALLEGIANT_PROXY if outside US. |
 | 27 | southwest | WN | [#26](https://github.com/LetsFG/LetsFG/issues/26) | `done` | **US IP required.** Headed Chrome + Playwright form fill + API interception. Set SOUTHWEST_PROXY if outside US. |
-| 28 | spirit | NK | [#28](https://github.com/LetsFG/LetsFG/issues/28) | `blocked` | PX Enterprise detects all automation (Playwright, patchright, stealth patches) even with US proxy. Token endpoint 403 → Angular app can't search. Tried: proxy+stealth, patchright Chromium, form fill+interception, direct API (Akamai WAF blocks). Code has proxy+patchright+stealth ready for when detection is bypassed (e.g. nodriver/residential proxy). — `copilot-eurowings-fix` |
 | 29 | smartwings | QS | [#23](https://github.com/LetsFG/LetsFG/issues/23) | `done` | Headed CDP Chrome + CF Turnstile bypass (launch with URL before CDP attaches) |
 | 30 | transavia | HV | [#25](https://github.com/LetsFG/LetsFG/issues/25) | `done` | Headed CDP Chrome to bypass Cloudflare WAF |
 | 31 | wizzair | W6 | [#27](https://github.com/LetsFG/LetsFG/issues/27) | `done` | Fixed: launch Chrome headed (Kasada detects --headless=new) — `copilot-eurowings-fix` |
