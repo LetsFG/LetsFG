@@ -228,6 +228,39 @@ function AirlineLogo({ code, name }: { code: string; name: string }) {
   )
 }
 
+const LCC_IATA = new Set([
+  'FR', 'U2', 'W6', 'DY', 'VY', 'HV', 'PC', 'G4', 'SY', 'F9', 'NK', 'B6', 'WN', 'WS',
+  'FZ', 'G9', 'XY', 'J9', 'HH', 'HG', '5O', 'M3', 'FB', 'V7', 'IG', 'Z4', 'VG', '7R',
+  '8H', 'W4', 'F3', 'SX', 'I2', 'BV', 'HO', 'OM', 'GX', 'CK', '7C', 'BX', 'LJ', 'TW',
+  'ZE', '5J', 'Z2', 'AK', 'FD', 'QZ', 'QG', 'XT', 'VZ', 'SL', 'KK', 'OD', 'ID', 'SJ',
+  '3K', 'TR', 'MM', 'GK', 'BC', 'SG', 'OG', 'G8', 'IX', 'S5', '6E', '2T', '5Z', 'FA',
+  'O2', 'ZL',
+])
+
+const FSC_IATA = new Set([
+  'BA', 'LH', 'AF', 'KL', 'EK', 'QR', 'EY', 'TK', 'SQ', 'CX', 'QF', 'UA', 'AA', 'DL',
+  'SK', 'AY', 'LX', 'OS', 'SN', 'IB', 'AZ', 'TP', 'LO', 'OK', 'A3', 'OA', 'RO', 'BT',
+  'OU', 'JP', 'JU', 'AC', 'AI', 'GF', 'MS', 'RJ', 'KU', 'OZ', 'KE', 'NH', 'JL', 'CI',
+  'BR', 'TG', 'MH', 'MI', 'GA', 'PR', 'MU', 'CA', 'FM', 'ZH', 'CZ', 'SC', 'D7', 'LA',
+  'CM', 'AM', 'UX', 'ME', 'LY', 'WY', 'AT', 'SA', 'ET', 'KQ', 'RB',
+])
+
+function getAirlineCategory(code: string): string {
+  if (LCC_IATA.has(code)) return 'Low-cost carrier'
+  if (FSC_IATA.has(code)) return 'Full-service carrier'
+  return 'Airline'
+}
+
+function HiddenAirlineLogo() {
+  return (
+    <div className="ck-airline-logo ck-airline-logo--hidden" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+      </svg>
+    </div>
+  )
+}
+
 export default function CheckoutPanel({
   offer,
   searchId,
@@ -371,8 +404,8 @@ export default function CheckoutPanel({
     leg === 'outbound' ? 'Flight there' : 'Flight back'
   ), [])
 
-  const getLegButtonLabel = useCallback((leg: 'outbound' | 'inbound', airline: string) => (
-    leg === 'outbound' ? `Book flight there on ${airline}` : `Book return flight on ${airline}`
+  const getLegButtonLabel = useCallback((leg: 'outbound' | 'inbound') => (
+    leg === 'outbound' ? 'Book outbound flight' : 'Book return flight'
   ), [])
 
   const getLegStops = useCallback((leg: TripBreakdownLeg | BookingOption) => (
@@ -858,10 +891,10 @@ export default function CheckoutPanel({
         {/* ── Flight summary card ─────────────────────────────────────────── */}
         <div className="ck-flight-card">
           <div className="ck-flight-header">
-            <AirlineLogo code={offer.airline_code} name={offer.airline} />
+            <HiddenAirlineLogo />
             <div className="ck-flight-airline">
-              <span className="ck-airline-name">{summaryAirline}</span>
-              {displayFlightNumber && <span className="ck-flight-num">{displayFlightNumber}</span>}
+              <span className="ck-airline-name">{getAirlineCategory(offer.airline_code)}</span>
+              <span className="ck-airline-cabin">Economy class</span>
             </div>
             <div className="ck-flight-price-badge">
               <span className="ck-flight-price">{offer.currency}{Math.round(withFee(offer.price, offer.currency))}</span>
@@ -985,8 +1018,22 @@ export default function CheckoutPanel({
                 {!isUnlocked && !isLoading && (
                   <div className="ck-fee-note">{t('oneTimeUnlocksAll')}</div>
                 )}
+                {/* Single unlock button — shown only when locked */}
+                {!isLoading && !isUnlocked && (
+                  <button
+                    className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
+                    onClick={handlePay}
+                    disabled={step.type === 'paying'}
+                  >
+                    {step.type === 'paying' ? (
+                      <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
+                    ) : (
+                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(fee, offer.currency)}</>
+                    )}
+                  </button>
+                )}
                 <div className="ck-book-actions">
-                  {splitBookingLegs.map((leg, legIdx) => {
+                  {splitBookingLegs.map((leg) => {
                     const legPrice = typeof leg.price === 'number' ? leg.price : null
                     const hasBookingUrl = typeof leg.booking_url === 'string' && leg.booking_url.length > 0
                     return (
@@ -994,7 +1041,6 @@ export default function CheckoutPanel({
                         <div className="ck-book-action-meta">
                           <div className="ck-book-action-copy">
                             <span className="ck-book-action-title">{getLegTitle(leg.leg)}</span>
-                            <span className="ck-leg-airline">{leg.airline}</span>
                             <span className="ck-book-action-subtitle">{getLegRouteLabel(leg)}</span>
                             {leg.booking_site && (
                               <span className="ck-book-action-site">Book via {leg.booking_site}</span>
@@ -1004,7 +1050,7 @@ export default function CheckoutPanel({
                             {legPrice !== null ? fmtMoney(legPrice, leg.currency || offer.currency) : 'Included in total'}
                           </span>
                         </div>
-                        {!isLoading && (isUnlocked ? (
+                        {!isLoading && isUnlocked && (
                           hasBookingUrl ? (
                             <a
                               href={leg.booking_url}
@@ -1022,27 +1068,15 @@ export default function CheckoutPanel({
                                 decision: 'booking_link_opened',
                               }, { keepalive: true })}
                             >
-                              {getLegButtonLabel(leg.leg, leg.airline)}
+                              {getLegButtonLabel(leg.leg)}
                               <ArrowIcon />
                             </a>
                           ) : (
                             <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
-                              {bookingLinkStatus === 'loading' ? t('processing') : getLegButtonLabel(leg.leg, leg.airline)}
+                              {bookingLinkStatus === 'loading' ? t('processing') : getLegButtonLabel(leg.leg)}
                             </button>
                           )
-                        ) : (
-                          <button
-                            className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
-                            onClick={handlePay}
-                            disabled={step.type === 'paying'}
-                          >
-                            {step.type === 'paying' ? (
-                              <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
-                            ) : (
-                              <><LockIcon />{getLockedLegButtonLabel(leg.leg)}{legIdx === 0 ? ` · ${fmtFee(fee, offer.currency)}` : ''}</>
-                            )}
-                          </button>
-                        ))}
+                        )}
                       </div>
                     )
                   })}
@@ -1057,7 +1091,6 @@ export default function CheckoutPanel({
                       <div className="ck-leg-row" key={`${leg.leg}-${leg.airline}-${leg.departure_time}`}>
                         <div className="ck-leg-copy">
                           <span className="ck-leg-label">{getLegTitle(leg.leg)}</span>
-                          <span className="ck-leg-airline">{leg.airline}</span>
                           <span className="ck-leg-route">{getLegRouteLabel(leg)}</span>
                         </div>
                         <div className="ck-leg-price-wrap">
@@ -1112,7 +1145,7 @@ export default function CheckoutPanel({
                               decision: 'booking_link_opened',
                             }, { keepalive: true })}
                           >
-                            {getLegButtonLabel(option.leg, option.airline)}
+                            {getLegButtonLabel(option.leg)}
                             <ArrowIcon />
                           </a>
                         </div>
@@ -1134,7 +1167,7 @@ export default function CheckoutPanel({
                         decision: 'booking_link_opened',
                       }, { keepalive: true })}
                     >
-                      {t('bookOn', { airline: offer.airline })}
+                      Book flight
                       <ArrowIcon />
                     </a>
                   ) : (
@@ -1143,56 +1176,29 @@ export default function CheckoutPanel({
                       <div className="ck-book-actions">
                         {tripBreakdown.map((leg) => (
                           <button key={`${leg.leg}-${leg.airline}`} className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
-                            {bookingLinkStatus === 'loading' ? t('processing') : getLegButtonLabel(leg.leg, leg.airline)}
+                            {bookingLinkStatus === 'loading' ? t('processing') : getLegButtonLabel(leg.leg)}
                           </button>
                         ))}
                       </div>
                     ) : (
                       <button className="ck-book-btn ck-book-btn--locked" disabled aria-disabled="true">
-                        {bookingLinkStatus === 'loading' ? t('processing') : t('bookOn', { airline: summaryAirline })}
+                        {bookingLinkStatus === 'loading' ? t('processing') : 'Book flight'}
                       </button>
                     )
                   )
                 ) : (
-                  /* Locked: green Stripe checkout buttons */
-                  offer.inbound ? (
-                    <div className="ck-book-actions">
-                      <button
-                        className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
-                        onClick={handlePay}
-                        disabled={step.type === 'paying'}
-                      >
-                        {step.type === 'paying' ? (
-                          <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
-                        ) : (
-                          <><LockIcon />{t('unlockOutboundBookingLink')} · {fmtFee(fee, offer.currency)}</>
-                        )}
-                      </button>
-                      <button
-                        className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
-                        onClick={handlePay}
-                        disabled={step.type === 'paying'}
-                      >
-                        {step.type === 'paying' ? (
-                          <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
-                        ) : (
-                          <><LockIcon />{t('unlockReturnBookingLink')}</>
-                        )}
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
-                      onClick={handlePay}
-                      disabled={step.type === 'paying'}
-                    >
-                      {step.type === 'paying' ? (
-                        <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
-                      ) : (
-                        <><LockIcon />{t('unlockBookingLink')} · {fmtFee(fee, offer.currency)}</>
-                      )}
-                    </button>
-                  )
+                  /* Locked: single Stripe checkout button */
+                  <button
+                    className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
+                    onClick={handlePay}
+                    disabled={step.type === 'paying'}
+                  >
+                    {step.type === 'paying' ? (
+                      <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
+                    ) : (
+                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(fee, offer.currency)}</>
+                    )}
+                  </button>
                 ))}
 
               </>
