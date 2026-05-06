@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 import { createElement } from 'react'
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 const __dir = dirname(fileURLToPath(import.meta.url))
