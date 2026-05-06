@@ -18,6 +18,7 @@
  * 10. SNAPSHOT HISTORY — collapsible <details>
  */
 
+import React from 'react'
 import type { ReactNode } from 'react'
 import type { RouteDistributionData, HistogramBucket } from '../types/route-distribution.types.ts'
 

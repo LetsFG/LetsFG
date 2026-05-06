@@ -19,6 +19,7 @@
 
 import type { RouteDistributionData } from '../types/route-distribution.types.ts'
 import { buildFlightPageJsonLd } from './json-ld-generator.ts'
+import React from 'react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
