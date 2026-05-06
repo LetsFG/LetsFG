@@ -1,6 +1,78 @@
-# CLAUDE.md — LetsFG Codebase Context
+# LetsFG — CLAUDE.md
 
 > Instructions for Claude and other AI coding agents working on this repository.
+
+---
+
+## Programmatic Flight Pages — Feature Context
+
+### Project Overview
+LetsFG is a travel SaaS where AI agents act ON BEHALF of users to search all
+available flight offers across every connector available in this repository.
+Agents use open-source connectors (located in `/connectors/`) to query all
+providers that sell flight tickets. The agent collects all offers, ranks them,
+and returns results to the user.
+
+### Critical Architecture Context
+- Search results come from OUR AGENTS, not from direct GDS/API calls by the app
+- Each agent search session may query dozens of connectors in parallel
+- A single user session can yield 15–400+ deduplicated offers across all providers
+- Connector output schemas are defined in `/connectors/` — always read the
+  relevant connector source before writing any ingest or transformation code
+- Users are NOT directly identified on public pages — agent sessions are
+  anonymized before page data is written
+
+### Tech Stack
+- **Frontend:** Next.js 16 (App Router, standalone output), React 18, TypeScript strict
+- **i18n:** next-intl 4.x (locale-based URL routing via `/website/app/[locale]/`)
+- **Payments:** Stripe 22.x
+- **Hosting:** Firebase (Firebase Hosting + Cloud Run via Docker)
+- **Connectors:** Python 3 + Playwright + httpx + curl_cffi (180+ airline scrapers)
+- **Testing:** Node.js native test runner (`tsx --test`) for unit/integration; Playwright for E2E
+- **Icons:** FontAwesome 7, Lucide React
+
+### Testing
+- Node.js native test runner (`tsx --test`) for unit and integration tests
+- Playwright for E2E
+- Always write failing tests BEFORE implementation (TDD Red-Green-Refactor)
+- Run `cd website && npm test` to verify before marking any task done
+- Test files live in `/website/tests/`
+
+### Code Style
+- TypeScript strict mode; no `any` without justification
+- `fetch` (native) for HTTP in website code — no axios
+- Python connectors: `httpx` for async HTTP, `playwright` for browser automation
+- File names: `kebab-case.ts` for lib utilities, `PascalCase.tsx` for React components
+- Exports: named exports preferred over default exports in lib files
+
+### Key Directories
+```
+/connectors/              ← open-source provider connectors (read source here first)
+/website/app/[locale]/   ← Next.js App Router pages (locale-prefixed routes)
+/website/lib/            ← shared utilities (analytics, cache, pricing, session)
+/website/tests/          ← test files (tsx --test)
+/website/app/api/        ← Next.js API routes
+/growth-ops/             ← growth operations scripts and tooling
+```
+
+New Programmatic Flight Pages feature code goes in:
+```
+/website/app/[locale]/flights/   ← page templates (to be created in Session 4)
+/website/lib/pfp/                ← PFP-specific lib (ingest, distribution, quality)
+/website/tests/pfp/              ← PFP test files
+```
+
+### Non-negotiables
+- All new features behind feature flags (see `/website/lib/flags.ts` — to be created in Session 6)
+- All analytics via typed `trackEvent()` in `/website/lib/tracker.ts` — to be created in Session 6
+- No direct `gtag()` or `analytics.track()` calls in feature code
+- Every DB mutation creates an audit log entry
+
+---
+
+# LetsFG Codebase Context
+
+> General platform context for AI agents working on this repository.
 
 ## Project Overview
 
