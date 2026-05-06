@@ -90,7 +90,7 @@ export function hashToBucket(sessionId: string, experimentKey: string): number {
  */
 export function selectVariant<T>(
   sessionId: string,
-  experiment: ExperimentDefinition<never>,
+  experiment: ExperimentDefinition<T>,
 ): VariantDefinition<T> {
   const bucket = hashToBucket(sessionId, experiment.key)
   let cumulative = 0
