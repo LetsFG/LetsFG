@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import Image from 'next/image'
 import { getAirlineCodeFromName, getAirlineLogoUrl } from '../../../airlineLogos'
+import { formatFlightTime } from '../../../../lib/flight-datetime'
 
 const SearchingTasks = dynamic(() => import('../../[searchId]/SearchingTasks'), { ssr: false })
 
@@ -44,8 +45,7 @@ function fmtDuration(secs: number) {
 
 function fmtTime(iso: string | null) {
   if (!iso) return ''
-  const d = new Date(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return formatFlightTime(iso)
 }
 
 function fmtDate(iso: string | null) {
