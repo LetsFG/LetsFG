@@ -88,10 +88,10 @@ export function hashToBucket(sessionId: string, experimentKey: string): number {
  * Select the variant for a session based on its bucket assignment.
  * Variants must have traffic_pct values that sum to 100.
  */
-export function selectVariant<T>(
+export function selectVariant<T extends keyof FlightPageFlags>(
   sessionId: string,
   experiment: ExperimentDefinition<T>,
-): VariantDefinition<T> {
+): VariantDefinition<FlightPageFlags[T]> {
   const bucket = hashToBucket(sessionId, experiment.key)
   let cumulative = 0
   for (const variant of experiment.variants) {
