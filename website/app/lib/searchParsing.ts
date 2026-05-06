@@ -182,6 +182,12 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'kiev': { code: 'KBP', name: 'Kyiv' },
   'lviv': { code: 'LWO', name: 'Lviv' },
   'minsk': { code: 'MSQ', name: 'Minsk' },
+  'valletta': { code: 'MLA', name: 'Malta' },
+  'malta': { code: 'MLA', name: 'Malta' },
+  'reykjavik': { code: 'KEF', name: 'Reykjavik' },
+  'reykjavík': { code: 'KEF', name: 'Reykjavik' },
+  'larnaca': { code: 'LCA', name: 'Larnaca (Cyprus)' },
+  'nicosia': { code: 'LCA', name: 'Larnaca (Cyprus)' },
   // ── Middle East ──────────────────────────────────────────────────────────────
   'dubai': { code: 'DXB', name: 'Dubai' },
   'abu dhabi': { code: 'AUH', name: 'Abu Dhabi' },
@@ -942,7 +948,10 @@ function findTwoCitiesInText(
   const t = stripAccents(text.toLowerCase())
   const ranges: Array<{ start: number; end: number; code: string; name: string }> = []
   // Longest key first so "new york" is matched before "york"
-  const entries = Object.entries(CITY_TO_IATA)
+  // Also include COUNTRY_TO_IATA so "malta", "iceland", "cyprus" etc. resolve correctly.
+  // CITY_TO_IATA entries win on key conflicts (spread last).
+  const combined = { ...COUNTRY_TO_IATA, ...CITY_TO_IATA }
+  const entries = Object.entries(combined)
     .filter(([k]) => k.length >= 3)
     .sort((a, b) => b[0].length - a[0].length)
 
@@ -1287,16 +1296,20 @@ export function parseNLQuery(query: string): ParsedQuery {
       if (mIdx !== null) addHit(m.index, mIdx, parseInt(m[1]))
     }
 
-    // Sort by position, deduplicate (merge hits within 8 chars)
-    hits.sort((a, b) => a.pos - b.pos)
+    // Deduplicate by DATE VALUE, then sort chronologically.
+    // Different regex patterns (mdRe, dmRe, smRange*) can match the same calendar date
+    // at nearby positions — deduplicate by value to avoid counting "June 1st" twice.
+    // Sorting ensures outbound < return regardless of query word order.
+    const seen = new Set<string>()
     const deduped: string[] = []
-    let lastPos = -20
+    hits.sort((a, b) => a.pos - b.pos)
     for (const h of hits) {
-      if (h.pos >= lastPos + 8) {
+      if (!seen.has(h.date)) {
+        seen.add(h.date)
         deduped.push(h.date)
-        lastPos = h.pos
       }
     }
+    deduped.sort()
 
     if (deduped.length >= 2 && deduped[0] !== deduped[1] && deduped[1] >= deduped[0]) {
       return [deduped[0], deduped[1]]
