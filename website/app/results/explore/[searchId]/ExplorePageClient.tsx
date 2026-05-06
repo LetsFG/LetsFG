@@ -46,7 +46,7 @@ function DestCard({ dest, currency, query }: { dest: ExploreDest; currency: stri
   const depTime = dest.outbound_time
     ? formatFlightTime(dest.outbound_time)
     : ''
-  const logoUrl = getAirlineLogoUrl(dest.airline, '')
+  const logoUrl = getAirlineLogoUrl(dest.airline)
   const nextQuery = `${query.replace(/\s+anywhere.*$/i, '').replace(/\s+to$/i, '').trim()} to ${dest.destination_name}`
 
   return (
