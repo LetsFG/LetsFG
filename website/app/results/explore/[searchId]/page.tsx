@@ -21,7 +21,7 @@ export default async function ExploreSearchPage({ params, searchParams }: Props)
 
   const cookieStore = await cookies()
   const cookieCurrency = cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value
-  const currency = resolveSearchCurrency(sp.currency || cookieCurrency || 'EUR') as CurrencyCode
+  const currency = resolveSearchCurrency({ queryParam: sp.currency, cookieValue: cookieCurrency, fallback: 'EUR' }) as CurrencyCode
 
   const query = sp.q || ''
 
