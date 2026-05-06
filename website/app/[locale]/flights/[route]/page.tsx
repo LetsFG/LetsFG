@@ -15,8 +15,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
-import { FlightPage } from '../../../../lib/pfp/page/FlightPage.tsx'
-import { SUPPORTED_LOCALES } from '../../../../lib/pfp/seo/FlightPageSEOHead.tsx'
+import { FlightPage } from '../../../../lib/pfp/page/FlightPage'
+import { SUPPORTED_LOCALES } from '../../../../lib/pfp/seo/FlightPageSEOHead'
 import type { RouteDistributionData } from '../../../../lib/pfp/types/route-distribution.types.ts'
 
 // ─── ISR ──────────────────────────────────────────────────────────────────────
