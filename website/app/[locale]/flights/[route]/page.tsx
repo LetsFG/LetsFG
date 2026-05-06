@@ -1,0 +1,145 @@
+/**
+ * /[locale]/flights/[route]/page.tsx — App Router page for a single flight route.
+ *
+ * Route slug format: "{origin_iata}-{dest_iata}" (lowercase), e.g. "gdn-bcn"
+ *
+ * ISR: revalidate every 24 hours (86 400 s). The ingest pipeline also triggers
+ * programmatic revalidation via revalidatePath('/[locale]/flights/[route]')
+ * whenever a new agent session is indexed for the route.
+ *
+ * Data: served from route_distribution_snapshots (written by DistributionService).
+ * When no snapshot exists yet, the page returns 404 — it will be published once
+ * the ContentQualityGate PASS threshold is met (Session 5/6).
+ */
+
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+
+import { FlightPage } from '../../../../lib/pfp/page/FlightPage.tsx'
+import { SUPPORTED_LOCALES } from '../../../../lib/pfp/seo/FlightPageSEOHead.tsx'
+import type { RouteDistributionData } from '../../../../lib/pfp/types/route-distribution.types.ts'
+
+// ─── ISR ──────────────────────────────────────────────────────────────────────
+
+export const revalidate = 86400
+
+// ─── Static params (populated from DB in Session 5/6) ────────────────────────
+
+export async function generateStaticParams(): Promise<{ route: string }[]> {
+  // Returns [] until the DB layer is wired up (Session 5/6).
+  // When connected, will read all routes with page_status IN ('published', 'noindex')
+  // from flight_routes and return their slugs.
+  return []
+}
+
+// ─── Data fetching (stub — real implementation in Session 5/6) ───────────────
+
+async function fetchRouteSnapshot(
+  routeSlug: string,
+): Promise<RouteDistributionData | null> {
+  // Placeholder. Will be replaced with:
+  //   const db = getDb()
+  //   return db.getRouteDistributionSnapshot(routeSlug)
+  // where routeSlug is e.g. 'gdn-bcn'
+  void routeSlug
+  return null
+}
+
+// ─── Metadata ─────────────────────────────────────────────────────────────────
+
+const DOMAIN = 'https://letsfg.co'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; route: string }>
+}): Promise<Metadata> {
+  const { locale, route } = await params
+
+  // Parse "gdn-bcn" → ["GDN", "BCN"]
+  const parts = route.toUpperCase().split('-')
+  const origin = parts[0] ?? 'XX'
+  const dest = parts[parts.length - 1] ?? 'XX'
+
+  const data = await fetchRouteSnapshot(route)
+  const noindex =
+    data?.page_status === 'noindex' || data?.page_status === 'archived'
+
+  const originCity = data?.origin_city ?? origin
+  const destCity = data?.dest_city ?? dest
+  const minPrice = data ? Math.round(data.price_distribution.min) : null
+  const currency = data?.price_distribution.currency ?? 'EUR'
+  const offerCount = data?.total_offers_analyzed ?? null
+
+  const title = `Flights ${origin} → ${dest} — Price Distribution & Hidden Fees | LetsFG`
+  const description = minPrice != null && offerCount != null
+    ? `Cheapest ${originCity} → ${destCity} flight: from ${currency} ${minPrice}. ` +
+      `Full price distribution across ${offerCount} offers — carrier comparison, ` +
+      `hidden fees, and connector analysis from 180+ airline connectors.`
+    : `See the full price distribution for ${origin} → ${dest} flights — ` +
+      `percentiles, carrier comparison, hidden fees, and connector analysis ` +
+      `from 180+ airline connectors.`
+
+  const canonicalUrl = `${DOMAIN}/${locale}/flights/${route}/`
+  const ogTitle = `${origin} → ${dest} Flights — Full Price Distribution | LetsFG`
+
+  // Build hreflang alternates for all supported locales
+  const languages: Record<string, string> = {}
+  for (const loc of SUPPORTED_LOCALES) {
+    languages[loc] = `${DOMAIN}/${loc}/flights/${route}/`
+  }
+  languages['x-default'] = `${DOMAIN}/en/flights/${route}/`
+
+  return {
+    title,
+    description,
+    authors: [{ name: 'LetsFG', url: DOMAIN }],
+    robots: {
+      index: !noindex,
+      follow: !noindex,
+    },
+    alternates: {
+      canonical: canonicalUrl,
+      languages,
+    },
+    openGraph: {
+      title: ogTitle,
+      description,
+      url: canonicalUrl,
+      siteName: 'LetsFG',
+      type: 'article',
+      images: [
+        {
+          url: `${DOMAIN}/og/flights.png`,
+          width: 1200,
+          height: 630,
+          alt: `${originCity} to ${destCity} flight prices`,
+        },
+      ],
+      locale: locale.replace('-', '_'),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      site: '@LetsFG',
+      title: ogTitle,
+      description,
+      images: [`${DOMAIN}/og/flights.png`],
+    },
+  }
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default async function FlightRoutePage({
+  params,
+}: {
+  params: Promise<{ locale: string; route: string }>
+}) {
+  const { route } = await params
+  const data = await fetchRouteSnapshot(route)
+
+  // No snapshot yet → 404. Will return real data once DB is wired (Session 5/6).
+  if (data === null) notFound()
+
+  return <FlightPage data={data} />
+}
