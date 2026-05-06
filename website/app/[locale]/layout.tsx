@@ -25,7 +25,7 @@ export async function generateMetadata({
       siteName: 'LetsFG',
       images: [
         {
-          url: '/og-screenshot.png',
+          url: '/og-v2.png',
           width: 1400,
           height: 760,
           alt: 'LetsFG — Find cheap flights across 180+ airlines',
@@ -38,7 +38,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: 'LetsFG — Find cheap flights',
       description: t('description'),
-      images: ['/og-screenshot.png'],
+      images: ['/og-v2.png'],
     },
     icons: {
       icon: '/logo.png',
