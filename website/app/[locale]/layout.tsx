@@ -25,10 +25,10 @@ export async function generateMetadata({
       siteName: 'LetsFG',
       images: [
         {
-          url: '/banner.png',
-          width: 1200,
-          height: 400,
-          alt: 'LetsFG',
+          url: '/og-screenshot.png',
+          width: 1400,
+          height: 760,
+          alt: 'LetsFG — Find cheap flights across 180+ airlines',
         },
       ],
       locale: locale.replace('-', '_'),
@@ -38,7 +38,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: 'LetsFG — Find cheap flights',
       description: t('description'),
-      images: ['/banner.png'],
+      images: ['/og-screenshot.png'],
     },
     icons: {
       icon: '/logo.png',
