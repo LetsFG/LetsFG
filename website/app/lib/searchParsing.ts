@@ -385,6 +385,247 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'noumea': { code: 'NOU', name: 'Nouméa' },
 }
 
+// ── Country name → primary hub airport ───────────────────────────────────────
+// Keys are lowercase, accent-free. Used as last-resort fallback in resolveCity.
+const COUNTRY_TO_IATA: Record<string, { code: string; name: string }> = {
+  // Europe
+  'switzerland': { code: 'ZRH', name: 'Switzerland' },
+  'schweiz': { code: 'ZRH', name: 'Switzerland' },
+  'suisse': { code: 'ZRH', name: 'Switzerland' },
+  'svizzera': { code: 'ZRH', name: 'Switzerland' },
+  'germany': { code: 'FRA', name: 'Germany' },
+  'deutschland': { code: 'FRA', name: 'Germany' },
+  'allemagne': { code: 'FRA', name: 'Germany' },
+  'france': { code: 'CDG', name: 'France' },
+  'frankreich': { code: 'CDG', name: 'France' },
+  'italia': { code: 'FCO', name: 'Italy' },
+  'italy': { code: 'FCO', name: 'Italy' },
+  'italie': { code: 'FCO', name: 'Italy' },
+  'italien': { code: 'FCO', name: 'Italy' },
+  'spain': { code: 'MAD', name: 'Spain' },
+  'espana': { code: 'MAD', name: 'Spain' },
+  'españa': { code: 'MAD', name: 'Spain' },
+  'spanien': { code: 'MAD', name: 'Spain' },
+  'portugal': { code: 'LIS', name: 'Portugal' },
+  'netherlands': { code: 'AMS', name: 'Netherlands' },
+  'holland': { code: 'AMS', name: 'Netherlands' },
+  'nederland': { code: 'AMS', name: 'Netherlands' },
+  'belgium': { code: 'BRU', name: 'Belgium' },
+  'belgie': { code: 'BRU', name: 'Belgium' },
+  'belgique': { code: 'BRU', name: 'Belgium' },
+  'belgien': { code: 'BRU', name: 'Belgium' },
+  'austria': { code: 'VIE', name: 'Austria' },
+  'osterreich': { code: 'VIE', name: 'Austria' },
+  'österreich': { code: 'VIE', name: 'Austria' },
+  'autriche': { code: 'VIE', name: 'Austria' },
+  'sweden': { code: 'ARN', name: 'Sweden' },
+  'sverige': { code: 'ARN', name: 'Sweden' },
+  'schweden': { code: 'ARN', name: 'Sweden' },
+  'norway': { code: 'OSL', name: 'Norway' },
+  'norge': { code: 'OSL', name: 'Norway' },
+  'norwegen': { code: 'OSL', name: 'Norway' },
+  'denmark': { code: 'CPH', name: 'Denmark' },
+  'danemark': { code: 'CPH', name: 'Denmark' },
+  'dänemark': { code: 'CPH', name: 'Denmark' },
+  'finland': { code: 'HEL', name: 'Finland' },
+  'finlande': { code: 'HEL', name: 'Finland' },
+  'finnland': { code: 'HEL', name: 'Finland' },
+  'poland': { code: 'WAW', name: 'Poland' },
+  'polska': { code: 'WAW', name: 'Poland' },
+  'pologne': { code: 'WAW', name: 'Poland' },
+  'czech republic': { code: 'PRG', name: 'Czech Republic' },
+  'czechia': { code: 'PRG', name: 'Czech Republic' },
+  'czech': { code: 'PRG', name: 'Czech Republic' },
+  'tschechien': { code: 'PRG', name: 'Czech Republic' },
+  'hungary': { code: 'BUD', name: 'Hungary' },
+  'ungarn': { code: 'BUD', name: 'Hungary' },
+  'hongrie': { code: 'BUD', name: 'Hungary' },
+  'romania': { code: 'OTP', name: 'Romania' },
+  'rumanien': { code: 'OTP', name: 'Romania' },
+  'roumanie': { code: 'OTP', name: 'Romania' },
+  'bulgaria': { code: 'SOF', name: 'Bulgaria' },
+  'bulgarien': { code: 'SOF', name: 'Bulgaria' },
+  'bulgarie': { code: 'SOF', name: 'Bulgaria' },
+  'greece': { code: 'ATH', name: 'Greece' },
+  'griechenland': { code: 'ATH', name: 'Greece' },
+  'grece': { code: 'ATH', name: 'Greece' },
+  'grèce': { code: 'ATH', name: 'Greece' },
+  'turkey': { code: 'IST', name: 'Turkey' },
+  'turkei': { code: 'IST', name: 'Turkey' },
+  'türkei': { code: 'IST', name: 'Turkey' },
+  'turquie': { code: 'IST', name: 'Turkey' },
+  'russia': { code: 'SVO', name: 'Russia' },
+  'russland': { code: 'SVO', name: 'Russia' },
+  'ukraine': { code: 'KBP', name: 'Ukraine' },
+  'croatia': { code: 'ZAG', name: 'Croatia' },
+  'kroatien': { code: 'ZAG', name: 'Croatia' },
+  'croatie': { code: 'ZAG', name: 'Croatia' },
+  'hrvatska': { code: 'ZAG', name: 'Croatia' },
+  'serbia': { code: 'BEG', name: 'Serbia' },
+  'serbien': { code: 'BEG', name: 'Serbia' },
+  'slovakei': { code: 'BTS', name: 'Slovakia' },
+  'slovakia': { code: 'BTS', name: 'Slovakia' },
+  'slowakei': { code: 'BTS', name: 'Slovakia' },
+  'slovensko': { code: 'BTS', name: 'Slovakia' },
+  'slovenia': { code: 'LJU', name: 'Slovenia' },
+  'slowenien': { code: 'LJU', name: 'Slovenia' },
+  'albanien': { code: 'TIA', name: 'Albania' },
+  'albania': { code: 'TIA', name: 'Albania' },
+  'ireland': { code: 'DUB', name: 'Ireland' },
+  'irland': { code: 'DUB', name: 'Ireland' },
+  'irlande': { code: 'DUB', name: 'Ireland' },
+  'united kingdom': { code: 'LON', name: 'United Kingdom' },
+  'uk': { code: 'LON', name: 'United Kingdom' },
+  'england': { code: 'LON', name: 'England' },
+  'scotland': { code: 'EDI', name: 'Scotland' },
+  'wales': { code: 'CWL', name: 'Wales' },
+  'luxembourg': { code: 'LUX', name: 'Luxembourg' },
+  'luxemburg': { code: 'LUX', name: 'Luxembourg' },
+  'iceland': { code: 'KEF', name: 'Iceland' },
+  'island': { code: 'KEF', name: 'Iceland' },
+  'islande': { code: 'KEF', name: 'Iceland' },
+  'malta': { code: 'MLA', name: 'Malta' },
+  'cyprus': { code: 'LCA', name: 'Cyprus' },
+  'zypern': { code: 'LCA', name: 'Cyprus' },
+  'chypre': { code: 'LCA', name: 'Cyprus' },
+  'estonia': { code: 'TLL', name: 'Estonia' },
+  'estland': { code: 'TLL', name: 'Estonia' },
+  'latvia': { code: 'RIX', name: 'Latvia' },
+  'lettland': { code: 'RIX', name: 'Latvia' },
+  'lithuania': { code: 'VNO', name: 'Lithuania' },
+  'litauen': { code: 'VNO', name: 'Lithuania' },
+  'belarus': { code: 'MSQ', name: 'Belarus' },
+  'moldova': { code: 'KIV', name: 'Moldova' },
+  'north macedonia': { code: 'SKP', name: 'North Macedonia' },
+  'mazedonien': { code: 'SKP', name: 'North Macedonia' },
+  'kosovo': { code: 'PRN', name: 'Kosovo' },
+  'bosnia': { code: 'SJJ', name: 'Bosnia & Herzegovina' },
+  'bosnien': { code: 'SJJ', name: 'Bosnia & Herzegovina' },
+  'montenegro': { code: 'TGD', name: 'Montenegro' },
+  // Americas
+  'usa': { code: 'NYC', name: 'United States' },
+  'united states': { code: 'NYC', name: 'United States' },
+  'america': { code: 'NYC', name: 'United States' },
+  'us': { code: 'NYC', name: 'United States' },
+  'canada': { code: 'YYZ', name: 'Canada' },
+  'kanada': { code: 'YYZ', name: 'Canada' },
+  'mexico': { code: 'MEX', name: 'Mexico' },
+  'mexiko': { code: 'MEX', name: 'Mexico' },
+  'mexique': { code: 'MEX', name: 'Mexico' },
+  'brazil': { code: 'GRU', name: 'Brazil' },
+  'brasil': { code: 'GRU', name: 'Brazil' },
+  'bresil': { code: 'GRU', name: 'Brazil' },
+  'brésil': { code: 'GRU', name: 'Brazil' },
+  'argentina': { code: 'EZE', name: 'Argentina' },
+  'argentinien': { code: 'EZE', name: 'Argentina' },
+  'colombia': { code: 'BOG', name: 'Colombia' },
+  'kolumbien': { code: 'BOG', name: 'Colombia' },
+  'peru': { code: 'LIM', name: 'Peru' },
+  'chile': { code: 'SCL', name: 'Chile' },
+  'ecuador': { code: 'UIO', name: 'Ecuador' },
+  'bolivia': { code: 'LPB', name: 'Bolivia' },
+  'venezuela': { code: 'CCS', name: 'Venezuela' },
+  'cuba': { code: 'HAV', name: 'Cuba' },
+  'costa rica': { code: 'SJO', name: 'Costa Rica' },
+  'panama': { code: 'PTY', name: 'Panama' },
+  'dominican republic': { code: 'SDQ', name: 'Dominican Republic' },
+  'dom rep': { code: 'SDQ', name: 'Dominican Republic' },
+  // Asia
+  'china': { code: 'PEK', name: 'China' },
+  'chine': { code: 'PEK', name: 'China' },
+  'japan': { code: 'TYO', name: 'Japan' },
+  'japon': { code: 'TYO', name: 'Japan' },
+  'japan': { code: 'TYO', name: 'Japan' },
+  'south korea': { code: 'ICN', name: 'South Korea' },
+  'korea': { code: 'ICN', name: 'South Korea' },
+  'sudkorea': { code: 'ICN', name: 'South Korea' },
+  'südkorea': { code: 'ICN', name: 'South Korea' },
+  'india': { code: 'DEL', name: 'India' },
+  'indien': { code: 'DEL', name: 'India' },
+  'inde': { code: 'DEL', name: 'India' },
+  'thailand': { code: 'BKK', name: 'Thailand' },
+  'indonesien': { code: 'CGK', name: 'Indonesia' },
+  'indonesia': { code: 'CGK', name: 'Indonesia' },
+  'malaysia': { code: 'KUL', name: 'Malaysia' },
+  'vietnam': { code: 'SGN', name: 'Vietnam' },
+  'philippines': { code: 'MNL', name: 'Philippines' },
+  'philippinen': { code: 'MNL', name: 'Philippines' },
+  'myanmar': { code: 'RGN', name: 'Myanmar' },
+  'cambodia': { code: 'PNH', name: 'Cambodia' },
+  'kambodscha': { code: 'PNH', name: 'Cambodia' },
+  'laos': { code: 'VTE', name: 'Laos' },
+  'sri lanka': { code: 'CMB', name: 'Sri Lanka' },
+  'nepal': { code: 'KTM', name: 'Nepal' },
+  'bangladesh': { code: 'DAC', name: 'Bangladesh' },
+  'pakistan': { code: 'KHI', name: 'Pakistan' },
+  'afghanistan': { code: 'KBL', name: 'Afghanistan' },
+  'kazakhstan': { code: 'ALA', name: 'Kazakhstan' },
+  'uzbekistan': { code: 'TAS', name: 'Uzbekistan' },
+  'georgia': { code: 'TBS', name: 'Georgia' },
+  'georgien': { code: 'TBS', name: 'Georgia' },
+  'armenia': { code: 'EVN', name: 'Armenia' },
+  'armenien': { code: 'EVN', name: 'Armenia' },
+  'azerbaijan': { code: 'GYD', name: 'Azerbaijan' },
+  'aserbaidschan': { code: 'GYD', name: 'Azerbaijan' },
+  'iran': { code: 'IKA', name: 'Iran' },
+  'iraq': { code: 'BGW', name: 'Iraq' },
+  'irak': { code: 'BGW', name: 'Iraq' },
+  'saudi arabia': { code: 'RUH', name: 'Saudi Arabia' },
+  'saudi-arabien': { code: 'RUH', name: 'Saudi Arabia' },
+  'uae': { code: 'DXB', name: 'UAE' },
+  'united arab emirates': { code: 'DXB', name: 'UAE' },
+  'vae': { code: 'DXB', name: 'UAE' },
+  'vereinigte arabische emirate': { code: 'DXB', name: 'UAE' },
+  'israel': { code: 'TLV', name: 'Israel' },
+  'jordan': { code: 'AMM', name: 'Jordan' },
+  'jordanien': { code: 'AMM', name: 'Jordan' },
+  'oman': { code: 'MCT', name: 'Oman' },
+  'qatar': { code: 'DOH', name: 'Qatar' },
+  'katar': { code: 'DOH', name: 'Qatar' },
+  'kuwait': { code: 'KWI', name: 'Kuwait' },
+  'bahrain': { code: 'BAH', name: 'Bahrain' },
+  // Africa
+  'egypt': { code: 'CAI', name: 'Egypt' },
+  'agypten': { code: 'CAI', name: 'Egypt' },
+  'ägypten': { code: 'CAI', name: 'Egypt' },
+  'egypte': { code: 'CAI', name: 'Egypt' },
+  'south africa': { code: 'JNB', name: 'South Africa' },
+  'sudafrika': { code: 'JNB', name: 'South Africa' },
+  'südafrika': { code: 'JNB', name: 'South Africa' },
+  'kenya': { code: 'NBO', name: 'Kenya' },
+  'kenia': { code: 'NBO', name: 'Kenya' },
+  'morocco': { code: 'CMN', name: 'Morocco' },
+  'marokko': { code: 'CMN', name: 'Morocco' },
+  'maroc': { code: 'CMN', name: 'Morocco' },
+  'nigeria': { code: 'LOS', name: 'Nigeria' },
+  'ethiopia': { code: 'ADD', name: 'Ethiopia' },
+  'athiopien': { code: 'ADD', name: 'Ethiopia' },
+  'äthiopien': { code: 'ADD', name: 'Ethiopia' },
+  'ghana': { code: 'ACC', name: 'Ghana' },
+  'tanzania': { code: 'DAR', name: 'Tanzania' },
+  'tansania': { code: 'DAR', name: 'Tanzania' },
+  'senegal': { code: 'DSS', name: 'Senegal' },
+  'angola': { code: 'LAD', name: 'Angola' },
+  'mozambique': { code: 'MPM', name: 'Mozambique' },
+  'tunesien': { code: 'TUN', name: 'Tunisia' },
+  'tunisia': { code: 'TUN', name: 'Tunisia' },
+  'tunisie': { code: 'TUN', name: 'Tunisia' },
+  'algerien': { code: 'ALG', name: 'Algeria' },
+  'algeria': { code: 'ALG', name: 'Algeria' },
+  'algerie': { code: 'ALG', name: 'Algeria' },
+  'algérie': { code: 'ALG', name: 'Algeria' },
+  'libyen': { code: 'TIP', name: 'Libya' },
+  'libya': { code: 'TIP', name: 'Libya' },
+  // Oceania
+  'australia': { code: 'SYD', name: 'Australia' },
+  'australien': { code: 'SYD', name: 'Australia' },
+  'australie': { code: 'SYD', name: 'Australia' },
+  'new zealand': { code: 'AKL', name: 'New Zealand' },
+  'neuseeland': { code: 'AKL', name: 'New Zealand' },
+  'nouvelle-zelande': { code: 'AKL', name: 'New Zealand' },
+  'nouvelle zélande': { code: 'AKL', name: 'New Zealand' },
+}
+
 export interface ParsedQuery {
   origin?: string
   origin_name?: string
@@ -396,6 +637,11 @@ export interface ParsedQuery {
   stops?: number                     // 0 = direct/nonstop only
   failed_origin_raw?: string         // raw text that didn't resolve to an airport
   failed_destination_raw?: string
+  // ── Flexible search extensions ──────────────────────────────────────────────
+  min_trip_days?: number             // "for 14 days", "14-18 day trip" — min trip length
+  max_trip_days?: number             // upper bound of trip duration range
+  date_month_only?: boolean          // true when user typed "in September" (no specific day)
+  anywhere_destination?: boolean     // true for "to anywhere", "wherever is cheapest", etc.
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -502,6 +748,16 @@ function resolveCity(raw: string): { code: string; name: string } | null {
       }
     }
     if (best) return best.val
+  }
+
+  // Country name lookup — last resort (e.g. "Switzerland" → ZRH, "China" → PEK)
+  const countryExact = COUNTRY_TO_IATA[stripped] || COUNTRY_TO_IATA[s]
+  if (countryExact) return countryExact
+
+  // Multi-word country names (e.g. "United Arab Emirates", "South Korea")
+  const countryEntries = Object.entries(COUNTRY_TO_IATA).sort((a, b) => b[0].length - a[0].length)
+  for (const [k, v] of countryEntries) {
+    if (k.length >= 4 && containsLocationKey(s, k)) return v
   }
 
   return null
@@ -837,6 +1093,7 @@ export function parseNLQuery(query: string): ParsedQuery {
         const year = hasExplicitYear ? parseInt(moM[2]) : today.getFullYear()
         const d = new Date(year, mIdx, 1)
         if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
+        result.date_month_only = true
         return toLocalDateStr(d)
       }
     }
@@ -1004,6 +1261,71 @@ export function parseNLQuery(query: string): ParsedQuery {
   const cabin = extractCabin(q)
   if (cabin) result.cabin = cabin
   if (extractDirect(q)) result.stops = 0
+
+  // ── 7. Trip duration range ("for 14 days", "14-18 day trip", "back in 2 weeks") ──
+  // Patterns: "for X days", "for X-Y days", "X-Y day trip", "X to Y days", "stay X-Y nights"
+  const tripDurRe = /\bfor\s+(\d+)\s*[-–to]\s*(\d+)\s*(?:days?|nights?|nächte?|jours?|giorni?|dias?|netter|dagar|dana|ditë)\b/i
+  const tripDurRe2 = /\b(\d+)\s*[-–]\s*(\d+)\s*[-\s]?(?:day|days|night|nights|nächte?|jours?|giorni?|dias?|dagar|dana)\s*(?:trip|holiday|vacation|urlaub|vacances|vacanza|vakantie|semester|ferien|viagem|viaje)?\b/i
+  const tripDurSingleRe = /\bfor\s+(\d+)\s+(?:days?|nights?|nächte?|jours?|giorni?|dias?|dagar|dana|ditë)\b/i
+  const tripDurWeeksRe = /\bfor\s+(\d+)\s*[-–to]\s*(\d+)\s*weeks?\b/i
+  const tripDurWeekSingleRe = /\bfor\s+(\d+)\s+weeks?\b/i
+  const returnAfterRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(?:between\s+)?(\d+)\s*(?:and|[-–to])\s*(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
+  const returnAfterSingleRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
+
+  const tdm = q.match(tripDurRe) || q.match(tripDurRe2)
+  if (tdm) {
+    result.min_trip_days = parseInt(tdm[1])
+    result.max_trip_days = parseInt(tdm[2])
+  } else {
+    const twm = q.match(tripDurWeeksRe)
+    if (twm) {
+      result.min_trip_days = parseInt(twm[1]) * 7
+      result.max_trip_days = parseInt(twm[2]) * 7
+    } else {
+      const rafm = q.match(returnAfterRe)
+      if (rafm) {
+        result.min_trip_days = parseInt(rafm[1])
+        result.max_trip_days = parseInt(rafm[2])
+      } else {
+        const rasm = q.match(returnAfterSingleRe)
+        if (rasm) {
+          result.min_trip_days = parseInt(rasm[1])
+          result.max_trip_days = parseInt(rasm[1])
+        } else {
+          const tdsm = q.match(tripDurSingleRe)
+          if (tdsm) {
+            result.min_trip_days = parseInt(tdsm[1])
+            result.max_trip_days = parseInt(tdsm[1])
+          } else {
+            const twsm = q.match(tripDurWeekSingleRe)
+            if (twsm) {
+              result.min_trip_days = parseInt(twsm[1]) * 7
+              result.max_trip_days = parseInt(twsm[1]) * 7
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // If we have a trip duration and an outbound date but no return date,
+  // derive a midpoint return date for the initial search
+  if (result.min_trip_days !== undefined && result.date && !result.return_date) {
+    const mid = Math.round(((result.min_trip_days ?? 0) + (result.max_trip_days ?? result.min_trip_days ?? 0)) / 2)
+    const dep = new Date(result.date)
+    dep.setDate(dep.getDate() + mid)
+    result.return_date = toLocalDateStr(dep)
+  }
+
+  // ── 8. "Anywhere" / open destination detection ──────────────────────────
+  // Patterns: "to anywhere", "wherever", "cheapest destination", "any destination", "surprise me"
+  const anywhereRe = /\b(?:anywhere|wherever(?:\s+is\s+(?:cheapest|cheapest|cheaper|cheap|best))?|any(?:\s+destination|\s+airport|\s+country|\s+place)?|surprise\s+me|wherever\s+i\s+can\s+go|irgendwo(?:hin)?|peu\s+importe|partout|qualunque\s+destinazione?|donde\s+sea|cualquier\s+(?:destino|lugar)|overalt|varsomhelst|bilo\s+gdje|kudo)\b/i
+  if (anywhereRe.test(q)) {
+    result.anywhere_destination = true
+    // Clear the failed destination since it's intentional
+    delete result.failed_destination_raw
+    // Keep destination undefined so the UI can show an "Explore" mode
+  }
 
   return result
 }
