@@ -10,6 +10,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'api.letsfg.co',
       },
+      {
+        protocol: 'https',
+        hostname: 'pics.avs.io',
+      },
     ],
   },
 }

@@ -1104,8 +1104,10 @@ export function parseNLQuery(query: string): ParsedQuery {
     const cleaned = tl.replace(/\b(?:on|le|am|el|il|em|dne|den|dia|på|na|the)\b/g, ' ').replace(/\s+/g,' ').trim()
 
     // Try: <number><ordinal?> <monthname>  or  <monthname> <number><ordinal?>
-    const dayMonthRe = /(\d{1,2})(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?\.?\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s*,?\s*(\d{4}))?/
-    const monthDayRe = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)\s+(\d{1,2})(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?(?:\s*,?\s*(\d{4}))?/
+    // (?!\d) after the day digits prevents matching the first 1-2 digits of a year
+    // (e.g. "2015" must not yield day=20 — it's a year, not a day)
+    const dayMonthRe = /(\d{1,2})(?!\d)(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?\.?\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s*,?\s*(\d{4}))?/
+    const monthDayRe = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)\s+(\d{1,2})(?!\d)(?:st|nd|rd|th|er|ème|eme|º|ª|\.)?(?:\s*,?\s*(\d{4}))?/
 
     const dm = cleaned.match(dayMonthRe)
     if (dm) {
@@ -1115,7 +1117,7 @@ export function parseNLQuery(query: string): ParsedQuery {
         const hasExplicitYear = Boolean(dm[3])
         const year = hasExplicitYear ? parseInt(dm[3]) : today.getFullYear()
         const d = new Date(year, mIdx, day)
-        if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
+        if (d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
     }
@@ -1127,7 +1129,22 @@ export function parseNLQuery(query: string): ParsedQuery {
         const hasExplicitYear = Boolean(md[3])
         const year = hasExplicitYear ? parseInt(md[3]) : today.getFullYear()
         const d = new Date(year, mIdx, day)
-        if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
+        if (d < today) d.setFullYear(today.getFullYear() + 1)
+        return toLocalDateStr(d)
+      }
+    }
+
+    // "Month YYYY" without preposition: "May 2015", "mai 2026", "mayo 2027"
+    // Treat bare 4-digit year after month name as month-only; advance if in the past.
+    const monthYearRe = /([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)\s+(\d{4})\b/
+    const myM = cleaned.match(monthYearRe)
+    if (myM) {
+      const mIdx = matchMonth(myM[1])
+      const year = parseInt(myM[2])
+      if (mIdx !== null) {
+        const d = new Date(year, mIdx, 1)
+        if (d < today) d.setFullYear(today.getFullYear() + 1)
+        result.date_month_only = true
         return toLocalDateStr(d)
       }
     }
