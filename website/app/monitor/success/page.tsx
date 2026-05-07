@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 declare global {
   interface Window {
@@ -27,6 +28,15 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 }
 
 export default function MonitorSuccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <MonitorSuccessInner />
+    </Suspense>
+  )
+}
+
+function MonitorSuccessInner() {
+  const searchParams = useSearchParams()
   const [monitorId, setMonitorId] = useState<string | null>(null)
 
   // Push notification state
@@ -37,13 +47,34 @@ export default function MonitorSuccessPage() {
   const [tgName, setTgName] = useState('')
   const tgContainerRef = useRef<HTMLDivElement>(null)
 
-  // Read monitor_id from sessionStorage
+  // Read monitor_id from sessionStorage, or fall back to ?mid= query param (email CTAs)
   useEffect(() => {
     try {
-      const mid = sessionStorage.getItem('letsfg_monitor_id')
-      if (mid) setMonitorId(mid)
+      const stored = sessionStorage.getItem('letsfg_monitor_id')
+      if (stored) { setMonitorId(stored); return }
     } catch { /* ignore */ }
-  }, [])
+    const mid = searchParams.get('mid')
+    if (mid) setMonitorId(mid)
+  }, [searchParams])
+
+  // Auto-register a push subscription that was pre-authorised in the purchase modal
+  useEffect(() => {
+    if (!monitorId) return
+    let pending: string | null = null
+    try { pending = sessionStorage.getItem('letsfg_push_pending_sub') } catch { /* ignore */ }
+    if (!pending) return
+    try { sessionStorage.removeItem('letsfg_push_pending_sub') } catch { /* ignore */ }
+
+    const sub = JSON.parse(pending) as object
+    setPushState('loading')
+    fetch('/api/monitor/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monitor_id: monitorId, subscription: sub }),
+    })
+      .then(r => r.ok ? setPushState('done') : setPushState('error'))
+      .catch(() => setPushState('error'))
+  }, [monitorId])
 
   // Register service worker
   useEffect(() => {
