@@ -7,6 +7,20 @@ export const RESULTS_FRICTION_EXPERIMENT_ID = 'exp_results-friction-survey-v1'
 
 const BANNER_DELAY_MS = 3 * 60 * 1000 // 3 minutes
 
+// Session key: dismissed this browser session (survives remounts, not new tabs)
+const SS_KEY_DISMISSED = 'lfg_survey_dismissed'
+// Persistent key: user already answered — never show again
+const LS_KEY_DONE = 'lfg_survey_done'
+
+// Module-level timestamp: records when the page first loaded this module.
+// Survives React remounts so the 3-min timer is always relative to page load,
+// not to component mount — prevents the timer resetting on re-renders.
+let _pageFirstRenderTs: number | null = null
+function getPageFirstRenderTs(): number {
+  if (_pageFirstRenderTs === null) _pageFirstRenderTs = Date.now()
+  return _pageFirstRenderTs
+}
+
 const REASONS = [
   { key: 'price_too_high',    label: 'Price too high' },
   { key: 'need_direct',       label: 'Need direct flight' },
@@ -28,6 +42,13 @@ interface Props {
 type Trigger = 'banner' | 'exit_intent'
 
 export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnlocked }: Props) {
+  // If user already answered (ever) or dismissed this session, suppress entirely.
+  const [suppressed] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem(LS_KEY_DONE) || !!sessionStorage.getItem(SS_KEY_DISMISSED)
+    } catch { return false }
+  })
+
   const [bannerVisible, setBannerVisible] = useState(false)
   const [overlayVisible, setOverlayVisible] = useState(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
@@ -38,27 +59,32 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
   const triggeredRef = useRef<Trigger | null>(null)
   const otherId = useId()
 
-  // Banner: show after 3 min if not unlocked
+  // Banner: show after 3 min from page load (not component mount), so remounts
+  // don't reset the clock.
   useEffect(() => {
-    if (hasUnlocked || bannerDismissed) return
+    if (suppressed || hasUnlocked || bannerDismissed) return
+    const elapsed = Date.now() - getPageFirstRenderTs()
+    const remaining = Math.max(0, BANNER_DELAY_MS - elapsed)
     const id = window.setTimeout(() => {
       if (!hasUnlocked && !bannerDismissed) setBannerVisible(true)
-    }, BANNER_DELAY_MS)
+    }, remaining)
     return () => window.clearTimeout(id)
-  }, [hasUnlocked, bannerDismissed])
+  }, [suppressed, hasUnlocked, bannerDismissed])
 
-  // Exit intent: mouse leaves viewport from the top
+  // Exit intent: mouse leaves viewport from the top.
+  // Also close the banner to prevent both showing at once.
   useEffect(() => {
-    if (hasUnlocked || overlayDismissed) return
+    if (suppressed || hasUnlocked || overlayDismissed) return
     const handler = (e: MouseEvent) => {
       if (e.clientY < 20 && !overlayDismissed && !submitted) {
         triggeredRef.current = 'exit_intent'
+        setBannerVisible(false) // hide banner so only one UI shows at a time
         setOverlayVisible(true)
       }
     }
     document.addEventListener('mouseleave', handler)
     return () => document.removeEventListener('mouseleave', handler)
-  }, [hasUnlocked, overlayDismissed, submitted])
+  }, [suppressed, hasUnlocked, overlayDismissed, submitted])
 
   const submitReason = useCallback((key: ReasonKey, trigger: Trigger, text?: string) => {
     if (submitted) return
@@ -74,19 +100,26 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
     setSubmitted(true)
     setBannerVisible(false)
     setOverlayVisible(false)
+    // Permanently suppress — answered once, never ask again
+    try { localStorage.setItem(LS_KEY_DONE, '1') } catch { /* ignore */ }
   }, [submitted, searchId, isTestSearch])
 
   const dismissBanner = () => {
     setBannerVisible(false)
     setBannerDismissed(true)
+    // Also prevent the exit-intent overlay this session — user already saw the survey
+    setOverlayDismissed(true)
+    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch { /* ignore */ }
   }
 
   const dismissOverlay = () => {
     setOverlayVisible(false)
     setOverlayDismissed(true)
+    setBannerDismissed(true)
+    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch { /* ignore */ }
   }
 
-  if (hasUnlocked) return null
+  if (suppressed || hasUnlocked) return null
 
   const activeTrigger: Trigger = overlayVisible ? 'exit_intent' : 'banner'
 

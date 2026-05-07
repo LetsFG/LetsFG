@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  return new Uint8Array([...rawData].map(c => c.charCodeAt(0)))
+}
+
 interface MonitorModalProps {
   origin: string
   originName: string
@@ -63,8 +70,39 @@ export default function MonitorModal({
   const [weeks, setWeeks] = useState(2)
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [pushState, setPushState] = useState<'idle' | 'loading' | 'done' | 'denied' | 'unavailable'>('idle')
   const dialogRef = useRef<HTMLDialogElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
+
+  // Pre-authorise push before payment so the success page can auto-register it.
+  const handleEnablePush = async () => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setPushState('unavailable')
+      return
+    }
+    setPushState('loading')
+    try {
+      const keyResp = await fetch('/api/monitor/vapid-key')
+      if (!keyResp.ok) { setPushState('unavailable'); return }
+      const { public_key } = await keyResp.json() as { public_key?: string }
+      if (!public_key) { setPushState('unavailable'); return }
+
+      await navigator.serviceWorker.register('/sw.js').catch(() => null)
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') { setPushState('denied'); return }
+
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(public_key),
+      })
+      // Stash for the success page — it reads this and registers with the backend
+      try { sessionStorage.setItem('letsfg_push_pending_sub', JSON.stringify(sub.toJSON())) } catch { /* ignore */ }
+      setPushState('done')
+    } catch {
+      setPushState('unavailable')
+    }
+  }
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -183,7 +221,7 @@ export default function MonitorModal({
           </li>
           <li className="mon-feature">
             <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
-            Browser push &amp; Telegram alerts <span className="mon-feature-note">(set up after payment)</span>
+            Browser push &amp; Telegram alerts
           </li>
         </ul>
 
@@ -235,6 +273,31 @@ export default function MonitorModal({
               </button>
             </div>
             <p className="mon-field-hint">You can stop at any time — no auto-renewal.</p>
+          </div>
+
+          {/* Push pre-enable */}
+          <div className="mon-notify-row">
+            <span className="mon-notify-label">Get alerts on your phone:</span>
+            <div className="mon-notify-btns">
+              {pushState === 'idle' && (
+                <button type="button" className="mon-notify-btn" onClick={handleEnablePush}>
+                  <BellIcon /> Enable push now
+                </button>
+              )}
+              {pushState === 'loading' && (
+                <span className="mon-notify-status">Enabling…</span>
+              )}
+              {pushState === 'done' && (
+                <span className="mon-notify-status mon-notify-status--on">✓ Push enabled</span>
+              )}
+              {pushState === 'denied' && (
+                <span className="mon-notify-status mon-notify-status--muted">Push blocked — allow in browser settings</span>
+              )}
+              {pushState === 'unavailable' && (
+                <span className="mon-notify-status mon-notify-status--muted">Push unavailable on this browser</span>
+              )}
+              <span className="mon-notify-tg-note">Telegram: set up after payment</span>
+            </div>
           </div>
 
           {/* Error */}

@@ -391,7 +391,9 @@ export default function CheckoutPanel({
   // ── A/B experiments ──────────────────────────────────────────────────
   const { variant: surveyVariant } = useExperiment(CHECKOUT_SURVEY_EXPERIMENT, analyticsSearchId)
   const { variant: countdownVariant } = useExperiment(CHECKOUT_COUNTDOWN_EXPERIMENT, analyticsSearchId)
-  const [surveyDismissed, setSurveyDismissed] = useState(false)
+  const [surveyDismissed, setSurveyDismissed] = useState<boolean>(() => {
+    try { return !!sessionStorage.getItem('lfg_ck_survey_done') } catch { return false }
+  })
 
   // Start in 'checking' — we always verify unlock status on mount.
   const [step, setStep] = useState<CheckoutStep>({ type: 'checking' })
@@ -1073,7 +1075,10 @@ export default function CheckoutPanel({
                 searchId={analyticsSearchId}
                 offerId={offer.id}
                 isTestSearch={isTestSearch}
-                onDismiss={() => setSurveyDismissed(true)}
+                onDismiss={() => {
+                  setSurveyDismissed(true)
+                  try { sessionStorage.setItem('lfg_ck_survey_done', '1') } catch { /* ignore */ }
+                }}
               />
             )}
 
