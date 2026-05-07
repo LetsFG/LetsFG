@@ -1,0 +1,41 @@
+# LetsFG — Docker Compose
+#
+# Usage (one-off commands):
+#   docker compose run --rm letsfg search LON BCN 2026-06-01
+#   docker compose run --rm letsfg search LON BCN 2026-06-01 --mode fast
+#   docker compose run --rm letsfg search LHR JFK 2026-06-01 --return 2026-06-08 --adults 2 --json
+#   docker compose run --rm letsfg locations "New York"
+#
+# With API key (create a .env file first):
+#   echo "LETSFG_API_KEY=trav_..." > .env
+#   docker compose run --rm letsfg unlock off_xxx
+#   docker compose run --rm letsfg book off_xxx --passenger '{"id":"pas_0",...}' --email you@example.com
+#   docker compose run --rm letsfg me
+#
+# Build the image:
+#   docker compose build
+
+services:
+  letsfg:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    environment:
+      # Optional — only needed for unlock/book. Get one free: letsfg register
+      LETSFG_API_KEY: ${LETSFG_API_KEY:-}
+      # Max concurrent Chrome instances. Increase for hosts with more RAM.
+      LETSFG_MAX_BROWSERS: ${LETSFG_MAX_BROWSERS:-2}
+      # Optional residential proxy for bot-protected airlines
+      # Format: http://user:pass@host:port
+      LETSFG_PROXY: ${LETSFG_PROXY:-}
+      # Set to 1 to disable search telemetry
+      LETSFG_NO_TELEMETRY: ${LETSFG_NO_TELEMETRY:-}
+    # Persist the Playwright Chromium download across builds/runs
+    volumes:
+      - playwright_cache:/root/.cache/ms-playwright
+    # Containers are short-lived CLI invocations — remove on exit
+    # Use `docker compose run --rm letsfg <command>`
+
+volumes:
+  playwright_cache:
+    driver: local

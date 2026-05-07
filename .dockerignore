@@ -1,0 +1,100 @@
+# .dockerignore — keeps the Python SDK build context lean
+# (Excludes probe scripts, chrome profiles, website, docs, and other dev artifacts)
+
+# ── Version control ──────────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+
+# ── Python artifacts ─────────────────────────────────────────────────────────
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+dist/
+build/
+.pytest_cache
+.venv
+venv
+*.pma
+*.db
+*.db-journal
+
+# ── JS/TS SDKs (not needed in Python image) ──────────────────────────────────
+sdk/js/
+sdk/mcp/
+
+# ── Website & docs ───────────────────────────────────────────────────────────
+website/
+site/
+docs/
+
+# ── Chrome profile directories (probe/test artifacts) ────────────────────────
+**/*_chrome_data*/
+**/*_chrome_profile*/
+**/*_chrome_probe*/
+**/*_chrome_headed*/
+**/*_chrome_clean*/
+**/*_chrome_dom*/
+**/*_chrome_fresh*/
+**/*_chrome_js*/
+**/*_chrome_cdp*/
+**/.chrome-*/
+**/.azul_*/
+**/.edreams_*/
+**/.finnair_*/
+**/.gol_*/
+**/.indigo_*/
+**/.ita_*/
+**/.jetstar_*/
+**/.norwegian_*/
+**/.peach_*/
+**/.smartwings_*/
+**/.transavia_*/
+**/.volotea_*/
+**/*_persistent_ctx*/
+**/*_cdp_test*/
+**/*_subprocess_chrome*/
+**/*_default_page_chrome*/
+
+# ── Dev probe/debug/test scripts (prefixed with _) ───────────────────────────
+_*.py
+_*.json
+_*.csv
+_*.xml
+_*.txt
+_*.png
+_*.html
+_*.js
+
+# ── sdk/python dev artifacts ──────────────────────────────────────────────────
+sdk/python/jetsmart_run*.txt
+sdk/python/dist/
+sdk/python/build/
+sdk/python/.pytest_cache/
+sdk/python/_*
+
+# ── MCP / Smithery config (not needed in Python image) ───────────────────────
+.mcp.json
+.mcpregistry_*
+smithery.yaml
+glama.json
+server.json
+mcp-config.json
+
+# ── Environment files ─────────────────────────────────────────────────────────
+.env
+.env.local
+*.env
+
+# ── Editor & OS artifacts ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+progress.md
+
+# ── connectors/ dev artifacts ────────────────────────────────────────────────
+connectors/
+# (SDK connectors live in sdk/python/letsfg/connectors/ — those ARE included)

@@ -1,0 +1,55 @@
+# LetsFG Python SDK & CLI
+#
+# Runs 180+ airline connectors locally on your machine.
+# Search is completely free — no API key, no registration needed.
+#
+# Build:
+#   docker build -f Dockerfile.python -t letsfg .
+#
+# Search flights (free, no setup):
+#   docker run --rm letsfg search LON BCN 2026-06-01
+#   docker run --rm letsfg search LON BCN 2026-06-01 --mode fast
+#   docker run --rm letsfg search LHR JFK 2026-06-01 --return 2026-06-08 --adults 2
+#   docker run --rm letsfg locations "New York"
+#
+# With API key (unlock/book):
+#   docker run --rm -e LETSFG_API_KEY=trav_... letsfg unlock off_xxx
+#   docker run --rm -e LETSFG_API_KEY=trav_... letsfg me
+#
+# Interactive shell:
+#   docker run --rm -it --entrypoint bash letsfg
+
+FROM python:3.12-slim
+
+# Playwright system dependencies (Chromium + font rendering)
+# playwright install-deps resolves the full list for the current distro
+RUN pip install --no-cache-dir playwright && \
+    playwright install-deps chromium && \
+    apt-get install -y --no-install-recommends \
+        fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy SDK source and install
+COPY sdk/python/pyproject.toml sdk/python/README.md ./
+COPY sdk/python/letsfg/ ./letsfg/
+
+RUN pip install --no-cache-dir .
+
+# Install Playwright Chromium browser
+RUN playwright install chromium
+
+# Runtime environment
+ENV PYTHONUNBUFFERED=1 \
+    # API key — optional, only needed for unlock/book
+    LETSFG_API_KEY="" \
+    # Max concurrent Chrome instances; keep low in constrained containers.
+    # Increase if your host has more RAM (e.g. LETSFG_MAX_BROWSERS=8).
+    LETSFG_MAX_BROWSERS="2" \
+    # Optional residential proxy for bot-protected airlines
+    # Format: http://user:pass@host:port
+    LETSFG_PROXY=""
+
+ENTRYPOINT ["letsfg"]
+CMD ["--help"]
