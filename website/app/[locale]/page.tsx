@@ -10,6 +10,7 @@ import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../lib/currenc
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
+import HomeMonitorNav from '../home-monitor-nav'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 
@@ -171,6 +172,8 @@ export default async function Home({ params, searchParams }: { params: Promise<{
               sizes="(max-width: 768px) 180px, 280px"
             />
           </Link>
+
+          <HomeMonitorNav locale={locale} />
 
           <div className="lp-topbar-side">
             <GlobeButton inline />

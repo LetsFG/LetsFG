@@ -1430,6 +1430,57 @@ input {
   box-shadow: 0 0 0 6px rgba(255, 150, 29, 0.14);
 }
 
+/* ── Nav button (Flight Monitoring link styled as nav link) ──────────────── */
+.lp-nav-link-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.lp-nav-link-btn:hover {
+  color: #fff;
+}
+
+/* ── Home monitor teaser modal ───────────────────────────────────────────── */
+.home-mon-teaser {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.home-mon-teaser-search-first {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: rgba(255, 91, 44, 0.07);
+  border: 1px solid rgba(255, 91, 44, 0.18);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.home-mon-teaser-icon {
+  flex-shrink: 0;
+  color: #ff5b2c;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+.home-mon-teaser-heading {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg, #0f172a);
+  margin: 0 0 6px;
+}
+
+.home-mon-teaser-sub {
+  font-size: 0.9rem;
+  color: var(--fg-muted, #64748b);
+  margin: 0;
+  line-height: 1.5;
+}
+
 .lp-badge {
   position: relative;
   z-index: 1;
