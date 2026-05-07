@@ -300,7 +300,7 @@ for offer in result.offers[:5]:
 | `letsfg register` | Get your API key |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
-| `letsfg unlock <offer_id>` | Confirm live price & reserve 30 min |
+| `letsfg unlock <offer_id>` | Confirm live price & pay unlock fee (Stripe card or MPP crypto) |
 | `letsfg book <offer_id>` | Book the flight |
 | `letsfg me` | View profile & usage stats |
 
@@ -315,7 +315,7 @@ Search (free) → Unlock (free) → Book (ticket price only)
 ```
 
 1. **Search** — 200+ local connectors fire in parallel on your machine, covering 400+ airlines. Filter by cabin class (economy, premium, business, first). Returns full details: price, airlines, duration, stopovers, conditions.
-2. **Unlock** — confirms the live price with the airline and reserves the fare for 30 minutes.
+2. **Unlock** — confirms the live price with the airline and reserves the fare for 30 minutes. **Two payment options:** Stripe card (add once with `letsfg setup-payment`) or [MPP](https://mpp.dev/) crypto (agent-native — no card required, pays automatically via Tempo USDC.e on `402` challenge).
 3. **Book** — creates a real airline PNR. E-ticket sent to the passenger's inbox.
 
 All search runs locally via Playwright + httpx. Results are deduplicated, currency-normalized, and sorted. Best price wins.

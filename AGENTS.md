@@ -37,11 +37,13 @@ Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate price
 
 | Step | Cost | What You Get |
 |------|------|--------------|
-| **Search** | FREE | Price, times, duration, stops, airline names. Completely free, unlimited. No booking links. |
-| **Unlock** | 1% of ticket (min $3) | Direct airline booking URLs for your chosen flights. Charged to your card. |
+| **Search** | FREE | Price, times, duration, stops, airline category. Completely free, unlimited. No booking links. |
+| **Unlock** | 1% of ticket (min $3) | Airline name + direct booking URL. Pay via Stripe card **or** MPP crypto (no card needed). |
 | **Book** | Ticket price | Complete the booking directly on the airline's website using the booking URL. |
 
-**Setup required:** Add a payment card once with `letsfg setup-payment`, then unlock works automatically.
+**Two ways to pay for unlock — no setup required for MPP:**
+- **Stripe (card on file):** Run `letsfg setup-payment` once, then unlock charges your card automatically.
+- **MPP (agent-native crypto):** No card, no setup. The unlock endpoint issues a `402 Payment Required` with a `WWW-Authenticate: Payment` MPP challenge. Any MPP-compatible agent (Claude + pympp, mppx CLI, etc.) pays automatically in USDC.e on Tempo and retries — no human needed.
 
 ## How It Works (3 Steps)
 
@@ -71,17 +73,23 @@ Pay a small fee to reveal the direct airline booking URLs for your chosen flight
 
 **What happens when you unlock:**
 1. LetsFG confirms the offer is still available with the airline
-2. Charges 1% of the ticket price (minimum $3) to your saved card
-3. Returns `booking_url` — direct link to complete the booking on the airline's site
+2. Charges 1% of the ticket price (minimum $3) — via Stripe card or MPP crypto
+3. Returns airline name + `booking_url` — direct link to complete the booking on the airline's site
 
-**Requirements:** Payment card on file — run `letsfg setup-payment` once before your first unlock.
+**Two payment paths — both supported automatically:**
+
+**Path A — Stripe (card on file):** Add a card once with `letsfg setup-payment`. Subsequent unlocks charge the card automatically and return `200` immediately.
+
+**Path B — MPP (agent-native, no card required):** If no card is on file, the endpoint returns `402 Payment Required` with a `WWW-Authenticate: Payment` MPP challenge encoding the exact fee. Any MPP-compatible client pays in USDC.e on the Tempo blockchain (~500ms) and retries with `Authorization: Payment <credential>`. The server verifies and returns the full unlock. No Stripe account, no card, no human interaction required.
 
 **Key unlock details:**
-- Input: `offer_id` (from search results) — this is the only required parameter
-- Cost: 1% of ticket price, minimum $3, charged to your saved card
-- HTTP 402 → No payment method — response includes `payment_setup_url` (open in browser to add a card)
+- Input: `offer_id` (from search results) — only required parameter
+- Cost: 1% of ticket price, minimum $3
+- HTTP 402 + `WWW-Authenticate: Payment` → MPP challenge (auto-handled by pympp/mppx)
+- HTTP 402 without MPP header → No card on file — response includes `setup_url`
 - HTTP 410 → Offer expired (airline sold the seats) — search again
 - The `confirmed_price` may differ from search price (airline prices change in real-time)
+- The MPP challenge amount is stable for 10 minutes so the challenge→payment→retry cycle completes reliably
 
 ```python
 from letsfg import LetsFG, PaymentRequiredError, OfferExpiredError
@@ -97,24 +105,28 @@ try:
     print(f"Booking URL: {unlocked.booking_url}")
     # Open booking_url to complete the booking on the airline's site
 except PaymentRequiredError as e:
-    print("No card on file.")
-    if e.payment_setup_url:
-        print(f"Open this URL to add your card: {e.payment_setup_url}")
+    print("No card on file — add one at:", e.payment_setup_url)
 except OfferExpiredError:
     print("Offer expired — search again")
 ```
 
 ```bash
-# CLI
+# CLI (Stripe path — card required)
 letsfg unlock off_xxx
 # Output: Confirmed price: EUR 189.50, Fee: $3.00, Booking URL: https://...
 
-# cURL
+# cURL — MPP path (agent auto-pays via mppx)
 curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"offer_id": "off_xxx"}'
-# Response: {"offer_id":"off_xxx","confirmed_price":189.50,"unlock_fee":3.00,"booking_url":"https://..."}
+# → 402 with WWW-Authenticate: Payment realm=... offer=... amount=3.00
+# Pay via Tempo USDC.e, retry with Authorization: Payment <credential>
+# → 200: {"offer_id":"off_xxx","confirmed_price":189.50,"unlock_fee":3.00,"booking_url":"https://..."}
+
+# Or use mppx CLI (handles the 402/pay/retry cycle automatically):
+npx mppx https://api.letsfg.co/api/v1/bookings/unlock \
+  -X POST -H "X-API-Key: trav_..." -d '{"offer_id": "off_xxx"}'
 ```
 
 ### 3. Book (on the airline's site)
@@ -431,8 +443,8 @@ The SDK raises specific exceptions for each failure mode. All errors include mac
 | `MISSING_PARAMETER` | validation | 422 | Required field missing |
 | `INVALID_PARAMETER` | validation | 422 | Field value out of range or wrong type |
 | `AUTH_INVALID` | business | 401 | API key missing or invalid |
-| `PAYMENT_REQUIRED` | business | 402 | No payment card on file — response includes `payment_setup_url` to add one |
-| `PAYMENT_DECLINED` | business | 402 | Stripe charge failed |
+| `PAYMENT_REQUIRED` | business | 402 | No card on file **and** no MPP credential. If MPP is supported, response includes `WWW-Authenticate: Payment` header — pay via Tempo USDC.e and retry. Otherwise open `setup_url` to add a card. |
+| `PAYMENT_DECLINED` | business | 402 | Stripe charge failed — check card details |
 | `OFFER_EXPIRED` | business | 410 | Offer no longer available — search again |
 | `FARE_CHANGED` | business | 409 | Price changed since search — re-unlock |
 

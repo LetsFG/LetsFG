@@ -968,6 +968,22 @@ function findTwoCitiesInText(
     }
   }
 
+  // Also scan for bare 3-letter IATA codes not in the city/country dictionary
+  // (e.g. "SFO", "WAW", "BCN", "CDG" typed directly without a "to" separator).
+  // Uses the same airport DB lookup that resolveCity() uses for explicit codes.
+  const iataWordRe = /\b[a-z]{3}\b/g
+  let iataWm: RegExpExecArray | null
+  while ((iataWm = iataWordRe.exec(t)) !== null) {
+    const token = iataWm[0]
+    const start = iataWm.index
+    const end = start + 3
+    if (ranges.some(r => start < r.end && end > r.start)) continue
+    const cityEntry = CITY_TO_IATA[token]
+    if (cityEntry) { ranges.push({ start, end, code: cityEntry.code, name: cityEntry.name }); continue }
+    const airportEntry = findExactLocationMatch(token)
+    if (airportEntry) ranges.push({ start, end, code: airportEntry.code, name: airportEntry.name })
+  }
+
   if (ranges.length < 2) return null
   ranges.sort((a, b) => a.start - b.start)
   return [ranges[0], ranges[1]]
