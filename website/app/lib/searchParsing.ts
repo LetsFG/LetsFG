@@ -10,6 +10,9 @@ import { findBestLocationMatch, findExactLocationMatch } from '../airports'
 export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   // ── UK & Ireland ────────────────────────────────────────────────────────────
   'london': { code: 'LON', name: 'London' },
+  'londra': { code: 'LON', name: 'London' },
+  'londyn': { code: 'LON', name: 'London' },
+  'londen': { code: 'LON', name: 'London' },
   'heathrow': { code: 'LHR', name: 'London Heathrow' },
   'gatwick': { code: 'LGW', name: 'London Gatwick' },
   'stansted': { code: 'STN', name: 'London Stansted' },
@@ -45,6 +48,10 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'lanzarote': { code: 'ACE', name: 'Lanzarote' },
   'fuerteventura': { code: 'FUE', name: 'Fuerteventura' },
   'paris': { code: 'CDG', name: 'Paris' },
+  'parigi': { code: 'CDG', name: 'Paris' },
+  'parijs': { code: 'CDG', name: 'Paris' },
+  'paryz': { code: 'CDG', name: 'Paris' },
+  'paryż': { code: 'CDG', name: 'Paris' },
   'nice': { code: 'NCE', name: 'Nice' },
   'marseille': { code: 'MRS', name: 'Marseille' },
   'lyon': { code: 'LYS', name: 'Lyon' },
@@ -59,6 +66,7 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'brussel': { code: 'BRU', name: 'Brussels' },
   'bruxelles': { code: 'BRU', name: 'Brussels' },
   'brüssel': { code: 'BRU', name: 'Brussels' },
+  'bruselas': { code: 'BRU', name: 'Brussels' },
   'lisbon': { code: 'LIS', name: 'Lisbon' },
   'lisbonne': { code: 'LIS', name: 'Lisbon' },
   'lissabon': { code: 'LIS', name: 'Lisbon' },
@@ -99,9 +107,15 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'praga': { code: 'PRG', name: 'Prague' },
   'budapest': { code: 'BUD', name: 'Budapest' },
   'bratislava': { code: 'BTS', name: 'Bratislava' },
+  'bratislawa': { code: 'BTS', name: 'Bratislava' },
+  'pressburg': { code: 'BTS', name: 'Bratislava' },
   'warsaw': { code: 'WAW', name: 'Warsaw' },
   'warsawa': { code: 'WAW', name: 'Warsaw' },
   'warszawa': { code: 'WAW', name: 'Warsaw' },
+  'warschau': { code: 'WAW', name: 'Warsaw' },
+  'varsovie': { code: 'WAW', name: 'Warsaw' },
+  'varsovia': { code: 'WAW', name: 'Warsaw' },
+  'varsavia': { code: 'WAW', name: 'Warsaw' },
   'krakow': { code: 'KRK', name: 'Kraków' },
   'krakau': { code: 'KRK', name: 'Kraków' },
   'cracow': { code: 'KRK', name: 'Kraków' },
@@ -111,6 +125,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'wroclaw': { code: 'WRO', name: 'Wrocław' },
   'breslau': { code: 'WRO', name: 'Wrocław' },
   'poznan': { code: 'POZ', name: 'Poznań' },
+  'posen': { code: 'POZ', name: 'Poznań' },
+  'szczecin': { code: 'SZZ', name: 'Szczecin' },
+  'stettin': { code: 'SZZ', name: 'Szczecin' },
   'lodz': { code: 'LCJ', name: 'Łódź' },
   'katowice': { code: 'KTW', name: 'Katowice' },
   // ── Scandinavia & Baltics ────────────────────────────────────────────────────
@@ -128,21 +145,39 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'copenhagen': { code: 'CPH', name: 'Copenhagen' },
   'kobenhavn': { code: 'CPH', name: 'Copenhagen' },
   'københavn': { code: 'CPH', name: 'Copenhagen' },
+  'kopenhagen': { code: 'CPH', name: 'Copenhagen' },
   'helsinki': { code: 'HEL', name: 'Helsinki' },
   'riga': { code: 'RIX', name: 'Riga' },
   'tallinn': { code: 'TLL', name: 'Tallinn' },
   'vilnius': { code: 'VNO', name: 'Vilnius' },
+  // ── Russia ──────────────────────────────────────────────────────────────────
+  'moscow': { code: 'SVO', name: 'Moscow' },
+  'moskau': { code: 'SVO', name: 'Moscow' },
+  'moscou': { code: 'SVO', name: 'Moscow' },
+  'mosca': { code: 'SVO', name: 'Moscow' },
+  'moscu': { code: 'SVO', name: 'Moscow' },
+  'moscú': { code: 'SVO', name: 'Moscow' },
+  'saint petersburg': { code: 'LED', name: 'Saint Petersburg' },
+  'st petersburg': { code: 'LED', name: 'Saint Petersburg' },
+  'st. petersburg': { code: 'LED', name: 'Saint Petersburg' },
   // ── Southern Europe ──────────────────────────────────────────────────────────
   'rome': { code: 'FCO', name: 'Rome' },
   'roma': { code: 'FCO', name: 'Rome' },
+  'rom': { code: 'FCO', name: 'Rome' },
   'milan': { code: 'MXP', name: 'Milan' },
   'milano': { code: 'MXP', name: 'Milan' },
+  'mailand': { code: 'MXP', name: 'Milan' },
+  'mediolan': { code: 'MXP', name: 'Milan' },
   'naples': { code: 'NAP', name: 'Naples' },
   'napoli': { code: 'NAP', name: 'Naples' },
+  'neapel': { code: 'NAP', name: 'Naples' },
   'venice': { code: 'VCE', name: 'Venice' },
   'venezia': { code: 'VCE', name: 'Venice' },
+  'venedig': { code: 'VCE', name: 'Venice' },
+  'venise': { code: 'VCE', name: 'Venice' },
   'florence': { code: 'FLR', name: 'Florence' },
   'firenze': { code: 'FLR', name: 'Florence' },
+  'florenz': { code: 'FLR', name: 'Florence' },
   'bologna': { code: 'BLQ', name: 'Bologna' },
   'catania': { code: 'CTA', name: 'Catania' },
   'palermo': { code: 'PMO', name: 'Palermo' },
@@ -165,6 +200,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'belgrade': { code: 'BEG', name: 'Belgrade' },
   'beograd': { code: 'BEG', name: 'Belgrade' },
   'zagreb': { code: 'ZAG', name: 'Zagreb' },
+  'agram': { code: 'ZAG', name: 'Zagreb' },
+  'ljubljana': { code: 'LJU', name: 'Ljubljana' },
+  'laibach': { code: 'LJU', name: 'Ljubljana' },
   'split': { code: 'SPU', name: 'Split' },
   'dubrovnik': { code: 'DBV', name: 'Dubrovnik' },
   'sarajevo': { code: 'SJJ', name: 'Sarajevo' },
@@ -181,6 +219,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'kyiv': { code: 'KBP', name: 'Kyiv' },
   'kiev': { code: 'KBP', name: 'Kyiv' },
   'lviv': { code: 'LWO', name: 'Lviv' },
+  'lemberg': { code: 'LWO', name: 'Lviv' },
+  'lwow': { code: 'LWO', name: 'Lviv' },
+  'lwów': { code: 'LWO', name: 'Lviv' },
   'minsk': { code: 'MSQ', name: 'Minsk' },
   'valletta': { code: 'MLA', name: 'Malta' },
   'malta': { code: 'MLA', name: 'Malta' },
@@ -646,6 +687,10 @@ export interface ParsedQuery {
   date_month_only?: boolean          // true when user typed "in September" (no specific day)
   anywhere_destination?: boolean     // true for "to anywhere", "wherever is cheapest", etc.
   max_price?: number                 // "for $200 or less", "under €150", "max 300 EUR"
+  via_iata?: string                  // preferred stopover city IATA, e.g. "HKG"
+  via_name?: string                  // human-readable stopover city name
+  min_layover_hours?: number         // minimum desired layover at via city (hours)
+  max_layover_hours?: number         // maximum desired layover at via city (hours)
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -1025,6 +1070,208 @@ export function parseNLQuery(query: string): ParsedQuery {
   const outboundRaw = returnSplitIdx >= 0 ? q.slice(0, returnSplitIdx) : q
   const returnRaw = returnSplitIdx >= 0 ? q.slice(returnSplitIdx + returnSplitMatch![0].length) : null
 
+  // ── 1b. Via / preferred-stopover extraction ───────────────────────────────
+  // Runs before city-pair parsing to prevent the via city being mistaken for
+  // origin or destination. City is always in the last capture group (m[m.length-1]).
+  //
+  // Covers English + DE/ES/FR/IT/NL/PL/PT/SV, including:
+  //   "via Hong Kong", "fly through Dubai", "stopover in Singapore",
+  //   "transit via Bangkok", "connecting through Tokyo",
+  //   "with a layover in Seoul", "change planes in Doha",
+  //   "break the journey in Abu Dhabi", "spend 2 days in Istanbul",
+  //   "explore Hong Kong on the way", "with a Tokyo layover",
+  //   "mit Zwischenstopp in Frankfurt", "con escala en Dubai", etc.
+  const _viaPatterns: RegExp[] = [
+    // "spend X days / a night / some time in CITY" (most specific — also implies duration)
+    /\bspend(?:ing)?\s+(?:some\s+(?:time|days?|hours?)|an?\s+(?:extra\s+)?(?:night|day|week(?:end)?)|(?:a\s+)?(?:few|couple\s+of|number\s+of)\s+(?:days?|nights?|hours?)|\d+\s+(?:days?|nights?|hours?))\s+(?:in|at)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // "explore CITY on the way / en route / during the layover"
+    /\bexplor(?:e|ing)\s+(?:(?:a\s+bit\s+of|some\s+of|the)\s+)?([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,2})(?:\s+(?:on\s+the\s+way|en\s+route|during\s+(?:the\s+)?(?:layover|stopover|transit|stop)|while\s+(?:there|passing|transiting)))/i,
+    // "visit CITY on the way / during the layover / for a day"
+    /\bvisit(?:ing)?\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,2})(?:\s+(?:on\s+the\s+way|en\s+route|during\s+(?:the\s+)?(?:layover|stopover|transit)|for\s+(?:a\s+)?(?:day|night|few\s+days?|couple\s+of\s+days?)|while\s+(?:there|passing)))/i,
+    // "break the journey in CITY" / "break the trip up in CITY"
+    /\bbreak(?:ing)?\s+(?:up\s+)?(?:the\s+)?(?:journey|flight|trip)\s+(?:in|at)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // "change planes / flights in CITY"
+    /\bchang(?:e|ing)\s+(?:planes?|flights?)\s+(?:in|at)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // "touch down in CITY" / "pit stop in CITY"
+    /\b(?:touch(?:ing)?\s+down|pit[- ]?stop)\s+(?:in|at)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // "with a CITY stopover" / "a CITY layover" (reversed form, e.g. "with a Hong Kong stopover")
+    /\bwith\s+(?:an?\s+)?([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,2})\s+(?:stopover|layover|connection|transfer|stop)\b/i,
+    // "CITY as a stopover / as a layover"
+    /\b([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,2})\s+as\s+(?:a\s+|an\s+)?(?:stopover|layover|connection|transfer)\b/i,
+    // Main English compound — fly through / go via / pass through / route via / stopover /
+    //   layover / transit / transfer / connect / make a stop / have a layover …
+    /\b(?:fly(?:ing)?\s+(?:via|through|over)|go(?:ing)?\s+(?:via|through)|pass(?:ing)?\s+through|rout(?:e[sd]?|ing)\s+(?:via|through)|travel(?:l?ing)?\s+(?:via|through)|stop(?:ping)?\s+(?:over\s+)?(?:in|at|by)|stopp?over\s+(?:in|at)|layover\s+(?:in|at)|transit(?:ing)?\s+(?:in|through|via|at)|transfer(?:ring)?\s+(?:in|at|through|via)|connect(?:ing)?\s+(?:in|through|via|at)|connection\s+(?:in|at|through|via)|with\s+(?:an?\s+)?(?:connection|stop(?:over)?|layover|transfer|transit)\s+(?:in|at)|mak(?:e|ing)\s+(?:an?\s+)?(?:stop(?:over)?|layover|transfer)\s+(?:in|at)|hav(?:e|ing)\s+(?:an?\s+)?(?:stop(?:over)?|layover|transfer)\s+(?:in|at))\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s+(?:for|with|and|on|at|around|\d)|[,.]|\s+(?:long|short|over|quick|brief|overnight|a\b)|$)/i,
+    // Bare "via CITY"
+    /\bvia\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s+(?:for|with|and|on|at|around|\d)|[,.]|\s+(?:long|short|over|quick|brief|overnight|a\b)|$)/i,
+    // German: "mit Zwischenstopp in Dubai", "mit Stopp in Singapur", "über Frankfurt"
+    /\b(?:mit\s+(?:\w+\s+)?(?:zwischenstopp|layover|transfer|umstieg|aufenthalt|stopp)\s+(?:in|an|auf)|mit\s+stopp\s+in)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    /\büber\s+([\w\u00C0-\u024F]{3,}(?:\s+[\w\u00C0-\u024F]+){0,2})(?=\s+(?:fliegen|reisen|fahren|mit|nach|für|\d)|[,.]|$)/i,
+    // Spanish: "con escala en Dubai", "haciendo escala en", "pasando por"
+    /\b(?:con\s+escala\s+(?:en|a)|haciendo\s+escala\s+en|pasando\s+por)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // French: "avec escale à Paris", "avec une correspondance à", "en passant par"
+    /\b(?:avec\s+(?:une?\s+)?(?:escale|correspondance|connexion)\s+[aà]|en\s+passant\s+par)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // Italian: "con scalo a Roma", "passando per Zurigo"
+    /\b(?:con\s+scalo\s+(?:a|in)|passando\s+per)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // Dutch: "met tussenstop in Amsterdam", "met een overstap in"
+    /\bmet\s+(?:een?\s+)?(?:tussenstop|overstap|transfer)\s+(?:in|te)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // Polish: "z przesiadką w Warszawie", "przez Dubaj"
+    /\b(?:z\s+(?:przesiadką|przesiadka|postoj(?:em)?)\s+w|przez)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // Portuguese: "com escala em Lisboa", "passando por Doha"
+    /\b(?:com\s+escala\s+em|passando\s+por)\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+    // Swedish: "med mellanlandning i Stockholm"
+    /\bmed\s+(?:mellanlandning|stopp|anslutning)\s+i\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,3})(?=\s|[,.]|$)/i,
+  ]
+
+  let viaCityRawMatch: RegExpMatchArray | null = null
+  for (const _vp of _viaPatterns) {
+    const _vm = q.match(_vp)
+    if (_vm) { viaCityRawMatch = _vm; break }
+  }
+
+  let outboundForParsing = outboundRaw
+  if (viaCityRawMatch) {
+    const viaCityRaw = (viaCityRawMatch[viaCityRawMatch.length - 1] ?? '').trim()
+    // Try progressively shorter prefixes to find the best city match
+    // ("Hong Kong International" → tries "Hong Kong International", "Hong Kong", "Hong" → resolves on "Hong Kong")
+    const _viaWords = viaCityRaw.split(/\s+/)
+    for (let _vl = _viaWords.length; _vl >= 1; _vl--) {
+      const cand = _viaWords.slice(0, _vl).join(' ')
+      const viaResolved = resolveLocation(cand)
+      if (viaResolved) {
+        result.via_iata = viaResolved.code
+        result.via_name = viaResolved.name
+        // Strip the entire via clause so the city parser won't absorb it as destination
+        outboundForParsing = outboundRaw.replace(viaCityRawMatch[0], ' ').replace(/\s{2,}/g, ' ').trim()
+        break
+      }
+    }
+  }
+
+  // ── 1c. Layover duration extraction ──────────────────────────────────────
+  // Fires when via city was found OR when any stopover/transfer keyword appears.
+  // Checks in priority order: explicit min/max constraints → numeric ranges →
+  // approximate singles → named ("overnight", "a day", "half a day", etc.) →
+  // qualitative ("long layover", "short connection").
+  const _hasLayoverKw = /\b(?:layover|stopover|stop[- ]over|transit|connection|transfer)\b/i.test(q)
+  if (result.via_iata || _hasLayoverKw) {
+    // ── P1: Explicit minimum constraint ──────────────────────────────────────
+    // "at least 6 hours", "minimum 8 hours", "6 hours minimum", "6+ hours", "at least 2 days"
+    const _minHr  = q.match(/\b(?:at\s+least|minimum|min\.?|no\s+less\s+than)\s+(\d+)\s*h(?:ours?|rs?)?/i)
+    const _minDay = q.match(/\b(?:at\s+least|minimum|min\.?|no\s+less\s+than)\s+(\d+)\s*days?\b/i)
+    const _minSuf = q.match(/\b(\d+)\s*h(?:ours?|rs?)?\s+(?:minimum|min\.?|or\s+more|plus)\b/i)
+    const _minPlus = q.match(/\b(\d+)\+\s*h(?:ours?|rs?)?\b/i)
+    // ── P2: Explicit maximum constraint ──────────────────────────────────────
+    // "no more than 3 hours", "under 4 hours", "at most 5 hours", "max 6 hours", "less than 3 hours", "up to 2 hours"
+    const _maxHr  = q.match(/\b(?:at\s+most|no\s+more\s+than|less\s+than|under|maximum|max\.?|up\s+to|no\s+longer\s+than)\s+(\d+)\s*h(?:ours?|rs?)?/i)
+    const _maxDay = q.match(/\b(?:at\s+most|no\s+more\s+than|less\s+than|under|maximum|max\.?|up\s+to)\s+(\d+)\s*days?\b/i)
+    const _maxSuf = q.match(/\b(\d+)\s*h(?:ours?|rs?)?\s+(?:maximum|max\.?|or\s+less)\b/i)
+    // ── P3: Numeric hour range ────────────────────────────────────────────────
+    // "6-8 hours", "6 to 8 hours", "between 6 and 8 hours"
+    const _hrRange = q.match(/\b(\d+)\s*[-–]\s*(\d+)\s*h(?:ours?|rs?)?(?:\s*(?:layover|stopover|transit|connection|transfer|stop))?\b/i)
+      ?? q.match(/\b(\d+)\s+to\s+(\d+)\s*h(?:ours?|rs?)?(?:\s*(?:layover|stopover|transit|connection|transfer|stop))?\b/i)
+      ?? q.match(/\bbetween\s+(\d+)\s+and\s+(\d+)\s*h(?:ours?|rs?)?\b/i)
+    // ── P4: Numeric day range ─────────────────────────────────────────────────
+    // "1-2 days", "2 to 3 days", "between 1 and 3 days"
+    const _dayRange = q.match(/\b(\d+)\s*[-–]\s*(\d+)\s*days?\b/i)
+      ?? q.match(/\b(\d+)\s+to\s+(\d+)\s*days?\b/i)
+      ?? q.match(/\bbetween\s+(\d+)\s+and\s+(\d+)\s*days?\b/i)
+    // ── P5: Approximate single hours — "about 6 hours", "roughly 8 hours" ────
+    const _approxHr = q.match(/\b(?:about|around|roughly|approximately|~)\s+(\d+)\s*h(?:ours?|rs?)\b/i)
+    // ── P6: Exact single hours (requires stopover context word) ──────────────
+    // "6 hour layover", "8 hours stopover", "layover of 6 hours"
+    const _exactHr = q.match(/\b(\d+)\s*h(?:ours?|rs?)?\s+(?:layover|stopover|stop|connection|transfer|transit)\b/i)
+      ?? q.match(/\b(?:layover|stopover|stop|connection|transfer|transit)\s+(?:of\s+)?(\d+)\s*h(?:ours?|rs?)?\b/i)
+    // ── P7: Single day count (with explicit layover context or spend context) ─
+    // "2 day layover", "3 days stopover", "spend 3 days"
+    const _dayCount = q.match(/\b(\d+)[- ]?(?:full\s+)?days?\s+(?:layover|stopover|connection|transfer|stop)\b/i)
+      ?? q.match(/\bspend(?:ing)?\s+(\d+)\s*days?\b/i)
+
+    // ── Apply by priority ─────────────────────────────────────────────────────
+    if (_minHr || _minDay || _minSuf || _minPlus) {
+      if (_minHr)   result.min_layover_hours = parseInt(_minHr[1], 10)
+      else if (_minDay) result.min_layover_hours = parseInt(_minDay[1], 10) * 24
+      else if (_minSuf) result.min_layover_hours = parseInt(_minSuf[1], 10)
+      else if (_minPlus) result.min_layover_hours = parseInt(_minPlus[1], 10)
+      // Max can coexist with min
+      if (_maxHr)   result.max_layover_hours = parseInt(_maxHr[1], 10)
+      else if (_maxDay) result.max_layover_hours = parseInt(_maxDay[1], 10) * 24
+      else if (_maxSuf) result.max_layover_hours = parseInt(_maxSuf[1], 10)
+    } else if (_maxHr || _maxDay || _maxSuf) {
+      if (_maxHr)   result.max_layover_hours = parseInt(_maxHr[1], 10)
+      else if (_maxDay) result.max_layover_hours = parseInt(_maxDay[1], 10) * 24
+      else if (_maxSuf) result.max_layover_hours = parseInt(_maxSuf[1], 10)
+    } else if (_hrRange) {
+      result.min_layover_hours = parseInt(_hrRange[1], 10)
+      result.max_layover_hours = parseInt(_hrRange[2], 10)
+    } else if (_dayRange) {
+      result.min_layover_hours = parseInt(_dayRange[1], 10) * 24
+      result.max_layover_hours = parseInt(_dayRange[2], 10) * 24
+    } else if (_approxHr) {
+      const h = parseInt(_approxHr[1], 10)
+      result.min_layover_hours = Math.max(0, h - 3)
+      result.max_layover_hours = h + 3
+    } else if (_exactHr) {
+      const h = parseInt(_exactHr[1], 10)
+      result.min_layover_hours = Math.max(0, h - 2)
+      result.max_layover_hours = h + 4
+    } else if (_dayCount) {
+      const d = parseInt(_dayCount[1], 10)
+      result.min_layover_hours = Math.round((d - 0.5) * 24)
+      result.max_layover_hours = Math.round((d + 0.5) * 24)
+    } else if (/\b(?:a\s+)?(?:long\s+)?week[- ]?end\s*(?:layover|stopover|stop|there)?\b/i.test(q)) {
+      // "a long weekend", "weekend layover"
+      result.min_layover_hours = 48
+      result.max_layover_hours = 78
+    } else if (/\b(?:a\s+)?(?:couple\s+of|two)\s+days?\b/i.test(q)) {
+      // "a couple of days", "two days"
+      result.min_layover_hours = 36
+      result.max_layover_hours = 60
+    } else if (/\b(?:a\s+)?(?:few|several)\s+days?\b/i.test(q)) {
+      // "a few days", "several days"
+      result.min_layover_hours = 48
+      result.max_layover_hours = 96
+    } else if (
+      /\b(?:a|one|1|full|whole|entire)\s*(?:full\s+)?day(?:\s+(?:layover|stopover|stop|connection|transit))?\b/i.test(q) ||
+      /\ball[\s-]day\b/i.test(q) ||
+      /\b(?:explore\s+for\s+(?:a\s+)?day|spend\s+(?:a|the)\s+day(?:\s+there)?|day[\s-](?:layover|stopover|trip|stop))\b/i.test(q)
+    ) {
+      // "a full day", "all day", "spend the day there"
+      result.min_layover_hours = 16
+      result.max_layover_hours = 28
+    } else if (/\bhalf[- ]?(?:a[- ]?)?day\b/i.test(q)) {
+      // "half a day", "half-day stopover"
+      result.min_layover_hours = 10
+      result.max_layover_hours = 16
+    } else if (/\b(?:a\s+)?(?:few|couple\s+of)\s+hours?\b/i.test(q) || /\bsome\s+hours?\b/i.test(q)) {
+      // "a few hours", "couple of hours"
+      result.min_layover_hours = 2
+      result.max_layover_hours = 7
+    } else if (/\bseveral\s+hours?\b/i.test(q)) {
+      result.min_layover_hours = 3
+      result.max_layover_hours = 10
+    } else if (/\b(?:a\s+)?couple\s+of\s+nights?\b/i.test(q) || /\btwo\s+nights?\b/i.test(q)) {
+      // "a couple of nights"
+      result.min_layover_hours = 24
+      result.max_layover_hours = 48
+    } else if (/\b(\d+)\s+nights?\b/i.test(q)) {
+      const _nm = q.match(/\b(\d+)\s+nights?\b/i)!
+      const n = parseInt(_nm[1], 10)
+      result.min_layover_hours = Math.max(6, Math.round(n * 14))
+      result.max_layover_hours = Math.round((n + 1) * 16)
+    } else if (/\bovernight\b/i.test(q) || /\ba\s+night(?:\s+(?:there|over|layover|stopover))?\b/i.test(q)) {
+      // "overnight", "a night there"
+      result.min_layover_hours = 8
+      result.max_layover_hours = 20
+    } else if (/\b(?:long(?:est)?|very\s+long|extended|lengthy|substantial|as\s+long\s+as\s+possible|longest\s+possible)\s*(?:possible\s+)?(?:layover|stopover|connection|transit|stop|transfer)?\b/i.test(q)) {
+      // "longest possible layover", "very long stopover", "extended connection"
+      result.min_layover_hours = 8
+      // no max — user wants as long as possible
+    } else if (/\b(?:short(?:est)?|quick(?:est)?|brief|minimal?|as\s+short\s+as\s+possible|as\s+quick\s+as\s+possible)\s*(?:possible\s+)?(?:layover|stopover|connection|transit|transfer|stop)\b/i.test(q)) {
+      // "short layover", "quickest connection", "minimal stopover"
+      result.max_layover_hours = 4
+    }
+  }
+
   // ── 2. Extract cities from outbound part ─────────────────────────────────
   // Try multiple route separator patterns
   const routePatterns = [
@@ -1038,7 +1285,7 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   let originStr = '', destStr = ''
   for (const pat of routePatterns) {
-    const m = outboundRaw.match(pat)
+    const m = outboundForParsing.match(pat)
     if (m) {
       originStr = m[1].trim()
       destStr = m[2].trim()

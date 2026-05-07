@@ -16,6 +16,8 @@ const LANGUAGES = [
   { code: 'sv', label: 'Svenska',    flag: 'SV' },
   { code: 'hr', label: 'Hrvatski',   flag: 'HR' },
   { code: 'sq', label: 'Shqip',      flag: 'SQ' },
+  { code: 'ja', label: '日本語',      flag: 'JA' },
+  { code: 'zh', label: '中文',        flag: 'ZH' },
 ]
 
 function EarthIcon() {

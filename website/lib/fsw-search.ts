@@ -14,6 +14,9 @@ export interface WebSearchParams {
   currency: string
   max_stops?: number
   cabin?: string
+  via_iata?: string
+  min_layover_hours?: number
+  max_layover_hours?: number
 }
 
 export interface WebSearchAnalyticsContext {
@@ -58,6 +61,9 @@ export async function startWebSearch(
       limit: WEBSITE_SEARCH_LIMIT,
       ...(params.max_stops !== undefined ? { max_stops: params.max_stops } : {}),
       ...(params.cabin ? { cabin: params.cabin } : {}),
+      ...(params.via_iata ? { via_iata: params.via_iata } : {}),
+      ...(params.min_layover_hours !== undefined ? { min_layover_hours: params.min_layover_hours } : {}),
+      ...(params.max_layover_hours !== undefined ? { max_layover_hours: params.max_layover_hours } : {}),
     }),
     signal: AbortSignal.timeout(10_000),
     cache: 'no-store',

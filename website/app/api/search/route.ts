@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
       : detectPreferredCurrency(request.headers)
     let maxStops: number | undefined
     let cabin: string | undefined
+    let viaIata: string | undefined
+    let minLayoverHours: number | undefined
+    let maxLayoverHours: number | undefined
 
     if (body.origin && body.destination && body.date_from) {
       origin = (body.origin as string).toUpperCase().trim()
@@ -37,6 +40,9 @@ export async function POST(request: NextRequest) {
         maxStops = parseInt(body.max_stops, 10)
       }
       cabin = body.cabin ? String(body.cabin).toUpperCase() : undefined
+      viaIata = body.via_iata ? String(body.via_iata).toUpperCase().trim() : undefined
+      if (body.min_layover_hours !== undefined) minLayoverHours = parseFloat(body.min_layover_hours)
+      if (body.max_layover_hours !== undefined) maxLayoverHours = parseFloat(body.max_layover_hours)
     } else if (body.query) {
       const parsed = parseNLQuery(body.query)
       origin = parsed.origin
@@ -47,6 +53,9 @@ export async function POST(request: NextRequest) {
       returnDate = parsed.return_date || undefined
       maxStops = parsed.stops
       cabin = parsed.cabin ? String(parsed.cabin).toUpperCase() : undefined
+      viaIata = parsed.via_iata
+      minLayoverHours = parsed.min_layover_hours
+      maxLayoverHours = parsed.max_layover_hours
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
     }
@@ -68,6 +77,9 @@ export async function POST(request: NextRequest) {
       currency,
       ...(maxStops !== undefined ? { max_stops: maxStops } : {}),
       ...(cabin ? { cabin } : {}),
+      ...(viaIata ? { via_iata: viaIata } : {}),
+      ...(minLayoverHours !== undefined ? { min_layover_hours: minLayoverHours } : {}),
+      ...(maxLayoverHours !== undefined ? { max_layover_hours: maxLayoverHours } : {}),
     }, {
       query: typeof body.query === 'string' ? body.query : undefined,
       origin_name: originName,
