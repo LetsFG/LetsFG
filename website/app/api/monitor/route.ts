@@ -31,14 +31,14 @@ export async function POST(req: NextRequest) {
   if (
     typeof origin !== 'string' || !origin.trim() ||
     typeof destination !== 'string' || !destination.trim() ||
-    typeof departure_date !== 'string' || !departure_date.trim() ||
-    typeof notify_email !== 'string' || !notify_email.trim()
+    typeof departure_date !== 'string' || !departure_date.trim()
   ) {
-    return NextResponse.json({ error: 'Missing required fields: origin, destination, departure_date, notify_email' }, { status: 400 })
+    return NextResponse.json({ error: 'Missing required fields: origin, destination, departure_date' }, { status: 400 })
   }
 
-  // Basic email format check
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notify_email)) {
+  // Basic email format check (only if provided)
+  const emailValue = typeof notify_email === 'string' ? notify_email.trim() : ''
+  if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
     return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
   }
 
@@ -56,10 +56,12 @@ export async function POST(req: NextRequest) {
       origin: String(origin).trim().toUpperCase(),
       destination: String(destination).trim().toUpperCase(),
       departure_date: String(departure_date).trim(),
-      notify_email: String(notify_email).trim().toLowerCase(),
       weeks: weeksNum,
       success_url: successUrl,
       cancel_url: cancelUrl,
+    }
+    if (emailValue) {
+      payload.notify_email = emailValue.toLowerCase()
     }
     if (return_date && typeof return_date === 'string' && return_date.trim()) {
       payload.return_date = return_date.trim()

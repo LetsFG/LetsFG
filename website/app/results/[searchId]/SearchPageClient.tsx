@@ -666,7 +666,12 @@ export default function SearchPageClient({
           searchId={searchId}
           trackingSearchId={analyticsSearchId}
           isTestSearch={isTestSearch}
-          onTrackPrices={parsed.origin && parsed.destination && parsed.date ? () => setMonitorOpen(true) : undefined}
+          onTrackPrices={parsed.origin && parsed.destination && parsed.date ? () => {
+            trackSearchSessionEvent(analyticsSearchId, 'monitor_strip_clicked', {
+              origin: parsed.origin, destination: parsed.destination,
+            })
+            setMonitorOpen(true)
+          } : undefined}
           newOfferIds={isSearching ? newOfferIds : undefined}
           isSearching={isSearching}
           progress={progress}
@@ -675,6 +680,7 @@ export default function SearchPageClient({
 
       {monitorOpen && parsed.origin && parsed.destination && parsed.date && (
         <MonitorModal
+          searchId={analyticsSearchId}
           origin={parsed.origin}
           originName={parsed.origin_name || parsed.origin}
           destination={parsed.destination}

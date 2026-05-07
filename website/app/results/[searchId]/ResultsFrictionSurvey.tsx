@@ -12,12 +12,18 @@ const SS_KEY_DISMISSED = 'lfg_survey_dismissed'
 // Persistent key: user already answered — never show again
 const LS_KEY_DONE = 'lfg_survey_done'
 
-// Module-level timestamp: records when the page first loaded this module.
+// Module-level timestamp: records when the page first loaded this module for a given searchId.
 // Survives React remounts so the 3-min timer is always relative to page load,
 // not to component mount — prevents the timer resetting on re-renders.
+// Keyed by searchId so navigating to a new search resets the clock.
 let _pageFirstRenderTs: number | null = null
-function getPageFirstRenderTs(): number {
-  if (_pageFirstRenderTs === null) _pageFirstRenderTs = Date.now()
+let _pageFirstRenderSearchId: string | null = null
+
+function getPageFirstRenderTs(searchId: string): number {
+  if (_pageFirstRenderTs === null || _pageFirstRenderSearchId !== searchId) {
+    _pageFirstRenderTs = Date.now()
+    _pageFirstRenderSearchId = searchId
+  }
   return _pageFirstRenderTs
 }
 
@@ -43,11 +49,15 @@ type Trigger = 'banner' | 'exit_intent'
 
 export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnlocked }: Props) {
   // If user already answered (ever) or dismissed this session, suppress entirely.
-  const [suppressed] = useState<boolean>(() => {
+  // Must start as false (SSR-safe) and be set in useEffect to avoid hydration mismatch.
+  const [suppressed, setSuppressed] = useState(false)
+  useEffect(() => {
     try {
-      return !!localStorage.getItem(LS_KEY_DONE) || !!sessionStorage.getItem(SS_KEY_DISMISSED)
-    } catch { return false }
-  })
+      if (localStorage.getItem(LS_KEY_DONE) || sessionStorage.getItem(SS_KEY_DISMISSED)) {
+        setSuppressed(true)
+      }
+    } catch { /* ignore */ }
+  }, [])
 
   const [bannerVisible, setBannerVisible] = useState(false)
   const [overlayVisible, setOverlayVisible] = useState(false)
@@ -63,7 +73,7 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
   // don't reset the clock.
   useEffect(() => {
     if (suppressed || hasUnlocked || bannerDismissed) return
-    const elapsed = Date.now() - getPageFirstRenderTs()
+    const elapsed = Date.now() - getPageFirstRenderTs(searchId)
     const remaining = Math.max(0, BANNER_DELAY_MS - elapsed)
     const id = window.setTimeout(() => {
       if (!hasUnlocked && !bannerDismissed) setBannerVisible(true)
