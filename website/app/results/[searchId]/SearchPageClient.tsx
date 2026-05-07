@@ -544,6 +544,18 @@ export default function SearchPageClient({
               />
             </Link>
 
+            <nav className="lp-nav res-topbar-nav">
+              <span className="lp-nav-link lp-nav-link--active">Search</span>
+              {parsed.origin && parsed.destination && parsed.date && (
+                <button
+                  className="lp-nav-link lp-nav-link-btn"
+                  onClick={() => setMonitorOpen(true)}
+                >
+                  Flight Monitoring
+                </button>
+              )}
+            </nav>
+
             <div className="res-topbar-actions">
               <GlobeButton inline />
               <CurrencyButton inline behavior={isSearching ? 'rerun-search' : 'persist'} initialCurrency={displayCurrency} searchQuery={query} probeMode={isTestSearch} />
@@ -570,6 +582,22 @@ export default function SearchPageClient({
             <>
               <div className="res-search-shell">
                 <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
+              </div>
+
+              <div className="res-meta-bar">
+                <span className="res-meta-label">{t('searchResults')}</span>
+                {routeLabel && (
+                  <>
+                    <span className="res-meta-sep">·</span>
+                    <span className="res-meta-route">{routeLabel}</span>
+                  </>
+                )}
+                {detailSummary && (
+                  <>
+                    <span className="res-meta-sep">·</span>
+                    <span className="res-meta-detail">{detailSummary}</span>
+                  </>
+                )}
               </div>
 
               {offers.length === 0 && (

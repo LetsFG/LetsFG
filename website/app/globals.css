@@ -5470,6 +5470,13 @@ body:has(.res-page) {
     min-height: 0;
   }
 
+  .res-topbar-nav {
+    grid-column: 1 / -1;
+    order: 3;
+    justify-content: flex-start;
+    gap: 24px;
+  }
+
   .res-topbar-logo-link {
     width: 122px;
     justify-self: start;
