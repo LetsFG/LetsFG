@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "LetsFG — Find cheap flights. Say where you're going.",
-    "description": "Agent-native flight search. 180+ airlines, zero markup. Just tell us where you want to go."
+    "title": "LetsFG — The entire internet of flights.",
+    "description": "We scan every airline, OTA, and booking site at once — then expose hidden airline fees. Bag fees, seat prices, real totals shown right in search results. No bias, no tracking cookies."
   },
   "nav": {
     "githubLabel": "Star LetsFG on GitHub",

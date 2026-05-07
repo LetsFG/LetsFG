@@ -1,10 +1,10 @@
-# LetsFG — Flight Search for AI Agents
+# LetsFG — The entire internet of flights.
 
 > This file is for AI agents and LLMs. Humans should visit https://letsfg.co
 
 ## What is LetsFG?
 
-LetsFG is a flight search engine optimized for AI agents. Search 180+ airlines with zero markup.
+LetsFG scans every airline, OTA, and flight website simultaneously and returns the raw airline price — no demand inflation, no cookie tracking, no hidden fees. The same flight that costs $350 on a travel website typically costs $20–50 less here because you're getting the direct airline price, every time.
 
 ## How to Search Flights
 

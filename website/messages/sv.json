@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "LetsFG — Hitta billiga flyg. Säg vart du ska.",
-    "description": "Flygsökning för AI-agenter. Över 180 flygbolag, noll påslag. Berätta bara vart du vill åka."
+    "title": "LetsFG — Hela internet av flyg.",
+    "description": "Vi söker igenom varje flygbolag, OTA och bokningssajt på en gång — och avslöjar sedan dolda flygbolagsavgifter. Bagageavgifter, sätespris, verkliga totalsummor direkt i sökresultaten. Ingen bias, inga spårningscookies."
   },
   "nav": {
     "githubLabel": "Ge LetsFG en stjärna på GitHub",
