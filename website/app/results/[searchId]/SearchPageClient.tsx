@@ -15,6 +15,7 @@ import { formatOfferDisplayPrice, getOfferDisplayTotalPrice } from '../../../lib
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
+import { useSearchParams } from 'next/navigation'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
@@ -154,6 +155,9 @@ export default function SearchPageClient({
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
   const homeHref = isTestSearch ? '/en?probe=1' : '/en'
+  const searchParams = useSearchParams()
+  const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : undefined
+  const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : undefined
 
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
@@ -448,12 +452,19 @@ export default function SearchPageClient({
   const travelerCount = parsed.passengers || 1
   const travelerLabel = `${travelerCount} ${travelerCount === 1 ? t('traveler') : t('travelers')}`
 
+  const durationLabel = tripMin !== undefined
+    ? (tripMax !== undefined && tripMax !== tripMin ? `${tripMin}–${tripMax} days` : `${tripMin} days`)
+    : null
   const detailBits = [
     parsed.date
-      ? parsed.return_date
-        ? `${fmtDate(parsed.date)} – ${fmtDate(parsed.return_date)}`
-        : fmtDate(parsed.date)
+      ? durationLabel
+        // Duration-range trip: show departure date only (omit derived midpoint return)
+        ? fmtDate(parsed.date)
+        : parsed.return_date
+          ? `${fmtDate(parsed.date)} – ${fmtDate(parsed.return_date)}`
+          : fmtDate(parsed.date)
       : null,
+    durationLabel,
     travelerLabel,
     parsed.cabin ?? null,
   ].filter(Boolean)
