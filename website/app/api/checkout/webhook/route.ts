@@ -39,6 +39,7 @@ async function trackPaymentVerified(session: Stripe.Checkout.Session) {
   }
 
   const fee = session.amount_total != null ? session.amount_total / 100 : undefined
+  const feeCurrency = session.currency?.toUpperCase() || undefined
 
   const payload = {
     search_id: searchId,
@@ -51,7 +52,7 @@ async function trackPaymentVerified(session: Stripe.Checkout.Session) {
         source: 'webhook',
       },
     },
-    ...(fee != null ? { revenue: fee } : {}),
+    ...(fee != null ? { revenue: fee, ...(feeCurrency ? { revenue_currency: feeCurrency } : {}) } : {}),
   }
 
   try {

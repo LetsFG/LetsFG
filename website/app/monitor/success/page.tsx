@@ -128,7 +128,8 @@ function MonitorSuccessInner() {
       // 1. Get VAPID public key
       const keyResp = await fetch('/api/monitor/vapid-key')
       if (!keyResp.ok) { setPushState('error'); return }
-      const { public_key } = await keyResp.json() as { public_key?: string }
+      const body = await keyResp.json() as { public_key?: string; vapid_public_key?: string }
+      const public_key = body.public_key ?? body.vapid_public_key
       if (!public_key) { setPushState('error'); return }
 
       // 2. Request notification permission

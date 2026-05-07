@@ -4,6 +4,10 @@ import { getSessionUid } from '../../../../lib/session-uid'
 import { setUnlockCookie } from '../../../../lib/unlock-cookie'
 import { createUnlockToken } from '../../../../lib/unlock-token'
 
+const ANALYTICS_API_BASE = (
+  process.env.LETSFG_ANALYTICS_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
+).replace(/\/$/, '')
+
 /**
  * POST /api/checkout/verify
  *
@@ -52,12 +56,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ unlocked: false, error: 'Missing search ID' }, { status: 500 })
     }
 
+    const offerId = session.metadata?.offer_id ?? ''
+    const revenue = session.amount_total != null ? session.amount_total / 100 : undefined
+    const revenueCurrency = session.currency?.toUpperCase() || undefined
+
     const response = NextResponse.json({
       unlocked: true,
       searchId,
       unlockToken: createUnlockToken(uid, searchId),
     })
     setUnlockCookie(response, req, searchId)
+
+    // Server-side analytics backup: fire payment_verified without blocking the response.
+    // This is the most reliable path — runs server-side, has all data, doesn't depend
+    // on the Stripe webhook firing or the client-side tracking completing.
+    void fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'https://letsfg.co',
+        'Referer': 'https://letsfg.co/',
+        'User-Agent': 'LetsFG Verify/1.0',
+      },
+      body: JSON.stringify({
+        search_id: searchId,
+        ...(revenue != null ? { revenue, ...(revenueCurrency ? { revenue_currency: revenueCurrency } : {}) } : {}),
+        event: {
+          type: 'payment_verified',
+          at: new Date().toISOString(),
+          data: { offer_id: offerId, stripe_session_id: stripeSessionId, source: 'verify' },
+        },
+      }),
+      signal: AbortSignal.timeout(8000),
+    }).catch((err) => console.warn('[verify] analytics tracking failed:', err))
+
     return response
   } catch (err) {
     console.error('[checkout] verify error:', err)

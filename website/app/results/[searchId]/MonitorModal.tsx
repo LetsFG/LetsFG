@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -10,6 +11,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 }
 
 interface MonitorModalProps {
+  searchId?: string | null
   origin: string
   originName: string
   destination: string
@@ -45,6 +47,14 @@ function BellIcon() {
   )
 }
 
+function TelegramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" width="16" height="16" aria-hidden="true">
+      <path d="M21.93 3.24L2.56 10.92c-1.3.52-1.29 1.24-.24 1.56l4.9 1.53 11.35-7.17c.54-.33 1.03-.15.62.21L9.63 15.54l-.28 4.99c.42 0 .6-.19.83-.41l2-1.94 4.14 3.07c.76.42 1.31.2 1.5-.7l2.72-12.82c.28-1.12-.43-1.62-1.64-1.49z" fill="currentColor"/>
+    </svg>
+  )
+}
+
 function fmtDate(iso: string) {
   try {
     return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', {
@@ -56,6 +66,7 @@ function fmtDate(iso: string) {
 }
 
 export default function MonitorModal({
+  searchId,
   origin,
   originName,
   destination,
@@ -74,6 +85,9 @@ export default function MonitorModal({
   const dialogRef = useRef<HTMLDialogElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
 
+  // True if user has provided at least one delivery channel (telegram is always available post-payment)
+  const hasChannel = email.trim() !== '' || pushState === 'done'
+
   // Pre-authorise push before payment so the success page can auto-register it.
   const handleEnablePush = async () => {
     if (!('Notification' in window) || !('serviceWorker' in navigator)) {
@@ -84,7 +98,8 @@ export default function MonitorModal({
     try {
       const keyResp = await fetch('/api/monitor/vapid-key')
       if (!keyResp.ok) { setPushState('unavailable'); return }
-      const { public_key } = await keyResp.json() as { public_key?: string }
+      const body = await keyResp.json() as { public_key?: string; vapid_public_key?: string }
+      const public_key = body.public_key ?? body.vapid_public_key
       if (!public_key) { setPushState('unavailable'); return }
 
       await navigator.serviceWorker.register('/sw.js').catch(() => null)
@@ -99,6 +114,7 @@ export default function MonitorModal({
       // Stash for the success page — it reads this and registers with the backend
       try { sessionStorage.setItem('letsfg_push_pending_sub', JSON.stringify(sub.toJSON())) } catch { /* ignore */ }
       setPushState('done')
+      trackSearchSessionEvent(searchId, 'monitor_push_enabled', {})
     } catch {
       setPushState('unavailable')
     }
@@ -109,8 +125,11 @@ export default function MonitorModal({
     emailRef.current?.focus()
     // Prevent body scroll while modal is open
     document.body.style.overflow = 'hidden'
+    trackSearchSessionEvent(searchId, 'monitor_modal_opened', {
+      origin, destination, departure_date: departureDate, is_round_trip: Boolean(returnDate),
+    })
     return () => { document.body.style.overflow = '' }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     if (e.target === dialogRef.current) onClose()
@@ -118,19 +137,26 @@ export default function MonitorModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email.trim() || state === 'loading') return
+    if (state === 'loading') return
     setState('loading')
     setErrorMsg('')
+
+    trackSearchSessionEvent(searchId, 'monitor_checkout_started', {
+      weeks,
+      has_email: email.trim().length > 0,
+      has_push: pushState === 'done',
+      total_usd: weeks * 5,
+    })
 
     try {
       const payload: Record<string, unknown> = {
         origin,
         destination,
         departure_date: departureDate,
-        notify_email: email.trim(),
         weeks,
         adults,
       }
+      if (email.trim()) payload.notify_email = email.trim()
       if (returnDate) payload.return_date = returnDate
       if (cabinClass) payload.cabin_class = cabinClass
 
@@ -219,31 +245,78 @@ export default function MonitorModal({
             <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
             $5 / week · non-recurring · cancel any time
           </li>
-          <li className="mon-feature">
-            <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
-            Browser push &amp; Telegram alerts
-          </li>
         </ul>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="mon-form" noValidate>
-          {/* Email */}
-          <div className="mon-field">
-            <label className="mon-label" htmlFor="mon-email">Your email</label>
-            <input
-              ref={emailRef}
-              id="mon-email"
-              type="email"
-              className="mon-input"
-              placeholder="you@example.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              disabled={state === 'loading'}
-            />
-            <p className="mon-field-hint">Price alerts and unlock credits are sent here.</p>
+          {/* Alert channels */}
+          <div className="mon-channels">
+            <p className="mon-channels-label">Alert channels</p>
+
+            {/* Email row */}
+            <div className={`mon-channel-row mon-channel-row--email${email.trim() ? ' mon-channel-row--on' : ''}`}>
+              <span className="mon-channel-icon mon-channel-icon--email" aria-hidden="true">✉</span>
+              <div className="mon-channel-body">
+                <label className="mon-channel-name" htmlFor="mon-email">Email</label>
+                <span className="mon-channel-sub">Price alerts and unlock credits</span>
+              </div>
+              <input
+                ref={emailRef}
+                id="mon-email"
+                type="email"
+                className="mon-channel-input"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoComplete="email"
+                disabled={state === 'loading'}
+              />
+            </div>
+
+            {/* Push row */}
+            <div className={`mon-channel-row${pushState === 'done' ? ' mon-channel-row--on' : ''}`}>
+              <span className="mon-channel-icon mon-channel-icon--push"><BellIcon /></span>
+              <div className="mon-channel-body">
+                <span className="mon-channel-name">Push notifications</span>
+                <span className="mon-channel-sub">Instant alerts in this browser</span>
+              </div>
+              <div className="mon-channel-action">
+                {pushState === 'idle' && (
+                  <button type="button" className="mon-channel-btn" onClick={handleEnablePush}>
+                    Enable
+                  </button>
+                )}
+                {pushState === 'loading' && (
+                  <span className="mon-channel-status">Enabling…</span>
+                )}
+                {pushState === 'done' && (
+                  <span className="mon-channel-status mon-channel-status--on">✓ On</span>
+                )}
+                {pushState === 'denied' && (
+                  <span className="mon-channel-status mon-channel-status--warn">Blocked in browser</span>
+                )}
+                {pushState === 'unavailable' && (
+                  <span className="mon-channel-status mon-channel-status--muted">Unavailable</span>
+                )}
+              </div>
+            </div>
+
+            {/* Telegram row */}
+            <div className="mon-channel-row">
+              <span className="mon-channel-icon mon-channel-icon--tg"><TelegramIcon /></span>
+              <div className="mon-channel-body">
+                <span className="mon-channel-name">Telegram</span>
+                <span className="mon-channel-sub">Link your chat after payment</span>
+              </div>
+              <span className="mon-channel-badge">After payment</span>
+            </div>
           </div>
+
+          {!hasChannel && (
+            <p className="mon-channel-hint">
+              Add email or enable push — Telegram is always available after payment.
+            </p>
+          )}
 
           {/* Weeks */}
           <div className="mon-field">
@@ -275,31 +348,6 @@ export default function MonitorModal({
             <p className="mon-field-hint">You can stop at any time — no auto-renewal.</p>
           </div>
 
-          {/* Push pre-enable */}
-          <div className="mon-notify-row">
-            <span className="mon-notify-label">Get alerts on your phone:</span>
-            <div className="mon-notify-btns">
-              {pushState === 'idle' && (
-                <button type="button" className="mon-notify-btn" onClick={handleEnablePush}>
-                  <BellIcon /> Enable push now
-                </button>
-              )}
-              {pushState === 'loading' && (
-                <span className="mon-notify-status">Enabling…</span>
-              )}
-              {pushState === 'done' && (
-                <span className="mon-notify-status mon-notify-status--on">✓ Push enabled</span>
-              )}
-              {pushState === 'denied' && (
-                <span className="mon-notify-status mon-notify-status--muted">Push blocked — allow in browser settings</span>
-              )}
-              {pushState === 'unavailable' && (
-                <span className="mon-notify-status mon-notify-status--muted">Push unavailable on this browser</span>
-              )}
-              <span className="mon-notify-tg-note">Telegram: set up after payment</span>
-            </div>
-          </div>
-
           {/* Error */}
           {state === 'error' && errorMsg && (
             <p className="mon-error" role="alert">{errorMsg}</p>
@@ -309,7 +357,7 @@ export default function MonitorModal({
           <button
             type="submit"
             className="mon-submit"
-            disabled={!email.trim() || state === 'loading'}
+            disabled={state === 'loading'}
           >
             {state === 'loading' ? (
               'Preparing checkout…'

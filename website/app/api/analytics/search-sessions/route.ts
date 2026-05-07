@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(payload),
       cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(8000),
     })
 
     if (!response.ok) {

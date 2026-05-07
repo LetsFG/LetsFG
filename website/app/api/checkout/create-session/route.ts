@@ -56,8 +56,12 @@ export async function POST(req: NextRequest) {
   try {
     const successUrl = new URL(`/book/${offerId}`, origin)
     successUrl.searchParams.set('from', searchId)
-    successUrl.searchParams.set('stripe_session', '{CHECKOUT_SESSION_ID}')
     appendProbeParam(successUrl.searchParams, isProbe)
+    // Append Stripe's session ID placeholder as a raw string — must NOT be
+    // URL-encoded because Stripe does a literal string substitution of
+    // {CHECKOUT_SESSION_ID} in the URL before redirecting. URLSearchParams.set()
+    // would percent-encode the curly braces (%7B…%7D), breaking the substitution.
+    const successUrlWithSession = `${successUrl.toString()}&stripe_session={CHECKOUT_SESSION_ID}`
 
     const cancelUrl = new URL(`/book/${offerId}`, origin)
     cancelUrl.searchParams.set('from', searchId)
@@ -89,7 +93,7 @@ export async function POST(req: NextRequest) {
         offer_id: offerId,
       },
       // {CHECKOUT_SESSION_ID} is replaced by Stripe with the actual session ID.
-      success_url: successUrl.toString(),
+      success_url: successUrlWithSession,
       cancel_url: cancelUrl.toString(),
     })
 
