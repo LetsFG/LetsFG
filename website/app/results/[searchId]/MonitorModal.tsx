@@ -102,12 +102,17 @@ export default function MonitorModal({
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json() as { checkout_url?: string; error?: string }
+      const data = await res.json() as { checkout_url?: string; monitor_id?: string; error?: string }
 
       if (!res.ok || !data.checkout_url) {
         setErrorMsg(data.error || 'Something went wrong. Please try again.')
         setState('error')
         return
+      }
+
+      // Persist monitor_id so the success page can set up push/Telegram
+      if (data.monitor_id) {
+        try { sessionStorage.setItem('letsfg_monitor_id', data.monitor_id) } catch { /* ignore */ }
       }
 
       // Redirect to Stripe Checkout
@@ -176,10 +181,9 @@ export default function MonitorModal({
             <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
             $5 / week · non-recurring · cancel any time
           </li>
-          <li className="mon-feature mon-feature--soon">
-            <span className="mon-feature-icon" aria-hidden="true"><BellIcon /></span>
-            Phone notifications
-            <span className="mon-feature-soon-badge">Coming soon</span>
+          <li className="mon-feature">
+            <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
+            Browser push &amp; Telegram alerts <span className="mon-feature-note">(set up after payment)</span>
           </li>
         </ul>
 

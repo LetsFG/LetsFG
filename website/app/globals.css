@@ -7007,6 +7007,105 @@ body:has(.res-page) {
   box-shadow: 0 10px 0 var(--line);
 }
 
+/* ── Monitor success — notification opt-in cards ────────────────── */
+
+.mon-notif-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0;
+  text-align: left;
+}
+
+.mon-notif-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mon-notif-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.mon-notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mon-notif-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.mon-notif-desc {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.mon-notif-action {
+  flex-shrink: 0;
+}
+
+.mon-notif-btn {
+  padding: 8px 16px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--gradient-brand);
+  color: var(--line);
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.15s ease;
+  white-space: nowrap;
+}
+
+.mon-notif-btn:hover {
+  transform: translateY(-1px);
+}
+
+.mon-notif-btn--retry {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mon-notif-status {
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mon-notif-status--loading {
+  color: var(--text-secondary);
+}
+
+.mon-notif-status--done {
+  color: #4ade80;
+}
+
+.mon-notif-status--muted {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.mon-tg-widget {
+  display: flex;
+  align-items: center;
+}
+
+/* Telegram widget iframe size override */
+.mon-tg-widget iframe {
+  border-radius: 10px !important;
+}
+
 .ck-unlocked-check {
   width: 38px;
   height: 38px;
@@ -8309,6 +8408,209 @@ body:has(.res-page) {
 
   .explore-card-price {
     font-size: 1.2rem;
+  }
+}
+
+/* ── Checkout countdown timer (exp_checkout-countdown-v1) ─────────── */
+.ck-countdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 12px 0;
+  border-radius: 8px;
+  background: rgba(20, 45, 60, 0.05);
+  font-size: 0.82rem;
+  color: rgba(20, 45, 60, 0.7);
+  transition: background 0.3s, color 0.3s;
+}
+
+.ck-countdown--urgent {
+  background: rgba(245, 158, 11, 0.1);
+  color: #b45309;
+}
+
+.ck-countdown--expired {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.ck-countdown-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.ck-countdown-label {
+  flex: 1;
+}
+
+.ck-countdown-timer {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  min-width: 3.5ch;
+  text-align: right;
+}
+
+/* ── Results friction survey (exp_results-friction-survey-v1) ──────── */
+
+/* Banner — fixed bottom strip */
+.rf-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  background: #fff;
+  border-top: 1px solid rgba(20, 45, 60, 0.12);
+  box-shadow: 0 -4px 20px rgba(20, 45, 60, 0.1);
+  padding: 16px 20px;
+  animation: rf-slide-up 0.3s ease;
+}
+
+@keyframes rf-slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.rf-banner-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.rf-banner-q {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #142d3c;
+  margin-bottom: 10px;
+}
+
+.rf-banner-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rf-banner-close {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: rgba(20, 45, 60, 0.4);
+  padding: 4px;
+  line-height: 1;
+}
+
+.rf-banner-close:hover {
+  color: rgba(20, 45, 60, 0.8);
+}
+
+.rf-banner--thankyou .rf-banner-q {
+  color: #059669;
+}
+
+/* Option button */
+.rf-option {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(20, 45, 60, 0.2);
+  background: #fff;
+  font-size: 0.82rem;
+  color: #142d3c;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.rf-option:hover {
+  background: rgba(20, 45, 60, 0.06);
+  border-color: rgba(20, 45, 60, 0.4);
+}
+
+.rf-option:active {
+  background: rgba(20, 45, 60, 0.12);
+}
+
+/* Exit-intent overlay */
+.rf-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(20, 45, 60, 0.45);
+  animation: rf-fade-in 0.2s ease;
+}
+
+@keyframes rf-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.rf-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 28px 24px;
+  width: min(480px, calc(100vw - 32px));
+  box-shadow: 0 20px 60px rgba(20, 45, 60, 0.2);
+}
+
+.rf-overlay-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: rgba(20, 45, 60, 0.4);
+  padding: 4px;
+  line-height: 1;
+}
+
+.rf-overlay-close:hover {
+  color: rgba(20, 45, 60, 0.8);
+}
+
+.rf-overlay-q {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #142d3c;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+
+.rf-overlay-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rf-overlay-options .rf-option {
+  text-align: left;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+@media (max-width: 480px) {
+  .rf-banner {
+    padding: 14px 16px;
+  }
+
+  .rf-banner-options {
+    gap: 6px;
+  }
+
+  .rf-option {
+    font-size: 0.78rem;
+    padding: 5px 10px;
   }
 }
 
