@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "LetsFG — Günstige Flüge finden. Sag wohin du willst.",
-    "description": "Flugsuche für KI-Agenten. Über 180 Airlines, null Aufschlag. Sag uns einfach wohin du willst."
+    "title": "LetsFG — Das gesamte Internet der Flüge.",
+    "description": "Wir durchsuchen jede Airline, OTA und Buchungsseite auf einmal — und legen versteckte Gebühren offen. Gepäckgebühren, Sitzplatzpreise, echte Gesamtkosten direkt in den Suchergebnissen. Kein Bias, keine Tracking-Cookies."
   },
   "nav": {
     "githubLabel": "Gib LetsFG einen Stern auf GitHub",

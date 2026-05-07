@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "LetsFG — Trouvez des vols pas chers. Dites où vous allez.",
-    "description": "Recherche de vols pour agents IA. Plus de 180 compagnies, zéro commission. Dites-nous simplement où vous voulez aller."
+    "title": "LetsFG — Tout internet des vols.",
+    "description": "On scanne chaque compagnie, OTA et site de réservation en même temps — puis on expose les frais cachés des compagnies. Frais de bagages, prix des sièges, vrais totaux affichés dans les résultats. Aucun biais, aucun cookie de tracking."
   },
   "nav": {
     "githubLabel": "Mettez une étoile à LetsFG sur GitHub",

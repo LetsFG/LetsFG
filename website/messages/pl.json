@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "LetsFG — Znajdź tanie loty. Powiedz dokąd lecisz.",
-    "description": "Wyszukiwarka lotów stworzona dla AI. Ponad 180 linii lotniczych, zero prowizji. Po prostu powiedz dokąd chcesz lecieć."
+    "title": "LetsFG — Cały internet lotów.",
+    "description": "Skanujemy każdą linię lotniczą, OTA i serwis rezerwacyjny naraz — a potem ujawniamy ukryte opłaty linii lotniczych. Opłaty za bagaż, ceny miejsc, prawdziwe sumy widoczne w wynikach wyszukiwania. Bez manipulacji, bez cookies śledzenia."
   },
   "nav": {
     "githubLabel": "Zostaw gwiazdkę na GitHubie",
