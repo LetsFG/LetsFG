@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 
 // ── Experiment ID (shared between this component and CheckoutPanel) ────────────
-export const CHECKOUT_SURVEY_EXPERIMENT_ID = 'checkout-objection-survey-v1'
+export const CHECKOUT_SURVEY_EXPERIMENT_ID = 'exp_checkout-objection-survey-v1'
 
 // ── Survey options ─────────────────────────────────────────────────────────────
 

@@ -16,8 +16,15 @@ import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useSearchParams } from 'next/navigation'
+import { useExperiment, type ExperimentConfig } from '../../../lib/ab-testing'
+import ResultsFrictionSurvey, { RESULTS_FRICTION_EXPERIMENT_ID } from './ResultsFrictionSurvey'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
+
+const RESULTS_FRICTION_EXPERIMENT: ExperimentConfig<'control' | 'friction-survey'> = {
+  id: RESULTS_FRICTION_EXPERIMENT_ID,
+  variants: { control: 0.5, 'friction-survey': 0.5 },
+}
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
 const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
 const X_URL = 'https://x.com/LetsFG_'
@@ -151,8 +158,12 @@ export default function SearchPageClient({
   const trackedResultsViewRef = useRef(false)
   const trackedExpiredRef = useRef(false)
   const trackedStreamingRef = useRef(false)
+
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
+
+  // ── A/B experiments ──────────────────────────────────────────────────
+  const { variant: frictionVariant } = useExperiment(RESULTS_FRICTION_EXPERIMENT, analyticsSearchId)
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
   const homeHref = isTestSearch ? '/en?probe=1' : '/en'
   const searchParams = useSearchParams()
@@ -733,6 +744,15 @@ export default function SearchPageClient({
           </>
         )}
       </section>
+
+      {/* Friction survey — variant only, results page */}
+      {frictionVariant === 'friction-survey' && !isExpired && (
+        <ResultsFrictionSurvey
+          searchId={analyticsSearchId}
+          isTestSearch={isTestSearch}
+          hasUnlocked={false}
+        />
+      )}
     </main>
   )
 }

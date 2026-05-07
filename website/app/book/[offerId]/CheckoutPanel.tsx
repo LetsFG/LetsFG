@@ -10,10 +10,16 @@ import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useExperiment, type ExperimentConfig } from '../../../lib/ab-testing'
 import CheckoutSurvey, { CHECKOUT_SURVEY_EXPERIMENT_ID } from './CheckoutSurvey'
+import CheckoutCountdown, { CHECKOUT_COUNTDOWN_EXPERIMENT_ID } from './CheckoutCountdown'
 
 const CHECKOUT_SURVEY_EXPERIMENT: ExperimentConfig<'control' | 'survey'> = {
   id: CHECKOUT_SURVEY_EXPERIMENT_ID,
   variants: { control: 0.5, survey: 0.5 },
+}
+
+const CHECKOUT_COUNTDOWN_EXPERIMENT: ExperimentConfig<'control' | 'countdown'> = {
+  id: CHECKOUT_COUNTDOWN_EXPERIMENT_ID,
+  variants: { control: 0.5, countdown: 0.5 },
 }
 
 interface Props {
@@ -384,6 +390,7 @@ export default function CheckoutPanel({
 
   // ── A/B experiments ──────────────────────────────────────────────────
   const { variant: surveyVariant } = useExperiment(CHECKOUT_SURVEY_EXPERIMENT, analyticsSearchId)
+  const { variant: countdownVariant } = useExperiment(CHECKOUT_COUNTDOWN_EXPERIMENT, analyticsSearchId)
   const [surveyDismissed, setSurveyDismissed] = useState(false)
 
   // Start in 'checking' — we always verify unlock status on mount.
@@ -1028,6 +1035,11 @@ export default function CheckoutPanel({
         {/* ── Checkout card ───────────────────────────────────────────────── */}
         <div className="ck-checkout-card">
           <div className="ck-unified-body">
+
+            {/* Countdown timer (variant B only) */}
+            {countdownVariant === 'countdown' && (
+              <CheckoutCountdown isUnlocked={isUnlocked} />
+            )}
 
             {/* Price breakdown — always visible */}
             <div className="ck-price-breakdown">

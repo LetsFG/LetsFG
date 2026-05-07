@@ -116,6 +116,26 @@ export function assignVariant<Variants extends string>(
   return Object.keys(config.variants)[0] as Variants
 }
 
+// ── Cross-experiment combo tracking ───────────────────────────────────────────
+
+/**
+ * Module-level registry: experimentId → variant.
+ * Populated by every useExperiment call on this page load.
+ * Used to fire `experiments_combo` so we can see which users are in multiple
+ * experiments simultaneously and avoid confounded conclusions.
+ */
+const _activeAssignments = new Map<string, string>()
+let _comboSearchId: string | null | undefined = null
+
+function _fireComboEvent() {
+  if (_activeAssignments.size < 1) return
+  const combo = Object.fromEntries(_activeAssignments)
+  trackSearchSessionEvent(_comboSearchId, 'experiments_combo', {
+    active_experiments: combo,
+    count: _activeAssignments.size,
+  })
+}
+
 // ── React hook ─────────────────────────────────────────────────────────────────
 
 /**
@@ -123,6 +143,8 @@ export function assignVariant<Variants extends string>(
  *
  * - Returns `null` on the server / first render to avoid hydration mismatches.
  * - Fires a single `experiment_assigned` analytics event on first exposure.
+ * - Also fires/refreshes `experiments_combo` with ALL active assignments so
+ *   cross-experiment overlap is queryable.
  *
  * @param config  Module-level constant (defined outside the component).
  * @param searchId  Current search session ID for analytics attribution.
@@ -147,6 +169,10 @@ export function useExperiment<Variants extends string>(
         experiment_id: experimentId,
         variant: assigned,
       })
+      // Register in global combo map and re-fire the combo event
+      _activeAssignments.set(experimentId, assigned)
+      _comboSearchId = searchId
+      _fireComboEvent()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [experimentId, searchId])
