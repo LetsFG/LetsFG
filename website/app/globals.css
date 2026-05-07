@@ -3745,6 +3745,28 @@ body:has(.res-page) {
   white-space: nowrap;
 }
 
+/* Day-change badge: +1 superscript on arrival time */
+.rf-day-badge {
+  display: inline-block;
+  margin-left: 2px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  color: #c96a00;
+  vertical-align: super;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+/* Timezone shift note below arrival time */
+.rf-tz-note {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.36);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+}
+
 .rf-path-line {
   display: flex;
   align-items: center;
@@ -6304,6 +6326,28 @@ body:has(.res-page) {
   color: rgba(20, 45, 60, 0.5);
 }
 
+/* Day-change badge: +1 superscript on arrival time (checkout) */
+.ck-day-badge {
+  display: inline-block;
+  margin-left: 2px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #c96a00;
+  vertical-align: super;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+/* Timezone shift note (checkout) */
+.ck-tz-note {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.38);
+  white-space: nowrap;
+  cursor: default;
+  margin-top: 1px;
+}
+
 .ck-path-line {
   width: 100%;
   display: flex;
@@ -7116,6 +7160,139 @@ body:has(.res-page) {
   font-size: 0.72rem;
   color: rgba(20, 45, 60, 0.4);
   margin-top: 8px;
+}
+
+/* ── Checkout survey (A/B experiment) ─────────────────────────────── */
+.ck-survey {
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  background: #f4f7fa;
+  border: 1.5px solid rgba(20, 45, 60, 0.1);
+  border-radius: 14px;
+}
+
+.ck-survey--thanks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0a7a4a;
+  background: #f0faf5;
+  border-color: rgba(10, 122, 74, 0.2);
+  justify-content: center;
+  padding: 14px;
+}
+
+.ck-survey-thanks-icon {
+  font-size: 1rem;
+  color: #0a7a4a;
+}
+
+.ck-survey-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ck-survey-question {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #142d3c;
+  line-height: 1.4;
+}
+
+.ck-survey-skip {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(20, 45, 60, 0.35);
+  font-size: 0.75rem;
+  padding: 0 2px;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.ck-survey-skip:hover {
+  color: rgba(20, 45, 60, 0.6);
+}
+
+.ck-survey-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ck-survey-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1.5px solid rgba(20, 45, 60, 0.12);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #142d3c;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ck-survey-option:hover {
+  background: #e8f4fb;
+  border-color: #0a4d68;
+}
+
+.ck-survey-option--selected {
+  background: #e8f4fb;
+  border-color: #0a4d68;
+  color: #0a4d68;
+  font-weight: 600;
+}
+
+.ck-survey-other {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ck-survey-other-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid rgba(20, 45, 60, 0.2);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: #142d3c;
+  background: #fff;
+  resize: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.ck-survey-other-input:focus {
+  outline: none;
+  border-color: #0a4d68;
+}
+
+.ck-survey-submit {
+  align-self: flex-end;
+  padding: 7px 18px;
+  background: linear-gradient(135deg, #0a4d68 0%, #0d6b92 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.ck-survey-submit:hover {
+  opacity: 0.9;
 }
 
 /* ── OR divider ────────────────────────────────────────────────────── */

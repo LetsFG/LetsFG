@@ -111,6 +111,49 @@ export function formatFlightDateCompact(value: string): string {
   return ''
 }
 
+export interface FlightTimeContext {
+  /** Calendar days arrival is after departure (0 = same day, 1 = next day, etc.) */
+  dayOffset: number
+  /** Net timezone shift in minutes: destination_tz - origin_tz.
+   *  Negative = destination clocks are behind (e.g. LAX→HNL = -180). */
+  tzOffsetMins: number
+}
+
+/**
+ * Given departure datetime, arrival datetime (both as local airport times),
+ * and the actual flight duration in minutes, compute the day offset and
+ * net timezone shift so the UI can display context to the user.
+ */
+export function computeFlightTimeContext(
+  departureDt: string,
+  arrivalDt: string,
+  durationMins: number,
+): FlightTimeContext {
+  const dep = parseFlightDateTimeParts(departureDt)
+  const arr = parseFlightDateTimeParts(arrivalDt)
+
+  if (!dep || !arr) return { dayOffset: 0, tzOffsetMins: 0 }
+
+  const depDate = Date.UTC(dep.year, dep.month - 1, dep.day)
+  const arrDate = Date.UTC(arr.year, arr.month - 1, arr.day)
+  const dayOffset = Math.round((arrDate - depDate) / 86400000)
+
+  if (
+    dep.hour === undefined || dep.minute === undefined ||
+    arr.hour === undefined || arr.minute === undefined ||
+    durationMins <= 0
+  ) {
+    return { dayOffset, tzOffsetMins: 0 }
+  }
+
+  const depMins = dep.hour * 60 + dep.minute
+  const arrMins = arr.hour * 60 + arr.minute
+  // tzOffsetMins = how far destination clock is shifted vs origin clock
+  const tzOffsetMins = (arrMins - depMins + dayOffset * 1440) - durationMins
+
+  return { dayOffset, tzOffsetMins }
+}
+
 export function extractFlightClockMinutes(value: string): number {
   const parts = parseFlightDateTimeParts(value)
   if (parts?.hour !== undefined && parts.minute !== undefined) {
