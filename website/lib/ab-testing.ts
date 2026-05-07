@@ -160,7 +160,12 @@ export function useExperiment<Variants extends string>(
 
   useEffect(() => {
     const uid = getOrCreateAbUid()
-    const assigned = assignVariant(config, uid)
+    // localStorage force-variant for QA/preview: localStorage.setItem('fv_<id>', '<variant>')
+    const forced = window.localStorage.getItem(`fv_${experimentId}`)
+    const validVariants = Object.keys(config.variants)
+    const assigned = (forced && validVariants.includes(forced))
+      ? (forced as Variants)
+      : assignVariant(config, uid)
     setVariant(assigned)
 
     if (!trackedRef.current) {
