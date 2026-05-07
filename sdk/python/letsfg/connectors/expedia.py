@@ -28,6 +28,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import get_proxy
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ def _dur_seconds(segments: list[FlightSegment]) -> int:
         return 0
     dep = segments[0].departure
     arr = segments[-1].arrival
-    return max(0, int((arr - dep).total_seconds()))
+    return duration_seconds_from_local_times(dep, arr, segments[0].origin, segments[-1].destination)
 
 
 def _parse_segment(seg: dict) -> FlightSegment | None:
@@ -108,12 +109,18 @@ def _parse_segment(seg: dict) -> FlightSegment | None:
         return None
     dep_dt = _parse_dt(dep_time)
     arr_dt = _parse_dt(arr_time)
-    dur = max(0, int((arr_dt - dep_dt).total_seconds())) if dep_dt.year > 2000 and arr_dt.year > 2000 else 0
 
-    # Expedia sometimes provides duration in minutes
+    # Prefer API-provided duration (reliable, timezone-correct)
     dur_min = seg.get("durationMinutes") or seg.get("duration") or 0
-    if isinstance(dur_min, (int, float)) and dur_min > 0 and dur == 0:
+    if isinstance(dur_min, (int, float)) and dur_min > 0:
         dur = int(dur_min) * 60
+    elif dep_dt.year > 2000 and arr_dt.year > 2000:
+        dur = duration_seconds_from_local_times(
+            dep_dt, arr_dt,
+            str(origin)[:3].upper(), str(dest)[:3].upper(),
+        )
+    else:
+        dur = 0
 
     return FlightSegment(
         airline=str(airline), flight_no=str(flight_no),

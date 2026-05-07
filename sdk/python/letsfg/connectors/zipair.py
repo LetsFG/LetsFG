@@ -44,6 +44,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import auto_block_if_proxied, launch_headed_browser
 from .browser import get_curl_cffi_proxies
 
@@ -383,7 +384,10 @@ class ZipairConnectorClient:
 
             total_dur = 0
             if segments[0].departure and segments[-1].arrival:
-                total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
+                total_dur = duration_seconds_from_local_times(
+                    segments[0].departure, segments[-1].arrival,
+                    segments[0].origin, segments[-1].destination,
+                )
             if total_dur == 0:
                 # Fallback: sum flightTime (minutes)
                 total_dur = sum(s.get("flightTime", 0) for s in itinerary) * 60

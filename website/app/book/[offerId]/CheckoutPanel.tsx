@@ -3,11 +3,18 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { getAirlineLogoUrl } from '../../airlineLogos'
-import { formatFlightTime } from '../../../lib/flight-datetime'
+import { computeFlightTimeContext, formatFlightTime } from '../../../lib/flight-datetime'
 import { calculateFee, withFee } from '../../../lib/pricing'
 import type { Offer } from './page'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
+import { useExperiment, type ExperimentConfig } from '../../../lib/ab-testing'
+import CheckoutSurvey, { CHECKOUT_SURVEY_EXPERIMENT_ID } from './CheckoutSurvey'
+
+const CHECKOUT_SURVEY_EXPERIMENT: ExperimentConfig<'control' | 'survey'> = {
+  id: CHECKOUT_SURVEY_EXPERIMENT_ID,
+  variants: { control: 0.5, survey: 0.5 },
+}
 
 interface Props {
   offer: Offer
@@ -104,6 +111,14 @@ function fmtDuration(mins: number) {
   const h = Math.floor(mins / 60)
   const m = mins % 60
   return `${h}h ${m > 0 ? ` ${m}m` : ''}`
+}
+
+function fmtTzOffset(mins: number): string {
+  const abs = Math.abs(mins)
+  const sign = mins < 0 ? '−' : '+'
+  const hours = Math.floor(abs / 60)
+  const halfHour = abs % 60 >= 30
+  return halfHour ? `${sign}${hours}.5h` : `${sign}${hours}h`
 }
 
 function fmtDate(iso: string) {
@@ -366,6 +381,10 @@ export default function CheckoutPanel({
   const displayFlightNumber = offer.flight_number && offer.flight_number !== offer.airline_code
     ? offer.flight_number
     : ''
+
+  // ── A/B experiments ──────────────────────────────────────────────────
+  const { variant: surveyVariant } = useExperiment(CHECKOUT_SURVEY_EXPERIMENT, analyticsSearchId)
+  const [surveyDismissed, setSurveyDismissed] = useState(false)
 
   // Start in 'checking' — we always verify unlock status on mount.
   const [step, setStep] = useState<CheckoutStep>({ type: 'checking' })
@@ -906,9 +925,11 @@ export default function CheckoutPanel({
             {summaryLegs.map((leg) => {
               const stops = getLegStops(leg)
               const durationLabel = leg.duration_minutes > 0 ? fmtDuration(leg.duration_minutes) : '--'
-              const arrivalLabel = leg.duration_minutes > 0 || leg.arrival_time !== leg.departure_time
-                ? fmtTime(leg.arrival_time)
-                : '--:--'
+              const hasArrival = leg.duration_minutes > 0 || leg.arrival_time !== leg.departure_time
+              const arrivalLabel = hasArrival ? fmtTime(leg.arrival_time) : '--:--'
+              const legCtx = leg.departure_time && leg.arrival_time && leg.duration_minutes > 0
+                ? computeFlightTimeContext(leg.departure_time, leg.arrival_time, leg.duration_minutes)
+                : null
 
               return (
                 <div className="ck-flight-route-block" key={`${leg.leg}-${leg.departure_time}-${leg.arrival_time}`}>
@@ -942,9 +963,21 @@ export default function CheckoutPanel({
                     </div>
 
                     <div className="ck-endpoint ck-endpoint--right">
-                      <span className="ck-time">{arrivalLabel}</span>
+                      <span className="ck-time">
+                        {arrivalLabel}
+                        {legCtx && legCtx.dayOffset > 0 && (
+                          <span className="ck-day-badge" title={legCtx.dayOffset === 1 ? 'Arrives next day' : `Arrives +${legCtx.dayOffset} days`}>
+                            +{legCtx.dayOffset}
+                          </span>
+                        )}
+                      </span>
                       <span className="ck-iata">{leg.destination}</span>
                       <span className="ck-city">{getLegCityLabel(leg, 'destination')}</span>
+                      {legCtx && Math.abs(legCtx.tzOffsetMins) >= 30 && (
+                        <span className="ck-tz-note" title={`Local airport times · destination is ${Math.abs(legCtx.tzOffsetMins)} min ${legCtx.tzOffsetMins < 0 ? 'behind' : 'ahead'}`}>
+                          {fmtTzOffset(legCtx.tzOffsetMins)} tz
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1011,6 +1044,16 @@ export default function CheckoutPanel({
                 <span className="ck-price-value">{offer.currency}{Math.round(withFee(offer.price, offer.currency))}</span>
               </div>
             </div>
+
+            {/* ── Checkout survey (variant B only, shown when locked) ─── */}
+            {surveyVariant === 'survey' && !isUnlocked && !isLoading && !surveyDismissed && step.type !== 'paying' && (
+              <CheckoutSurvey
+                searchId={analyticsSearchId}
+                offerId={offer.id}
+                isTestSearch={isTestSearch}
+                onDismiss={() => setSurveyDismissed(true)}
+              />
+            )}
 
             {splitBookingLegs.length > 0 ? (
               /* ── Split booking: per-leg action cards ── */

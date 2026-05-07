@@ -2024,6 +2024,45 @@ class MultiProvider:
         else:
             logger.info("Pipeline [%s]: 0 offers", stage)
 
+    # ── Layover filter ─────────────────────────────────────────────────────────
+    _MAX_LAYOVER_SECONDS = 24 * 3600  # 24 h hard cap on any single connection gap
+
+    @staticmethod
+    def _route_max_layover(route) -> int:
+        """Return the longest layover gap (seconds) between consecutive segments.
+
+        Returns 0 for direct flights or when datetimes are placeholder values
+        (year ≤ 2000), which means we can't compute a meaningful gap.
+        """
+        if route is None or not route.segments or len(route.segments) < 2:
+            return 0
+        from datetime import datetime
+        max_gap = 0
+        for i in range(len(route.segments) - 1):
+            arr = route.segments[i].arrival
+            dep = route.segments[i + 1].departure
+            if arr is None or dep is None:
+                continue
+            if isinstance(arr, datetime) and arr.year <= 2000:
+                continue
+            if isinstance(dep, datetime) and dep.year <= 2000:
+                continue
+            gap = int((dep - arr).total_seconds())
+            if gap > max_gap:
+                max_gap = gap
+        return max(max_gap, 0)
+
+    def _filter_excessive_layovers(self, offers: list[FlightOffer]) -> list[FlightOffer]:
+        """Drop offers where any single connection gap exceeds _MAX_LAYOVER_SECONDS (24 h)."""
+        kept = []
+        for o in offers:
+            if self._route_max_layover(o.outbound) > self._MAX_LAYOVER_SECONDS:
+                continue
+            if self._route_max_layover(o.inbound) > self._MAX_LAYOVER_SECONDS:
+                continue
+            kept.append(o)
+        return kept
+
     def _filter_wrong_routes(self, offers: list[FlightOffer], req: FlightSearchRequest) -> list[FlightOffer]:
         """Remove offers whose actual route doesn't match the requested origin → destination."""
         valid_origins = self._expand_iata(req.origin)
@@ -2408,48 +2447,109 @@ class MultiProvider:
         self, offers: list[FlightOffer], sort: str, limit: int
     ) -> list[FlightOffer]:
         """
-        Select offers ensuring airline diversity.
+        Select offers ensuring airline diversity, with smart default ranking.
 
-        1. Sort all offers by requested criteria
-        2. Pick the cheapest offer per airline first (guarantees diversity)
-        3. Fill remaining slots with cheapest overall
+        When sort == "duration": rank by total journey time.
+        When sort == "price" (default): composite smart score balancing price,
+        total journey time, stop count, and worst layover.  Pure cheapest-first
+        surfaces absurdly long itineraries; composite scoring keeps the good
+        deals at the top while still respecting price sensitivity.
+
+        Score weights (lower = better):
+          40% price  (normalised against field min/max)
+          30% total journey duration
+          20% number of stopovers
+          10% worst single layover
+
+        Step 1: Sort/score all offers by criteria.
+        Step 2: Guarantee one representative per airline (diversity).
+        Step 3: Fill remaining slots in score order.
         """
         if not offers:
             return []
 
-        # Sort
-        def _sort_price(o: FlightOffer) -> float:
-            return o.price_normalized if o.price_normalized is not None else o.price
-
+        # ── Duration sort ──────────────────────────────────────────────────
         if sort == "duration":
             offers.sort(key=lambda o: o.outbound.total_duration_seconds if o.outbound else 0)
-        else:
-            # Default: price (normalized)
-            offers.sort(key=_sort_price)
 
-        # Step 1: Pick cheapest per airline (owner_airline)
+        else:
+            # ── Smart composite score (default) ───────────────────────────
+            prices = [
+                o.price_normalized if o.price_normalized is not None else o.price
+                for o in offers
+            ]
+            durs = [
+                (o.outbound.total_duration_seconds if o.outbound and o.outbound.total_duration_seconds > 0 else None)
+                for o in offers
+            ]
+            valid_durs = [d for d in durs if d is not None]
+
+            min_price = min(prices)
+            max_price = max(prices)
+            min_dur   = min(valid_durs) if valid_durs else 0
+            max_dur   = max(valid_durs) if valid_durs else 1
+
+            price_range = max_price - min_price or 1.0
+            dur_range   = max_dur - min_dur or 1.0
+
+            def _smart_score(o: FlightOffer) -> float:
+                # Price component
+                p = o.price_normalized if o.price_normalized is not None else o.price
+                price_sc = (p - min_price) / price_range
+
+                # Duration component
+                ob = o.outbound
+                dur = ob.total_duration_seconds if ob and ob.total_duration_seconds > 0 else max_dur
+                dur_sc = (dur - min_dur) / dur_range
+
+                # Stops component: 0=0.0, 1=0.33, 2=0.67, 3+=1.0
+                stops = ob.stopovers if ob else 0
+                stops_sc = min(stops / 3.0, 1.0)
+
+                # Layover component: no-penalty ≤4 h, linear penalty 4-24 h, capped at 1.0
+                layover_secs = self._route_max_layover(ob)
+                layover_h = layover_secs / 3600.0
+                if layover_h <= 4:
+                    layover_sc = 0.0
+                elif layover_h <= 24:
+                    layover_sc = (layover_h - 4) / 20.0   # 0 → 1.0 over 4-24 h
+                else:
+                    layover_sc = 1.0
+
+                return 0.40 * price_sc + 0.30 * dur_sc + 0.20 * stops_sc + 0.10 * layover_sc
+
+            offers.sort(key=_smart_score)
+
+        # ── Always pin the absolute cheapest offer as slot 0 ─────────────
+        # Users always want to see the raw cheapest price, even if it has
+        # a bad layover.  Smart scoring governs slots 1+.
+        def _raw_price(o: FlightOffer) -> float:
+            return o.price_normalized if o.price_normalized is not None else o.price
+
+        cheapest = min(offers, key=_raw_price)
+
+        # ── Diversity step: one best per airline ──────────────────────────
         best_per_airline: dict[str, FlightOffer] = {}
         for offer in offers:
             key = offer.owner_airline or (offer.airlines[0] if offer.airlines else "?")
             if key not in best_per_airline:
                 best_per_airline[key] = offer
 
-        # Step 2: Build result — airline bests first, then fill by sort order
+        # Build result: cheapest first, then airline bests (in score order), then fill
         selected_ids: set[str] = set()
         result: list[FlightOffer] = []
 
-        # Add airline bests (sorted by sort criteria)
-        airline_bests = sorted(
-            best_per_airline.values(),
-            key=lambda o: _sort_price(o) if sort != "duration" else (o.outbound.total_duration_seconds if o.outbound else 0),
-        )
-        for offer in airline_bests:
+        result.append(cheapest)
+        selected_ids.add(cheapest.id)
+
+        for offer in offers:
             if len(result) >= limit:
                 break
-            result.append(offer)
-            selected_ids.add(offer.id)
+            key = offer.owner_airline or (offer.airlines[0] if offer.airlines else "?")
+            if best_per_airline.get(key) is offer and offer.id not in selected_ids:
+                result.append(offer)
+                selected_ids.add(offer.id)
 
-        # Fill remaining with overall sorted offers
         for offer in offers:
             if len(result) >= limit:
                 break

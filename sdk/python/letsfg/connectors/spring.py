@@ -35,6 +35,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import get_httpx_proxy_url
 
 logger = logging.getLogger(__name__)
@@ -292,8 +293,10 @@ class SpringConnectorClient:
             if flight_time:
                 total_dur = self._parse_duration(flight_time)
             elif segments[0].departure and segments[-1].arrival:
-                delta = segments[-1].arrival - segments[0].departure
-                total_dur = max(int(delta.total_seconds()), 0)
+                total_dur = max(duration_seconds_from_local_times(
+                    segments[0].departure, segments[-1].arrival,
+                    segments[0].origin, segments[-1].destination,
+                ), 0)
 
             route_obj = FlightRoute(
                 segments=segments,
@@ -335,7 +338,7 @@ class SpringConnectorClient:
         arr_dt = self._parse_dt(arr_str)
         dur = 0
         if dep_dt and arr_dt:
-            dur = max(int((arr_dt - dep_dt).total_seconds()), 0)
+            dur = max(duration_seconds_from_local_times(dep_dt, arr_dt, origin_code, dest_code), 0)
 
         return FlightSegment(
             airline="9C",

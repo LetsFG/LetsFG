@@ -47,6 +47,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied, get_httpx_proxy_url
 from .airline_routes import city_match_set
 
@@ -1431,7 +1432,10 @@ class ScootConnectorClient:
                         cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy"),
                     )
                 ],
-                total_duration_seconds=max(int((arr_dt - dep_dt).total_seconds()), 0),
+                total_duration_seconds=max(duration_seconds_from_local_times(
+                    dep_dt, arr_dt,
+                    match.group("origin"), match.group("destination"),
+                ), 0),
                 stopovers=0,
             )
 
@@ -1613,8 +1617,10 @@ class ScootConnectorClient:
 
         total_dur = 0
         if segments[0].departure and segments[-1].arrival:
-            delta = segments[-1].arrival - segments[0].departure
-            total_dur = max(int(delta.total_seconds()), 0)
+            total_dur = max(duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            ), 0)
 
         route = FlightRoute(
             segments=segments,
@@ -1845,7 +1851,10 @@ class ScootConnectorClient:
         total_dur = 0
         if segments[0].departure and segments[-1].arrival:
             delta = segments[-1].arrival - segments[0].departure
-            total_dur = max(int(delta.total_seconds()), 0)
+            total_dur = max(duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            ), 0)
 
         route = FlightRoute(
             segments=segments,
@@ -2071,7 +2080,7 @@ class ScootConnectorClient:
             ib_times = cheapest_ib.get("times", [])
             ib_dep = self._parse_dt(ib_times[0]) if ib_times else datetime(2000, 1, 1)
             ib_arr = self._parse_dt(ib_times[1]) if len(ib_times) > 1 else datetime(2000, 1, 1)
-            ib_dur = max(int((ib_arr - ib_dep).total_seconds()), 0) if ib_dep.year > 2000 and ib_arr.year > 2000 else 0
+            ib_dur = duration_seconds_from_local_times(ib_dep, ib_arr, req.destination, req.origin) if ib_dep.year > 2000 and ib_arr.year > 2000 else 0
             ib_seg = FlightSegment(
                 airline="TR", airline_name="Scoot",
                 flight_no=cheapest_ib.get("flightNo", ""),
@@ -2090,7 +2099,7 @@ class ScootConnectorClient:
             arr_time = self._parse_dt(times[1]) if len(times) > 1 else datetime(2000, 1, 1)
             total_dur = 0
             if dep_time.year > 2000 and arr_time.year > 2000:
-                total_dur = max(int((arr_time - dep_time).total_seconds()), 0)
+                total_dur = max(duration_seconds_from_local_times(dep_time, arr_time, req.origin, req.destination), 0)
             seg = FlightSegment(
                 airline="TR", airline_name="Scoot",
                 flight_no=flight_no or "", origin=req.origin,

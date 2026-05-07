@@ -10,7 +10,7 @@ import {
   getOfferDisplayTotalPrice,
   getOfferDisplayTotalWithAncillary,
 } from '../../../lib/display-price'
-import { extractFlightClockMinutes, formatFlightDateCompact, formatFlightTime } from '../../../lib/flight-datetime'
+import { computeFlightTimeContext, extractFlightClockMinutes, formatFlightDateCompact, formatFlightTime } from '../../../lib/flight-datetime'
 import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount } from '../../../lib/google-flights-savings'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
@@ -95,6 +95,15 @@ interface SourceMetaResponse {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDuration(mins: number) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`
+}
+
+/** Format a timezone offset in minutes as a short label, e.g. -180 → "−3h", 90 → "+1.5h" */
+function fmtTzOffset(mins: number): string {
+  const abs = Math.abs(mins)
+  const sign = mins < 0 ? '−' : '+'
+  const hours = Math.floor(abs / 60)
+  const halfHour = abs % 60 >= 30
+  return halfHour ? `${sign}${hours}.5h` : `${sign}${hours}h`
 }
 
 function isoToMins(iso: string) {
@@ -1022,7 +1031,10 @@ export default function ResultsPanel({
             const checkedBagTotal = getOfferDisplayTotalWithAncillary(offer, checkedBag, currency)
             const seatSelectionTotal = getOfferDisplayTotalWithAncillary(offer, seatSelection, currency)
             const sourceLabel = revealedSources[offer.id]
-
+            const outboundCtx = computeFlightTimeContext(offer.departure_time, offer.arrival_time, offer.duration_minutes)
+            const inboundCtx = offer.inbound
+              ? computeFlightTimeContext(offer.inbound.departure_time, offer.inbound.arrival_time, offer.inbound.duration_minutes)
+              : null
             return (
               <div key={offer.id} className={`rf-card${isBestValue ? ' rf-card--best' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offer.id) ? ' rf-card--new' : ''}`}>
                 {googleFlightsSavingsLabel && (
@@ -1092,9 +1104,21 @@ export default function ResultsPanel({
                           </span>
                         </div>
                         <div className="rf-endpoint rf-endpoint--arr">
-                          <span className="rf-time">{formatFlightTime(offer.arrival_time)}</span>
+                          <span className="rf-time">
+                            {formatFlightTime(offer.arrival_time)}
+                            {outboundCtx.dayOffset > 0 && (
+                              <span className="rf-day-badge" title={outboundCtx.dayOffset === 1 ? 'Arrives next day' : `Arrives +${outboundCtx.dayOffset} days`}>
+                                +{outboundCtx.dayOffset}
+                              </span>
+                            )}
+                          </span>
                           <span className="rf-city" title={outboundDestinationName}>{outboundDestinationName}</span>
                           <span className="rf-iata">{offer.destination}</span>
+                          {Math.abs(outboundCtx.tzOffsetMins) >= 30 && (
+                            <span className="rf-tz-note" title={`Local times · destination is ${Math.abs(outboundCtx.tzOffsetMins)} min ${outboundCtx.tzOffsetMins < 0 ? 'behind' : 'ahead'}`}>
+                              {fmtTzOffset(outboundCtx.tzOffsetMins)} tz
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1126,9 +1150,21 @@ export default function ResultsPanel({
                           </span>
                         </div>
                         <div className="rf-endpoint rf-endpoint--arr">
-                          <span className="rf-time">{formatFlightTime(offer.inbound.arrival_time)}</span>
+                          <span className="rf-time">
+                            {formatFlightTime(offer.inbound.arrival_time)}
+                            {inboundCtx!.dayOffset > 0 && (
+                              <span className="rf-day-badge" title={inboundCtx!.dayOffset === 1 ? 'Arrives next day' : `Arrives +${inboundCtx!.dayOffset} days`}>
+                                +{inboundCtx!.dayOffset}
+                              </span>
+                            )}
+                          </span>
                           <span className="rf-city" title={inboundDestinationName}>{inboundDestinationName}</span>
                           <span className="rf-iata">{offer.inbound.destination}</span>
+                          {Math.abs(inboundCtx!.tzOffsetMins) >= 30 && (
+                            <span className="rf-tz-note" title={`Local times · destination is ${Math.abs(inboundCtx!.tzOffsetMins)} min ${inboundCtx!.tzOffsetMins < 0 ? 'behind' : 'ahead'}`}>
+                              {fmtTzOffset(inboundCtx!.tzOffsetMins)} tz
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1155,9 +1191,21 @@ export default function ResultsPanel({
                         </span>
                       </div>
                       <div className="rf-endpoint rf-endpoint--arr">
-                        <span className="rf-time">{formatFlightTime(offer.arrival_time)}</span>
+                        <span className="rf-time">
+                          {formatFlightTime(offer.arrival_time)}
+                          {outboundCtx.dayOffset > 0 && (
+                            <span className="rf-day-badge" title={outboundCtx.dayOffset === 1 ? 'Arrives next day' : `Arrives +${outboundCtx.dayOffset} days`}>
+                              +{outboundCtx.dayOffset}
+                            </span>
+                          )}
+                        </span>
                         <span className="rf-city" title={outboundDestinationName}>{outboundDestinationName}</span>
                         <span className="rf-iata">{offer.destination}</span>
+                        {Math.abs(outboundCtx.tzOffsetMins) >= 30 && (
+                          <span className="rf-tz-note" title={`Local times · destination is ${Math.abs(outboundCtx.tzOffsetMins)} min ${outboundCtx.tzOffsetMins < 0 ? 'behind' : 'ahead'}`}>
+                            {fmtTzOffset(outboundCtx.tzOffsetMins)} tz
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}

@@ -33,6 +33,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
@@ -505,8 +506,9 @@ class QatarConnectorClient:
             if not segments:
                 continue
 
-            total_dur = fo.get("duration", 0) or int(
-                (segments[-1].arrival - segments[0].departure).total_seconds()
+            total_dur = fo.get("duration", 0) or duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
             )
             stopovers = fo.get("numberOfStops", max(len(segments) - 1, 0))
 

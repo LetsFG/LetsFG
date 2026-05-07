@@ -37,6 +37,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import find_chrome, stealth_popen_kwargs, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
@@ -351,7 +352,7 @@ class PeachConnectorClient:
             total_dur = (
                 duration_mins * 60
                 if duration_mins
-                else max(int((arr_dt - dep_dt).total_seconds()), 0)
+                else duration_seconds_from_local_times(dep_dt, arr_dt, req.origin, req.destination)
             )
 
             _mm_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")

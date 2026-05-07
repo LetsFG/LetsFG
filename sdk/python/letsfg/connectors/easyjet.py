@@ -42,6 +42,7 @@ from ..models.flights import (
 )
 from .browser import find_chrome, stealth_popen_kwargs, proxy_chrome_args, auto_block_if_proxied, inject_stealth_js, disable_background_networking_args, get_default_proxy
 from .airline_routes import get_city_airports
+from .airport_tz import duration_seconds_from_local_times
 
 logger = logging.getLogger(__name__)
 
@@ -1188,7 +1189,8 @@ class EasyjetConnectorClient:
                     arrival=arrival,
                     cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy"),
                 )
-                duration_seconds = int((arrival - departure).total_seconds())
+                # Use airport timezone lookup so cross-timezone routes (e.g. LGW→AYT) are correct
+                duration_seconds = duration_seconds_from_local_times(departure, arrival, req.origin, req.destination)
                 route = FlightRoute(
                     segments=[segment],
                     total_duration_seconds=max(duration_seconds, 0),
@@ -1295,7 +1297,15 @@ class EasyjetConnectorClient:
             cabin_class={"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(cabin_code or "M", "economy"),
         )
 
-        total_dur = int((segment.arrival - segment.departure).total_seconds())
+        # localDepartureDateTime / localArrivalDateTime are airport-local times.
+        # Subtract in UTC space using airport timezone lookup so cross-timezone
+        # routes (e.g. LGW→AYT, STN→TFS) give the correct block time.
+        total_dur = duration_seconds_from_local_times(
+            segment.departure,
+            segment.arrival,
+            segment.origin,
+            segment.destination,
+        )
 
         route = FlightRoute(
             segments=[segment],

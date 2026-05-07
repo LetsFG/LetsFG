@@ -26,6 +26,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import get_httpx_proxy_url
 
 logger = logging.getLogger(__name__)
@@ -387,7 +388,10 @@ class HopperConnectorClient:
 
         total_dur = sl.get("totalDurationMinutes", 0) * 60
         if total_dur <= 0 and len(segments) >= 1:
-            total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
+            total_dur = duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            )
 
         return FlightRoute(
             segments=segments,

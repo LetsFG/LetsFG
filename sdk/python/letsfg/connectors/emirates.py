@@ -45,6 +45,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, proxy_chrome_args, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
@@ -2191,7 +2192,9 @@ class EmiratesConnectorClient:
         except (TypeError, ValueError):
             duration_min = 0
         if duration_min <= 0 and arr_dt > dep_dt:
-            duration_min = int((arr_dt - dep_dt).total_seconds() // 60)
+            _ek_origin = flight.get("origin", "") or req.origin
+            _ek_dest = flight.get("destination", "") or req.destination
+            duration_min = duration_seconds_from_local_times(dep_dt, arr_dt, _ek_origin, _ek_dest) // 60
         flight_no = flight.get("flightNo", "EK")
         origin = flight.get("origin", "") or req.origin
         destination = flight.get("destination", "") or req.destination
@@ -2250,7 +2253,11 @@ class EmiratesConnectorClient:
                     ret_arr_dt += timedelta(days=1)
             except Exception:
                 ret_arr_dt = ret_dep_dt
-            inbound_duration_seconds = int((ret_arr_dt - ret_dep_dt).total_seconds())
+            inbound_duration_seconds = duration_seconds_from_local_times(
+                ret_dep_dt, ret_arr_dt,
+                flight.get("inbound_origin", destination),
+                flight.get("inbound_destination", origin),
+            )
             if inbound_duration_seconds <= 0:
                 inbound_duration_seconds = duration_min * 60
 

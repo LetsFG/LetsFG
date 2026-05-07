@@ -37,6 +37,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import (
     inject_stealth_js,
     get_default_proxy,
@@ -1040,7 +1041,7 @@ class WegoConnectorClient:
                 if arr_time < dep_time:
                     arr_time = arr_time.replace(day=arr_time.day + 1)
                 
-                duration_s = int((arr_time - dep_time).total_seconds())
+                duration_s = duration_seconds_from_local_times(dep_time, arr_time, req.origin, req.destination)
                 
                 _wego_cabin = {"M": "economy", "W": "premium_economy", "C": "business", "F": "first"}.get(req.cabin_class or "M", "economy")
                 seg = FlightSegment(
@@ -1212,9 +1213,10 @@ class WegoConnectorClient:
 
         total_dur = sum(s.duration_seconds for s in segments)
         if not total_dur and segments[0].departure != segments[-1].arrival:
-            diff = (segments[-1].arrival - segments[0].departure).total_seconds()
-            if 0 < diff < 86400 * 3:
-                total_dur = int(diff)
+            total_dur = duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            )
 
         fno_key = "_".join(s.flight_no for s in segments)
         dedup = f"{req.origin}_{req.destination}_{dt:%Y%m%d}_{price_f}_{fno_key}"

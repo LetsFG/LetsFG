@@ -34,6 +34,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import find_chrome, stealth_popen_kwargs, _launched_procs, auto_block_if_proxied
 
 logger = logging.getLogger(__name__)
@@ -1043,7 +1044,10 @@ class ChinaSouthernConnectorClient:
                 return None
             
             # Build route and offer
-            total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds()) if len(segments) > 1 else 7200
+            total_dur = duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            ) if len(segments) > 1 else 7200
             stopovers = max(0, len(segments) - 1)
             route = FlightRoute(segments=segments, total_duration_seconds=total_dur, stopovers=stopovers)
             
@@ -1179,7 +1183,10 @@ class ChinaSouthernConnectorClient:
             # Duration: slice.duration is in minutes
             dur_seconds = int(duration_min) * 60 if isinstance(duration_min, (int, float)) and duration_min > 0 else 0
             if dur_seconds <= 0:
-                dur_seconds = max(int((segments[-1].arrival - segments[0].departure).total_seconds()), 3600)
+                dur_seconds = max(duration_seconds_from_local_times(
+                    segments[0].departure, segments[-1].arrival,
+                    segments[0].origin, segments[-1].destination,
+                ), 3600)
             
             route = FlightRoute(
                 segments=segments,

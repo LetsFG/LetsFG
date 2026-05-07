@@ -31,6 +31,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 
 logger = logging.getLogger(__name__)
 
@@ -953,7 +954,16 @@ class KiwiConnectorClient:
 
         total_dur = int(sector.get("duration", 0))
         if not total_dur and segments:
-            total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
+            dep = segments[0].departure
+            arr = segments[-1].arrival
+            # localTime fields are airport-local; use tz lookup so cross-timezone
+            # itineraries (e.g. LHR→JFK) get the correct block time.
+            if dep.tzinfo is not None and arr.tzinfo is not None:
+                total_dur = int((arr - dep).total_seconds())
+            else:
+                total_dur = duration_seconds_from_local_times(
+                    dep, arr, segments[0].origin, segments[-1].destination
+                )
 
         return FlightRoute(
             segments=segments,

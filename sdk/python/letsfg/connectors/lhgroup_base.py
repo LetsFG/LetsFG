@@ -31,6 +31,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import get_curl_cffi_proxies
 
 logger = logging.getLogger(__name__)
@@ -442,7 +443,7 @@ class LHGroupBaseConnector:
                 arr_dt = datetime.combine(dep_date, arr_t.time())
                 if arr_dt <= dep_dt:
                     arr_dt += timedelta(days=1)
-                duration = int((arr_dt - dep_dt).total_seconds())
+                duration = duration_seconds_from_local_times(dep_dt, arr_dt, origin, destination)
             except ValueError:
                 pass
 

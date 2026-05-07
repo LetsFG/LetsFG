@@ -48,6 +48,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import auto_block_if_proxied, proxy_chrome_args, proxy_is_configured
 
 logger = logging.getLogger(__name__)
@@ -708,7 +709,10 @@ class JetstarConnectorClient:
 
         total_dur = 0
         if segments[0].departure and segments[-1].arrival:
-            total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
+            total_dur = duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            )
 
         route = FlightRoute(
             segments=segments,
@@ -967,7 +971,10 @@ class JetstarConnectorClient:
 
         total_dur = 0
         if segments and segments[0].departure and segments[-1].arrival:
-            total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
+            total_dur = duration_seconds_from_local_times(
+                segments[0].departure, segments[-1].arrival,
+                segments[0].origin, segments[-1].destination,
+            )
 
         route = FlightRoute(
             segments=segments,
@@ -1109,7 +1116,7 @@ class JetstarConnectorClient:
                 )
                 dur = fd.get("durationMins", 0) * 60
                 if dur == 0 and dep_dt and arr_dt:
-                    dur = int((arr_dt - dep_dt).total_seconds())
+                    dur = duration_seconds_from_local_times(dep_dt, arr_dt, origin, destination)
 
                 route = FlightRoute(
                     segments=[seg],

@@ -53,6 +53,7 @@ from ..models.flights import (
     FlightSearchResponse,
     FlightSegment,
 )
+from .airport_tz import duration_seconds_from_local_times
 from .browser import auto_block_if_proxied, get_or_launch_cdp
 
 logger = logging.getLogger(__name__)
@@ -1094,7 +1095,10 @@ class VietJetConnectorClient:
             if en_route:
                 total_dur = int(float(en_route) * 3600)
             elif segments[0].departure and segments[-1].arrival:
-                total_dur = int((segments[-1].arrival - segments[0].departure).total_seconds())
+                total_dur = duration_seconds_from_local_times(
+                    segments[0].departure, segments[-1].arrival,
+                    segments[0].origin, segments[-1].destination,
+                )
             else:
                 total_dur = 0
 
