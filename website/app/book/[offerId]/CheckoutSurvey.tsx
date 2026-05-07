@@ -89,38 +89,43 @@ export default function CheckoutSurvey({ searchId, offerId, isTestSearch, onDism
       </div>
 
       <div className="ck-survey-options">
-        {SURVEY_OPTIONS.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            className={`ck-survey-option${selected === key ? ' ck-survey-option--selected' : ''}`}
-            onClick={() => handleOptionClick(key)}
-          >
-            {label}
-          </button>
-        ))}
+        {SURVEY_OPTIONS.map(({ key, label }) => {
+          if (key === 'other' && selected === 'other') {
+            return (
+              <div key="other" className="ck-survey-other-inline">
+                <input
+                  type="text"
+                  className="ck-survey-other-input-inline"
+                  autoFocus
+                  maxLength={500}
+                  placeholder="Tell us more…"
+                  value={otherText}
+                  onChange={e => setOtherText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && otherText.trim()) handleOtherSubmit() }}
+                />
+                <button
+                  type="button"
+                  className="ck-survey-submit ck-survey-submit--inline"
+                  disabled={!otherText.trim()}
+                  onClick={handleOtherSubmit}
+                >
+                  Send
+                </button>
+              </div>
+            )
+          }
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`ck-survey-option${selected === key ? ' ck-survey-option--selected' : ''}`}
+              onClick={() => handleOptionClick(key)}
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
-
-      {selected === 'other' && (
-        <div className="ck-survey-other">
-          <textarea
-            className="ck-survey-other-input"
-            placeholder="Tell us more…"
-            value={otherText}
-            onChange={e => setOtherText(e.target.value)}
-            rows={2}
-            maxLength={500}
-            autoFocus
-          />
-          <button
-            type="button"
-            className="ck-survey-submit"
-            onClick={handleOtherSubmit}
-          >
-            Send
-          </button>
-        </div>
-      )}
     </div>
   )
 }

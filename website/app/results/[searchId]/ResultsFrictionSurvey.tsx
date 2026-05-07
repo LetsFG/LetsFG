@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useId } from 'react'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 
 export const RESULTS_FRICTION_EXPERIMENT_ID = 'exp_results-friction-survey-v1'
@@ -33,7 +33,10 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [overlayDismissed, setOverlayDismissed] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [otherSelected, setOtherSelected] = useState(false)
+  const [otherText, setOtherText] = useState('')
   const triggeredRef = useRef<Trigger | null>(null)
+  const otherId = useId()
 
   // Banner: show after 3 min if not unlocked
   useEffect(() => {
@@ -57,12 +60,13 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
     return () => document.removeEventListener('mouseleave', handler)
   }, [hasUnlocked, overlayDismissed, submitted])
 
-  const submitReason = useCallback((key: ReasonKey, trigger: Trigger) => {
+  const submitReason = useCallback((key: ReasonKey, trigger: Trigger, text?: string) => {
     if (submitted) return
     trackSearchSessionEvent(searchId, 'friction_survey_response', {
       experiment_id: RESULTS_FRICTION_EXPERIMENT_ID,
       reason_key: key,
       trigger,
+      ...(key === 'other' && text ? { response_text: text.slice(0, 500) } : {}),
     }, {
       source: 'website-results',
       is_test_search: isTestSearch || undefined,
@@ -86,16 +90,57 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
 
   const activeTrigger: Trigger = overlayVisible ? 'exit_intent' : 'banner'
 
-  const reasonButtons = REASONS.map((r) => (
-    <button
-      key={r.key}
-      className="rf-option"
-      onClick={() => submitReason(r.key, activeTrigger)}
-      type="button"
-    >
-      {r.label}
-    </button>
-  ))
+  const reasonButtons = REASONS.map((r) => {
+    if (r.key === 'other') {
+      return (
+        <span key="other">
+          {!otherSelected ? (
+            <button
+              className="rf-option"
+              onClick={() => setOtherSelected(true)}
+              type="button"
+            >
+              {r.label}
+            </button>
+          ) : (
+            <span className="rf-other-wrap">
+              <input
+                id={otherId}
+                className="rf-other-input"
+                type="text"
+                autoFocus
+                maxLength={500}
+                placeholder="Tell us more…"
+                value={otherText}
+                onChange={(e) => setOtherText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && otherText.trim()) submitReason('other', activeTrigger, otherText.trim())
+                }}
+              />
+              <button
+                className="rf-option rf-option--send"
+                disabled={!otherText.trim()}
+                onClick={() => submitReason('other', activeTrigger, otherText.trim())}
+                type="button"
+              >
+                Send
+              </button>
+            </span>
+          )}
+        </span>
+      )
+    }
+    return (
+      <button
+        key={r.key}
+        className="rf-option"
+        onClick={() => submitReason(r.key, activeTrigger)}
+        type="button"
+      >
+        {r.label}
+      </button>
+    )
+  })
 
   return (
     <>

@@ -1032,14 +1032,24 @@ export default function CheckoutPanel({
           </div>
         )}
 
+        {/* Countdown timer — sticky below flight card, variant B only */}
+        {countdownVariant === 'countdown' && (
+          <CheckoutCountdown
+            isUnlocked={isUnlocked}
+            onExpired={() => {
+              // Redirect back to search results if we have a searchId, otherwise home
+              if (searchId) {
+                window.location.href = `/results/${encodeURIComponent(searchId)}`
+              } else {
+                window.location.href = homeHref
+              }
+            }}
+          />
+        )}
+
         {/* ── Checkout card ───────────────────────────────────────────────── */}
         <div className="ck-checkout-card">
           <div className="ck-unified-body">
-
-            {/* Countdown timer (variant B only) */}
-            {countdownVariant === 'countdown' && (
-              <CheckoutCountdown isUnlocked={isUnlocked} />
-            )}
 
             {/* Price breakdown — always visible */}
             <div className="ck-price-breakdown">

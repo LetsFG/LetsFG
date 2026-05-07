@@ -503,14 +503,17 @@ export default function ResultsPanel({
     for (const o of allOffers) {
       const offerPrice = getOfferDisplayTotalPrice(o, currency)
       for (const carrier of getOfferCarriers(o)) {
-        const current = map.get(carrier.name)
+        const category = getAirlineCategory(carrier.code)
+        const current = map.get(category)
         if (!current || offerPrice < current.minPrice) {
-          map.set(carrier.name, { minPrice: offerPrice, currency })
+          map.set(category, { minPrice: offerPrice, currency })
         }
       }
     }
+    // Fixed display order: LCC → FSC → generic
+    const ORDER = ['Low-cost carrier', 'Full-service carrier', 'Airline']
     return [...map.entries()]
-      .sort((a, b) => a[1].minPrice - b[1].minPrice)
+      .sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]))
       .map(([airline, value]) => ({ airline, minPrice: value.minPrice, currency: value.currency }))
   }, [allOffers, currency])
 
@@ -555,10 +558,12 @@ export default function ResultsPanel({
         const key = o.stops === 0 ? '0' : o.stops === 1 ? '1' : '2plus'
         if (!stopsFilter.includes(key)) return false
       }
-      // Airlines
+      // Airlines (by category)
       if (airlinesFilter.length > 0) {
-        const offerCarriers = new Set(getOfferCarriers(o).map((carrier) => carrier.name))
-        if (!airlinesFilter.some((airline) => offerCarriers.has(airline))) return false
+        const offerCategories = new Set(
+          getOfferCarriers(o).map((carrier) => getAirlineCategory(carrier.code))
+        )
+        if (!airlinesFilter.some((cat) => offerCategories.has(cat))) return false
       }
       // Ancillaries
       if (amenityFilters.includes('checked_included') && !hasIncludedAncillary(o.ancillaries?.checked_bag)) return false

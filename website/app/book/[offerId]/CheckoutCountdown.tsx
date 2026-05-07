@@ -6,14 +6,18 @@ export const CHECKOUT_COUNTDOWN_EXPERIMENT_ID = 'exp_checkout-countdown-v1'
 
 // Countdown duration: 15 minutes from mount
 const COUNTDOWN_SECONDS = 15 * 60
+// Grace period before redirect after expiry (ms)
+const REDIRECT_DELAY_MS = 4000
 
 interface Props {
   isUnlocked: boolean
+  onExpired?: () => void
 }
 
-export default function CheckoutCountdown({ isUnlocked }: Props) {
+export default function CheckoutCountdown({ isUnlocked, onExpired }: Props) {
   const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_SECONDS)
   const [expired, setExpired] = useState(false)
+  const [redirectIn, setRedirectIn] = useState<number | null>(null)
   const startRef = useRef<number>(Date.now())
 
   useEffect(() => {
@@ -32,7 +36,24 @@ export default function CheckoutCountdown({ isUnlocked }: Props) {
     return () => window.clearInterval(id)
   }, [])
 
-  // Don't show once unlocked or if somehow already expired at mount
+  // Start redirect countdown once expired
+  useEffect(() => {
+    if (!expired || !onExpired) return
+    const step = 100
+    let remaining = REDIRECT_DELAY_MS
+    setRedirectIn(Math.ceil(remaining / 1000))
+    const id = window.setInterval(() => {
+      remaining -= step
+      setRedirectIn(Math.max(0, Math.ceil(remaining / 1000)))
+      if (remaining <= 0) {
+        window.clearInterval(id)
+        onExpired()
+      }
+    }, step)
+    return () => window.clearInterval(id)
+  }, [expired, onExpired])
+
+  // Don't show once unlocked
   if (isUnlocked) return null
 
   const mins = Math.floor(secondsLeft / 60)
@@ -47,7 +68,9 @@ export default function CheckoutCountdown({ isUnlocked }: Props) {
         <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       {expired ? (
-        <span className="ck-countdown-label">Search results may have expired — prices could have changed</span>
+        <span className="ck-countdown-label">
+          Search results expired — redirecting in {redirectIn}s…
+        </span>
       ) : (
         <>
           <span className="ck-countdown-label">Search results valid for</span>
