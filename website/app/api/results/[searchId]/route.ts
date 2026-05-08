@@ -293,10 +293,28 @@ export async function GET(
 
     const data = await res.json()
     const rawOffers: any[] = data.offers || []
+
+    // Derive a Google Flights baseline from raw offers as soon as the Google
+    // connector returns — even mid-search when data.google_flights_price is
+    // not yet set by the FSW. This makes the "X cheaper than Google Flights"
+    // badge appear on offers the moment Google results arrive, not only after
+    // the entire search finishes.
+    const googleRawPrices = rawOffers
+      .filter((o: any) => {
+        const src = typeof o?.source === 'string' ? o.source.toLowerCase().trim() : ''
+        return src === 'serpapi_google' || src === 'google_flights'
+      })
+      .map((o: any) => (typeof o?.price === 'number' && o.price > 0 ? o.price : null))
+      .filter((p): p is number => p !== null)
+    const derivedBaseline: number | undefined =
+      typeof data.google_flights_price === 'number' && data.google_flights_price > 0
+        ? data.google_flights_price
+        : googleRawPrices.length > 0 ? Math.min(...googleRawPrices) : undefined
+
     const trustedOffers = applyGoogleFlightsBaseline(
       rawOffers,
       rawOffers.map((offer: any, idx: number) => normalizeTrustedOffer(offer, idx)),
-      data.google_flights_price,
+      derivedBaseline,
     )
     const normalized = trustedOffers
       .map((offer) => toPublicOffer(offer))
