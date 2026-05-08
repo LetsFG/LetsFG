@@ -16,6 +16,10 @@ import { getStripe } from '../../../../lib/stripe'
  *
  * Set STRIPE_WEBHOOK_SECRET to the signing secret shown on the endpoint page.
  * For local testing:  stripe listen --forward-to localhost:3000/api/checkout/webhook
+ *
+ * In test mode (sk_test_...) this webhook also handles monitor activation, because
+ * the monitor checkout session is created by the website (not the backend) so the
+ * backend's own webhook never fires for it.
  */
 
 // Must run on Node.js to access the raw request body for signature verification.
@@ -24,6 +28,11 @@ export const runtime = 'nodejs'
 const ANALYTICS_API_BASE = (
   process.env.LETSFG_ANALYTICS_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
 ).replace(/\/$/, '')
+
+const API_BASE = (process.env.LETSFG_API_URL || 'https://api.letsfg.co').replace(/\/$/, '')
+const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
+
+const IS_TEST_MODE = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
 
 /**
  * Fire the payment_verified analytics event from the server side.
@@ -107,18 +116,55 @@ export async function POST(req: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         if (session.payment_status === 'paid') {
-          console.log('[webhook] Payment confirmed:', {
-            sessionId: session.id,
-            searchId: session.metadata?.search_id,
-            offerId: session.metadata?.offer_id,
-            lfgUid: session.metadata?.lfg_uid,
-            amount: session.amount_total,
-            currency: session.currency,
-          })
-          // Fire analytics from the server side so the purchase is always recorded,
-          // even if the Stripe redirect fails or client-side JS doesn't execute
-          // (browser closed, network error, JS exception).
-          await trackPaymentVerified(session)
+          const monitorId = session.metadata?.monitor_id
+
+          if (monitorId) {
+            // ── Monitor payment ───────────────────────────────────────────────
+            // In test mode the website created this Stripe session (not the backend),
+            // so the backend's own webhook never fires. Activate the monitor here.
+            if (IS_TEST_MODE && WEBSITE_API_KEY) {
+              const amountUsd = session.amount_total != null ? session.amount_total / 100 : 0
+              try {
+                const activateResp = await fetch(
+                  `${API_BASE}/api/v1/monitors/${monitorId}/record-payment`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-API-Key': WEBSITE_API_KEY,
+                    },
+                    body: JSON.stringify({
+                      stripe_payment_intent_id: session.payment_intent ?? '',
+                      amount_usd: amountUsd,
+                    }),
+                    signal: AbortSignal.timeout(10_000),
+                  }
+                )
+                if (activateResp.ok) {
+                  console.log('[webhook] Monitor activated via record-payment:', monitorId)
+                } else {
+                  const body = await activateResp.text().catch(() => '')
+                  console.error('[webhook] record-payment failed:', activateResp.status, body)
+                }
+              } catch (err) {
+                console.error('[webhook] record-payment threw:', err)
+              }
+            }
+            // In production, the backend's own webhook handles monitor activation.
+            // Nothing to do here for monitor payments in live mode.
+            console.log('[webhook] Monitor payment confirmed:', { monitorId, sessionId: session.id })
+          } else {
+            // ── Regular (unlock/book) payment — track analytics ───────────────
+            console.log('[webhook] Payment confirmed:', {
+              sessionId: session.id,
+              searchId: session.metadata?.search_id,
+              offerId: session.metadata?.offer_id,
+              lfgUid: session.metadata?.lfg_uid,
+              amount: session.amount_total,
+              currency: session.currency,
+            })
+            await trackPaymentVerified(session)
+          }
         }
         break
       }

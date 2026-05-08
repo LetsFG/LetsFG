@@ -174,9 +174,10 @@ export default function MonitorModal({
         return
       }
 
-      // Persist monitor_id so the success page can set up push/Telegram
+      // Persist monitor_id and return URL so the success page can redirect back
       if (data.monitor_id) {
         try { sessionStorage.setItem('letsfg_monitor_id', data.monitor_id) } catch { /* ignore */ }
+        try { sessionStorage.setItem('letsfg_monitor_return_url', window.location.href) } catch { /* ignore */ }
       }
 
       // Redirect to Stripe Checkout
