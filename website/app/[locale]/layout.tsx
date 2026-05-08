@@ -20,7 +20,7 @@ export async function generateMetadata({
     title: t('title'),
     description: t('description'),
     openGraph: {
-      title: 'LetsFG — The entire internet of flights',
+      title: t('title'),
       description: t('description'),
       siteName: 'LetsFG',
       images: [
@@ -28,7 +28,7 @@ export async function generateMetadata({
           url: '/og-v2.png',
           width: 1400,
           height: 760,
-          alt: 'LetsFG — The entire internet of flights. No markup, no hidden fees.',
+          alt: t('title'),
         },
       ],
       locale: locale.replace('-', '_'),
@@ -36,7 +36,7 @@ export async function generateMetadata({
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'LetsFG — The entire internet of flights',
+      title: t('title'),
       description: t('description'),
       images: ['/og-v2.png'],
     },

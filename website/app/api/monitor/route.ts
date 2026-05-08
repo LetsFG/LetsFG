@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getStripe, toStripeAmount } from '../../../lib/stripe'
 
 const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
+
+// When STRIPE_SECRET_KEY is a test key (sk_test_...), create the Stripe checkout
+// session locally in Next.js instead of letting the production backend create it.
+// This lets us test the full payment flow without touching the live backend's Stripe account.
+const IS_TEST_MODE = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
 
 export async function POST(req: NextRequest) {
   if (!WEBSITE_API_KEY) {
@@ -48,14 +54,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'weeks must be between 1 and 52' }, { status: 400 })
   }
 
-  const successUrl = `${SITE_URL}/monitor/success`
+  // {CHECKOUT_SESSION_ID} is a Stripe placeholder — it is substituted by Stripe
+  // with the real session ID before the redirect. Do NOT URL-encode the braces.
+  const successUrl = `${SITE_URL}/monitor/success?cs={CHECKOUT_SESSION_ID}`
   const cancelUrl = `${SITE_URL}/monitor/cancelled`
 
   try {
+    const originStr = String(origin).trim().toUpperCase()
+    const destStr = String(destination).trim().toUpperCase()
+    const depDateStr = String(departure_date).trim()
+
     const payload: Record<string, unknown> = {
-      origin: String(origin).trim().toUpperCase(),
-      destination: String(destination).trim().toUpperCase(),
-      departure_date: String(departure_date).trim(),
+      origin: originStr,
+      destination: destStr,
+      departure_date: depDateStr,
       weeks: weeksNum,
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -73,6 +85,65 @@ export async function POST(req: NextRequest) {
       payload.cabin_class = cabin_class.trim()
     }
 
+    // ── TEST MODE: create Stripe session in Next.js using test SK ─────────────
+    // Backend creates the monitor record only (skip_checkout=true).
+    // We then create the Stripe checkout session here with the test SK.
+    // The website webhook (checkout.session.completed) activates the monitor.
+    if (IS_TEST_MODE) {
+      const backendResp = await fetch(`${API_BASE}/api/v1/monitors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': WEBSITE_API_KEY },
+        body: JSON.stringify({ ...payload, skip_checkout: true }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      const backendData = await backendResp.json()
+      if (!backendResp.ok) {
+        const message = typeof backendData?.detail === 'string' ? backendData.detail : 'Failed to create monitor'
+        return NextResponse.json({ error: message }, { status: backendResp.status })
+      }
+
+      const monitorId = backendData.monitor_id as string
+      const route = `${originStr} → ${destStr}`
+      const stripe = getStripe()
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            unit_amount: toStripeAmount(5, 'usd'),
+            product_data: {
+              name: `LetsFG Flight Monitor — ${route}`,
+              description: `Daily price updates for ${route} on ${depDateStr}. ${weeksNum} week(s), 1 free unlock/week included.`,
+            },
+          },
+          quantity: weeksNum,
+        }],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        ...(emailValue ? { customer_email: emailValue.toLowerCase() } : {}),
+        metadata: {
+          monitor_id: monitorId,
+          weeks: String(weeksNum),
+          origin: originStr,
+          destination: destStr,
+          departure_date: depDateStr,
+          platform: 'letsfg',
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      })
+
+      return NextResponse.json({
+        monitor_id: monitorId,
+        checkout_url: session.url,
+        weeks_purchased: weeksNum,
+        total_usd: weeksNum * 5,
+        route,
+        departure_date: depDateStr,
+        notify_email: emailValue || null,
+      })
+    }
+
+    // ── PRODUCTION: backend creates both the monitor record and Stripe session ─
     const resp = await fetch(`${API_BASE}/api/v1/monitors`, {
       method: 'POST',
       headers: {

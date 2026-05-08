@@ -7339,6 +7339,51 @@ body:has(.res-page) {
   border-radius: 10px !important;
 }
 
+/* ── Notification cards inside white .mon-card (confirmed overlay) ─── */
+/* The .mon-notif-* classes use CSS vars designed for dark backgrounds.
+   Override them when rendered inside the white mon-card. */
+.mon-card .mon-notif-card {
+  background: rgba(20, 45, 62, 0.05);
+  border-color: rgba(0, 0, 0, 0.13);
+}
+
+.mon-card .mon-notif-icon {
+  color: #142d3e;
+  font-size: 1.1rem;
+}
+
+.mon-card .mon-notif-title {
+  color: #142d3e;
+}
+
+.mon-card .mon-notif-desc {
+  color: rgba(20, 45, 62, 0.6);
+}
+
+.mon-card .mon-notif-btn--retry {
+  background: rgba(20, 45, 62, 0.08);
+  color: #142d3e;
+}
+
+.mon-card .mon-notif-status--loading {
+  color: rgba(20, 45, 62, 0.55);
+}
+
+.mon-card .mon-notif-status--done {
+  color: #16a34a;
+}
+
+.mon-card .mon-notif-status--muted {
+  color: rgba(20, 45, 62, 0.45);
+}
+
+.mon-confirmed-desc {
+  font-size: 0.88rem;
+  color: rgba(20, 45, 62, 0.62);
+  margin: 0 0 8px;
+  line-height: 1.55;
+}
+
 .ck-unlocked-check {
   width: 38px;
   height: 38px;
