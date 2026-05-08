@@ -25,7 +25,7 @@ import React from 'react'
 
 const DOMAIN = 'https://letsfg.co'
 const BRAND = 'LetsFG'
-const OG_IMAGE = `${DOMAIN}/og/flights.png`
+const OG_IMAGE = `${DOMAIN}/og-v2.png`
 const OG_IMAGE_WIDTH = 1200
 const OG_IMAGE_HEIGHT = 630
 

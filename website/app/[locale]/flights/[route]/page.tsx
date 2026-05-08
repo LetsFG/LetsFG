@@ -27,19 +27,22 @@ export const revalidate = 86400
 
 const API_BASE = (
   process.env.LETSFG_ANALYTICS_API_URL ||
-  'https://letsfg-api-876385716101.us-central1.run.app'
+  'https://api.letsfg.co'
 ).replace(/\/$/, '')
 
 // ─── Static params ────────────────────────────────────────────────────────────
 
-export async function generateStaticParams(): Promise<{ route: string }[]> {
+export async function generateStaticParams(): Promise<{ locale: string; route: string }[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/flights/pfp/routes`, {
       cache: 'no-store',
     })
     if (!res.ok) return []
     const routes: Array<{ slug: string }> = await res.json()
-    return routes.map((r) => ({ route: r.slug }))
+    // Pre-render every route for every supported locale
+    return SUPPORTED_LOCALES.flatMap((locale) =>
+      routes.map((r) => ({ locale, route: r.slug })),
+    )
   } catch {
     return []
   }
@@ -127,7 +130,7 @@ export async function generateMetadata({
       type: 'article',
       images: [
         {
-          url: `${DOMAIN}/og/flights.png`,
+          url: `${DOMAIN}/og-v2.png`,
           width: 1200,
           height: 630,
           alt: `${originCity} to ${destCity} flight prices`,
@@ -140,7 +143,7 @@ export async function generateMetadata({
       site: '@LetsFG',
       title: ogTitle,
       description,
-      images: [`${DOMAIN}/og/flights.png`],
+      images: [`${DOMAIN}/og-v2.png`],
     },
   }
 }

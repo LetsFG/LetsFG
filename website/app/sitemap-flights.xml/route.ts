@@ -19,7 +19,7 @@ export const revalidate = 3600 // 1 hour
 
 const API_BASE = (
   process.env.LETSFG_ANALYTICS_API_URL ||
-  'https://letsfg-api-876385716101.us-central1.run.app'
+  'https://api.letsfg.co'
 ).replace(/\/$/, '')
 
 async function fetchRoutes(): Promise<SitemapRoute[]> {

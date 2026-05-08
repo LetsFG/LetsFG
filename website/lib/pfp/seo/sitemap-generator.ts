@@ -76,7 +76,8 @@ function buildUrlEntry(route: SitemapRoute, baseUrl: string): string {
   const priority = computeSitemapPriority(route)
   const changefreq = computeChangefreq(route.staleness)
   const lastmod = w3cDate(route.snapshot_computed_at)
-  const loc = `${baseUrl}/flights/${route.slug}/`
+  // Pages live under the [locale] segment — canonical locale is /en/
+  const loc = `${baseUrl}/en/flights/${route.slug}/`
   return (
     `  <url>\n` +
     `    <loc>${loc}</loc>\n` +

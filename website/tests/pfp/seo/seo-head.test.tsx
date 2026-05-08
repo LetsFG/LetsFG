@@ -218,7 +218,7 @@ test('og:image is set to static og image', () => {
   const html = render(BASE_DATA)
   const ogImage = getMetaProperty(html, 'og:image')
   assert.ok(ogImage !== null, 'og:image not found')
-  assert.ok(ogImage!.includes('/og/flights.png'), `og:image unexpected: "${ogImage}"`)
+  assert.ok(ogImage!.includes('/og-v2.png'), `og:image unexpected: "${ogImage}"`)
 })
 
 test('og:image:width is 1200', () => {
@@ -268,7 +268,7 @@ test('twitter:image is set', () => {
   const html = render(BASE_DATA)
   const img = getMetaContent(html, 'twitter:image')
   assert.ok(img !== null, 'twitter:image not found')
-  assert.ok(img!.includes('/og/flights.png'), `twitter:image unexpected: "${img}"`)
+  assert.ok(img!.includes('/og-v2.png'), `twitter:image unexpected: "${img}"`)
 })
 
 test('author meta is LetsFG', () => {
