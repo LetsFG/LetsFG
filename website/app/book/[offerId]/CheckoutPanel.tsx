@@ -401,6 +401,7 @@ export default function CheckoutPanel({
   const [surveyDismissed, setSurveyDismissed] = useState<boolean>(() => {
     try { return !!sessionStorage.getItem('lfg_ck_survey_done') } catch { return false }
   })
+  const [surveyVisible, setSurveyVisible] = useState(false)
 
   // Start in 'checking' — we always verify unlock status on mount.
   const [step, setStep] = useState<CheckoutStep>({ type: 'checking' })
@@ -434,6 +435,13 @@ export default function CheckoutPanel({
 
   const isUnlocked = step.type === 'unlocked'
   const isLoading = step.type === 'checking' || step.type === 'verifying-payment'
+
+  // ── Survey popup: show after 2 min if user hasn't unlocked or dismissed ──
+  useEffect(() => {
+    if (surveyVariant !== 'survey' || isUnlocked || surveyDismissed) return
+    const timer = window.setTimeout(() => setSurveyVisible(true), 2 * 60 * 1000)
+    return () => window.clearTimeout(timer)
+  }, [surveyVariant, isUnlocked, surveyDismissed])
 
   const getLegTitle = useCallback((leg: 'outbound' | 'inbound') => (
     leg === 'outbound' ? 'Flight there' : 'Flight back'
@@ -1075,19 +1083,6 @@ export default function CheckoutPanel({
               </div>
             </div>
 
-            {/* ── Checkout survey (variant B only, shown when locked) ─── */}
-            {surveyVariant === 'survey' && !isUnlocked && !isLoading && !surveyDismissed && step.type !== 'paying' && (
-              <CheckoutSurvey
-                searchId={analyticsSearchId}
-                offerId={offer.id}
-                isTestSearch={isTestSearch}
-                onDismiss={() => {
-                  setSurveyDismissed(true)
-                  try { sessionStorage.setItem('lfg_ck_survey_done', '1') } catch { /* ignore */ }
-                }}
-              />
-            )}
-
             {splitBookingLegs.length > 0 ? (
               /* ── Split booking: per-leg action cards ── */
               <>
@@ -1429,6 +1424,30 @@ export default function CheckoutPanel({
         </div>
 
       </div>
+
+      {/* ── Checkout survey popup (variant B only, after 2 min) ──────────── */}
+      {surveyVariant === 'survey' && surveyVisible && !isUnlocked && !surveyDismissed && (
+        <div
+          className="ck-survey-overlay"
+          onClick={() => {
+            setSurveyDismissed(true)
+            try { sessionStorage.setItem('lfg_ck_survey_done', '1') } catch { /* ignore */ }
+          }}
+        >
+          <div className="ck-survey-popup" onClick={e => e.stopPropagation()}>
+            <CheckoutSurvey
+              searchId={analyticsSearchId}
+              offerId={offer.id}
+              isTestSearch={isTestSearch}
+              onDismiss={() => {
+                setSurveyDismissed(true)
+                setSurveyVisible(false)
+                try { sessionStorage.setItem('lfg_ck_survey_done', '1') } catch { /* ignore */ }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
