@@ -2875,7 +2875,7 @@ body:has(.res-page) {
   overflow-y: auto;
   display: flex;
   align-items: stretch;
-  padding-bottom: 8px;
+  padding-bottom: 24px;
 }
 
 .res-hero-backdrop {
@@ -3000,10 +3000,9 @@ body:has(.res-page) {
 }
 
 .res-topbar--searching {
-  grid-template-columns: clamp(132px, 11vw, 168px) auto;
+  grid-template-columns: clamp(132px, 11vw, 168px) 1fr auto;
   width: min(1060px, calc(100vw - 48px));
   margin: 0 auto;
-  justify-content: space-between;
 }
 
 .res-topbar-logo-link {
@@ -3210,6 +3209,7 @@ body:has(.res-page) {
   display: flex;
   justify-content: center;
   padding-top: 0;
+  padding-bottom: 20px;
 }
 
 .res-search-footer {
@@ -7541,11 +7541,11 @@ body:has(.res-page) {
 
 /* ── Checkout survey (A/B experiment) ─────────────────────────────── */
 .ck-survey {
-  margin: 16px 0 0;
-  padding: 14px 16px;
-  background: #f4f7fa;
-  border: 1.5px solid rgba(20, 45, 60, 0.1);
-  border-radius: 14px;
+  margin: 0;
+  padding: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .ck-survey--thanks {
@@ -7706,6 +7706,32 @@ body:has(.res-page) {
 .ck-survey-submit:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ── Survey popup overlay ────────────────────────────────────────────── */
+.ck-survey-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.48);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ck-survey-popup {
+  background: #fff;
+  border-radius: 20px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.22);
+  animation: ck-survey-pop 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes ck-survey-pop {
+  from { transform: scale(0.88); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
 }
 
 /* ── OR divider ────────────────────────────────────────────────────── */
