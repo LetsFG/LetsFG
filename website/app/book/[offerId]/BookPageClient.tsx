@@ -14,6 +14,7 @@ interface Props {
   isTestSearch: boolean
   offerRef: string | null
   backHref: string
+  displayCurrency?: string
 }
 
 export default function BookPageClient({
@@ -24,6 +25,7 @@ export default function BookPageClient({
   isTestSearch,
   offerRef,
   backHref,
+  displayCurrency,
 }: Props) {
   const [offer, setOffer] = useState<Offer | null>(initialOffer)
   const [checkedRecovery, setCheckedRecovery] = useState(Boolean(initialOffer) || !searchId)
@@ -55,6 +57,7 @@ export default function BookPageClient({
         trackingSearchId={trackingSearchId}
         isTestSearch={isTestSearch}
         offerRef={offerRef}
+        displayCurrency={displayCurrency}
       />
     )
   }
