@@ -792,7 +792,7 @@ export default function SearchPageClient({
             </Link>
 
             <nav className="lp-nav res-topbar-nav">
-              <span className="lp-nav-link lp-nav-link--active">Search</span>
+              <span className="lp-nav-link">Search</span>
               {parsed.origin && parsed.destination && parsed.date && (
                 <button
                   className="lp-nav-link lp-nav-link-btn"
@@ -831,6 +831,7 @@ export default function SearchPageClient({
                 <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
               </div>
 
+              {offers.length > 0 && (
               <div className="res-meta-bar">
                 <span className="res-meta-label">{t('searchResults')}</span>
                 {routeLabel && (
@@ -846,6 +847,7 @@ export default function SearchPageClient({
                   </>
                 )}
               </div>
+              )}
 
               {offers.length === 0 && (
                 <div className="res-searching-stage">
@@ -936,6 +938,7 @@ export default function SearchPageClient({
           returnDate={parsed.return_date || undefined}
           adults={parsed.passengers || 1}
           cabinClass={parsed.cabin || undefined}
+          currency={displayCurrency}
           onClose={() => setMonitorOpen(false)}
         />
       )}

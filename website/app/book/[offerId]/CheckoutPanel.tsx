@@ -698,17 +698,16 @@ export default function CheckoutPanel({
       return
     }
 
-    // Email single-use token path — consume the mt token to get a checkout_token
+    // Email single-use token path — consume the mt token to get a website unlock token
     if (emailToken) {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? ''
       fetch(
-        `${apiBase}/api/v1/monitors/use-email-unlock?token=${encodeURIComponent(emailToken)}&offer_id=${encodeURIComponent(offer.id)}`,
+        `/api/monitor/use-email-unlock?token=${encodeURIComponent(emailToken)}&offer_id=${encodeURIComponent(offer.id)}&search_id=${encodeURIComponent(searchId)}`,
         { method: 'POST', credentials: 'same-origin' },
       )
         .then(r => r.ok ? r.json() : Promise.reject(r.status))
-        .then(async (data: { checkout_token?: string }) => {
-          if (data.checkout_token) {
-            persistUnlockToken(searchId, data.checkout_token)
+        .then(async (data: { unlockToken?: string }) => {
+          if (data.unlockToken) {
+            persistUnlockToken(searchId, data.unlockToken)
             // Remove mt from URL so refresh/back doesn't try to reuse the token
             const cleanUrl = new URL(window.location.href)
             cleanUrl.searchParams.delete('mt')

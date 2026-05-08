@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMonitorStripe, toStripeAmount } from '../../../lib/stripe'
+import { convertCurrencyAmount } from '../../../lib/display-price'
+
+// Currencies Stripe supports for checkout. Falls back to USD for anything else.
+const STRIPE_CURRENCIES = new Set([
+  'USD', 'EUR', 'GBP', 'AUD', 'CAD', 'CHF', 'JPY', 'NZD', 'SEK', 'NOK', 'DKK',
+  'PLN', 'HUF', 'CZK', 'RON', 'HKD', 'SGD', 'MXN', 'BRL', 'INR', 'ZAR', 'AED',
+  'SAR', 'THB', 'MYR', 'IDR', 'PHP', 'KRW', 'TRY', 'EGP', 'VND', 'BGN', 'NGN',
+])
 
 const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
@@ -24,6 +32,7 @@ export async function POST(req: NextRequest) {
     cabin_class?: unknown
     notify_email?: unknown
     weeks?: unknown
+    currency?: unknown
   }
   try {
     body = await req.json()
@@ -31,7 +40,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { origin, destination, departure_date, return_date, adults, cabin_class, notify_email, weeks } = body
+  const { origin, destination, departure_date, return_date, adults, cabin_class, notify_email, weeks, currency } = body
+
+  // Resolve billing currency — use user's selection if Stripe supports it, else USD
+  const rawCurrency = typeof currency === 'string' ? currency.trim().toUpperCase() : 'USD'
+  const billingCurrency = STRIPE_CURRENCIES.has(rawCurrency) ? rawCurrency : 'USD'
 
   // Validate required fields
   if (
@@ -84,6 +97,7 @@ export async function POST(req: NextRequest) {
     if (cabin_class && typeof cabin_class === 'string' && cabin_class.trim()) {
       payload.cabin_class = cabin_class.trim()
     }
+    payload.currency = billingCurrency.toLowerCase()
 
     // ── TEST MODE: create Stripe session in Next.js using test SK ─────────────
     // Backend creates the monitor record only (skip_checkout=true).
@@ -104,13 +118,15 @@ export async function POST(req: NextRequest) {
 
       const monitorId = backendData.monitor_id as string
       const route = `${originStr} → ${destStr}`
+      // Convert $5 USD base price to the billing currency
+      const unitAmount = toStripeAmount(convertCurrencyAmount(5, 'USD', billingCurrency), billingCurrency)
       const stripe = getMonitorStripe()
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         line_items: [{
           price_data: {
-            currency: 'usd',
-            unit_amount: toStripeAmount(5, 'usd'),
+            currency: billingCurrency.toLowerCase(),
+            unit_amount: unitAmount,
             product_data: {
               name: `LetsFG Flight Monitor — ${route}`,
               description: `Daily price updates for ${route} on ${depDateStr}. ${weeksNum} week(s), 1 free unlock/week included.`,
@@ -137,6 +153,7 @@ export async function POST(req: NextRequest) {
         checkout_url: session.url,
         weeks_purchased: weeksNum,
         total_usd: weeksNum * 5,
+        currency: billingCurrency,
         route,
         departure_date: depDateStr,
         notify_email: emailValue || null,
