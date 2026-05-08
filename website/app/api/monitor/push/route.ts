@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
           'X-API-Key': WEBSITE_API_KEY,
         },
-        body: JSON.stringify({ subscription }),
-        signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify(subscription),
+        signal: AbortSignal.timeout(30_000),
       }
     )
 

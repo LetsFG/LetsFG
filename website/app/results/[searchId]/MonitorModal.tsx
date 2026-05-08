@@ -107,6 +107,9 @@ export default function MonitorModal({
       if (permission !== 'granted') { setPushState('denied'); return }
 
       const reg = await navigator.serviceWorker.ready
+      // Unsubscribe any existing subscription so a rotated VAPID key doesn't throw
+      const existingSub = await reg.pushManager.getSubscription()
+      if (existingSub) await existingSub.unsubscribe().catch(() => null)
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(public_key),

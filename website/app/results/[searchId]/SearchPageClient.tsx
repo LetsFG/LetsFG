@@ -75,21 +75,43 @@ function MonitorConfirmedOverlay({
     return () => { document.body.style.overflow = '' }
   }, [])
 
-  // Auto-register any pending push subscription from before the Stripe redirect
+  // Auto-register any pending push subscription from before the Stripe redirect.
+  // First calls /api/monitor/activate to ensure the monitor is ACTIVE (test mode
+  // has no webhook, so activation must happen here before the push sub is stored).
   useEffect(() => {
     let pending: string | null = null
     try { pending = sessionStorage.getItem('letsfg_push_pending_sub') } catch { /* ignore */ }
     if (!pending) return
-    try { sessionStorage.removeItem('letsfg_push_pending_sub') } catch { /* ignore */ }
+
     const sub = JSON.parse(pending) as object
-    setPushState('loading')
-    fetch('/api/monitor/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ monitor_id: monitorId, subscription: sub }),
-    })
-      .then(r => r.ok ? setPushState('done') : setPushState('error'))
-      .catch(() => setPushState('error'))
+
+    const registerPush = () => {
+      try { sessionStorage.removeItem('letsfg_push_pending_sub') } catch { /* ignore */ }
+      setPushState('loading')
+      fetch('/api/monitor/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ monitor_id: monitorId, subscription: sub }),
+      })
+        .then(r => r.ok ? setPushState('done') : setPushState('error'))
+        .catch(() => setPushState('error'))
+    }
+
+    // Activate the monitor first (needed in test mode — no webhook running locally)
+    let cs: string | null = null
+    try { cs = sessionStorage.getItem('letsfg_checkout_cs') } catch { /* ignore */ }
+    if (cs) {
+      try { sessionStorage.removeItem('letsfg_checkout_cs') } catch { /* ignore */ }
+      fetch('/api/monitor/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cs, monitor_id: monitorId }),
+      })
+        .catch(() => { /* non-fatal — monitor may already be active */ })
+        .finally(() => registerPush())
+    } else {
+      registerPush()
+    }
   }, [monitorId])
 
   // Telegram widget — only works on registered domains (not localhost)
@@ -137,6 +159,9 @@ function MonitorConfirmedOverlay({
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') { setPushState('denied'); return }
       const reg = await navigator.serviceWorker.ready
+      // Unsubscribe any existing subscription so a rotated VAPID key doesn't throw
+      const existingSub = await reg.pushManager.getSubscription()
+      if (existingSub) await existingSub.unsubscribe().catch(() => null)
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(public_key),

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStripe, toStripeAmount } from '../../../lib/stripe'
+import { getMonitorStripe, toStripeAmount } from '../../../lib/stripe'
 
 const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
 
-// When STRIPE_SECRET_KEY is a test key (sk_test_...), create the Stripe checkout
-// session locally in Next.js instead of letting the production backend create it.
-// This lets us test the full payment flow without touching the live backend's Stripe account.
-const IS_TEST_MODE = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
+// Test mode when the monitor-specific key is a test key, OR when the global key is test.
+// STRIPE_MONITOR_SECRET_KEY lets monitor use test Stripe independently of the main flow.
+const MONITOR_SK = process.env.STRIPE_MONITOR_SECRET_KEY || process.env.STRIPE_SECRET_KEY || ''
+const IS_TEST_MODE = MONITOR_SK.startsWith('sk_test_')
 
 export async function POST(req: NextRequest) {
   if (!WEBSITE_API_KEY) {
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
 
       const monitorId = backendData.monitor_id as string
       const route = `${originStr} → ${destStr}`
-      const stripe = getStripe()
+      const stripe = getMonitorStripe()
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         line_items: [{

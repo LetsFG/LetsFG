@@ -29,13 +29,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 
 export default function MonitorSuccessPage() {
   return (
-    <Suspense fallback={
-      <main className="mon-redirect-page">
-        <div className="mon-redirect-card">
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>Setting up your monitor…</p>
-        </div>
-      </main>
-    }>
+    <Suspense fallback={null}>
       <MonitorSuccessInner />
     </Suspense>
   )
@@ -60,6 +54,12 @@ function MonitorSuccessInner() {
   // 2. ?mid= query param (email CTAs / direct links)
   // 3. ?cs= Stripe checkout session ID → look up monitor_id server-side
   useEffect(() => {
+    // Store cs in sessionStorage so the results overlay can call activate later
+    const cs = searchParams.get('cs')
+    if (cs && cs.startsWith('cs_')) {
+      try { sessionStorage.setItem('letsfg_checkout_cs', cs) } catch { /* ignore */ }
+    }
+
     try {
       const stored = sessionStorage.getItem('letsfg_monitor_id')
       if (stored) { setMonitorId(stored); return }
@@ -68,7 +68,6 @@ function MonitorSuccessInner() {
     const mid = searchParams.get('mid')
     if (mid) { setMonitorId(mid); return }
 
-    const cs = searchParams.get('cs')
     if (cs && cs.startsWith('cs_')) {
       fetch(`/api/monitor/session-info?cs=${encodeURIComponent(cs)}`)
         .then(r => r.ok ? r.json() as Promise<{ monitor_id?: string }> : Promise.resolve(null))
@@ -172,6 +171,9 @@ function MonitorSuccessInner() {
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') { setPushState('denied'); return }
       const reg = await navigator.serviceWorker.ready
+      // Unsubscribe any existing subscription so a rotated VAPID key doesn't throw
+      const existingSub = await reg.pushManager.getSubscription()
+      if (existingSub) await existingSub.unsubscribe().catch(() => null)
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(public_key),
@@ -188,17 +190,9 @@ function MonitorSuccessInner() {
     }
   }
 
-  // Loading / redirecting state
+  // Loading / redirecting state — render nothing (invisible transition)
   if (redirecting || !monitorId) {
-    return (
-      <main className="mon-redirect-page">
-        <div className="mon-redirect-card">
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
-            {redirecting ? 'Redirecting…' : 'Setting up your monitor…'}
-          </p>
-        </div>
-      </main>
-    )
+    return null
   }
 
   // Fallback: no return URL (user came from email, direct link, etc.)

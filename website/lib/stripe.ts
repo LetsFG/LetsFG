@@ -8,6 +8,7 @@
 import Stripe from 'stripe'
 
 let _stripe: Stripe | null = null
+let _monitorStripe: Stripe | null = null
 
 export function getStripe(): Stripe {
   if (!_stripe) {
@@ -16,6 +17,20 @@ export function getStripe(): Stripe {
     _stripe = new Stripe(key)
   }
   return _stripe
+}
+
+/**
+ * Stripe client for monitor payments.
+ * Uses STRIPE_MONITOR_SECRET_KEY if set, otherwise falls back to STRIPE_SECRET_KEY.
+ * This allows monitor to run on test Stripe while unlock/book stays on live Stripe.
+ */
+export function getMonitorStripe(): Stripe {
+  if (!_monitorStripe) {
+    const key = process.env.STRIPE_MONITOR_SECRET_KEY || process.env.STRIPE_SECRET_KEY
+    if (!key) throw new Error('STRIPE_SECRET_KEY environment variable is not set')
+    _monitorStripe = new Stripe(key)
+  }
+  return _monitorStripe
 }
 
 /**

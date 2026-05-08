@@ -41,6 +41,17 @@ const IS_TEST_MODE = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_'
  * Fire-and-forget: failures are logged but never bubble up to Stripe.
  */
 async function trackPaymentVerified(session: Stripe.Checkout.Session) {
+  // Never record test-mode payments as real revenue.
+  // session.livemode === false means this came from a Stripe test key / test clock.
+  if (!session.livemode) {
+    console.warn(
+      '[webhook] Ignoring test-mode payment — session:', session.id,
+      'search_id:', session.metadata?.search_id ?? '(none)',
+      '— set STRIPE_SECRET_KEY to a live key to record real revenue',
+    )
+    return
+  }
+
   const searchId = session.metadata?.search_id
   if (!searchId) {
     console.warn('[webhook] checkout.session.completed missing search_id in metadata — skipping analytics')
