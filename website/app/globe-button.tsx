@@ -2,7 +2,7 @@
 
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, usePathname } from 'next/navigation'
 
 const LANGUAGES = [
   { code: 'en', label: 'English',    flag: 'EN' },
@@ -31,6 +31,7 @@ function EarthIcon() {
 export default function GlobeButton({ inline = false }: { inline?: boolean } = {}) {
   const router = useRouter()
   const params = useParams()
+  const pathname = usePathname()
   const currentLocale = (params?.locale as string) || 'en'
 
   const [open, setOpen] = useState(false)
@@ -145,7 +146,28 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
               role="option"
               aria-selected={lang.code === currentLocale}
               className={`lp-lang-option${lang.code === currentLocale ? ' lp-lang-option--active' : ''}`}
-              onClick={() => { document.cookie = `LETSFG_LOCALE=${lang.code}; path=/; max-age=31536000; SameSite=Lax`; router.push(`/${lang.code}`); setOpen(false) }}
+              onClick={() => {
+                const cookieOpts = 'path=/; max-age=31536000; SameSite=Lax'
+                document.cookie = `LETSFG_LOCALE=${lang.code}; ${cookieOpts}`
+                document.cookie = `NEXT_LOCALE=${lang.code}; ${cookieOpts}`
+                setOpen(false)
+
+                // Non-locale paths (/results, /book, /probe) — refresh in-place
+                if (
+                  pathname.startsWith('/results') ||
+                  pathname.startsWith('/book') ||
+                  pathname.startsWith('/probe')
+                ) {
+                  router.refresh()
+                  return
+                }
+
+                // Locale-prefixed paths — swap locale segment, preserve the rest
+                const localeRe = /^\/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)(\/|$)/
+                const match = pathname.match(localeRe)
+                const rest = match ? pathname.slice(1 + match[1].length) : ''
+                router.push(`/${lang.code}${rest}${window.location.search}`)
+              }}
               type="button"
             >
               <span className="lp-lang-flag" aria-hidden="true">{lang.flag}</span>

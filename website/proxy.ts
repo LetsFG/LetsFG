@@ -76,7 +76,7 @@ export default function proxy(req: NextRequest) {
 
   // If someone hits a locale-prefixed path to results/book (e.g. /en/results?q=...),
   // strip the locale prefix and redirect to the canonical non-prefixed URL.
-  const localePrefix = /^\/(?:en|pl|de|es|fr|it|pt|nl|sq|hr|sv)(\/(?:results|book)(?:\/.*)?)?$/
+  const localePrefix = /^\/(?:en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)(\/(?:results|book)(?:\/.*)?)?$/
   const localePrefixMatch = pathname.match(localePrefix)
   if (localePrefixMatch && localePrefixMatch[1]) {
     const target = req.nextUrl.clone()
@@ -143,5 +143,5 @@ export default function proxy(req: NextRequest) {
 export const config = {
   // Match root, locale-prefixed paths, and key app pages (results, book, api).
   // Do NOT match /_next/*, static files.
-  matcher: ['/', '/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv)/:path*', '/results/:path*', '/book/:path*', '/probe/:path*', '/api/:path*'],
+  matcher: ['/', '/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)/:path*', '/results/:path*', '/book/:path*', '/probe/:path*', '/api/:path*'],
 }
