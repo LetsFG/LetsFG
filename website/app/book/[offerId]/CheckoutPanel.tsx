@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { getAirlineLogoUrl } from '../../airlineLogos'
 import { computeFlightTimeContext, formatFlightTime } from '../../../lib/flight-datetime'
 import { calculateFee, withFee } from '../../../lib/pricing'
+import { convertCurrencyAmount } from '../../../lib/display-price'
 import type { Offer } from './page'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
@@ -28,6 +29,7 @@ interface Props {
   trackingSearchId: string | null
   isTestSearch: boolean
   offerRef: string | null
+  displayCurrency?: string
 }
 
 type CheckoutStep =
@@ -288,11 +290,15 @@ export default function CheckoutPanel({
   trackingSearchId,
   isTestSearch,
   offerRef,
+  displayCurrency: displayCurrencyProp,
 }: Props) {
   const t = useTranslations('Checkout')
   const analyticsSearchId = trackingSearchId || searchId
   const checkoutSourcePath = getTrackedSourcePath(`/book/${offer.id}`, isTestSearch)
   const homeHref = isTestSearch ? 'https://letsfg.co/en?probe=1' : 'https://letsfg.co'
+  // Use the user's preferred display currency; fall back to the offer's native currency
+  const displayCurrency = displayCurrencyProp || offer.currency
+  const displayPrice = convertCurrencyAmount(offer.price, offer.currency, displayCurrency)
   const platforms = useMemo<Platform[]>(() => [
     {
       id: 'instagram',
@@ -321,6 +327,7 @@ export default function CheckoutPanel({
     },
   ], [t])
   const fee = calculateFee(offer.price, offer.currency)
+  const displayFee = convertCurrencyAmount(fee, offer.currency, displayCurrency)
   const showShareOption = true
   const tripBreakdown = useMemo<TripBreakdownLeg[]>(() => {
     if (offer.trip_breakdown?.length) {
@@ -924,7 +931,7 @@ export default function CheckoutPanel({
               <span className="ck-airline-cabin">Economy class</span>
             </div>
             <div className="ck-flight-price-badge">
-              <span className="ck-flight-price">{offer.currency}{Math.round(withFee(offer.price, offer.currency))}</span>
+              <span className="ck-flight-price">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}</span>
               <span className="ck-flight-price-label">{t('perPerson')}</span>
             </div>
           </div>
@@ -1056,15 +1063,15 @@ export default function CheckoutPanel({
             <div className="ck-price-breakdown">
               <div className="ck-price-row">
                 <span className="ck-price-label">{t('airlineTicket')}</span>
-                <span className="ck-price-value">{offer.currency}{offer.price}</span>
+                <span className="ck-price-value">{displayCurrency}{Math.round(displayPrice * 100) / 100}</span>
               </div>
               <div className="ck-price-row">
                 <span className="ck-price-label">{t('letsfgFee')}</span>
-                <span className="ck-price-value">{fmtFee(calculateFee(offer.price, offer.currency), offer.currency)}</span>
+                <span className="ck-price-value">{fmtFee(displayFee, displayCurrency)}</span>
               </div>
               <div className="ck-price-row ck-price-row--total">
                 <span className="ck-price-label">{t('total')}</span>
-                <span className="ck-price-value">{offer.currency}{Math.round(withFee(offer.price, offer.currency))}</span>
+                <span className="ck-price-value">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}</span>
               </div>
             </div>
 
@@ -1097,7 +1104,7 @@ export default function CheckoutPanel({
                     {step.type === 'paying' ? (
                       <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
                     ) : (
-                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(fee, offer.currency)}</>
+                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(displayFee, displayCurrency)}</>
                     )}
                   </button>
                 )}
@@ -1116,7 +1123,7 @@ export default function CheckoutPanel({
                             )}
                           </div>
                           <span className={`ck-book-action-price${legPrice !== null ? '' : ' ck-leg-price--muted'}`}>
-                            {legPrice !== null ? fmtMoney(legPrice, leg.currency || offer.currency) : 'Included in total'}
+                            {legPrice !== null ? fmtMoney(convertCurrencyAmount(legPrice, leg.currency || offer.currency, displayCurrency), displayCurrency) : 'Included in total'}
                           </span>
                         </div>
                         {!isLoading && isUnlocked && (
@@ -1165,7 +1172,7 @@ export default function CheckoutPanel({
                         <div className="ck-leg-price-wrap">
                           <span className={`ck-leg-price${typeof leg.price === 'number' ? '' : ' ck-leg-price--muted'}`}>
                             {typeof leg.price === 'number'
-                              ? fmtMoney(leg.price, leg.currency || offer.currency)
+                              ? fmtMoney(convertCurrencyAmount(leg.price, leg.currency || offer.currency, displayCurrency), displayCurrency)
                               : 'Included in total'}
                           </span>
                         </div>
@@ -1194,7 +1201,7 @@ export default function CheckoutPanel({
                                 )}
                               </div>
                               {typeof option.price === 'number' && (
-                                <span className="ck-book-action-price">{fmtMoney(option.price, option.currency || offer.currency)}</span>
+                                <span className="ck-book-action-price">{fmtMoney(convertCurrencyAmount(option.price, option.currency || offer.currency, displayCurrency), displayCurrency)}</span>
                               )}
                             </div>
                           )}
@@ -1265,7 +1272,7 @@ export default function CheckoutPanel({
                     {step.type === 'paying' ? (
                       <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
                     ) : (
-                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(fee, offer.currency)}</>
+                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(displayFee, displayCurrency)}</>
                     )}
                   </button>
                 ))}

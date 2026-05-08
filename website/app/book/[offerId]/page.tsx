@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -9,6 +9,8 @@ import CurrencyButton from '../../currency-button'
 import BookPageClient from './BookPageClient'
 import { formatFlightTime } from '../../../lib/flight-datetime'
 import { appendProbeParam, getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
+import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../../lib/currency-preference'
+import { detectPreferredCurrency } from '../../../lib/user-currency'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
@@ -133,15 +135,22 @@ export default async function BookPage({
   searchParams,
 }: {
   params: Promise<{ offerId: string }>
-  searchParams: Promise<{ from?: string | string[]; ref?: string | string[]; probe?: string | string[] }>
+  searchParams: Promise<{ from?: string | string[]; ref?: string | string[]; probe?: string | string[]; cur?: string | string[] }>
 }) {
   const { offerId } = await params
-  const { from, ref, probe } = await searchParams
+  const { from, ref, probe, cur } = await searchParams
   const resolvedFrom = firstQueryValue(from)
   const resolvedRef = firstQueryValue(ref)
   const isProbe = isProbeModeValue(firstQueryValue(probe))
   const trackingSearchId = getTrackingSearchId(resolvedFrom, isProbe)
   const offer = await getOffer(offerId, resolvedFrom, resolvedRef, isProbe)
+  const requestHeaders = await headers()
+  const cookieStore = await cookies()
+  const displayCurrency = resolveSearchCurrency({
+    queryParam: firstQueryValue(cur),
+    cookieValue: cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value,
+    fallback: detectPreferredCurrency(requestHeaders),
+  })
   const t = await getTranslations('Checkout')
 
   if (!offer && !resolvedFrom && !resolvedRef) notFound()
@@ -203,7 +212,7 @@ export default async function BookPage({
             </div>
             <div className="res-topbar-actions">
               <GlobeButton inline />
-              <CurrencyButton inline behavior="refresh" />
+              <CurrencyButton inline behavior="refresh" initialCurrency={displayCurrency} />
               <a
                 href={REPO_URL}
                 target="_blank"
@@ -227,6 +236,7 @@ export default async function BookPage({
         isTestSearch={isProbe}
         offerRef={resolvedRef ?? null}
         backHref={backHref}
+        displayCurrency={displayCurrency}
       />
 
       {/* Hidden section for AI agents and language models */}
