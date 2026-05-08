@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
+import { convertCurrencyAmount } from '../../../lib/display-price'
+import { formatCurrencyAmount } from '../../../lib/user-currency'
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -20,6 +22,7 @@ interface MonitorModalProps {
   returnDate?: string
   adults?: number
   cabinClass?: string
+  currency?: string
   onClose: () => void
 }
 
@@ -75,6 +78,7 @@ export default function MonitorModal({
   returnDate,
   adults = 1,
   cabinClass,
+  currency = 'USD',
   onClose,
 }: MonitorModalProps) {
   const [email, setEmail] = useState('')
@@ -148,6 +152,7 @@ export default function MonitorModal({
       weeks,
       has_email: email.trim().length > 0,
       has_push: pushState === 'done',
+      currency,
       total_usd: weeks * 5,
     })
 
@@ -158,6 +163,7 @@ export default function MonitorModal({
         departure_date: departureDate,
         weeks,
         adults,
+        currency,
       }
       if (email.trim()) payload.notify_email = email.trim()
       if (returnDate) payload.return_date = returnDate
@@ -191,7 +197,10 @@ export default function MonitorModal({
     }
   }
 
-  const totalPrice = weeks * 5
+  const pricePerWeek = convertCurrencyAmount(5, 'USD', currency)
+  const totalPrice = weeks * pricePerWeek
+  const formattedPerWeek = formatCurrencyAmount(pricePerWeek, currency)
+  const formattedTotal = formatCurrencyAmount(totalPrice, currency)
   const routeLabel = `${originName || origin} → ${destinationName || destination}`
   const isRoundTrip = Boolean(returnDate)
   const tripTypeLabel = isRoundTrip ? 'Round trip' : 'One way'
@@ -247,7 +256,7 @@ export default function MonitorModal({
           </li>
           <li className="mon-feature">
             <span className="mon-feature-icon mon-feature-icon--on" aria-hidden="true"><CheckIcon /></span>
-            $5 / week · non-recurring · cancel any time
+            {formattedPerWeek} / week · non-recurring · cancel any time
           </li>
         </ul>
 
@@ -367,7 +376,7 @@ export default function MonitorModal({
               'Preparing checkout…'
             ) : (
               <>
-                Start monitoring · <span className="mon-submit-price">${totalPrice} total</span>
+                Start monitoring · <span className="mon-submit-price">{formattedTotal} total</span>
               </>
             )}
           </button>
