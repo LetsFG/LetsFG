@@ -1301,10 +1301,13 @@ export function parseNLQuery(query: string): ParsedQuery {
     // Stop destination string at common date lead-ins that weren't caught by the regex
     destStr = destStr
       // "next month" and multilingual equivalents must come first (before the next/this weekday rule)
-      .replace(/\s+(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+mjesec|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b.*/i, '')
+      .replace(/\s+(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+miesięcu?|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b.*/i, '')
       .replace(/\s+(?:(?:next|this)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend)|(?:the\s+week\s+of\s+thanksgiving|thanksgiving\s+week|thanksgiving))\b.*/i, '')
       .replace(/\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na|dne|dia|den|am)\s.*/i, '')
       .replace(/\s+\d{1,2}(?:st|nd|rd|th)?\s.*/i, '')
+      // Strip trailing time-position modifiers left over when the month name was consumed
+      // by the route-regex lookahead (e.g. "Houston end of" ← "Grand Rapids to Houston end of May")
+      .replace(/\s+(?:end|beginning|start|late|early|mid(?:dle)?)(?:\s+of)?\s*$/i, '')
       .replace(DEST_PREFIX_RE, '')
       .trim()
   }
@@ -1402,6 +1405,36 @@ export function parseNLQuery(query: string): ParsedQuery {
         const year = hasExplicitYear ? parseInt(md[3]) : today.getFullYear()
         const d = new Date(year, mIdx, day)
         if (d < today) d.setFullYear(today.getFullYear() + 1)
+        return toLocalDateStr(d)
+      }
+    }
+
+    // "end of May", "late May", "beginning of May", "early May", "mid May", "middle of May"
+    // Also handles "end of next month", "early next month" etc.
+    const modNextMonthRe = /\b(end\s+of|beginning\s+of|start\s+of|early|late|mid(?:dle\s+of)?)\s+next\s+month\b/i
+    const mnmM = tl.match(modNextMonthRe)
+    if (mnmM) {
+      const mod = mnmM[1].replace(/\s+/g, ' ').trim().toLowerCase()
+      const day = (mod === 'end of' || mod === 'late') ? 26
+        : (mod === 'beginning of' || mod === 'start of' || mod === 'early') ? 5
+        : 15
+      const d = new Date(today.getFullYear(), today.getMonth() + 1, day)
+      return toLocalDateStr(d)
+    }
+
+    const monthModRe = /\b(end\s+of|beginning\s+of|start\s+of|middle\s+of|early|late|mid(?:dle)?(?:\s+of)?)\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s+(\d{4}))?\b/i
+    const mmM = tl.match(monthModRe)
+    if (mmM) {
+      const mod = mmM[1].replace(/\s+/g, ' ').trim().toLowerCase()
+      const mIdx = matchMonth(mmM[2])
+      if (mIdx !== null) {
+        const hasExplicitYear = Boolean(mmM[3])
+        const year = hasExplicitYear ? parseInt(mmM[3]) : today.getFullYear()
+        const day = (mod === 'end of' || mod === 'late') ? 26
+          : (mod === 'beginning of' || mod === 'start of' || mod === 'early') ? 5
+          : 15  // mid/middle of/middle
+        const d = new Date(year, mIdx, day)
+        if (!hasExplicitYear && d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
     }
