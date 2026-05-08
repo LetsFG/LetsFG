@@ -19,7 +19,7 @@ import { ContentQualityGate } from '../quality/content-quality-gate.ts'
 
 const API_BASE = (
   process.env.LETSFG_ANALYTICS_API_URL ||
-  'https://letsfg-api-876385716101.us-central1.run.app'
+  'https://api.letsfg.co'
 ).replace(/\/$/, '')
 
 export interface PfpTriggerInput {
@@ -90,9 +90,14 @@ export async function triggerPfpIngest(input: PfpTriggerInput): Promise<void> {
     )
 
     // ── 4. POST to backend ────────────────────────────────────────────────────
+    const websiteApiKey = process.env.LETSFG_WEBSITE_API_KEY || ''
     await fetch(`${API_BASE}/api/v1/flights/pfp/ingest`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Origin': 'https://letsfg.co' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'https://letsfg.co',
+        ...(websiteApiKey ? { 'X-API-Key': websiteApiKey } : {}),
+      },
       body: JSON.stringify({
         route_slug: routeSlug,
         origin_iata: origin.toUpperCase(),
