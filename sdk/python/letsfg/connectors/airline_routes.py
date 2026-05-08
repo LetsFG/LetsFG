@@ -606,7 +606,7 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
     "etihad": {
         "AE", "SA", "QA", "KW", "BH", "OM", "EG", "JO", "LB", "IQ",
         "PK", "IN", "LK", "BD", "NP", "TH", "MY", "SG", "ID", "PH",
-        "CN", "JP", "KR", "AU", "GB", "IE", "FR", "DE", "IT", "ES",
+        "CN", "HK", "JP", "KR", "AU", "GB", "IE", "FR", "DE", "IT", "ES",
         "CH", "NL", "GR", "TR", "US", "CA", "KE", "TZ", "ZA", "NG",
         "ET", "BR", "MV", "SC", "KZ", "RU",
     },
