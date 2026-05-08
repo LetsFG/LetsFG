@@ -12,21 +12,6 @@ const SS_KEY_DISMISSED = 'lfg_survey_dismissed'
 // Persistent key: user already answered — never show again
 const LS_KEY_DONE = 'lfg_survey_done'
 
-// Module-level timestamp: records when the page first loaded this module for a given searchId.
-// Survives React remounts so the 3-min timer is always relative to page load,
-// not to component mount — prevents the timer resetting on re-renders.
-// Keyed by searchId so navigating to a new search resets the clock.
-let _pageFirstRenderTs: number | null = null
-let _pageFirstRenderSearchId: string | null = null
-
-function getPageFirstRenderTs(searchId: string): number {
-  if (_pageFirstRenderTs === null || _pageFirstRenderSearchId !== searchId) {
-    _pageFirstRenderTs = Date.now()
-    _pageFirstRenderSearchId = searchId
-  }
-  return _pageFirstRenderTs
-}
-
 const REASONS = [
   { key: 'price_too_high',    label: 'Price too high' },
   { key: 'need_direct',       label: 'Need direct flight' },
@@ -41,13 +26,15 @@ type ReasonKey = (typeof REASONS)[number]['key']
 interface Props {
   searchId: string
   isTestSearch?: boolean
-  /** Pass true once user has unlocked — hides the survey */
+  /** Timestamp (Date.now()) when all results finished loading. Null while still searching. */
+  resultsCompletedAt: number | null
+  /** Pass true once user has engaged with an offer (clicked Select) — hides the survey */
   hasUnlocked: boolean
 }
 
 type Trigger = 'banner' | 'exit_intent'
 
-export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnlocked }: Props) {
+export default function ResultsFrictionSurvey({ searchId, isTestSearch, resultsCompletedAt, hasUnlocked }: Props) {
   // If user already answered (ever) or dismissed this session, suppress entirely.
   // Must start as false (SSR-safe) and be set in useEffect to avoid hydration mismatch.
   const [suppressed, setSuppressed] = useState(false)
@@ -69,22 +56,24 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
   const triggeredRef = useRef<Trigger | null>(null)
   const otherId = useId()
 
-  // Banner: show after 3 min from page load (not component mount), so remounts
-  // don't reset the clock.
+  // Banner: show 3 min after ALL results have finished loading.
+  // The timer only starts once resultsCompletedAt is set (non-null),
+  // so it never fires while the search is still in progress.
   useEffect(() => {
-    if (suppressed || hasUnlocked || bannerDismissed) return
-    const elapsed = Date.now() - getPageFirstRenderTs(searchId)
+    if (suppressed || hasUnlocked || bannerDismissed || resultsCompletedAt === null) return
+    const elapsed = Date.now() - resultsCompletedAt
     const remaining = Math.max(0, BANNER_DELAY_MS - elapsed)
     const id = window.setTimeout(() => {
       if (!hasUnlocked && !bannerDismissed) setBannerVisible(true)
     }, remaining)
     return () => window.clearTimeout(id)
-  }, [suppressed, hasUnlocked, bannerDismissed])
+  }, [suppressed, hasUnlocked, bannerDismissed, resultsCompletedAt])
 
   // Exit intent: mouse leaves viewport from the top.
-  // Also close the banner to prevent both showing at once.
+  // Only attach after results have finished loading — no point showing
+  // while the search is still running.
   useEffect(() => {
-    if (suppressed || hasUnlocked || overlayDismissed) return
+    if (suppressed || hasUnlocked || overlayDismissed || resultsCompletedAt === null) return
     const handler = (e: MouseEvent) => {
       if (e.clientY < 20 && !overlayDismissed && !submitted) {
         triggeredRef.current = 'exit_intent'
@@ -94,7 +83,7 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, hasUnloc
     }
     document.addEventListener('mouseleave', handler)
     return () => document.removeEventListener('mouseleave', handler)
-  }, [suppressed, hasUnlocked, overlayDismissed, submitted])
+  }, [suppressed, hasUnlocked, overlayDismissed, submitted, resultsCompletedAt])
 
   const submitReason = useCallback((key: ReasonKey, trigger: Trigger, text?: string) => {
     if (submitted) return

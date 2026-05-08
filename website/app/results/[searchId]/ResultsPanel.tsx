@@ -440,6 +440,8 @@ interface Props {
   trackingSearchId?: string | null
   isTestSearch?: boolean
   onTrackPrices?: () => void
+  /** Called when user clicks Select on any offer (navigates toward checkout). */
+  onOfferSelect?: () => void
   newOfferIds?: Set<string>
   isSearching?: boolean
   progress?: { checked: number; total: number; found: number }
@@ -455,6 +457,7 @@ export default function ResultsPanel({
   trackingSearchId,
   isTestSearch = false,
   onTrackPrices,
+  onOfferSelect,
   newOfferIds,
   isSearching = false,
   progress,
@@ -1252,27 +1255,31 @@ export default function ResultsPanel({
                       if (searchId) params.set('from', searchId)
                       if (offer.offer_ref) params.set('ref', offer.offer_ref)
                       if (emailUnlockToken) params.set('mt', emailUnlockToken)
+                      if (currency) params.set('cur', currency)
                       appendProbeParam(params, isTestSearch)
                       const query = params.toString()
                       return `/book/${offer.id}${query ? `?${query}` : ''}`
                     })()}
                     className="rf-book-btn"
-                    onClick={() => trackSearchSessionEvent(analyticsSearchId, 'offer_selected', {
-                      offer_id: offer.id,
-                      airline: airlineLabel,
-                      currency: offer.currency,
-                      price: offer.price,
-                      google_flights_price: offer.google_flights_price ?? null,
-                    }, {
-                      source: 'website-results-panel',
-                      source_path: resultsSourcePath,
-                      is_test_search: isTestSearch || undefined,
-                      selected_offer_id: offer.id,
-                      selected_offer_airline: airlineLabel,
-                      selected_offer_currency: offer.currency,
-                      selected_offer_price: offer.price,
-                      selected_offer_google_flights_price: offer.google_flights_price,
-                    }, { keepalive: true })}
+                    onClick={() => {
+                      trackSearchSessionEvent(analyticsSearchId, 'offer_selected', {
+                        offer_id: offer.id,
+                        airline: airlineLabel,
+                        currency: offer.currency,
+                        price: offer.price,
+                        google_flights_price: offer.google_flights_price ?? null,
+                      }, {
+                        source: 'website-results-panel',
+                        source_path: resultsSourcePath,
+                        is_test_search: isTestSearch || undefined,
+                        selected_offer_id: offer.id,
+                        selected_offer_airline: airlineLabel,
+                        selected_offer_currency: offer.currency,
+                        selected_offer_price: offer.price,
+                        selected_offer_google_flights_price: offer.google_flights_price,
+                      }, { keepalive: true })
+                      onOfferSelect?.()
+                    }}
                   >
                     {t('select')}
                     <ArrowIcon />

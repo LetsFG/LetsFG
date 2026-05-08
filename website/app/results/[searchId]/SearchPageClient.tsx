@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -393,6 +393,16 @@ export default function SearchPageClient({
   const trackedExpiredRef = useRef(false)
   const trackedStreamingRef = useRef(false)
 
+  // ── Friction survey state ─────────────────────────────────────────────
+  // Timestamp when all results finished loading; null while still searching.
+  // Initialized to now if the page was already completed on mount (SSR/cache hit).
+  const [resultsCompletedAt, setResultsCompletedAt] = useState<number | null>(
+    initialStatus === 'completed' ? Date.now() : null
+  )
+  const completedAtSetRef = useRef(initialStatus === 'completed')
+  // True once user clicks "Select" on any offer (navigates toward checkout).
+  const [hasUnlockedOffer, setHasUnlockedOffer] = useState(false)
+
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
 
@@ -411,6 +421,19 @@ export default function SearchPageClient({
   // scrollable). Only the progress bar differs from the completed state.
   // build:2026-05-05
   const isStreaming = isSearching && offers.length > 0
+
+  // Capture the moment all results finish loading (first transition to 'completed').
+  // This is the anchor for the friction survey 3-minute timer.
+  useEffect(() => {
+    if (status === 'completed' && !completedAtSetRef.current) {
+      completedAtSetRef.current = true
+      setResultsCompletedAt(Date.now())
+    }
+  }, [status])
+
+  const handleOfferSelect = useCallback(() => {
+    setHasUnlockedOffer(true)
+  }, [])
 
   // Detect ?monitor_active=<id> — set after Stripe success redirect
   useEffect(() => {
@@ -921,6 +944,7 @@ export default function SearchPageClient({
             })
             setMonitorOpen(true)
           } : undefined}
+          onOfferSelect={handleOfferSelect}
           newOfferIds={isSearching ? newOfferIds : undefined}
           isSearching={isSearching}
           progress={progress}
@@ -1042,7 +1066,8 @@ export default function SearchPageClient({
         <ResultsFrictionSurvey
           searchId={analyticsSearchId}
           isTestSearch={isTestSearch}
-          hasUnlocked={false}
+          resultsCompletedAt={resultsCompletedAt}
+          hasUnlocked={hasUnlockedOffer}
         />
       )}
     </main>
