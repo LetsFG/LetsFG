@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { headers } from 'next/headers'
 import { Lexend, JetBrains_Mono, Caveat } from 'next/font/google'
 import Script from 'next/script'
+import GaNavigationTracker from './ga-navigation-tracker'
 import './globals.css'
 
 const GA_ID = 'G-C5G5EJS81G'
@@ -46,6 +47,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang={locale} className={`${lexend.variable} ${jetbrainsMono.variable} ${caveat.variable}`}>
       <body>{children}</body>
+      <GaNavigationTracker />
       <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
       <Script id="ga-init" strategy="afterInteractive">{`
         window.dataLayer = window.dataLayer || [];
