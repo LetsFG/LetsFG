@@ -531,6 +531,8 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
     "jetstar": {"AU", "NZ", "JP", "SG", "VN", "ID", "TH", "MY", "PH"},
     "peach": {"JP", "KR", "TW", "CN", "HK", "TH"},
     "zipair": {"JP", "KR", "TH", "SG", "US", "CA"},
+    # Skymark Airlines (BC) — Japanese domestic LCC, Tokyo Haneda hub
+    "skymark": {"JP"},
     "spring": {"CN", "JP", "KR", "TH", "KH", "MY"},
     "luckyair": {"CN", "TH", "MM", "LA", "KH", "VN", "BD"},
     "9air": {"CN"},
@@ -633,6 +635,9 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "TH", "MY", "SG", "ID", "VN", "PH", "KH", "MM", "IN",
         "AU",
     },
+    # HIS Travel (H.I.S.) — Japanese OTA selling international flights from Japan
+    # Only fires when origin airport is in Japan (JP).
+    "his": {"JP"},
     "emirates": {
         "AE", "SA", "QA", "KW", "BH", "OM", "EG", "JO", "LB", "IQ", "IR",
         "PK", "IN", "LK", "BD", "NP", "MV",

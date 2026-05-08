@@ -70,6 +70,7 @@ from .akasa import AkasaConnectorClient
 from .spring import SpringConnectorClient
 from .peach import PeachConnectorClient
 from .zipair import ZipairConnectorClient
+from .skymark import SkymarkConnectorClient
 from .condor import CondorConnectorClient
 from .sunexpress import SunExpressConnectorClient
 from .volotea import VoloteaConnectorClient
@@ -240,6 +241,7 @@ from .hkexpress import HKExpressConnectorClient
 from .aircairo import AirCairoConnectorClient
 from .allianceair import AllianceAirConnectorClient
 from .starair import StarAirConnectorClient
+from .his import HISConnectorClient
 
 from ..models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
 
@@ -542,6 +544,7 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("spring_direct", SpringConnectorClient, 25.0),
     ("peach_direct", PeachConnectorClient, 25.0),
     ("zipair_direct", ZipairConnectorClient, 25.0),
+    ("skymark_direct", SkymarkConnectorClient, 25.0),
     ("condor_direct", CondorConnectorClient, 25.0),
     ("sunexpress_direct", SunExpressConnectorClient, 25.0),
     ("volotea_direct", VoloteaConnectorClient, 50.0),
@@ -744,6 +747,8 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("allianceair_direct", AllianceAirConnectorClient, 35.0),
     ("starair_direct", StarAirConnectorClient, 35.0),
     ("easemytrip_ota", EasemytripConnectorClient, 35.0),
+    # ── HIS Travel (H.I.S.) — Japanese OTA, Playwright browser ──
+    ("his_ota", HISConnectorClient, 90.0),
 ]
 
 
