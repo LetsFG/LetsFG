@@ -115,6 +115,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         utm_term && `utm_term=${encodeURIComponent(utm_term)}`,
       ].filter(Boolean).join('&')
       redirect(getTrackedSourcePath(`/results?q=${encodeURIComponent(q.trim())}&cur=${encodeURIComponent(initialCurrency)}${utmParts ? `&${utmParts}` : ''}`, isProbe))
+  }
 
   const [stats, t, githubStars] = await Promise.all([
     getPublicStats(),
