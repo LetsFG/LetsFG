@@ -172,5 +172,30 @@
     "uploadLabel": "Screenshot hier ablegen oder durchsuchen",
     "uploadHint": "PNG, JPG, HEIC · max 10MB",
     "uploadAriaLabel": "Screenshot hochladen"
+  },
+  "BookingFrictionSurvey": {
+    "followup_dont_trust": "Was würde es brauchen, damit du uns vertraust?",
+    "skip": "Überspringen",
+    "followup_better_elsewhere": "LetsFG durchsucht die meisten Buchungsseiten — was würde dich überzeugen, dass wir alles geprüft haben?",
+    "opt_dont_trust": "Ich vertraue euren Ergebnissen nicht",
+    "opt_not_looking": "Ich suche keinen Flug, ich war nur neugierig",
+    "placeholder_not_looking": "z.B. 1 – unwahrscheinlich, 5 – auf jeden Fall, weil…",
+    "send": "Senden",
+    "followup_no_bnpl": "Auf einer Skala von 1–5, wie wahrscheinlich würdest du zurückkommen, wenn wir morgen Jetzt kaufen, später bezahlen anbieten würden?",
+    "placeholder_price_might_drop": "z.B. Preisverlauf, Kaufzeitempfehlung…",
+    "headerFull": "Warum buchst du nicht?",
+    "followup_price_might_drop": "Hast du unsere Preisüberwachung ausprobiert? Was würde dich überzeugen, heute zu buchen?",
+    "opt_better_elsewhere": "Ich möchte prüfen, ob es woanders bessere Angebote gibt",
+    "placeholder_dont_trust": "z.B. mehr Bewertungen, Preisgarantie, Rückerstattung…",
+    "placeholder_concierge_fee": "z.B. kostenlos, unter 5 €, ein Prozentsatz der Ersparnis…",
+    "placeholder_better_elsewhere": "z.B. Preisverlauf zeigen, mit Direktbuchung vergleichen…",
+    "opt_no_bnpl": "Ich mag Jetzt kaufen, später bezahlen — das finde ich hier nicht",
+    "opt_price_might_drop": "Ich denke, der Preis könnte fallen, wenn ich warte",
+    "followup_not_looking": "Danke! Auf einer Skala von 1–5, wie wahrscheinlich würdest du LetsFG nutzen, wenn du wirklich einen Flug suchst? Kurze Erklärung?",
+    "opt_other": "Sonstiges",
+    "placeholder_no_bnpl": "z.B. 1 – unwahrscheinlich, 5 – auf jeden Fall",
+    "followup_concierge_fee": "Was wäre für dich eine faire Gebühr?",
+    "opt_concierge_fee": "Ich möchte keine LetsFG-Gebühr zahlen",
+    "thanks": "Danke — das hilft uns sehr!"
   }
 }

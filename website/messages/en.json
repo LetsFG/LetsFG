@@ -64,7 +64,7 @@
     "step_almost": "Almost there",
     "step_almostHint": "Finalizing your top flights",
     "footerChecked": "Checked {checked} of {total} sites",
-    "footerEta": "This usually takes 90\u2013150 seconds",
+    "footerEta": "This usually takes 90–150 seconds",
     "sceneLabel": "Searching flights from {origin} to {destination}"
   },
   "Results": {
@@ -80,7 +80,7 @@
     "privacy": "Privacy",
     "terms": "Terms",
     "support": "Support",
-    "copyright": "LetsFG \u00a9 2026"
+    "copyright": "LetsFG © 2026"
   },
   "ResultsPanel": {
     "filterTitle": "Filters",
@@ -129,7 +129,7 @@
     "perPerson": "per person",
     "onePassenger": "1 passenger",
     "economy": "Economy",
-    "dealUnlockedShare": "Deal unlocked \u2014 thanks for sharing!",
+    "dealUnlockedShare": "Deal unlocked — thanks for sharing!",
     "dealUnlocked": "Deal unlocked!",
     "dealUnlockedExisting": "Already unlocked!",
     "bookingLinkReady": "Your booking link is ready. Click below to go to the airline.",
@@ -137,7 +137,7 @@
     "verifyingPayment": "Verifying payment...",
     "dealUnlockedStep": "Deal unlocked",
     "unlockThisDeal": "Unlock this deal",
-    "unlockDesc": "Pay a small fee once to get the booking link. After that, <strong>every flight from this search is unlocked</strong> \u2014 so you can come back and pick a different one for free. Works for this search only.",
+    "unlockDesc": "Pay a small fee once to get the booking link. After that, <strong>every flight from this search is unlocked</strong> — so you can come back and pick a different one for free. Works for this search only.",
     "processing": "Processing...",
     "unlockFor": "Unlock for {fee}",
     "oneTime": "One-time",
@@ -153,7 +153,7 @@
     "airlineTicket": "Airline ticket",
     "letsfgFee": "LetsFG fee",
     "total": "Total",
-    "directAirlinePrice": "Direct airline price \u00b7 no markup",
+    "directAirlinePrice": "Direct airline price · no markup",
     "bookOn": "Book on {airline}",
     "unlockBookingLink": "Unlock booking link",
     "unlockOutboundBookingLink": "Unlock outbound booking link",
@@ -183,7 +183,32 @@
     "message_step2": "Take a screenshot of the conversation showing you sent it",
     "message_step3": "Upload the screenshot below",
     "uploadLabel": "Drop screenshot here or browse",
-    "uploadHint": "PNG, JPG, HEIC \u00b7 max 10MB",
+    "uploadHint": "PNG, JPG, HEIC · max 10MB",
     "uploadAriaLabel": "Upload screenshot"
+  },
+  "BookingFrictionSurvey": {
+    "followup_dont_trust": "What would it take for you to trust us?",
+    "skip": "Skip",
+    "followup_better_elsewhere": "LetsFG scans most booking sites on the web — what would make you feel we've checked everything, so you don't need to search elsewhere?",
+    "opt_dont_trust": "I don't trust your results",
+    "opt_not_looking": "I'm not looking to fly, just curious about the website",
+    "placeholder_not_looking": "e.g. 1 – unlikely, 5 – definitely, because…",
+    "send": "Send",
+    "followup_no_bnpl": "On a scale of 1-5, how likely would you come back if we added Book now pay later tomorrow?",
+    "placeholder_price_might_drop": "e.g. price history chart, best-time-to-buy indicator…",
+    "headerFull": "Why aren't you booking?",
+    "followup_price_might_drop": "Did you try our Monitoring feature? What would make you feel confident to book today?",
+    "opt_better_elsewhere": "I want to check if there are better offers elsewhere",
+    "placeholder_dont_trust": "e.g. more reviews, price guarantee, refund policy…",
+    "placeholder_concierge_fee": "e.g. free, under €5, a percentage of savings…",
+    "placeholder_better_elsewhere": "e.g. show price history, compare with airline direct…",
+    "opt_no_bnpl": "I like Buy now pay later, which I can't find here",
+    "opt_price_might_drop": "I think the price might drop if I wait",
+    "followup_not_looking": "Thanks! On a scale of 1-5, how likely would you use LetsFG when you're actually looking to fly? Can you briefly say why?",
+    "opt_other": "Other",
+    "placeholder_no_bnpl": "e.g. 1 – unlikely, 5 – definitely",
+    "followup_concierge_fee": "What would feel like a fair fee to you?",
+    "opt_concierge_fee": "I don't want to pay the LetsFG concierge fee",
+    "thanks": "Thanks — that helps a lot!"
   }
 }
