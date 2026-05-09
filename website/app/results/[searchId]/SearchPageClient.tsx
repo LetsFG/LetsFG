@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -17,6 +17,7 @@ import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../li
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useSearchParams } from 'next/navigation'
 import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
+import { parseNLQuery } from '../../lib/searchParsing'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
@@ -728,7 +729,18 @@ export default function SearchPageClient({
     } catch (_) { return iso }
   }
 
-  const travelerCount = parsed.passengers || 1
+  // Re-parse the raw NL query client-side to extract richer context
+  // (passenger composition, ancillary requirements, etc.) that the API
+  // parsed object doesn't expose.
+  const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
+  const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
+  const requireBagPerPerson = !!(nlParsed?.require_checked_baggage)
+  const defaultSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' =
+    (requireSeatPerPerson || requireBagPerPerson) ? 'price_with_all' : 'price'
+
+  const adultCount = nlParsed?.adults ?? parsed.passengers ?? 1
+  const childCount = nlParsed?.children ?? 0
+  const travelerCount = adultCount + childCount + (nlParsed?.infants ?? 0)
   const travelerLabel = `${travelerCount} ${travelerCount === 1 ? t('traveler') : t('travelers')}`
 
   const durationLabel = tripMin !== undefined
@@ -946,6 +958,9 @@ export default function SearchPageClient({
           newOfferIds={isSearching ? newOfferIds : undefined}
           isSearching={isSearching}
           progress={progress}
+          defaultSort={defaultSort}
+          requireSeatPerPerson={requireSeatPerPerson}
+          requireBagPerPerson={requireBagPerPerson}
         />
       )}
 

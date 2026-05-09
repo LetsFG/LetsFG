@@ -2033,6 +2033,50 @@ export interface ParsedQuery {
   via_name?: string                  // human-readable stopover city name
   min_layover_hours?: number         // minimum desired layover at via city (hours)
   max_layover_hours?: number         // maximum desired layover at via city (hours)
+
+  // ── Passenger composition ────────────────────────────────────────────────────
+  adults?: number                    // ≥16 — default 1 when unspecified
+  children?: number                  // age 2–15
+  infants?: number                   // age <2, travelling on lap
+  passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
+  group_size?: number                // total party (adults + children + infants)
+
+  // ── Inferred booking requirements (from passenger context) ───────────────────
+  require_adjacent_seats?: boolean   // "with kids" / "sit together" → must sit next to each other
+  require_seat_selection?: boolean   // seat selection required (inferred from kids / explicit)
+  require_bassinet?: boolean         // "with baby/infant" → bassinet row needed
+  prefer_direct?: boolean            // soft preference for direct (separate from stops=0 hard filter)
+
+  // ── Ancillary inclusions ─────────────────────────────────────────────────────
+  require_checked_baggage?: boolean  // "with bags", "hold luggage included"
+  carry_on_only?: boolean            // "hand luggage only", "no hold baggage", "cabin bag only"
+  require_meals?: boolean            // "with meals", "including food"
+  require_cancellation?: boolean     // "refundable", "free cancellation", "fully flexible"
+  require_lounge?: boolean           // "with lounge access"
+
+  // ── Time-of-day preferences ──────────────────────────────────────────────────
+  depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  arrive_time_pref?: 'morning' | 'afternoon' | 'evening'
+
+  // ── Airline preferences ──────────────────────────────────────────────────────
+  preferred_airline?: string         // "on Ryanair", "with British Airways" (lowercase normalised)
+  excluded_airline?: string          // "not Ryanair", "avoid easyJet"
+
+  // ── Trip purpose / occasion ──────────────────────────────────────────────────
+  trip_purpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
+
+  // ── Seat preference ──────────────────────────────────────────────────────────
+  seat_pref?: 'window' | 'aisle' | 'extra_legroom'
+
+  // ── Flexible date window strategy ────────────────────────────────────────────
+  // Triggered by: "in June for 2 weeks" (date_month_only + min_trip_days)
+  //              OR "cheapest week in August", "best window in July"
+  find_best_window?: boolean         // true → scan month/range for cheapest N-day block
+  date_window_month?: number         // 1–12: month to search for best window
+  date_window_year?: number          // year for best-window search
+
+  // ── Urgency ──────────────────────────────────────────────────────────────────
+  urgency?: 'last_minute' | 'asap'
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -2222,7 +2266,836 @@ function extractCabin(text: string): 'M' | 'W' | 'C' | 'F' | undefined {
 // ── Direct/nonstop extraction (all languages) ─────────────────────────────────
 function extractDirect(text: string): boolean {
   const t = stripAccents(text.toLowerCase())
-  return /\b(?:direct|nonstop|non[- ]stop|direkt(?:flug)?|ohne\s+(?:umstieg|zwischenstopp)|directo|sin\s+escalas?|vuelo\s+directo|sans?\s+escale|vol\s+direct|diretto|volo\s+diretto|senza\s+scal[ei]|rechtstreeks|zonder\s+tussenstop|bezposredni|bez\s+przesiadek|sem\s+escala[s]?|direto|direktflyg|izravno|bez\s+presjedanja|pa\s+ndalese)\b/.test(t)
+  return /\b(?:direct|nonstop|non[- ]stop|direkt(?:flug)?|ohne\s+(?:umstieg|zwischenstopp|stop)|nur\s+direkt|directo|sin\s+escalas?|vuelo\s+directo|sin\s+paradas?|sans?\s+escale[s]?|vol\s+direct|sans?\s+(?:correspondance|connexion)|diretto|volo\s+diretto|senza\s+scal[ei]|senza\s+fermate|rechtstreeks|zonder\s+(?:tussenstop|overstap)|directe\s+vlucht|bezpo[śs]rednio|bez\s+przesiadek|lot\s+bezpo[śs]redni|sem\s+escala[s]?|direto|voo\s+direto|direktflyg|utan\s+mellanlandning|utan\s+stopp|izravno|bez\s+presjedanja|direktni\s+let|pa\s+ndalese|fluturim\s+direkt|direktni|no\s+layovers?|no\s+stops?|only\s+direct|straight\s+through)\b/.test(t)
+}
+
+// ── Passenger count + context extraction ──────────────────────────────────────
+// Handles: explicit counts ("2 adults, 1 child"), contextual ("with kids", "as a couple",
+// "family of 4", "group of 6"), and infers seat/bassinet/direct requirements.
+interface PassengerExtraction {
+  adults?: number
+  children?: number
+  infants?: number
+  context?: ParsedQuery['passenger_context']
+  group_size?: number
+  require_adjacent_seats?: boolean
+  require_seat_selection?: boolean
+  require_bassinet?: boolean
+  prefer_direct?: boolean
+}
+
+function extractPassengers(text: string): PassengerExtraction {
+  const t = stripAccents(text.toLowerCase())
+  const result: PassengerExtraction = {}
+
+  // ── Explicit numeric counts ───────────────────────────────────────────────
+  // Adults — EN/DE/ES/FR/IT/NL/PL/PT/SQ/HR/SV
+  const adultM = t.match(/\b(\d+)\s+(?:adults?|grown[- ]?ups?|erwachsene?|adultos?|adultes?|adulti|volwassenen?|vuxna?|vuxen|dorośł(?:ych|e)|odrasli(?:h)?|t[eë]\s+rritur|punasovjet[eë])\b/)
+  if (adultM) result.adults = parseInt(adultM[1])
+
+  // Children — EN/DE/ES/FR/IT/NL/PL/PT/SQ/HR/SV
+  const childM = t.match(/\b(\d+)\s+(?:child(?:ren)?|kids?|bambini?|enfants?|ni[ñn]os?|kinder|kinderen|dzieci|crianças?|barn|djeca|f[eë]mij[eë]|ungdomar|ungdom|barn\s+och\s+unga|barne?|callan[eë])\b/)
+  if (childM) result.children = parseInt(childM[1])
+
+  // Infants — EN/DE/ES/FR/IT/NL/PL/PT/SQ/HR/SV
+  const infantM = t.match(/\b(\d+)\s+(?:infants?|babies|babys?|b[eé]b[eé]s?|b[eé]b[eé]|neonati?|zuigeling(?:en)?|niemowl[eę]ta?|bebê|foshnja?|dojenčad?|spädbarn|spädbarns?)\b/)
+  if (infantM) result.infants = parseInt(infantM[1])
+  // Contextual infant signals in all languages
+  else if (/\bwith\s+(?:a|an|the|my|our)\s+(?:baby|infant|babe|newborn|toddler)\b/.test(t) ||
+           /\btravell?ing?\s+with\s+(?:a\s+)?(?:baby|infant|toddler)\b/.test(t) ||
+           /\bmit\s+(?:einem?\s+)?(?:baby|kleinkind|säugling)\b/.test(t) ||
+           /\bcon\s+(?:un\s+)?(?:bebé|bebe|reci[eé]n\s+nacido)\b/.test(t) ||
+           /\bavec\s+(?:un\s+)?(?:b[eé]b[eé]|nourrisson|tout[-\s]petit)\b/.test(t) ||
+           /\bcon\s+(?:un\s+)?(?:neonato|bambino\s+piccolo|lattante)\b/.test(t) ||
+           /\bmet\s+(?:een\s+)?(?:baby|zuigeling|peuter)\b/.test(t) ||
+           /\bz\s+(?:niemowl[eę]ciem|maluchem|niemowlakiem)\b/.test(t) ||
+           /\bcom\s+(?:um\s+)?(?:beb[eê]|rec[eé]m[-\s]nascido)\b/.test(t) ||
+           /\bmed\s+(?:ett?\s+)?(?:spädbarn|litet\s+barn|ettåring)\b/.test(t) ||
+           /\bs\s+(?:dojenčetom|beb[io]m)\b/.test(t) ||
+           /\bme\s+(?:një\s+)?(?:foshnjë|bebe)\b/.test(t)) {
+    result.infants = (result.infants ?? 0) + 1
+  }
+
+  // "family of 4", "group of 6", "party of 3" — EN/DE/ES/FR/IT/NL/PL/PT/HR/SQ/SV
+  const groupSizeM = t.match(/\b(?:family|group|party|gruppe|familia|groupe|famille|famiglia|gruppo|gezin|groep|familia|grupo|família|grupo|familj|grupp|obitelj|grup|familje|grup)\s+of\s+(\d+)\b/) ??
+                     t.match(/\b(\d+)[-\s](?:köpfe?|personen?)\s+(?:gruppe|reisegruppe)\b/i) ??
+                     t.match(/\b(?:wir\s+sind|nous\s+sommes|siamo|wij\s+zijn|jesteśmy|somos|vi\s+är|nas\s+je|jemi)\s+(\d+)\s+(?:personen?|leute|mensen|personnes?|persone|osób|pessoas?|personer|osoba|persona|vetë)\b/)
+  if (groupSizeM) {
+    const n = parseInt(groupSizeM[1] ?? groupSizeM[0].match(/\d+/)?.[0] ?? '0')
+    if (n > 0) {
+      result.group_size = n
+      if (!result.adults && !result.children) {
+        if (/family|familie|familia|famille|famiglia|gezin|familia|família|familj|obitelj|familje/.test(t)) {
+          result.adults = Math.min(2, n)
+          if (n > 2) result.children = n - result.adults
+        } else {
+          result.adults = n
+        }
+      }
+    }
+  }
+
+  // "for 2", "for 3 people", "3 passengers", "N tickets" — EN + multilingual
+  const forNM = t.match(/\bfor\s+(\d+)(?:\s+(?:people|persons?|pax|passengers?|adults?|guests?|travell?ers?|seats?))\b/) ??
+                t.match(/\bf[üu]r\s+(\d+)(?:\s+(?:personen?|erwachsene?|leute|plätze?))?\b/) ??
+                t.match(/\bpour\s+(\d+)(?:\s+(?:personnes?|adultes?|passagers?|places?))?\b/) ??
+                t.match(/\bper\s+(\d+)(?:\s+(?:persone?|adulti|passeggeri?|posti))?\b/) ??
+                t.match(/\bvoor\s+(\d+)(?:\s+(?:personen?|volwassenen?|passagiers?))?\b/) ??
+                t.match(/\bdla\s+(\d+)(?:\s+(?:os[oó]b|doros[lł]ych|pasa[zż]er[oó]w))?\b/) ??
+                t.match(/\bpara\s+(\d+)(?:\s+(?:personas?|adultos?|pasajeros?|pessoas?|adultos?|passageiros?))?\b/) ??
+                t.match(/\bf[oö]r\s+(\d+)(?:\s+(?:personer?|vuxna?|passagerare?))?\b/)
+  if (forNM && !result.group_size) {
+    const n = parseInt(forNM[1])
+    if (n >= 1 && n <= 20) { result.group_size = n; if (!result.adults) result.adults = n }
+  }
+  const nPplM = t.match(/\b(\d+)\s+(?:people|persons?|pax|passengers?|travell?ers?|guests?|seats?)\b/) ??
+                t.match(/\b(\d+)\s+(?:personen?|leute|reisende?|fahrgäste?)\b/) ??
+                t.match(/\b(\d+)\s+(?:personnes?|voyageurs?|passagers?)\b/) ??
+                t.match(/\b(\d+)\s+(?:persone?|viaggiatori?|passeggeri?)\b/) ??
+                t.match(/\b(\d+)\s+(?:personen?|reizigers?|passagiers?)\b/) ??
+                t.match(/\b(\d+)\s+(?:os[oó]b|pod[oó][zż]nych|pasa[zż]er[oó]w)\b/) ??
+                t.match(/\b(\d+)\s+(?:pessoas?|viajantes?|passageiros?)\b/) ??
+                t.match(/\b(\d+)\s+(?:personer?|resenärer?|passagerare?)\b/) ??
+                t.match(/\b(\d+)\s+(?:osob[ae]?|putnika?|putnici?)\b/) ??
+                t.match(/\b(\d+)\s+(?:persona|udhëtar[eë]?|pasagjer[eë]?)\b/)
+  if (nPplM && !result.group_size) {
+    result.group_size = parseInt(nPplM[1])
+    if (!result.adults) result.adults = result.group_size
+  }
+
+  // ── Solo signals — all languages ──────────────────────────────────────────
+  const hasSoloSignal =
+    /\b(?:solo|alone|just\s+me|only\s+me|(?:travell?ing?|flying?|going?)\s+(?:alone|solo|by\s+myself)|by\s+myself|on\s+my\s+own|for\s+one|single\s+travell?er)\b/.test(t) ||                      // EN
+    /\b(?:allein(?:e|reisend)?|als?\s+einzelperson|nur\s+ich|f[üu]r\s+(?:eine[n]?\s+)?(?:person|mich)|als?\s+solopassagier|f[üu]r\s+mich\s+allein(?:e)?)\b/.test(t) ||                        // DE
+    /\b(?:solo(?:\/sola)?|sola?\b|por\s+mi\s+cuenta|yo\s+solo(?:\/sola)?|viajando\s+solo(?:\/sola)?|para\s+m[ií]\s+solo(?:\/sola)?|por\s+mi\s+mismo(?:\/misma)?)\b/.test(t) ||                 // ES
+    /\b(?:seul(?:e)?|tout(?:e)?\s+seul(?:e)?|pour\s+moi\s+seul(?:e)?|en\s+solo|par\s+moi[- ]même|seul(?:e)?\s+voyageur(?:se)?)\b/.test(t) ||                                                   // FR
+    /\b(?:da\s+solo(?:\/sola)?|per\s+me\s+solo(?:\/sola)?|in\s+solitaria|da\s+solo|viaggio\s+solitario)\b/.test(t) ||                                                                           // IT
+    /\b(?:alleen|als\s+enige|voor\s+mezelf|op\s+mijn\s+eentje|in\s+mijn\s+eentje|soloreis(?:iger)?)\b/.test(t) ||                                                                               // NL
+    /\b(?:sam(?:otnie)?|sama?\b|w\s+pojedynk[eę]|tylko\s+ja|dla\s+siebie|jako\s+solo)\b/.test(t) ||                                                                                             // PL
+    /\b(?:sozinho(?:\/sozinha)?|sozinha?\b|s[oó]\s+eu|por\s+conta\s+pr[oó]pria|viajando\s+sozinho(?:\/sozinha)?)\b/.test(t) ||                                                                   // PT
+    /\b(?:ensam(?:t)?|f[oö]r\s+mig\s+sj[äa]lv|ensam\s+resa(?:nde)?|solo|bara\s+jag)\b/.test(t) ||                                                                                              // SV
+    /\b(?:sam(?:a)?\b|kao\s+solo(?:\s+putnik)?|sama?\s+putovati|za\s+(?:jednu\s+)?osobu)\b/.test(t) ||                                                                                          // HR
+    /\b(?:vet[eë]m|i\s+vet[eë]m|e\s+vet[eë]me?|vet[eë]m\s+un[eë]?|udh[eë]tar\s+i\s+vet[eë]m)\b/.test(t)                                                                                      // SQ
+
+  // ── Couple / partner signals — all languages ───────────────────────────────
+  const hasCoupleSignal =
+    /\b(?:as\s+a\s+couple|with\s+(?:my\s+)?(?:partner|wife|husband|boyfriend|girlfriend|fianc[eé]e?|spouse|other\s+half|significant\s+other)|the\s+two\s+of\s+us|just\s+(?:the\s+)?(?:two|2)\s+of\s+us|just\s+us\s+two|us\s+two|we\s+two|date\s+(?:night|trip|flight))\b/.test(t) ||   // EN
+    /\b(?:zu\s+zweit|als\s+paar|mit\s+(?:meiner\s+frau|meinem\s+mann|meiner\s+partnerin|meinem\s+partner|meiner\s+freundin|meinem\s+freund)|wir\s+(?:zwei|2)|als?\s+pärchen)\b/.test(t) ||   // DE
+    /\b(?:en\s+pareja|con\s+mi\s+pareja|con\s+mi\s+(?:esposa|esposo|novia|novio|marido|mujer)|somos\s+dos|los\s+dos|nosotros\s+dos|para\s+dos(?:\s+personas?)?|viaje\s+(?:en\s+pareja|romantic[ao]))\b/.test(t) || // ES
+    /\b(?:en\s+couple|avec\s+(?:ma\s+femme|mon\s+mari|ma\s+partenaire|mon\s+partenaire|ma\s+copine|mon\s+copain|ma\s+compagne|mon\s+compagnon)|tous\s+les\s+deux|nous\s+deux|pour\s+deux(?:\s+personnes?)?)\b/.test(t) || // FR
+    /\b(?:in\s+coppia|con\s+(?:mia\s+moglie|mio\s+marito|la\s+mia\s+ragazza|il\s+mio\s+ragazzo|la\s+mia\s+compagna|il\s+mio\s+compagno)|siamo\s+in\s+due|noi\s+due|per\s+due(?:\s+persone?)?)\b/.test(t) || // IT
+    /\b(?:als\s+(?:koppel|stel|paar)|met\s+(?:mijn\s+vrouw|mijn\s+man|mijn\s+partner|mijn\s+meisje|mijn\s+vriend(?:je)?)|met\s+z[''']n\s+twee[ën]n?|wij\s+twee[ën]n?|voor\s+twee(?:\s+personen?)?\b)\b/.test(t) || // NL
+    /\b(?:jako\s+para|z\s+(?:[żz]on[ąa]|m[eę][żz]em|partnerk[ąa]|partnerem|dziewczyn[ąa]|chłopakiem)|we\s+dwoj(?:e|gu)|nas\s+dwoj(?:e|gu)|dla\s+dwojga)\b/.test(t) || // PL
+    /\b(?:em\s+casal|com\s+(?:minha\s+esposa|meu\s+marido|minha\s+namorada|meu\s+namorado|minha\s+companheira|meu\s+companheiro)|n[oó]s\s+dois|para\s+dois(?:\s+pessoas?)?\b)\b/.test(t) || // PT
+    /\b(?:som\s+par|med\s+(?:min\s+fru|min\s+man|min\s+partner|min\s+flickv[äa]n|min\s+pojkv[äa]n)|vi\s+tv[åa]|f[oö]r\s+tv[åa](?:\s+personer?)?\b)\b/.test(t) || // SV
+    /\b(?:kao\s+par|s\s+(?:mojom\s+[žz]enom|mojim\s+mu[žz]em|mojom\s+djevojkom|mojim\s+de[čc]kom|partnerom|partnericom)|nas\s+dvoje|za\s+dvoje(?:\s+osoba?)?\b)\b/.test(t) || // HR
+    /\b(?:si\s+[çc]ift|me\s+(?:gruan|burrin\s+tim|t[eë]\s+dashur[eë]n|t[eë]\s+dashurin\s+tim|partneren|partnerin)|ne\s+t[eë]\s+dy|p[eë]r\s+dy(?:\s+vetë)?\b)\b/.test(t)   // SQ
+
+  // ── Honeymoon signals ─────────────────────────────────────────────────────
+  const hasHoneymoonSignal =
+    /\b(?:honeymoon|romantic\s+(?:trip|getaway|holiday|escape|flight)|anniversary\s+(?:trip|holiday))\b/.test(t) ||            // EN
+    /\b(?:flitterwochen|hochzeitsreise|romantische(?:r|s|n)?\s+(?:urlaub|reise|trip)|hochzeitsreise)\b/.test(t) ||             // DE
+    /\b(?:luna\s+de\s+miel|viaje\s+rom[aá]ntico|viaje\s+de\s+novios)\b/.test(t) ||                                             // ES
+    /\b(?:lune\s+de\s+miel|voyage\s+romantique|voyage\s+de\s+noces|escapade\s+romantique)\b/.test(t) ||                        // FR
+    /\b(?:luna\s+di\s+miele|viaggio\s+romantico|viaggio\s+di\s+nozze)\b/.test(t) ||                                            // IT
+    /\b(?:huwelijksreis|romantische\s+(?:reis|trip)|wittebroodsweken)\b/.test(t) ||                                             // NL
+    /\b(?:miodowy\s+miesi[ąa]c|podr[oó][zż]\s+romantyczna|podr[oó][zż]\s+poślubna)\b/.test(t) ||                              // PL
+    /\b(?:lua\s+de\s+mel|viagem\s+rom[aâ]ntica|viagem\s+de\s+n[uú]pcias)\b/.test(t) ||                                        // PT
+    /\b(?:smekmånad|romantisk\s+resa|bröllopsresa)\b/.test(t) ||                                                                // SV
+    /\b(?:medeni\s+mjesec|romantično\s+putovanje|bračno\s+putovanje)\b/.test(t) ||                                              // HR
+    /\b(?:mua[lj]a\s+e\s+mjaltit|udh[eë]tim\s+romantik|udh[eë]tim\s+martese[s]?)\b/.test(t)                                   // SQ
+
+  // ── Family signals — all languages ────────────────────────────────────────
+  const hasFamilySignal =
+    /\b(?:with\s+(?:(?:the\s+)?kids?|children|family|my\s+family|the\s+family|grandchildren?|grandkids?)|family\s+(?:trip|holiday|vacation|flight|break|getaway)|taking\s+(?:the\s+)?kids?|travell?ing?\s+with\s+(?:kids?|children|family)|kid-friendly)\b/.test(t) || // EN
+    /\b(?:mit\s+(?:(?:den?\s+)?kindern?|der\s+familie|meiner\s+familie|kleinen?|meinen\s+kindern)|als\s+familie|familienurlaub|familienreise|familienflug|familienausflug|mit\s+meinen\s+kindern)\b/.test(t) || // DE
+    /\b(?:con\s+(?:(?:los|mis)\s+ni[ñn]os?|(?:los|mis)\s+hijos?|(?:la|mi)\s+familia)|en\s+familia|viaje\s+(?:familiar|en\s+familia)|con\s+ni[ñn]os?|con\s+hijos?|viaje\s+familiar)\b/.test(t) || // ES
+    /\b(?:avec\s+(?:(?:les|mes)\s+enfants?|(?:la|ma)\s+famille)|en\s+famille|voyage\s+(?:en\s+famille|familial)|avec\s+des\s+enfants?)\b/.test(t) || // FR
+    /\b(?:con\s+(?:(?:i|miei)\s+bambini|(?:la|mia)\s+famiglia|i\s+figli)|in\s+famiglia|viaggio\s+in\s+famiglia|con\s+bambini)\b/.test(t) || // IT
+    /\b(?:met\s+(?:(?:de|mijn)\s+kinderen|(?:het|mijn)\s+gezin|de\s+kids?|de\s+familie)|als\s+gezin|gezinsreis|gezinsvakantie|met\s+kinderen)\b/.test(t) || // NL
+    /\b(?:z\s+(?:dzie[cć]mi|rodzin[ąa]|moją\s+rodzin[ąa])|jako\s+rodzina|wyjazd\s+rodzinny|podró[zż]\s+rodzinna|z\s+dzie[cć]mi)\b/.test(t) || // PL
+    /\b(?:com\s+(?:(?:as|minhas)\s+crianças?|(?:a|minha)\s+família|(?:os|meus)\s+filhos?)|em\s+família|viagem\s+(?:em\s+família|familiar)|com\s+crianças?)\b/.test(t) || // PT
+    /\b(?:med\s+(?:(?:barnen?|mina\s+barn)|(?:familjen|min\s+familj)|ungarna?)|som\s+familj|familjesemester|familjeresa|med\s+barn)\b/.test(t) || // SV
+    /\b(?:s\s+(?:djecom|obitelju|mojom\s+obitelju|(?:svojom\s+)?djecom)|kao\s+obitelj|obiteljski\s+odmor|obiteljsko\s+putovanje|s\s+djecom)\b/.test(t) || // HR
+    /\b(?:me\s+(?:f[eë]mij[eë]t?|familjen|familjes\s+time?)|si\s+familje|pushime\s+familjare|udh[eë]tim\s+familjar|me\s+f[eë]mij[eë])\b/.test(t) // SQ
+
+  // ── Group / friends signals — all languages ───────────────────────────────
+  const hasGroupSignal =
+    /\b(?:with\s+(?:friends?|mates?|colleagues?|coworkers?|the\s+lads?|the\s+girls?|the\s+team|the\s+squad|buddies|pals?|work(?:mates?)?|uni\s+friends?)|stag\s+(?:do|party|trip)|hen\s+(?:do|party|trip)|bachelorette(?:\s+party)?|bachelor\s+party|group\s+(?:trip|booking|travel|holiday)|lads\s+(?:trip|holiday|weekend)|girls\s+(?:trip|holiday|weekend))\b/.test(t) || // EN
+    /\b(?:mit\s+(?:freunden?|freundinnen?|kollegen?|kolleginnen?|jungs?|m[äa]dels?|der\s+gruppe|der\s+clique)|junggesellenabschied|grouppenreise|als\s+gruppe|klassenfahrt|betriebsausflug)\b/.test(t) || // DE
+    /\b(?:con\s+(?:amigos?|amigas?|colegas?|compa[ñn]eros?|el\s+grupo|la\s+pandilla|los\s+chicos?|las\s+chicas?)|viaje\s+(?:en\s+grupo|de\s+amigos?)|despedida\s+de\s+(?:soltero|soltera)|excursi[oó]n\s+(?:escolar|de\s+empresa))\b/.test(t) || // ES
+    /\b(?:avec\s+(?:(?:des|mes)\s+amis?|(?:des|mes)\s+coll[eè]gues?|la\s+bande|le\s+groupe|les\s+copains?|les\s+copines?)|en\s+groupe|enterrement\s+de\s+vie\s+de\s+(?:gar[çc]on|jeune\s+fille)|voyage\s+de\s+groupe|sortie\s+(?:scolaire|d['']entreprise))\b/.test(t) || // FR
+    /\b(?:con\s+(?:(?:gli|i\s+miei)\s+amici|(?:le\s+mie)\s+amiche|colleghi?|il\s+gruppo|la\s+comitiva)|in\s+gruppo|addio\s+al\s+(?:celibato|nubilato)|gita\s+(?:scolastica|aziendale)|viaggio\s+di\s+gruppo)\b/.test(t) || // IT
+    /\b(?:met\s+(?:(?:mijn\s+)?vrienden?|vriendinnen?|collega[''s]?|de\s+groep|de\s+jongens?|de\s+meiden?)|als\s+groep|vrijgezellenfeest|groepsreis|schoolreis|bedrijfsuitje)\b/.test(t) || // NL
+    /\b(?:z\s+(?:przyjació[łl]mi|przyjaci[oó][łl]kami|kolegami|kole[zż]ankami|grup[ąa])|jako\s+grupa|wieczór\s+kawalerski|wieczór\s+panieński|wycieczka\s+grupowa|wyjazdowa\s+firmowa)\b/.test(t) || // PL
+    /\b(?:com\s+(?:(?:os|meus)\s+amigos?|(?:as|minhas)\s+amigas?|colegas?|o\s+grupo|a\s+turma)|em\s+grupo|despedida\s+de\s+(?:solteiro|solteira)|viagem\s+em\s+grupo|excurs[aã]o\s+escolar)\b/.test(t) || // PT
+    /\b(?:med\s+(?:(?:mina\s+)?v[äa]nner|kollegor|g[äa]nget|grabbarna|tjejerna)|som\s+grupp|svensexa|m[oö]hippa|gruppresor?|skolresa|f[öo]retagsresa)\b/.test(t) || // SV
+    /\b(?:s\s+(?:(?:mojim\s+)?prijateljima|kolegama|kolicama|ekipom?)|kao\s+grupa|moma[čc]ka\s+ve[čc]er|djevoja[čc]ka\s+ve[čc]er|grupno\s+putovanje|izlet\s+(?:školski|za\s+posao))\b/.test(t) || // HR
+    /\b(?:me\s+(?:(?:miqt[eë]|shoq[eë]rit[eë])|koleget?|grupin|djemtë|vajzat)|si\s+grup|natë\s+djali|natë\s+vajzash|udh[eë]tim\s+grupi)\b/.test(t) // SQ
+
+  // ── Business / work signals — all languages ───────────────────────────────
+  const hasBizSignal =
+    /\b(?:(?:for\s+(?:a\s+)?)?business\s+(?:trip|travel|meeting|conference|summit|event|flight)|work\s+trip|for\s+work|corporate\s+travel|client\s+meeting|work\s+flight|business\s+class\s+(?:trip|travel)|flying\s+for\s+work|on\s+business)\b/.test(t) || // EN
+    /\b(?:gesch[äa]ftsreise|gesch[äa]ftlich|f[üu]r\s+die\s+arbeit|dienstreise|konferenzreise|gesch[äa]ftsflug|dienstlich|arbeitsreise|messe|fachtagung)\b/.test(t) || // DE
+    /\b(?:viaje\s+de\s+negocios|por\s+(?:motivos?\s+de\s+)?trabajo|viaje\s+(?:de\s+trabajo|corporativo|de\s+empresa)|reunión\s+de\s+negocios|congreso|conferencia|vuelo\s+de\s+negocios)\b/.test(t) || // ES
+    /\b(?:voyage\s+d['']affaires|pour\s+(?:le\s+)?travail|d[eé]placement\s+professionnel|conf[eé]rence|r[eé]union\s+d['']affaires|vol\s+d['']affaires)\b/.test(t) || // FR
+    /\b(?:viaggio\s+d['']affari|per\s+(?:lavoro|motivi\s+di\s+lavoro)|trasferta|conferenza|riunione\s+d['']affari|volo\s+d['']affari)\b/.test(t) || // IT
+    /\b(?:zakenreis|voor\s+(?:het\s+)?werk|zakelijk|zakenreis|conferentie|zakelijke\s+reis|werkvlucht)\b/.test(t) || // NL
+    /\b(?:podr[oó][zż]\s+s[lł]u[zż]bowa|w\s+celach?\s+s[lł]u[zż]bowych|dla\s+pracy|konferencja|delegacja|lot\s+s[lł]u[zż]bowy)\b/.test(t) || // PL
+    /\b(?:viagem\s+de\s+neg[oó]cios|a\s+(?:trabalho|neg[oó]cios)|viagem\s+(?:corporativa|de\s+trabalho)|confer[eê]ncia|reuni[aã]o\s+de\s+neg[oó]cios)\b/.test(t) || // PT
+    /\b(?:aff[äa]rsresa|f[oö]r\s+jobbet|tj[äa]nsteresa|konferensresa|aff[äa]rsflyg|yrkesresa)\b/.test(t) || // SV
+    /\b(?:poslovno\s+putovanje|zbog\s+posla|slu[žz]beno\s+putovanje|konferencija|poslovni\s+let|na\s+posao)\b/.test(t) || // HR
+    /\b(?:udh[eë]tim\s+biznesi|p[eë]r\s+pun[eë]|konferenc[eë]|udh[eë]tim\s+pune|fluturim\s+biznesi)\b/.test(t) // SQ
+
+  // ── Apply context + defaults ──────────────────────────────────────────────
+  if (hasSoloSignal) { result.context = 'solo'; if (!result.adults) result.adults = 1 }
+  else if (hasHoneymoonSignal || hasCoupleSignal) { result.context = 'couple'; if (!result.adults) result.adults = 2 }
+  else if (hasFamilySignal) { result.context = 'family'; if (!result.children) result.children = 1 }
+  else if (hasGroupSignal) { result.context = 'group' }
+  else if (hasBizSignal) { result.context = 'business_traveler' }
+
+  // ── Inferred booking requirements ────────────────────────────────────────
+  const hasKids = (result.children ?? 0) > 0 || (result.infants ?? 0) > 0 || result.context === 'family'
+  const hasInfants = (result.infants ?? 0) > 0 ||
+    /\bwith\s+(?:a\s+)?(?:baby|infant|toddler|newborn)\b/.test(t) ||
+    /\bmit\s+(?:einem?\s+)?(?:baby|kleinkind|säugling)\b/.test(t) ||
+    /\bcon\s+(?:un\s+)?(?:bebé|neonato)\b/.test(t) ||
+    /\bavec\s+(?:un\s+)?b[eé]b[eé]\b/.test(t)
+
+  if (hasKids) {
+    result.require_adjacent_seats = true
+    result.require_seat_selection = true
+    result.prefer_direct = true
+  }
+  if (hasInfants) {
+    result.require_bassinet = true
+    result.prefer_direct = true
+    result.require_seat_selection = true
+  }
+
+  // "sit together" signals in all languages
+  if (/\b(?:sit\s+(?:together|next\s+to\s+each\s+other|beside\s+each\s+other|side\s+by\s+side)|adjacent\s+seats?|seats?\s+together|together\s+on\s+the\s+(?:plane|flight)|nebeneinander\s+sitzen|zusammen\s+sitzen|sentarse\s+juntos?|assentos?\s+juntos?|assis\s+ensemble|côte\s+à\s+côte|sedere\s+insieme|posti\s+vicini|naast\s+elkaar\s+zitten|samen\s+zitten|siedź(?:my|cie)?\s+razem|siedzieć\s+razem|sentar\s+juntos?|sitta\s+bredvid\s+varandra|sjediti\s+zajedno|rri(?:ni)?\s+bashkë)\b/.test(t)) {
+    result.require_adjacent_seats = true
+    result.require_seat_selection = true
+  }
+
+  // Explicit seat selection request in all languages
+  if (/\b(?:with\s+seat\s+selection|seat\s+selection\s+(?:included|required|needed|must)|select(?:ing)?\s+(?:my\s+|our\s+)?seats?|mit\s+sitzplatzwahl|sitzplatzreservierung|con\s+selecci[oó]n\s+de\s+asiento|avec\s+s[eé]lection\s+de\s+si[eè]ge|con\s+scelta\s+del\s+posto|met\s+stoelkeuze|z\s+wyborem\s+miejsca|com\s+escolha\s+de\s+assento|med\s+sätesval|s\s+odabirom\s+sjedala|me\s+zgjedhje\s+ulëse)\b/.test(t)) {
+    result.require_seat_selection = true
+  }
+
+  // Elderly / mobility / accessibility → prefer direct + seat selection
+  if (/\b(?:with\s+(?:elderly|older|senior)\s+(?:parents?|relatives?|grandparents?|people)|wheelchair|disabled|accessibility|special\s+(?:assistance|needs|requirements?)|mobility\s+(?:aid|assistance|issues?|problems?)|reduced\s+mobility|handicapped|alte(?:n|r)?\s+(?:eltern|leute)|rollstuhl|gehbehindert|barrierefreiheit|en\s+silla\s+de\s+ruedas|discapacitado|mobilidad\s+reducida|en\s+fauteuil\s+roulant|handicap[eé]|mobilité\s+réduite|in\s+sedia\s+a\s+rotelle|disabile|mobilità\s+ridotta|rolstoel|gehandicapt|beperkte\s+mobiliteit|wózek\s+inwalidzki|niepełnosprawny|cadeira\s+de\s+rodas|deficiente|mobilidade\s+reduzida|rullstol|funktionsnedsättning|invalidska\s+kolica|invalid|kolica|karrocë\s+me\s+rrota|me\s+aftësi\s+të\s+kufizuara)\b/.test(t)) {
+    result.prefer_direct = true
+    result.require_seat_selection = true
+  }
+
+  if (result.context === 'business_traveler') result.prefer_direct = true
+
+  return result
+}
+
+// ── Ancillary requirements extraction ─────────────────────────────────────────
+interface AncillaryExtraction {
+  require_checked_baggage?: boolean
+  carry_on_only?: boolean
+  require_meals?: boolean
+  require_cancellation?: boolean
+  require_lounge?: boolean
+}
+
+function extractAncillaries(text: string): AncillaryExtraction {
+  const t = stripAccents(text.toLowerCase())
+  const r: AncillaryExtraction = {}
+
+  // ── Checked baggage — all languages ───────────────────────────────────────
+  if (
+    // EN
+    /\b(?:with\s+(?:checked?\s+)?(?:bag(?:gage)?s?|luggage|hold\s+(?:luggage|bag(?:gage)?s?)|suitcase)|including\s+(?:bag(?:gage)?s?|luggage)|bags?\s+included|baggage\s+included|with\s+hold|checked?\s+bag(?:gage)?\s+included|luggage\s+included|including\s+(?:a\s+)?suitcase|with\s+a\s+suitcase|extra\s+bag(?:gage)?|baggage\s+allowance|bag\s+allowance|\d+\s*kg\s+(?:bag|luggage|baggage)|hold\s+bag)\b/.test(t) ||
+    // DE
+    /\b(?:mit\s+(?:aufgabegep[äa]ck|koffer|gep[äa]ck|reisegep[äa]ck|eingecheckt(?:em)?\s+gep[äa]ck)|aufgabegep[äa]ck\s+(?:inkl(?:usive)?|inklusive|enthalten|dabei|inbegriffen)|gep[äa]ck\s+(?:aufgeben|inklusive|inkl|dabei|inbegriffen|enthalten)|mit\s+koffer\s+aufgeben|mit\s+gep[äa]ck\s+aufgeben)\b/.test(t) ||
+    // ES
+    /\b(?:con\s+(?:maleta\s+(?:facturada?)?|equipaje\s+(?:facturado?|en\s+bodega|incluido)|maleta\s+grande)|equipaje\s+(?:incluido|facturado?|en\s+la\s+bodega|de\s+bodega)|con\s+maleta|maleta\s+incluida?)\b/.test(t) ||
+    // FR
+    /\b(?:avec\s+(?:(?:les\s+)?bagages?\s+(?:en\s+soute|enregistr[eé]s?)?|(?:une\s+)?valise(?:\s+en\s+soute)?)|bagages?\s+(?:inclus|compris|en\s+soute)|valise\s+(?:incluse|comprise)|avec\s+bagage)\b/.test(t) ||
+    // IT
+    /\b(?:con\s+(?:(?:il\s+)?bagaglio\s+(?:in\s+stiva|registrato)?|(?:la\s+)?valigia(?:\s+in\s+stiva)?)|bagaglio\s+(?:incluso|compreso|in\s+stiva)|valigia\s+(?:inclusa|compresa)|con\s+bagaglio)\b/.test(t) ||
+    // NL
+    /\b(?:met\s+(?:(?:ingecheckte\s+)?bagage|koffer|ruimbagage)|bagage\s+(?:inbegrepen|inclusief|ingecheckt)|koffer\s+(?:inbegrepen|incl)|met\s+bagage\s+inchecken)\b/.test(t) ||
+    // PL
+    /\b(?:z\s+(?:bagażem\s+(?:rejestrowanym|nadanym)?|walizk[ąa]|walizkami?)|bagaż\s+(?:w\s+cenie|wliczony|rejestrowany|nadany|w\s+zestawie)|z\s+walizką\s+w\s+cenie)\b/.test(t) ||
+    // PT
+    /\b(?:com\s+(?:(?:a\s+)?bagagem\s+(?:despachada?|registada?|faturada?)?|(?:a\s+)?mala\s+grande)|bagagem\s+(?:incluída?|despachada?|no\s+por[aã]o)|mala\s+(?:incluída?|despachada?))\b/.test(t) ||
+    // SV
+    /\b(?:med\s+(?:incheckat\s+bagage|v[äa]ska|resv[äa]ska)|bagage\s+(?:ingår|inkl(?:uderat)?)|incheckat\s+bagage\s+(?:ingår|inkl))\b/.test(t) ||
+    // HR
+    /\b(?:s\s+(?:(?:predanom\s+)?prtljagom|koferom|predanom\s+torbom)|prtljaga\s+(?:uključena|u\s+cijeni)|s\s+koferom)\b/.test(t) ||
+    // SQ
+    /\b(?:me\s+(?:(?:bagazh\s+(?:t[eë]\s+paraqitur)?|çant[eë]n?\s+(?:t[eë]\s+madhe)?|valixhen?))|bagazhi\s+(?:i\s+p[eë]rfshir[eë]|t[eë]\s+paraqitur))\b/.test(t)
+  ) { r.require_checked_baggage = true }
+
+  // ── Carry-on only — all languages ─────────────────────────────────────────
+  if (
+    // EN
+    /\b(?:carry[- ]?on\s+only|hand\s+(?:luggage|baggage)\s+only|cabin\s+bag(?:gage)?\s+only|no\s+(?:hold|checked?)\s+(?:bag(?:gage)?|luggage)|without\s+(?:checked?\s+)?(?:bag(?:gage)?|luggage)|hand\s+only|cabin\s+only|no\s+bags?\s+checked?|carry[- ]?on\s+bag(?:gage)?|just\s+(?:a\s+)?hand\s+(?:luggage|baggage)|just\s+cabin\s+bag)\b/.test(t) ||
+    // DE
+    /\b(?:nur\s+handgep[äa]ck|handgep[äa]ck\s+only|kein\s+aufgabegep[äa]ck|ohne\s+(?:aufgabegep[äa]ck|koffer\s+aufgeben)|nur\s+kabinengep[äa]ck|handgep[äa]ck\s+nur)\b/.test(t) ||
+    // ES
+    /\b(?:solo\s+(?:equipaje\s+de\s+mano|bolsa\s+de\s+mano|mochila)|sin\s+maleta\s+(?:facturada?|en\s+bodega)|solo\s+cabina|sin\s+equipaje\s+(?:en\s+bodega|facturado?)|equipaje\s+de\s+mano\s+(?:solo|únicamente))\b/.test(t) ||
+    // FR
+    /\b(?:seulement\s+(?:bagage\s+(?:cabine|à\s+main)|sac\s+(?:cabine|à\s+main))|sans\s+bagage\s+en\s+soute|juste\s+(?:un\s+)?bagage\s+(?:cabine|à\s+main)|sans\s+valise|cabine\s+seulement|bagage\s+cabine\s+seulement)\b/.test(t) ||
+    // IT
+    /\b(?:solo\s+(?:bagaglio\s+a\s+mano|bagagli\s+a\s+mano)|senza\s+bagaglio\s+in\s+stiva|solo\s+cabina|senza\s+valigia\s+(?:grande|registrata))\b/.test(t) ||
+    // NL
+    /\b(?:alleen\s+handbagage|geen\s+(?:ingecheckte\s+)?bagage|zonder\s+koffer|handbagage\s+alleen|geen\s+ruimbagage)\b/.test(t) ||
+    // PL
+    /\b(?:tylko\s+bagaż\s+podr[eę]czny|bez\s+bagażu\s+rejestrowanego|tylko\s+kabina|bez\s+walizki\s+nadanej)\b/.test(t) ||
+    // PT
+    /\b(?:s[oó]\s+bagagem\s+de\s+m[aã]o|sem\s+bagagem\s+despachada?|apenas\s+bagagem\s+de\s+m[aã]o|sem\s+mala\s+grande)\b/.test(t) ||
+    // SV
+    /\b(?:bara\s+handbagage|inget\s+incheckat\s+bagage|utan\s+resv[äa]ska|handbagage\s+bara)\b/.test(t) ||
+    // HR/SQ
+    /\b(?:samo\s+ru[čc]na\s+prtljaga|bez\s+predane\s+prtljage|bez\s+kofera|vet[eë]m\s+bagazh\s+dore|pa\s+bagazh\s+t[eë]\s+paraqitur)\b/.test(t)
+  ) { r.carry_on_only = true }
+
+  // ── Meals — all languages ─────────────────────────────────────────────────
+  if (
+    /\b(?:with\s+(?:meals?|food|catering|dinner|lunch|breakfast|a\s+meal|inflight\s+(?:meal|food))|including\s+meals?|meals?\s+included|hot\s+meal|in-flight\s+(?:meal|catering))\b/.test(t) ||     // EN
+    /\b(?:mit\s+(?:mahlzeit(?:en)?|essen|verpflegung|bordverpflegung|men[üu])|essen\s+(?:inklusive|inbegriffen)|mahlzeit(?:en)?\s+inklusive)\b/.test(t) ||                                         // DE
+    /\b(?:con\s+(?:comida(?:s)?|men[uú]|servicio\s+de\s+comida|alimentaci[oó]n)|comida\s+incluida?|servicio\s+de\s+a\s+bordo\s+incluido)\b/.test(t) ||                                             // ES
+    /\b(?:avec\s+(?:(?:les\s+)?repas|nourriture|restauration(?:\s+bord)?)|repas\s+(?:inclus|compris)|restauration\s+(?:incluse|comprise))\b/.test(t) ||                                             // FR
+    /\b(?:con\s+(?:pasto|pasti|vitto|cibo)|pasto\s+(?:incluso|compreso)|pasti\s+(?:inclusi|compresi))\b/.test(t) ||                                                                                // IT
+    /\b(?:met\s+(?:maaltijd(?:en)?|eten|catering)|maaltijd(?:en)?\s+(?:inbegrepen|inclusief))\b/.test(t) ||                                                                                        // NL
+    /\b(?:z\s+(?:posiłkiem|jedzeniem|wy[zż]ywieniem)|posiłek\s+(?:wliczony|w\s+cenie))\b/.test(t) ||                                                                                              // PL
+    /\b(?:com\s+(?:refeição|refeições|alimentação|comida\s+a\s+bordo)|refeição\s+incluída?)\b/.test(t) ||                                                                                          // PT
+    /\b(?:med\s+(?:m[åa]ltid(?:er)?|mat|f[öo]rtäring)|m[åa]ltid(?:er)?\s+(?:ingår|inkluderat))\b/.test(t) ||                                                                                     // SV
+    /\b(?:s\s+(?:obrokom|jelom|hranom)|obrok\s+uključen)\b/.test(t) ||                                                                                                                            // HR
+    /\b(?:me\s+(?:vakt(?:in|e)|ushqim|ushqimin)|vakti\s+i\s+p[eë]rfshir[eë])\b/.test(t)                                                                                                          // SQ
+  ) { r.require_meals = true }
+
+  // ── Refundable / cancellation — all languages ─────────────────────────────
+  if (
+    /\b(?:fully\s+refundable|free\s+cancellation|with\s+(?:free\s+)?cancellation|cancellation\s+included|refundable|fully\s+flexible|no\s+cancellation\s+fee|can\s+cancel|able\s+to\s+cancel|changeable\s+ticket|flexible\s+ticket|can\s+change|changeable|modifiable|amendable)\b/.test(t) || // EN
+    /\b(?:erstattungsf[äa]hig|kostenlos\s+stornierbar|mit\s+stornierungsm[öo]glichkeit|flexibel\s+buchbar|umbuchbar|kostenfreie\s+stornierung|kostenlose\s+stornierung|r[üu]ckgabe(?:fähig)?|erstattbar)\b/.test(t) || // DE
+    /\b(?:reembolsable|cancelaci[oó]n\s+gratuita|con\s+(?:posibilidad\s+de\s+cancelar|cancelaci[oó]n\s+gratis)|ticket\s+flexible|billete\s+flexible|cambio\s+gratuito|con\s+cambio)\b/.test(t) || // ES
+    /\b(?:remboursable|annulation\s+gratuite|avec\s+(?:annulation\s+(?:gratuite|possible)|possibilit[eé]\s+d['']annulation)|billet\s+flexible|modifiable|[eé]changeable)\b/.test(t) || // FR
+    /\b(?:rimborsabile|cancellazione\s+gratuita|con\s+(?:possibilit[aà]\s+di\s+(?:cancellare|annullare)|cancellazione\s+gratuita)|biglietto\s+flessibile|modificabile|cambiabile)\b/.test(t) || // IT
+    /\b(?:restitueerbaar|gratis\s+annulering|met\s+(?:annuleringsoptie|gratis\s+annulering)|flexibel\s+ticket|omboekbaar|annuleerbaar)\b/.test(t) || // NL
+    /\b(?:zwrotny|darmowe\s+odwołanie|z\s+(?:możliwością\s+odwołania|bezpłatnym\s+odwołaniem)|elastyczny\s+bilet|do\s+zmiany)\b/.test(t) || // PL
+    /\b(?:reembolsável|cancelamento\s+gratuito|com\s+(?:possibilidade\s+de\s+cancelar|cancelamento\s+gratuito)|bilhete\s+flex[ií]vel|alter[aá]vel|modificável)\b/.test(t) || // PT
+    /\b(?:[aå]terbetalningsbar|kostnadsfri\s+avbokning|med\s+avbokningsrätt|flexibel\s+biljett|ombokningsbar)\b/.test(t) || // SV
+    /\b(?:povrativi|besplatno\s+otkazivanje|s\s+mogu[cć]nosti\s+otkazivanja|fleksibilna\s+karta|promjenjiva\s+karta)\b/.test(t) || // HR
+    /\b(?:i\s+rimbursuesh[eë]m|anulim\s+falas|me\s+mundësi\s+anulimi|bilet[eë]\s+fleksib[eë]l)\b/.test(t) // SQ
+  ) { r.require_cancellation = true }
+
+  // ── Lounge access — all languages ─────────────────────────────────────────
+  if (
+    /\b(?:with\s+lounge(?:\s+access)?|lounge\s+(?:included|access)|airport\s+lounge|priority\s+(?:lounge|pass)|vip\s+lounge)\b/.test(t) ||
+    /\b(?:mit\s+loungeZugang|lounge\s+zugang|flughafenlounge|vip\s+lounge)\b/.test(t) ||
+    /\b(?:con\s+acceso\s+(?:al?\s+)?sal[oó]n|sal[oó]n\s+vip|lounge\s+incluida?)\b/.test(t) ||
+    /\b(?:avec\s+acc[eè]s\s+(?:au\s+)?salon|salon\s+vip|lounge\s+inclus)\b/.test(t) ||
+    /\b(?:con\s+accesso\s+(?:alla\s+)?lounge|lounge\s+vip|lounge\s+inclusa)\b/.test(t) ||
+    /\b(?:met\s+lounge(?:[- ]toegang)?|vip\s+lounge\s+toegang)\b/.test(t)
+  ) { r.require_lounge = true }
+
+  return r
+}
+
+// ── Time-of-day preference extraction ─────────────────────────────────────────
+interface TimePrefs {
+  depart_time_pref?: ParsedQuery['depart_time_pref']
+  arrive_time_pref?: ParsedQuery['arrive_time_pref']
+}
+
+function extractTimePrefs(text: string): TimePrefs {
+  const t = stripAccents(text.toLowerCase())
+  const r: TimePrefs = {}
+
+  // ── Arrival preferences ────────────────────────────────────────────────────
+  const arrMorning =
+    /\b(?:arrive\s+(?:in\s+the\s+)?morning|morning\s+arrival|land(?:ing)?\s+(?:in\s+the\s+)?morning|get\s+there\s+(?:in\s+the\s+)?morning|arrive\s+early(?:\s+morning)?)\b/.test(t) ||             // EN
+    /\b(?:morgens?\s+ankommen|morgens?\s+landen|ankunft\s+(?:am\s+morgen|morgens?)|fr[üu]h\s+ankommen)\b/.test(t) ||                                                                                  // DE
+    /\b(?:llegar\s+(?:por\s+la\s+)?mañana|llegada\s+(?:por\s+la\s+)?mañana|aterrizar\s+(?:por\s+la\s+)?mañana)\b/.test(t) ||                                                                        // ES
+    /\b(?:arriver\s+(?:le\s+|en\s+)?matin|arriv[eé]e\s+(?:le\s+|en\s+)?matin|atterrir\s+(?:le\s+|en\s+)?matin)\b/.test(t) ||                                                                       // FR
+    /\b(?:arrivare\s+(?:di\s+)?mattina|arrivo\s+(?:di\s+)?mattina|atterrare\s+(?:di\s+)?mattina)\b/.test(t) ||                                                                                       // IT
+    /\b(?:['s]\s*ochtends?\s+aankomen|ochtend(?:aankomst|landing)?|aankomen\s+['s]\s*ochtends?)\b/.test(t)                                                                                           // NL
+  if (arrMorning) r.arrive_time_pref = 'morning'
+
+  const arrAfternoon =
+    /\b(?:arrive\s+(?:in\s+the\s+)?afternoon|afternoon\s+arrival|land(?:ing)?\s+(?:in\s+the\s+)?afternoon)\b/.test(t) ||                                                                             // EN
+    /\b(?:nachmittags?\s+ankommen|ankunft\s+(?:am\s+nachmittag|nachmittags?))\b/.test(t) ||                                                                                                          // DE
+    /\b(?:llegar\s+(?:por\s+la\s+)?tarde|llegada\s+(?:por\s+la\s+)?tarde)\b/.test(t) ||                                                                                                              // ES
+    /\b(?:arriver\s+(?:l['']|en\s+)?apr[eè]s[-\s]midi|arriv[eé]e\s+(?:l['']|en\s+)?apr[eè]s[-\s]midi)\b/.test(t)                                                                                   // FR
+  if (!r.arrive_time_pref && arrAfternoon) r.arrive_time_pref = 'afternoon'
+
+  const arrEvening =
+    /\b(?:arrive\s+(?:in\s+the\s+)?evening|evening\s+arrival|land(?:ing)?\s+(?:in\s+the\s+)?evening)\b/.test(t) ||                                                                                   // EN
+    /\b(?:abends?\s+ankommen|ankunft\s+(?:am\s+abend|abends?|abendlich))\b/.test(t) ||                                                                                                               // DE
+    /\b(?:llegar\s+(?:por\s+la\s+)?(?:tarde|noche)|llegada\s+(?:nocturna|tarde))\b/.test(t) ||                                                                                                       // ES
+    /\b(?:arriver\s+(?:le\s+)?soir|arriv[eé]e\s+(?:le\s+)?soir|arriver\s+(?:la\s+)?nuit)\b/.test(t) ||                                                                                              // FR
+    /\b(?:arrivare\s+(?:di\s+)?sera|arrivo\s+(?:di\s+)?sera)\b/.test(t)                                                                                                                              // IT
+  if (!r.arrive_time_pref && arrEvening) r.arrive_time_pref = 'evening'
+
+  // ── Departure preferences ──────────────────────────────────────────────────
+  const isRedEye =
+    /\b(?:red[- ]?eye|overnight\s+(?:flight|service)|night\s+flight|fly(?:ing)?\s+(?:overnight|through\s+the\s+night)|night\s+departure|late[- ]night\s+flight)\b/.test(t) ||                        // EN
+    /\b(?:nachtflug|[üu]ber\s+nacht\s+fliegen|nachts\s+fliegen|sp[äa]tnacht\s+flug)\b/.test(t) ||                                                                                                   // DE
+    /\b(?:vuelo\s+(?:nocturno|de\s+noche|de\s+madrugada)|volar\s+de\s+noche|vuelo\s+overnight)\b/.test(t) ||                                                                                         // ES
+    /\b(?:vol\s+(?:de\s+nuit|nocturne)|voler\s+de\s+nuit|vol\s+overnight)\b/.test(t) ||                                                                                                              // FR
+    /\b(?:volo\s+(?:notturno|di\s+notte)|volare\s+di\s+notte)\b/.test(t) ||                                                                                                                          // IT
+    /\b(?:nachtvlucht|['s]\s*nachts?\s+vliegen|nacht\s+vlucht)\b/.test(t) ||                                                                                                                         // NL
+    /\b(?:nocny\s+lot|lecieć\s+w\s+nocy|lot\s+nocny)\b/.test(t) ||                                                                                                                                   // PL
+    /\b(?:voo\s+noturno|voar\s+à\s+noite|voo\s+da\s+noite)\b/.test(t) ||                                                                                                                             // PT
+    /\b(?:natflyg|flyga\s+(?:på\s+natten|overnight)|nattflyg)\b/.test(t) ||                                                                                                                          // SV
+    /\b(?:no[čc]ni\s+let|letjeti\s+no[čc]u|noćni\s+let)\b/.test(t)                                                                                                                                  // HR
+  if (isRedEye) { r.depart_time_pref = 'red_eye'; return r }
+
+  const isEarlyMorning =
+    /\b(?:very\s+early|early\s+morning\s+(?:flight|departure)|before\s+[67]\s*am|first\s+flight\s+(?:out|of\s+the\s+day)|crack\s+of\s+dawn|first\s+thing|early\s+as\s+possible)\b/.test(t) ||       // EN
+    /\b(?:sehr\s+früh|fr[üu]hester\s+flug|fr[üu]h\s+morgens?|fr[üu]hmorgens?|erste[rn]?\s+flug\s+(?:des\s+tages|früh)|so\s+fr[üu]h\s+wie\s+möglich)\b/.test(t) ||                                // DE
+    /\b(?:muy\s+temprano|vuelo\s+muy\s+(?:temprano|matutino)|primer\s+vuelo|lo\s+m[aá]s\s+temprano\s+posible)\b/.test(t) ||                                                                          // ES
+    /\b(?:très\s+(?:tôt|tot)|(?:premier|le\s+premier)\s+vol\s+(?:du\s+jour|possible)|le\s+plus\s+tôt\s+possible)\b/.test(t) ||                                                                      // FR
+    /\b(?:molto\s+presto|primo\s+volo|il\s+prima\s+possibile|all'alba)\b/.test(t)                                                                                                                    // IT
+  if (!r.depart_time_pref && isEarlyMorning) { r.depart_time_pref = 'early_morning'; return r }
+
+  const isMorning =
+    /\b(?:morning\s+(?:flight|departure|dep)|depart(?:ing|ure)?\s+(?:in\s+the\s+)?morning|leaving?\s+(?:in\s+the\s+)?morning|fly(?:ing)?\s+(?:in\s+the\s+)?morning|morning\s+dep)\b/.test(t) ||     // EN
+    /\b(?:morgenflug|morgens?\s+(?:abfliegen|fliegen|starten)|abflug\s+(?:am\s+morgen|morgens?))\b/.test(t) ||                                                                                       // DE
+    /\b(?:vuelo\s+(?:de\s+mañana|matutino|por\s+la\s+mañana)|salir\s+(?:por\s+la\s+)?mañana|vuelo\s+mañana)\b/.test(t) ||                                                                           // ES
+    /\b(?:vol\s+du\s+matin|partir\s+(?:le\s+)?matin|d[eé]coller\s+(?:le\s+)?matin|d[eé]part\s+(?:le\s+)?matin)\b/.test(t) ||                                                                       // FR
+    /\b(?:volo\s+(?:del\s+)?mattino|partire\s+(?:di\s+)?mattina|decollo\s+(?:di\s+)?mattina)\b/.test(t) ||                                                                                          // IT
+    /\b(?:ochtendvlucht|['s]\s*ochtends?\s+(?:vliegen|vertrekken)|vertrek\s+['s]\s*ochtends?)\b/.test(t) ||                                                                                          // NL
+    /\b(?:poranny\s+lot|rano\s+lecieć|lot\s+rano|rano\s+wylot)\b/.test(t) ||                                                                                                                         // PL
+    /\b(?:voo\s+(?:da\s+manhã|matinal)|partir\s+(?:de\s+)?manhã|decolagem\s+de\s+manhã)\b/.test(t) ||                                                                                                // PT
+    /\b(?:morgonflyg|flyga\s+(?:p[åa]\s+morgonen|på\s+fm)|avresa\s+p[åa]\s+morgonen)\b/.test(t) ||                                                                                                   // SV
+    /\b(?:jutarnji\s+let|ujutro\s+letjeti|jutarnji\s+polazak)\b/.test(t)                                                                                                                             // HR
+  if (!r.depart_time_pref && isMorning) { r.depart_time_pref = 'morning'; return r }
+
+  const isAfternoon =
+    /\b(?:afternoon\s+(?:flight|departure)|depart(?:ing|ure)?\s+(?:in\s+the\s+)?afternoon|leaving?\s+(?:in\s+the\s+)?afternoon|fly(?:ing)?\s+(?:in\s+the\s+)?afternoon)\b/.test(t) ||              // EN
+    /\b(?:nachmittagsflug|nachmittags?\s+(?:fliegen|abfliegen)|abflug\s+(?:am\s+nachmittag|nachmittags?))\b/.test(t) ||                                                                              // DE
+    /\b(?:vuelo\s+(?:de\s+tarde|por\s+la\s+tarde)|salir\s+(?:por\s+la\s+)?tarde)\b/.test(t) ||                                                                                                       // ES
+    /\b(?:vol\s+(?:de\s+l[''])?apr[eè]s[-\s]midi|partir\s+(?:l['']|en\s+)?apr[eè]s[-\s]midi)\b/.test(t) ||                                                                                          // FR
+    /\b(?:volo\s+(?:del\s+)?pomeriggio|partire\s+(?:di\s+)?pomeriggio)\b/.test(t) ||                                                                                                                 // IT
+    /\b(?:middagvlucht|['s]\s*middags?\s+(?:vliegen|vertrekken))\b/.test(t)                                                                                                                          // NL
+  if (!r.depart_time_pref && isAfternoon) { r.depart_time_pref = 'afternoon'; return r }
+
+  const isEvening =
+    /\b(?:evening\s+(?:flight|departure)|depart(?:ing|ure)?\s+(?:in\s+the\s+)?evening|leaving?\s+(?:in\s+the\s+)?evening|fly(?:ing)?\s+(?:in\s+the\s+)?evening|night\s+departure)\b/.test(t) ||   // EN
+    /\b(?:abendflug|abends?\s+(?:fliegen|abfliegen)|abflug\s+(?:am\s+abend|abends?))\b/.test(t) ||                                                                                                   // DE
+    /\b(?:vuelo\s+(?:de\s+(?:tarde|noche)|vespertino|nocturno)|salir\s+(?:por\s+la\s+)?(?:tarde|noche))\b/.test(t) ||                                                                               // ES
+    /\b(?:vol\s+(?:du\s+soir|de\s+nuit)|partir\s+(?:le\s+)?soir)\b/.test(t) ||                                                                                                                       // FR
+    /\b(?:volo\s+(?:serale|di\s+sera|notturno)|partire\s+(?:di\s+)?sera)\b/.test(t) ||                                                                                                               // IT
+    /\b(?:avondvlucht|['s]\s*avonds?\s+(?:vliegen|vertrekken))\b/.test(t)                                                                                                                            // NL
+  if (!r.depart_time_pref && isEvening) { r.depart_time_pref = 'evening'; return r }
+
+  // Specific time clues: "after 2pm", "before noon" — EN + DE/ES/FR
+  if (!r.depart_time_pref) {
+    const afterM = t.match(/\b(?:departing?|leaving?|flying?|ab(?:flug)?(?:\s+um)?)\s+after\s+(\d{1,2})(?::?\d{0,2})?\s*(am|pm|uhr)?\b/) ??
+                   t.match(/\bnach\s+(\d{1,2})\s*(?:uhr|h)\b/)
+    if (afterM) {
+      const h = parseInt(afterM[1]) + (afterM[2] === 'pm' && parseInt(afterM[1]) < 12 ? 12 : 0)
+      if (h >= 18) r.depart_time_pref = 'evening'
+      else if (h >= 12) r.depart_time_pref = 'afternoon'
+      else r.depart_time_pref = 'morning'
+    }
+    const beforeM = t.match(/\b(?:departing?|leaving?|flying?)\s+before\s+(\d{1,2})(?::?\d{0,2})?\s*(am|pm)?\b/) ??
+                    t.match(/\bvor\s+(\d{1,2})\s*(?:uhr|h)\b/)
+    if (beforeM) {
+      const h = parseInt(beforeM[1]) + (beforeM[2] === 'pm' && parseInt(beforeM[1]) < 12 ? 12 : 0)
+      if (h <= 9) r.depart_time_pref = 'early_morning'
+      else if (h <= 14) r.depart_time_pref = 'morning'
+      else r.depart_time_pref = 'afternoon'
+    }
+  }
+
+  return r
+}
+
+// ── Trip purpose / occasion extraction ────────────────────────────────────────
+function extractTripPurpose(text: string): ParsedQuery['trip_purpose'] {
+  const t = stripAccents(text.toLowerCase())
+
+  // ── Honeymoon / romantic ────────────────────────────────────────────────────
+  if (
+    /\b(?:honeymoon|romantic\s+(?:trip|getaway|holiday|escape|flight|vacation)|anniversary\s+(?:trip|holiday|vacation))\b/.test(t) ||
+    /\b(?:flitterwochen|hochzeitsreise|romantische\s+(?:reise|trip|urlaub))\b/.test(t) ||         // DE
+    /\b(?:luna\s+de\s+miel|viaje\s+(?:rom[aá]ntico|de\s+novios))\b/.test(t) ||                    // ES
+    /\b(?:lune\s+de\s+miel|voyage\s+(?:romantique|de\s+noces))\b/.test(t) ||                       // FR
+    /\b(?:luna\s+di\s+miele|viaggio\s+(?:romantico|di\s+nozze))\b/.test(t) ||                      // IT
+    /\b(?:huwelijksreis|wittebroodsweken|romantische\s+reis)\b/.test(t) ||                          // NL
+    /\b(?:miodowy\s+miesi[ąa]c|podr[oó][zż]\s+po[śs]lubna)\b/.test(t) ||                          // PL
+    /\b(?:lua\s+de\s+mel|viagem\s+(?:rom[aâ]ntica|de\s+n[uú]pcias))\b/.test(t) ||                 // PT
+    /\b(?:smekmånad|bröllopsresa|romantisk\s+resa)\b/.test(t) ||                                   // SV
+    /\b(?:medeni\s+mjesec|romantično\s+putovanje|bračno\s+putovanje)\b/.test(t) ||                 // HR
+    /\b(?:muaja\s+e\s+mjaltit|udh[eë]tim\s+romantik)\b/.test(t)                                    // SQ
+  ) return 'honeymoon'
+
+  // ── Business / work ─────────────────────────────────────────────────────────
+  if (
+    /\b(?:(?:for\s+(?:a\s+)?)?business\s+(?:trip|travel|meeting|conference|summit|event|flight)|work\s+trip|for\s+work|corporate\s+travel|client\s+meeting|on\s+business)\b/.test(t) ||
+    /\b(?:gesch[äa]ftsreise|dienstreise|gesch[äa]ftlich|konferenzreise|dienst(?:reise|lich))\b/.test(t) ||   // DE
+    /\b(?:viaje\s+de\s+negocios|por\s+(?:trabajo|negocios)|congreso\s+(?:profesional)?)\b/.test(t) ||         // ES
+    /\b(?:voyage\s+d['']affaires|d[eé]placement\s+professionnel|conf[eé]rence\s+professionnelle)\b/.test(t) || // FR
+    /\b(?:viaggio\s+d['']affari|per\s+(?:lavoro|affari)|trasferta\s+(?:di\s+lavoro)?)\b/.test(t) ||           // IT
+    /\b(?:zakenreis|zakelijk|voor\s+(?:het\s+)?werk|zakenvlucht)\b/.test(t) ||                                 // NL
+    /\b(?:podr[oó][zż]\s+s[lł]u[zż]bowa|w\s+celach?\s+s[lł]u[zż]bowych|delegacja)\b/.test(t) ||             // PL
+    /\b(?:viagem\s+de\s+neg[oó]cios|a\s+(?:trabalho|neg[oó]cios)|corporativo)\b/.test(t) ||                   // PT
+    /\b(?:aff[äa]rsresa|tj[äa]nsteresa|f[oö]r\s+jobbet)\b/.test(t) ||                                         // SV
+    /\b(?:poslovno\s+putovanje|slu[žz]beno\s+putovanje|zbog\s+posla)\b/.test(t) ||                             // HR
+    /\b(?:udh[eë]tim\s+(?:biznesi|pune)|p[eë]r\s+pun[eë])\b/.test(t)                                          // SQ
+  ) return 'business'
+
+  // ── Ski ─────────────────────────────────────────────────────────────────────
+  if (
+    /\b(?:ski(?:ing)?\s+(?:trip|holiday|vacation|break|resort)|to\s+(?:go\s+)?ski(?:ing)?|snowboarding?\s+(?:trip|holiday)|ski\s+season|ski\s+slopes|on\s+the\s+piste)\b/.test(t) ||
+    /\b(?:skiurlaub|skifahren|skigebiet|schireise|schnee(?:urlaub|reise)?|wintersport(?:urlaub)?)\b/.test(t) || // DE
+    /\b(?:vacaciones\s+de\s+esqu[ií]|esqu[ií](?:ar)?|estaci[oó]n\s+de\s+esqu[ií]|nieve\s+(?:trip|viaje))\b/.test(t) || // ES
+    /\b(?:vacances\s+(?:au\s+ski|à\s+la\s+montagne|de\s+ski)|ski(?:er)?|station\s+de\s+ski)\b/.test(t) ||     // FR
+    /\b(?:vacanze\s+sulla\s+neve|sciare|impianto\s+sciistico|ski(?:\s+(?:trip|holiday))?)\b/.test(t) ||         // IT
+    /\b(?:skivakantie|skiën|skigebied|wintersport)\b/.test(t) ||                                                // NL
+    /\b(?:wyjazd\s+narciarski|narty|na\s+narty|narciarstwo)\b/.test(t) ||                                       // PL
+    /\b(?:f[eé]rias\s+de\s+esqu[ií]|esquiar|estância\s+de\s+esqui)\b/.test(t) ||                              // PT
+    /\b(?:skidsemester|åka\s+skidor|ski(?:resa)?)\b/.test(t) ||                                                 // SV
+    /\b(?:skijanje|zimovanje|ski\s+(?:odmoralište|putovanje)|na\s+skijanje)\b/.test(t) ||                       // HR
+    /\b(?:pushime\s+ski|ski(?:m)?|borë\s+(?:pushime|udh[eë]tim))\b/.test(t)                                    // SQ
+  ) return 'ski'
+
+  // ── Beach / sun ─────────────────────────────────────────────────────────────
+  if (
+    /\b(?:beach\s+(?:trip|holiday|vacation|getaway|break)|sun\s+(?:holiday|vacation|trip|break)|to\s+the\s+beach|beach\s+destination|sun(?:bathing|shine)?\s+(?:trip|holiday)|all\s+inclusive|pool\s+holiday)\b/.test(t) ||
+    /\b(?:strandurlaub|badeurlaub|am\s+strand|sonnenurlaub|strand(?:reise|urlaub)?|mittelmeerurlaub)\b/.test(t) || // DE
+    /\b(?:vacaciones\s+en\s+(?:la\s+)?playa|a\s+la\s+playa|viaje\s+(?:de\s+sol\s+y\s+playa|a\s+la\s+playa|de\s+playa)|turismo\s+de\s+sol)\b/.test(t) || // ES
+    /\b(?:vacances\s+(?:à\s+la\s+plage|bain[eé]es?|au\s+soleil)|balnéaire|mer\s+(?:et\s+soleil)?)\b/.test(t) || // FR
+    /\b(?:vacanze\s+al\s+mare|in\s+spiaggia|al\s+sole|mare\s+(?:e\s+sole)?|villeggiatura\s+balneare)\b/.test(t) || // IT
+    /\b(?:strandvakantie|zon(?:vakantie|neholiday)?|aan\s+het\s+strand|mediterraan\s+vakantie)\b/.test(t) ||     // NL
+    /\b(?:wyjazd\s+(?:nad\s+morze|plażowy|słoneczny)|nad\s+morze)\b/.test(t) ||                                 // PL
+    /\b(?:f[eé]rias\s+na\s+praia|praia|sol\s+e\s+praia|destino\s+de\s+praia)\b/.test(t) ||                     // PT
+    /\b(?:strandsemester|sol(?:resa)?|till\s+stranden|semester\s+vid\s+havet)\b/.test(t) ||                     // SV
+    /\b(?:odmor\s+(?:na\s+plaži|uz\s+more|na\s+moru)|ljetovanje|uz\s+more)\b/.test(t) ||                       // HR
+    /\b(?:pushime\s+(?:plazhi|deti|diellit)|plazh(?:i)?)\b/.test(t)                                            // SQ
+  ) return 'beach'
+
+  // ── City break / short trip ───────────────────────────────────────────────
+  if (
+    /\b(?:city\s+break|weekend\s+(?:break|trip|getaway|away)|short\s+(?:break|trip|hop)|long\s+weekend\s+(?:trip|away)|quick\s+(?:trip|getaway|visit|break)|sightseeing\s+trip|cultural\s+(?:trip|tour)|mini\s+(?:break|vacation|trip))\b/.test(t) ||
+    /\b(?:st[äa]dtereise|kurztrip|kurzreise|wochenendreise|mini(?:urlaub|trip)|besichtigung\s+trip)\b/.test(t) || // DE
+    /\b(?:escapada|(?:viaje\s+de\s+)?fin\s+de\s+semana|visita\s+(?:a\s+la\s+)?ciudad|turismo\s+urbano)\b/.test(t) || // ES
+    /\b(?:escapade\s+(?:urbaine|en\s+ville)?|city\s+break|week-end\s+(?:à|en)|visite\s+de\s+la\s+ville)\b/.test(t) || // FR
+    /\b(?:city\s+break|weekend\s+(?:breve|fuori\s+porta)|gita\s+(?:in\s+città|breve)|turismo\s+urbano)\b/.test(t) || // IT
+    /\b(?:stedentrip|city\s+trip|weekendje?\s+(?:weg|op\s+pad)|kort\s+uitstapje)\b/.test(t) ||                 // NL
+    /\b(?:city\s+break|wypad\s+(?:do\s+miasta|weekendowy)|weekendowy?\s+wyjazd)\b/.test(t) ||                  // PL
+    /\b(?:escapada|fim\s+de\s+semana\s+(?:fora|na\s+cidade)|visita\s+(?:à\s+)?cidade)\b/.test(t) ||           // PT
+    /\b(?:stadsresa|weekendresa|city\s+break|kort\s+resa)\b/.test(t) ||                                        // SV
+    /\b(?:gradski\s+(?:odmor|izlet)|kratki\s+(?:odmor|izlet)|vikend\s+putovanje)\b/.test(t) ||                 // HR
+    /\b(?:udh[eë]tim\s+(?:qyteti|i\s+shkurt)|fundjavë\s+(?:udhëtim|jashtë))\b/.test(t)                       // SQ
+  ) return 'city_break'
+
+  // ── Family holiday ────────────────────────────────────────────────────────
+  if (
+    /\b(?:family\s+(?:trip|holiday|vacation|break|getaway|time)|with\s+(?:the\s+)?(?:kids?|children|family)|taking\s+(?:the\s+)?(?:kids?|children)|travelling\s+with\s+(?:kids?|children|family))\b/.test(t) ||
+    /\b(?:familienurlaub|familienreise|mit\s+(?:den\s+)?kindern?|mit\s+(?:der\s+)?familie)\b/.test(t) ||      // DE
+    /\b(?:vacaciones\s+(?:familiares|en\s+familia)|viaje\s+familiar|con\s+(?:los\s+)?ni[ñn]os?)\b/.test(t) || // ES
+    /\b(?:vacances\s+en\s+famille|voyage\s+familial|avec\s+(?:les\s+)?enfants?)\b/.test(t) ||                  // FR
+    /\b(?:vacanza\s+(?:in\s+famiglia|familiare)|vacanza\s+con\s+bambini)\b/.test(t) ||                          // IT
+    /\b(?:gezinsvakantie|gezinsreis|met\s+(?:de\s+)?kinderen)\b/.test(t) ||                                    // NL
+    /\b(?:wakacje\s+rodzinne|wyjazd\s+rodzinny|z\s+(?:dzie[cć]mi|rodzin[ąa]))\b/.test(t) ||                  // PL
+    /\b(?:f[eé]rias\s+(?:em\s+família|familiares)|viagem\s+(?:familiar|em\s+família))\b/.test(t) ||           // PT
+    /\b(?:familjesemester|familjeresa|med\s+(?:barnen?|familjen))\b/.test(t) ||                                // SV
+    /\b(?:obiteljski\s+odmor|obiteljsko\s+putovanje|s\s+(?:djecom|obitelju))\b/.test(t) ||                    // HR
+    /\b(?:pushime\s+familjare|udh[eë]tim\s+familjar|me\s+f[eë]mij[eë])\b/.test(t)                            // SQ
+  ) return 'family_holiday'
+
+  // ── Graduation / education milestone ─────────────────────────────────────
+  if (
+    /\b(?:graduation\s+(?:trip|gift|present|holiday|celebration)|after\s+(?:graduation|finishing\s+(?:uni|university|college|school))|end\s+of\s+(?:uni|university|college|exams)|gap\s+year|erasmus|study\s+abroad|language\s+(?:course|school))\b/.test(t) ||
+    /\b(?:abschlussreise|abiturreise|nach\s+dem\s+(?:abschluss|abitur|studium))\b/.test(t) ||
+    /\b(?:viaje\s+de\s+graduaci[oó]n|erasmus|año\s+sabático|intercambio\s+estudiantil)\b/.test(t) ||
+    /\b(?:voyage\s+de\s+fin\s+d['']études|erasmus|année\s+sabbatique)\b/.test(t) ||
+    /\b(?:viaggio\s+di\s+laurea|erasmus|anno\s+sabbatico)\b/.test(t)
+  ) return 'graduation'
+
+  // ── Concert / festival ────────────────────────────────────────────────────
+  if (
+    /\b(?:for\s+(?:a\s+)?(?:concert|festival|gig|music\s+festival|show|event)|concert\s+(?:trip|travel)|festival\s+(?:trip|travel)|to\s+(?:see|watch)\s+.{0,30}(?:concert|festival|perform))\b/.test(t) ||
+    /\b(?:konzertreise|festival(?:reise)?|zur\s+(?:konzert|veranstaltung))\b/.test(t) ||
+    /\b(?:viaje\s+(?:al?\s+)?(?:concierto|festival)|para\s+(?:ver\s+(?:un|al?))\s+(?:concierto|festival))\b/.test(t)
+  ) return 'concert_festival'
+
+  // ── Sports event ──────────────────────────────────────────────────────────
+  if (
+    /\b(?:for\s+(?:the\s+)?(?:match|game|tournament|world\s+cup|olympics?|euro\s+(?:\d{4})?|championship)|sports?\s+(?:trip|event|travel)|to\s+(?:see|watch)\s+.{0,30}(?:play|match|game))\b/.test(t) ||
+    /\b(?:sportreise|sportevent|zum\s+(?:spiel|turnier|finale))\b/.test(t) ||
+    /\b(?:viaje\s+deportivo|para\s+(?:ver\s+)?(?:el\s+)?(?:partido|torneo|mundial))\b/.test(t)
+  ) return 'sports_event'
+
+  // ── Spring break ──────────────────────────────────────────────────────────
+  if (/\b(?:spring\s+break|spring\s+break\s+trip|frühlingspause|vacaciones\s+de\s+primavera|vacances\s+de\s+printemps)\b/.test(t)) return 'spring_break'
+
+  return undefined
+}
+
+// ── Seat preference extraction ─────────────────────────────────────────────────
+function extractSeatPref(text: string): ParsedQuery['seat_pref'] {
+  const t = stripAccents(text.toLowerCase())
+
+  // Extra legroom — all languages
+  if (
+    /\b(?:extra\s+leg(?:s?\s+)?room|exit\s+row|bulkhead\s+seat|more\s+legroom|leg\s+room|extra\s+space)\b/.test(t) ||
+    /\b(?:mehr\s+beinfreiheit|sitzplatz\s+mit\s+mehr\s+platz|notsitzreihe|extralegroom)\b/.test(t) ||      // DE
+    /\b(?:m[aá]s\s+espacio\s+para\s+las\s+piernas|asiento\s+con\s+m[aá]s\s+espacio|fila\s+de\s+emergencia)\b/.test(t) || // ES
+    /\b(?:plus\s+d['']espace\s+pour\s+les\s+jambes|si[eè]ge\s+avec\s+plus\s+d['']espace|rang[eé]e\s+de\s+sortie)\b/.test(t) || // FR
+    /\b(?:pi[uù]\s+spazio\s+per\s+le\s+gambe|sedile\s+con\s+pi[uù]\s+spazio|fila\s+di\s+emergenza)\b/.test(t) || // IT
+    /\b(?:meer\s+beenruimte|stoel\s+met\s+meer\s+ruimte|nooduitgang\s+rij)\b/.test(t) ||                   // NL
+    /\b(?:wi[eę]cej\s+miejsca\s+na\s+nogi|siedzenie\s+z\s+wi[eę]kszym\s+miejscem|rz[aą]d\s+awaryjny)\b/.test(t) || // PL
+    /\b(?:mais\s+espa[çc]o\s+para\s+as\s+pernas|assento\s+com\s+mais\s+espa[çc]o|fila\s+de\s+emerg[eê]ncia)\b/.test(t) // PT
+  ) return 'extra_legroom'
+
+  // Window seat — all languages
+  if (
+    /\b(?:window\s+seat|(?:sitting?|seat)\s+by\s+(?:the\s+)?window|window\s+side)\b/.test(t) ||
+    /\b(?:fensterplatz|sitzplatz\s+am\s+fenster|am\s+fenster\s+sitzen)\b/.test(t) ||                       // DE
+    /\b(?:asiento\s+(?:de\s+)?ventana|(?:asiento\s+)?al\s+lado\s+de\s+la\s+ventana|ventanilla)\b/.test(t) || // ES
+    /\b(?:si[eè]ge\s+(?:c[oô]t[eé]\s+)?fen[eê]tre|place\s+(?:c[oô]t[eé]\s+)?fen[eê]tre|côt[eé]\s+fen[eê]tre)\b/.test(t) || // FR
+    /\b(?:posto\s+(?:al\s+)?finestrino|sedile\s+(?:al\s+)?finestrino|lato\s+finestrino)\b/.test(t) ||     // IT
+    /\b(?:raamstoel|stoel\s+(?:bij\s+(?:het\s+)?raam|aan\s+(?:het\s+)?raam)|raamkant)\b/.test(t) ||       // NL
+    /\b(?:miejsce\s+przy\s+oknie|siedzenie\s+przy\s+oknie)\b/.test(t) ||                                   // PL
+    /\b(?:assento\s+(?:da\s+)?janela|lugar\s+(?:na\s+)?janela)\b/.test(t)                                  // PT
+  ) return 'window'
+
+  // Aisle seat — all languages
+  if (
+    /\b(?:aisle\s+seat|(?:sitting?|seat)\s+(?:on\s+|by\s+)?(?:the\s+)?aisle|aisle\s+side)\b/.test(t) ||
+    /\b(?:gangplatz|sitzplatz\s+am\s+gang|am\s+gang\s+sitzen)\b/.test(t) ||                                // DE
+    /\b(?:asiento\s+(?:de\s+)?pasillo|(?:asiento\s+)?en\s+(?:el\s+)?pasillo|pasillo)\b/.test(t) ||        // ES
+    /\b(?:si[eè]ge\s+(?:c[oô]t[eé]\s+)?couloir|place\s+(?:c[oô]t[eé]\s+)?couloir|c[oô]t[eé]\s+couloir)\b/.test(t) || // FR
+    /\b(?:posto\s+(?:al\s+)?corridoio|sedile\s+(?:al\s+)?corridoio|lato\s+corridoio)\b/.test(t) ||        // IT
+    /\b(?:gangstoel|stoel\s+(?:bij\s+(?:het\s+)?gangpad|aan\s+(?:het\s+)?gangpad)|gangkant)\b/.test(t) || // NL
+    /\b(?:miejsce\s+przy\s+przej[śs]ciu|siedzenie\s+przy\s+korytarzu)\b/.test(t) ||                       // PL
+    /\b(?:assento\s+(?:do\s+)?corredor|lugar\s+(?:no\s+)?corredor)\b/.test(t)                              // PT
+  ) return 'aisle'
+
+  return undefined
+}
+
+// ── Airline preference / exclusion extraction ──────────────────────────────────
+// Matches 60+ carriers in natural phrases: "on Ryanair", "with BA", "avoid easyJet"
+const _AIRLINE_RE = /\b(?:ryanair|ryanair\s+uk|easyjet(?:\s+europe)?|wizz(?:\s+air)?(?:\s+(?:uk|abu\s+dhabi|ukraine))?|norwegian|vueling|transavia|british\s+airways?|lufthansa|air\s+france|klm|iberia|tap|alitalia|ita\s+airways?|swiss(?:\s+air(?:lines?)?)?|austrian(?:\s+airlines?)?|brussels\s+airlines?|turkish\s+airlines?|pegasus(?:\s+airlines?)?|sunexpress|jet2|tui(?:\s+fly)?|condor|corendon|flydubai|flynas|air\s+arabia|airasia(?:\s+x)?|airasiax|scoot|lion\s+air|batik\s+air|cebu\s+pacific|jetstar(?:\s+(?:asia|pacific))?|qantas|virgin\s+australia|air\s+new\s+zealand|westjet|air\s+canada|southwest|delta|united(?:\s+airlines?)?|american(?:\s+airlines?)?|jetblue|frontier(?:\s+airlines?)?|spirit(?:\s+airlines?)?|allegiant(?:\s+air)?|sun\s+country|air\s+transat|volaris|vivaaerobus|aerom[eé]xico|latam(?:\s+airlines?)?|gol|azul|copa(?:\s+airlines?)?|avianca|sky\s+airline|jetsmart|indigo|indigo\s+india|spicejet|air\s+india|vistara|go\s+first|emirates|etihad(?:\s+airways?)?|qatar\s+airways?|saudia|flyadeal|aeroflot|ukraine\s+international|air\s+serbia|air\s+cairo|air\s+europa|volotea|binter|lot(?:\s+polish\s+airlines?)?|tarom|loganair|flybe|eastern\s+airways?|ba\b|ua\b|aa\b|dl\b|fr\b|u2\b|w6\b|dy\b|vy\b)\b/i
+
+function extractAirlinePreference(text: string): { preferred?: string; excluded?: string } {
+  const t = text.toLowerCase()
+  const r: { preferred?: string; excluded?: string } = {}
+
+  // Preferred: "on Ryanair", "with BA", "fly with Emirates", "preferably British Airways"
+  const prefM = t.match(new RegExp(
+    `\\b(?:on|with|fly(?:ing)?\\s+with|travel(?:l?ing)?\\s+with|prefer(?:ably)?(?:\\s+(?:on|with))?|(?:book(?:ing)?|travel(?:l?ing)?)\\s+with)\\s+(${_AIRLINE_RE.source})`, 'i',
+  ))
+  if (prefM) r.preferred = prefM[1].trim().toLowerCase()
+
+  // Excluded: "not Ryanair", "avoid easyJet", "no Ryanair flights", "not flying with easyJet"
+  const exclM = t.match(new RegExp(
+    `\\b(?:not(?:\\s+(?:on|with))?|avoid|no|not\\s+flying?(?:\\s+with)?|excluding?|without|skip(?:ping)?)\\s+(${_AIRLINE_RE.source})`, 'i',
+  ))
+  if (exclM) r.excluded = exclM[1].trim().toLowerCase()
+
+  return r
+}
+
+// ── Urgency extraction ─────────────────────────────────────────────────────────
+function extractUrgency(text: string): ParsedQuery['urgency'] {
+  const t = stripAccents(text.toLowerCase())
+
+  // ASAP — all languages
+  if (
+    /\b(?:asap|as\s+soon\s+as\s+possible|earliest\s+(?:possible\s+)?(?:flight|option)|first\s+(?:available|possible)\s+flight|right\s+away|immediately)\b/.test(t) ||
+    /\b(?:so\s+schnell\s+wie\s+m[öo]glich|sofort|schnellstm[öo]glich|fr[üu]hester\s+(?:flug|termin))\b/.test(t) ||                   // DE
+    /\b(?:lo\s+antes\s+posible|cuanto\s+antes|inmediatamente|urgente(?:mente)?)\b/.test(t) ||                                          // ES
+    /\b(?:le\s+plus\s+t[oô]t\s+possible|d[eè]s\s+que\s+possible|imm[eé]diatement|urgemment)\b/.test(t) ||                            // FR
+    /\b(?:il\s+prima\s+possibile|subito|immediatamente|urgentemente)\b/.test(t) ||                                                      // IT
+    /\b(?:zo\s+snel\s+mogelijk|onmiddellijk|zo\s+vroeg\s+mogelijk|met\s+spoed)\b/.test(t) ||                                           // NL
+    /\b(?:jak\s+najszybciej|natychmiast|niezw[lł]ocznie|pilnie)\b/.test(t) ||                                                          // PL
+    /\b(?:o\s+mais\s+cedo\s+poss[ií]vel|imediatamente|urgentemente)\b/.test(t) ||                                                      // PT
+    /\b(?:s[åa]\s+snart\s+som\s+m[öo]jligt|omedelbart|genast)\b/.test(t) ||                                                           // SV
+    /\b(?:sto\s+prije\s+mogu[cć]e|odmah|hitno)\b/.test(t) ||                                                                          // HR
+    /\b(?:sa\s+shpejt\s+sa\s+[eë]sht[eë]\s+e\s+mundur|menjëherë|urgjentisht)\b/.test(t)                                              // SQ
+  ) return 'asap'
+
+  // Last minute — all languages
+  if (
+    /\b(?:last[- ]?minute|tonight|today|right\s+now|this\s+(?:evening|afternoon|morning|weekend|week)|urgent(?:ly)?|tomorrow)\b/.test(t) ||
+    /\b(?:kurzfristig|heute|morgen|sofort|dringend|last[- ]?minute|heute\s+(?:abend|nacht|noch)|morgen\s+früh)\b/.test(t) ||          // DE
+    /\b(?:last\s+minute|hoy|ma[nñ]ana|esta\s+(?:noche|tarde|mañana|semana)|urgente|para\s+hoy)\b/.test(t) ||                         // ES
+    /\b(?:last\s+minute|aujourd['']hui|demain|ce\s+soir|cet\s+apr[eè]s[-\s]midi|cette\s+(?:semaine|nuit)|urgent)\b/.test(t) ||        // FR
+    /\b(?:last\s+minute|oggi|domani|stasera|questa\s+(?:sera|mattina|settimana)|urgente)\b/.test(t) ||                                 // IT
+    /\b(?:last\s+minute|vandaag|morgen|vanavond|deze\s+(?:avond|week)|dringend|snel)\b/.test(t) ||                                    // NL
+    /\b(?:last\s+minute|dzisiaj|jutro|tej\s+nocy|tego\s+wieczoru|w\s+tym\s+tygodniu|pilne)\b/.test(t) ||                              // PL
+    /\b(?:last\s+minute|hoje|amanhã|esta\s+(?:noite|tarde|semana)|urgente|para\s+hoje)\b/.test(t) ||                                  // PT
+    /\b(?:last\s+minute|idag|imorgon|ikv[äa]ll|den\s+h[äa]r\s+veckan|brådskande)\b/.test(t) ||                                       // SV
+    /\b(?:last\s+minute|danas|sutra|ve[čc]eras|ovog\s+tjedna|hitno|u\s+zadnji\s+[čc]as)\b/.test(t) ||                               // HR
+    /\b(?:last\s+minute|sot|nes[eë]r|kur\s+m[uë]\s+m[uë]ndohet|urg[eë]ntisht|pr\s+kët[eë]\s+jav[eë])\b/.test(t)                    // SQ
+  ) return 'last_minute'
+
+  return undefined
+}
+
+// ── Best-window detection ──────────────────────────────────────────────────────
+// Explicit: "cheapest week in June", "best time in July", "find the best window in August"
+// Implicit: date_month_only=true + min_trip_days set → triggered in parseNLQuery after date parsing
+interface BestWindowResult {
+  find_best_window: boolean
+  date_window_month?: number
+  date_window_year?: number
+}
+
+function extractExplicitBestWindow(text: string): BestWindowResult {
+  const t = stripAccents(text.toLowerCase())
+  const r: BestWindowResult = { find_best_window: false }
+
+  // ── "cheapest week in June 2026", "best time to go in August" — EN ────────
+  const m = t.match(/\b(?:cheapest|best|optimal|find(?:\s+the)?\s+(?:cheapest|best)|good\s+(?:time|window|week|dates?))\s+(?:(?:time|week|window|period|dates?)\s+)?(?:to\s+(?:go|fly|travel|visit)?\s*)?(?:in|during|for)\s+([a-z]{3,}(?:\s+[a-z]{3,})?)(?:\s+(\d{4}))?\b/i)
+  if (m) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(m[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+    if (m[2]) r.date_window_year = parseInt(m[2])
+  }
+
+  // ── "when is it cheapest", "what's the cheapest time" — EN ───────────────
+  if (/\b(?:when(?:\s+is\s+(?:it\s+)?)?(?:cheapest|best|cheapest\s+to\s+fly)|what(?:'s|\s+is)\s+the\s+(?:cheapest|best)\s+(?:week|time|day|date)|find\s+(?:the\s+)?(?:cheapest|best)\s+(?:dates?|week|time))\b/i.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── DE: "günstigste Woche in Juni", "wann ist es am günstigsten" ──────────
+  const deM = t.match(/\b(?:g[uü]nstigste[rn]?\s+(?:woche|zeitraum|flug|ticket)|beste[rn]?\s+(?:woche|zeitraum|preis))\s+(?:in|im|f[üu]r)\s+([a-zäöüß]{3,}(?:\s+[a-zäöüß]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (deM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(deM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+    if (deM[2]) r.date_window_year = parseInt(deM[2])
+  }
+  if (/\b(?:wann\s+ist\s+es\s+am\s+g[uü]nstigsten|wann\s+sind\s+fl[üu]ge\s+am\s+billigsten|wann\s+ist\s+der\s+beste\s+zeitpunkt)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── ES: "semana más barata en julio", "cuándo es más barato" ─────────────
+  const esM = t.match(/\b(?:semana\s+m[aá]s\s+barata?|mejor\s+(?:semana|momento|época|época)\s+(?:para\s+volar)?)\s+en\s+([a-záéíóúüñ]{3,}(?:\s+[a-záéíóúüñ]{3,})?)(?:\s+(?:de\s+)?(\d{4}))?\b/)
+  if (esM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(esM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:cu[aá]ndo\s+es\s+m[aá]s\s+barato|cu[aá]ndo\s+es\s+(?:el\s+)?mejor\s+momento|cu[aá]ndo\s+est[aá]n\s+(?:los\s+)?vuelos\s+m[aá]s\s+baratos)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── FR: "semaine la moins chère en juillet", "quand c'est le moins cher" ──
+  const frM = t.match(/\b(?:semaine\s+(?:la\s+)?moins\s+ch[eè]re?|meilleure?\s+(?:semaine|p[eé]riode|moment))\s+en\s+([a-zàâéèêëîïôùûüç]{3,}(?:\s+[a-zàâéèêëîïôùûüç]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (frM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(frM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:quand\s+(?:c['']est|est[-\s]il)\s+(?:le\s+)?moins\s+cher|quand\s+sont\s+les\s+vols\s+(?:les\s+)?moins\s+chers?|quel(?:le)?\s+est\s+(?:la\s+)?meilleure\s+p[eé]riode)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── IT: "settimana più economica in agosto" ───────────────────────────────
+  const itM = t.match(/\b(?:settimana\s+pi[uù]\s+economica?|miglior(?:e)?\s+(?:settimana|periodo|momento))\s+(?:in|a|ad|di)\s+([a-záéíóúü]{3,}(?:\s+[a-záéíóúü]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (itM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(itM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:quando\s+[eè]\s+pi[uù]\s+economico|quando\s+conviene\s+(?:di\s+pi[uù]\s+)?volare|qual[eè]\s+(?:il\s+)?miglior\s+periodo)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── NL: "goedkoopste week in september" ───────────────────────────────────
+  const nlM = t.match(/\b(?:goedkoopste\s+(?:week|periode|moment)|beste\s+(?:week|periode|moment))\s+(?:in|voor)\s+([a-z]{3,}(?:\s+[a-z]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (nlM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(nlM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:wanneer\s+is\s+het\s+(?:het\s+)?goedkoopst|wanneer\s+zijn\s+vluchten\s+(?:het\s+)?goedkoopst|wat\s+is\s+de\s+beste\s+(?:week|periode))\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── PL: "najtańszy tydzień w październiku" ────────────────────────────────
+  const plM = t.match(/\b(?:najta[nń]szy\s+(?:tydzie[nń]|okres|lot)|najlepsz[ay]\s+(?:tydzie[nń]|termin))\s+w\s+([a-ząćęłńóśźż]{3,}(?:\s+[a-ząćęłńóśźż]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (plM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(plM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:kiedy\s+(?:jest\s+)?(?:najta[nń]iej|najlepiej)\s+(?:lecieć|polecieć)|kiedy\s+s[aą]\s+(?:najtańsze|najlepsze)\s+(?:loty|bilety))\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── PT: "semana mais barata em novembro" ──────────────────────────────────
+  const ptM = t.match(/\b(?:semana\s+mais\s+barata?|melhor\s+(?:semana|per[ií]odo|altura))\s+em\s+([a-záéíóúâêîôûàãõç]{3,}(?:\s+[a-záéíóúâêîôûàãõç]{3,})?)(?:\s+(?:de\s+)?(\d{4}))?\b/)
+  if (ptM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(ptM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:quando\s+[eé]\s+mais\s+barato|quando\s+est[aã]o\s+(?:os\s+)?voos\s+mais\s+baratos|qual\s+(?:a\s+)?melhor\s+(?:altura|per[ií]odo))\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── SV: "billigaste veckan i december" ────────────────────────────────────
+  const svM = t.match(/\b(?:billigaste\s+(?:veckan|perioden|flyget)|bästa\s+(?:veckan|perioden|tid))\s+i\s+([a-zåäö]{3,}(?:\s+[a-zåäö]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (svM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(svM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:när\s+[äa]r\s+det\s+(?:billigast|bäst)\s+att\s+flyga|när\s+[äa]r\s+flygbiljetterna\s+billigast)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── HR: "najjeftiniji tjedan u siječnju" ──────────────────────────────────
+  const hrM = t.match(/\b(?:najjeftiniji\s+(?:tjedan|period|let)|najbolji\s+(?:tjedan|period|termin))\s+u\s+([a-zčćžšđ]{3,}(?:\s+[a-zčćžšđ]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (hrM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(hrM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:kada\s+su\s+letovi\s+(?:najjeftiniji|najpovoljniji)|kada\s+je\s+(?:najjeftinije|najbolje)\s+letjeti)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  // ── SQ: "java më e lirë në shkurt" ───────────────────────────────────────
+  const sqM = t.match(/\b(?:java\s+m[eë]\s+e\s+lir[eë]|periudha\s+m[eë]\s+e\s+mir[eë])\s+n[eë]\s+([a-zëç]{3,}(?:\s+[a-zëç]{3,})?)(?:\s+(\d{4}))?\b/)
+  if (sqM) {
+    r.find_best_window = true
+    const mIdx = _matchMonthByName(sqM[1].trim())
+    if (mIdx !== null) r.date_window_month = mIdx + 1
+  }
+  if (/\b(?:kur[eë]?\s+[eë]sht[eë]\s+m[eë]\s+e\s+lir[eë]\s+t[eë]\s+fluturosh|kur[eë]?\s+jan[eë]\s+fluturimet\s+m[eë]\s+t[eë]\s+lira)\b/.test(t)) {
+    r.find_best_window = true
+  }
+
+  return r
+}
+
+// Shared month-name resolver (used by extractExplicitBestWindow)
+function _matchMonthByName(name: string): number | null {
+  const MAP: Record<string, number> = {
+    january:0, jan:0, janvier:0, januar:0, enero:0, gennaio:0, janeiro:0, januari:0,
+    february:1, feb:1, février:1, fevrier:1, februar:1, febrero:1, febbraio:1, fevereiro:1,
+    march:2, mar:2, mars:2, märz:2, maerz:2, marzo:2, março:2,
+    april:3, apr:3, avril:3, april2:3, abril:3, aprile:3,
+    may:4, mai:4, mayo:4, maggio:4, maio:4, maj:4,
+    june:5, jun:5, juin:5, juni:5, junio:5, giugno:5, junho:5,
+    july:6, jul:6, juillet:6, juli:6, julio:6, luglio:6, julho:6,
+    august:7, aug:7, août:7, aout:7, august2:7, agosto:7, augustus:7, augusti:7,
+    september:8, sep:8, septembre:8, setembro:8, settembre:8,
+    october:9, oct:9, octobre:9, oktober:9, octubre:9, ottobre:9, outubro:9,
+    november:10, nov:10, novembre:10,
+    december:11, dec:11, décembre:11, decembre:11, dezember:11, diciembre:11, dicembre:11, dezembro:11,
+  }
+  return MAP[stripAccents(name.toLowerCase())] ?? null
 }
 
 // ── Month names across all supported languages ────────────────────────────────
@@ -2335,7 +3208,7 @@ const RETURN_SPLIT_RE = new RegExp(
 )
 
 // ── Preposition/filler words before city names (all languages) ────────────────
-const ORIGIN_PREFIX_RE = /^(?:from|from the|fly|flight|book|find|cheap|cheapest|best|search|get me|show me|i want to fly|i want to go|i need to fly|i need to go|von|ab|von\s+|aus|desde|desde el|desde la|de|de\s+|depuis|depuis le|depuis la|da|da\s+|uit|van|vanaf|vanuit|z|ze|ze\s+|från|fran|iz|nga)\s+/i
+const ORIGIN_PREFIX_RE = /^(?:from|from the|fly|flight|flights?|a\s+flight|some\s+flights?|book|find|cheap|cheapest|best|search|get me|show me|i want to fly|i want to go|i need to fly|i need to go|i need (?:a |some )?(?:flights?|tickets?)|i want (?:a |some )?(?:flights?|tickets?)|looking for (?:a |some )?(?:flights?|tickets?)|tickets?|booking|von|ab|von\s+|aus|desde|desde el|desde la|de|de\s+|depuis|depuis le|depuis la|da|da\s+|uit|van|vanaf|vanuit|z|ze|ze\s+|från|fran|iz|nga)\s+/i
 const DEST_PREFIX_RE = /^(?:(?:to(?:\s+the)?|into|nach|in(?:\s+die|\s+den|\s+das)?|a|à|zu|para|til|naar|do|till|na|ne|drejt)\b|→|->|–|-)\s*/i
 
 // ── Route connector words / arrows (split origin from destination) ─────────────
@@ -2402,11 +3275,122 @@ function findTwoCitiesInText(
   return [ranges[0], ranges[1]]
 }
 
+// ── Pre-clean: strip conversational preambles in all supported languages ──────
+// Removes phrases like "Can you find me a flight", "Ich suche einen Flug", etc.
+// from the start of the query before route extraction. Also strips trailing
+// politeness suffixes ("please", "danke", etc.).
+function _preClean(raw: string): string {
+  // Order matters: longer/more specific patterns first so they match before shorter ones
+  const preambles: RegExp[] = [
+    // ── ENGLISH ──────────────────────────────────────────────────────────────
+    // "Can you find / show / search for (me) (cheap) (a) flight(s)"
+    /^(?:can\s+you\s+|could\s+you\s+|would\s+you\s+|please\s+)?(?:find|show|get|search(?:\s+for)?|look(?:\s+for)?|help\s+me\s+(?:find|search\s+for|look\s+for)|book)\s+me\s+(?:(?:the\s+)?(?:cheapest?|best|cheap|affordable|a\s+good)\s+)?(?:a\s+|an\s+|some\s+)?(?:flights?|plane\s+tickets?|air\s+tickets?|tickets?|connections?)\s*/i,
+    /^(?:can\s+you\s+|could\s+you\s+|would\s+you\s+|please\s+)?(?:find|show|get|search(?:\s+for)?|look(?:\s+for)?)\s+(?:(?:the\s+)?(?:cheapest?|best|cheap|affordable)\s+)?(?:flights?|tickets?|connections?)\s*/i,
+    // "I want/need/would like/am looking to fly / book / travel"
+    /^i(?:'d|\s+would)\s+(?:like|love|prefer)\s+(?:to\s+)?(?:fly(?:ing)?|travel(?:l?ing)?|book(?:ing)?\s+(?:a\s+)?(?:flight|ticket)|find(?:ing)?\s+(?:a\s+)?(?:flight|ticket)|go)\s*/i,
+    /^i\s+(?:want|need|have)\s+to\s+(?:fly|travel|book\s+(?:a\s+)?(?:flight|ticket)|find\s+(?:a\s+)?(?:flight|ticket)|get\s+(?:a\s+)?(?:flight|ticket))\s*/i,
+    /^i(?:'m|\s+am)\s+(?:looking\s+(?:for\s+(?:a\s+)?(?:flight|ticket|connection)|to\s+(?:fly|book|travel))|planning\s+(?:to\s+(?:fly|travel)|a\s+trip)|trying\s+to\s+(?:fly|travel|get\s+(?:a\s+)?flight)|thinking\s+(?:about|of)\s+(?:flying|travelling))\s*/i,
+    /^i(?:'m|\s+am)\s+(?:flying|travelling?|heading|going)\s*/i,
+    /^i(?:'ll|\s+will)\s+be\s+(?:flying|travelling?|heading)\s*/i,
+    // "Looking / Searching for (a/some/cheap) flight(s)"
+    /^(?:looking|searching|in\s+search)\s+(?:for\s+)?(?:(?:a|an|some|cheap|affordable|the\s+cheapest?)\s+)?(?:flights?|tickets?|connections?)\s*/i,
+    // "Any flights / Are there flights / Is there a flight"
+    /^(?:are\s+there|is\s+there)\s+(?:any\s+)?(?:flights?|tickets?|connections?)\s*/i,
+    /^any\s+(?:flights?|tickets?)\s*/i,
+    // "What's the cheapest flight / best way to fly"
+    /^what(?:'s|\s+is)\s+the\s+(?:cheapest?|best|fastest|most\s+(?:affordable|direct))\s+(?:(?:way|route)\s+to\s+(?:get|fly|travel|go)\s+)?/i,
+    // "Show me / Get me / Find me / Book me"
+    /^(?:show|get|find|book)\s+me\s+(?:(?:a|an|some|cheap|affordable|the\s+cheapest?)\s+)?(?:flights?|tickets?)?\s*/i,
+    // "I need a flight" (without 'to fly')
+    /^i\s+need\s+(?:a|an|some)?\s+(?:flight|ticket|connection)\s*/i,
+    // ── GERMAN ───────────────────────────────────────────────────────────────
+    /^ich\s+(?:suche(?:\s+nach)?|m[öo]chte|will|brauche|w[üu]rde\s+gerne?\s+(?:einen?\s+)?(?:flug\s+)?(?:buchen|finden|haben))\s+(?:(?:einen?|einen?\s+g[üu]nstigen?|billigen?|g[üu]nstige\s+)?(?:fl[üu]ge?|flugticket|flugverbindung|ticket)s?)?\s*/i,
+    /^ich\s+(?:m[öo]chte|will|w[üu]rde\s+gerne?)\s+(?:fliegen|reisen|einen?\s+flug\s+buchen)\s*/i,
+    /^(?:gibt\s+es|k[öo]nnen\s+sie|kannst\s+du|k[öo]nnten\s+sie)\s+(?:mir\s+)?(?:(?:g[üu]nstige?|billige?)\s+)?(?:fl[üu]ge?|flugtickets?)\s+(?:finden|zeigen|suchen)?\s*/i,
+    /^(?:zeig|finde?|such)\s+(?:mir\s+)?(?:(?:g[üu]nstige?|billige?|den?\s+g[üu]nstigsten?)\s+)?(?:fl[üu]ge?|flugtickets?)\s*/i,
+    /^suche?\s+(?:nach\s+)?(?:(?:g[üu]nstige[mn]?|billige[mn]?)\s+)?(?:fl[üu]ge?|flugtickets?)\s*/i,
+    // ── SPANISH ──────────────────────────────────────────────────────────────
+    /^(?:busco|estoy\s+buscando|necesito|quiero\s+(?:buscar|encontrar|reservar)?)\s+(?:(?:un|vuelos?|billetes?|pasajes?)\s+)?(?:vuelos?|billetes?\s+de\s+avi[oó]n|pasajes?\s+a[eé]reos?|billetes?\s+baratos?|vuelos?\s+baratos?)\s*/i,
+    /^quiero\s+(?:volar|viajar|ir(?:\s+en\s+avi[oó]n)?|reservar(?:\s+un\s+vuelo)?)\s*/i,
+    /^(?:¿?hay|¿?existen?|¿?tienes?|¿?tienen)\s+(?:algún?\s+)?(?:vuelos?|billetes?)\s*/i,
+    /^(?:enc[uú]entrame|b[uú]scame|mu[eé]strame)\s+(?:(?:un|vuelos?|billetes?)\s+)?(?:vuelos?|billetes?|pasajes?)\s*/i,
+    /^planeo\s+(?:volar|viajar|ir\s+a)\s*/i,
+    // ── FRENCH ───────────────────────────────────────────────────────────────
+    /^(?:je\s+)?(?:cherche(?:\s+un)?|veux|voudrais|aimerais|souhaite|ai\s+besoin\s+(?:d['']un|de\s+)|suis\s+(?:[àa]\s+la\s+recherche\s+)?(?:d['']un|de\s+))\s+(?:(?:un\s+|des?\s+|(?:les?\s+)?)?(?:vol|billet|vols|billets))\s*/i,
+    /^je\s+(?:veux|voudrais|aimerais|souhaite)\s+(?:voler|voyager|prendre\s+l['']avion|r[eé]server(?:\s+un\s+vol)?)\s*/i,
+    /^(?:avez[-\s]vous|y\s+a[-\s]t[-\s]il|est[-\s]ce\s+qu['']il\s+y\s+a)\s+(?:des?\s+)?(?:vols?|billets?)\s*/i,
+    /^(?:trouvez|montrez|cherchez|r[eé]servez)\s+(?:moi\s+)?(?:(?:des?|un|les?\s+)?(?:moins\s+chers?|moins\s+ch[eè]res?|pas\s+chers?)\s+)?(?:vols?|billets?)\s*/i,
+    /^je\s+pr[eé]vois\s+de\s+(?:voyager|voler|prendre\s+l['']avion)\s*/i,
+    // ── ITALIAN ──────────────────────────────────────────────────────────────
+    /^(?:cerco|voglio|ho\s+bisogno\s+di|sto\s+cercando|vorrei)\s+(?:(?:un|dei|voli?|biglietti?)\s+)?(?:voli?|biglietti?\s+aerei?|biglietti?\s+aereo)\s*/i,
+    /^voglio\s+(?:volare|viaggiare|andare(?:\s+in\s+aereo)?|prenotare(?:\s+un\s+volo)?)\s*/i,
+    /^(?:ci\s+sono|esistono|avete)\s+(?:dei?\s+)?(?:voli?|biglietti?)\s*/i,
+    /^(?:trovami|mostrami|cercami)\s+(?:(?:un|dei|voli?)\s+)?(?:voli?|biglietti?|connessioni?)\s*/i,
+    /^sto\s+pianificando\s+(?:di\s+)?(?:volare|viaggiare|andare\s+a)\s*/i,
+    // ── DUTCH ────────────────────────────────────────────────────────────────
+    /^(?:ik\s+)?(?:zoek(?:\s+naar)?|wil(?:\s+graag)?|zou\s+graag|heb\s+(?:een\s+vlucht\s+|)nodig|ben\s+op\s+zoek\s+naar)\s+(?:(?:een|goedkope?|de\s+goedkoopste?)\s+)?(?:vlucht(?:en)?|ticket(?:s)?)\s*/i,
+    /^ik\s+(?:wil|zou\s+graag|ga|ben\s+van\s+plan(?:\s+te)?)\s+(?:vliegen|reizen|een\s+vlucht\s+boeken)\s*/i,
+    /^(?:zijn\s+er|heeft\s+u|heb\s+je)\s+(?:vluchten?|tickets?)\s*/i,
+    /^(?:zoek|vind|toon)\s+(?:mij\s+)?(?:(?:goedkope?|de\s+goedkoopste?)\s+)?(?:vluchten?|tickets?)\s*/i,
+    // ── POLISH ───────────────────────────────────────────────────────────────
+    /^(?:szukam|chcę|potrzebuj[eę]|jestem\s+w\s+poszukiwaniu)\s+(?:(?:lot[uó]w?|bilet[uó]w?|połączeń)\s+)?(?:lot[uó]w?|bilet[uó]w?|połączeń)\s*/i,
+    /^chcę\s+(?:lecieć|polecieć|podróżować|zarezerwować\s+(?:bilet|lot)|znaleźć\s+(?:bilet|lot))\s*/i,
+    /^(?:czy\s+są|czy\s+macie|znajdź(?:cie)?|poka[zż](?:cie)?)\s+(?:(?:tanie\s+)?(?:loty?|bilety?)\s*)?\s*/i,
+    /^planuję\s+(?:lecieć|podróżować|polecieć\s+do)\s*/i,
+    // ── PORTUGUESE ───────────────────────────────────────────────────────────
+    /^(?:procuro|quero|preciso\s+de|estou\s+(?:[àa]\s+procura\s+de|procurando))\s+(?:(?:um|voos?|passagens?)\s+)?(?:voos?|passagens?\s+a[eé]reas?|bilhetes?\s+de\s+avi[aã]o)\s*/i,
+    /^quero\s+(?:voar|viajar|ir(?:\s+de\s+avi[aã]o)?|reservar(?:\s+um\s+voo)?)\s*/i,
+    /^(?:h[aá]|existem|vocês\s+têm)\s+(?:algum?\s+)?(?:voos?|passagens?)\s*/i,
+    /^(?:encontre|mostre|busque)\s+(?:(?:para\s+mim\s+)?(?:um|voos?)\s+)?(?:voos?|passagens?|bilhetes?)\s*/i,
+    /^estou\s+planejando\s+(?:voar|viajar|ir\s+a)\s*/i,
+    // ── SWEDISH ──────────────────────────────────────────────────────────────
+    /^(?:jag\s+)?(?:söker?|vill\s+(?:ha|hitta|boka)|behöver|letar\s+efter)\s+(?:(?:ett|billiga?|det\s+billigaste)\s+)?(?:flyg(?:biljett|resa)?|biljett(?:er)?)\s*/i,
+    /^jag\s+(?:vill|skulle\s+vilja|tänker|planerar\s+att)\s+(?:flyga|resa|boka\s+(?:ett\s+)?flyg)\s*/i,
+    /^(?:finns\s+det|har\s+ni)\s+(?:n[aå]got\s+)?(?:flyg|biljetter)\s*/i,
+    /^(?:hitta|visa|s[oö]k)\s+(?:mig\s+)?(?:(?:billiga?\s+)?(?:flyg|biljetter))\s*/i,
+    // ── CROATIAN ─────────────────────────────────────────────────────────────
+    /^(?:tražim|želim|trebam|potražujem|radi\s+bih)\s+(?:(?:let|kartu|povoljne?)\s+)?(?:letove?|karte?|avionske\s+karte?)\s*/i,
+    /^želim\s+(?:letjeti|putovati|otputovati|rezervirati\s+(?:let|kartu))\s*/i,
+    /^(?:ima\s+li|postoje\s+li)\s+(?:kakvi?\s+)?(?:letovi?|karte?)\s*/i,
+    /^(?:pronađi|pokaži|nađi)\s+(?:mi\s+)?(?:(?:jeftine?\s+)?(?:letove?|karte?))\s*/i,
+    // ── ALBANIAN ─────────────────────────────────────────────────────────────
+    /^(?:kërkoj|dua|kam\s+nevojë\s+(?:për\s+)?|po\s+kërkoj)\s+(?:(?:një\s+|fluturime?\s+)?)?(?:fluturime?|bileta?\s+avioni|bileta?)\s*/i,
+    /^dua\s+(?:të\s+fluturoj|të\s+udhëtoj|të\s+rezervoj\s+(?:një\s+)?fluturim)\s*/i,
+    /^(?:ka|a\s+ka|gjeni)\s+(?:ndonjë\s+)?(?:fluturime?|bileta?)\s*/i,
+  ]
+
+  let s = raw
+  for (const pat of preambles) {
+    const m = s.match(pat)
+    if (m && m.index === 0 && m[0].length < s.length) {
+      s = s.slice(m[0].length).trim()
+      break // only strip one preamble prefix
+    }
+  }
+
+  // Strip trailing politeness suffixes in all languages
+  s = s
+    .replace(/\s*[,.]?\s*\b(?:please|thanks?|thank\s+you|cheers|asap|urgently|as\s+soon\s+as\s+possible|if\s+possible)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:bitte|danke(?:sch[oö]n)?|danke\s+vielmals?)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:por\s+favor|gracias|por\s+favor|muchas\s+gracias)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:s['']il\s+vous\s+pla[iî]t|s['']il\s+te\s+pla[iî]t|merci(?:\s+d'avance)?)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:per\s+favore|grazie(?:\s+mille)?)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:alsjeblieft|dank\s+(?:je|u)(?:\s+wel)?)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:proszę|dziękuję)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:por\s+favor|obrigado|obrigada)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:tack(?:\s+s[åa]\s+mycket)?|snälla?)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:molim|hvala(?:\s+lijepa)?)\s*$/i, '')
+    .replace(/\s*[,.]?\s*\b(?:ju\s+lutem|faleminderit)\s*$/i, '')
+    .trim()
+
+  return s
+}
+
 // ── Main parse function ───────────────────────────────────────────────────────
 
 export function parseNLQuery(query: string): ParsedQuery {
   // Normalise: trim, collapse whitespace, strip leading/trailing punctuation
-  const q = query.trim().replace(/\s+/g, ' ').replace(/^[,.:!?]+|[,.:!?]+$/g, '')
+  const q = _preClean(query.trim().replace(/\s+/g, ' ').replace(/^[,.:!?]+|[,.:!?]+$/g, ''))
   const ql = q.toLowerCase()
   const result: ParsedQuery = {}
 
@@ -2647,8 +3631,37 @@ export function parseNLQuery(query: string): ParsedQuery {
     /^(.+?)\s+(?:to(?:\s+the)?|→|->|–)\s+(.+?)(?:\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na)\s|\s+\d|\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|januar|février|fevrier|mars|abril|mayo|junio|julio|agosto|septembre|outubro|novembre)|$)/i,
     // "ORIGIN - DESTINATION" (dash as separator, not range)
     /^(.+?)\s+-\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may|jun|jul|aug|sep|oct|nov|dec)|$)/i,
-    // "ORIGIN nach/para/à/naar/do/till DESTINATION"
-    /^(.+?)\s+(?:nach|para|à|naar|do|till|na|drejt|leti)\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // "ORIGIN nach/para/à/naar/do/till/na/drejt/leti DESTINATION" — includes all 11 lang separators
+    // DE: nach, von X nach Y | ES: para, desde X a/hasta Y | FR: à, pour, vers | IT: a, per, da X a Y
+    // NL: naar, van X naar Y | PL: do, z X do Y | PT: para, de X para Y | SV: till, från X till Y
+    // HR: do, od X do Y | SQ: drejt, nga X drejt Y | also: leti (hr "let"), fly
+    /^(.+?)\s+(?:nach|para|[àa]|naar|do|till|na|drejt|leti|vers|pour|per|bis|i|ng[aë])\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // "von X nach Y" (DE), "from X to Y" already covered above
+    /^(?:von|fra|från|od|iz|da|de)\s+(.+?)\s+(?:nach|till|do|na|a(?:\s+|$)|para)\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // "da X a Y" — Italian "from X to Y"
+    /^(?:da)\s+(.+?)\s+(?:a|ad)\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+  ]
+
+  // Reversed patterns: "to DEST from ORIGIN"
+  const reversedRoutePatterns = [
+    /^to\s+(.+?)\s+from\s+(.+?)(?:\s+(?:on|in|for|at|around)\s|\s+\d|$)/i,
+    /^(?:flying|travelling?|heading|going|fly)\s+to\s+(.+?)\s+from\s+(.+?)(?:\s+(?:on|in|for)\s|\s+\d|$)/i,
+    // DE: "nach X von Y", "nach X aus Y"
+    /^nach\s+(.+?)\s+(?:von|aus)\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // ES: "a X desde Y", "para X desde Y"
+    /^(?:a|para)\s+(.+?)\s+desde\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // FR: "à X depuis Y", "pour X depuis Y"
+    /^(?:[àa]|pour)\s+(.+?)\s+depuis\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // IT: "a X da Y"
+    /^(?:a|ad)\s+(.+?)\s+da\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // NL: "naar X vanuit Y"
+    /^naar\s+(.+?)\s+vanuit?\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // SV: "till X från Y"
+    /^till\s+(.+?)\s+från\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // HR: "do X od Y" / "do X iz Y"
+    /^do\s+(.+?)\s+(?:od|iz)\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
+    // SQ: "drejt X nga Y"
+    /^drejt\s+(.+?)\s+nga\s+(.+?)(?:\s+\d|\s+(?:jan|feb|mar|may)|$)/i,
   ]
 
   let originStr = '', destStr = ''
@@ -2661,9 +3674,50 @@ export function parseNLQuery(query: string): ParsedQuery {
     }
   }
 
+  // If no forward route matched, try reversed "to DEST from ORIGIN" patterns
+  if (!originStr && !destStr) {
+    for (const pat of reversedRoutePatterns) {
+      const m = outboundForParsing.match(pat)
+      if (m) {
+        destStr = m[1].trim()
+        originStr = m[2].trim()
+        break
+      }
+    }
+  }
+
+  // If still no match and query starts with "to <place>" (destination-only), extract dest
+  if (!originStr && !destStr) {
+    const destOnlyM = outboundForParsing.match(/^(?:to(?:\s+the)?)\s+(.+?)(?:\s+(?:on|in|for|at|around)\s|\s+\d|$)/i)
+    if (destOnlyM) {
+      destStr = destOnlyM[1].trim()
+      // originStr stays empty — no origin provided
+    }
+  }
+
+  // "flying out of X to Y", "departing from X to Y", "leaving X to Y" — alternative origin patterns
+  if (!originStr) {
+    const altOriginM = q.match(/\b(?:flying?\s+(?:out\s+of|from)|departing\s+(?:from)?|leaving\s+(?:from)?|going\s+from|setting\s+off\s+from|starting\s+(?:from|in))\s+([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+){0,2})\b/i)
+    if (altOriginM) {
+      const alt = resolveLocation(altOriginM[1].trim())
+      if (alt) {
+        result.origin = alt.code
+        result.origin_name = alt.name
+        originStr = '' // already resolved
+      }
+    }
+  }
+
   // Strip filler prefixes
   if (originStr) {
     originStr = originStr.replace(ORIGIN_PREFIX_RE, '').trim()
+    // Also strip passenger-count phrases from origin (e.g. "2 adults 2 kids" in "2 adults 2 kids to Rome")
+    originStr = originStr
+      .replace(/^\d+\s+(?:adults?|erwachsene?|adultos?|adultes?|volwassene[n]?|dorosłych|adulti)\s*/gi, '')
+      .replace(/^\d+\s+(?:children|child|kids?|enfants?|niños?|kinderen|dzieci|bambini)\s*/gi, '')
+      .replace(/^\d+\s+(?:infants?|babies|baby|säuglinge?|bebés?|lactantes?|neonati)\s*/gi, '')
+      .replace(/^(?:with\s+)?(?:my\s+|the\s+)?(?:wife|husband|partner|girlfriend|boyfriend|family|kids?|children)\s*/gi, '')
+      .trim()
   }
   if (destStr) {
     // Stop destination string at common date lead-ins that weren't caught by the regex
@@ -2679,6 +3733,11 @@ export function parseNLQuery(query: string): ParsedQuery {
       .replace(DEST_PREFIX_RE, '')
       .trim()
   }
+
+  // If originStr still looks like a trip-type phrase (not a real place), discard it silently
+  // so we don't set failed_origin_raw for "business trip to London" type queries.
+  const TRIP_TYPE_ORIGIN_RE = /^(?:(?:my\s+|the\s+|a\s+)?(?:family|business|solo|group|work|corporate|ski(?:ing)?|beach|sun|city|honeymoon|romantic|anniversary|graduation|school|stag|hen|bachelorette|hen\s+do|girls?(?:'s?)?\s+trip|guys?(?:'s?)?\s+trip|holiday|summer|winter|spring|autumn|christmas|easter|new\s+year(?:'s)?)\s+)?(?:trip|flight|flights?|holiday|vacation|getaway|break|journey|travel|routes?|booking|tickets?)$/i
+  if (originStr && TRIP_TYPE_ORIGIN_RE.test(originStr)) originStr = ''
 
   // Resolve cities
   if (originStr) {
@@ -3077,13 +4136,187 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   // ── 8. "Anywhere" / open destination detection ──────────────────────────
   // Patterns: "to anywhere", "wherever", "cheapest destination", "any destination", "surprise me"
-  const anywhereRe = /\b(?:anywhere|wherever(?:\s+is\s+(?:cheapest|cheapest|cheaper|cheap|best))?|any(?:\s+destination|\s+airport|\s+country|\s+place)?|surprise\s+me|wherever\s+i\s+can\s+go|irgendwo(?:hin)?|peu\s+importe|partout|qualunque\s+destinazione?|donde\s+sea|cualquier\s+(?:destino|lugar)|overalt|varsomhelst|bilo\s+gdje|kudo)\b/i
+  // Also: "somewhere warm/sunny/cheap/nice/hot/abroad" and plain "somewhere"
+  const anywhereRe = /\b(?:anywhere|wherever(?:\s+is\s+(?:cheapest|cheapest|cheaper|cheap|best))?|any(?:\s+destination|\s+airport|\s+country|\s+place)?|surprise\s+me|wherever\s+i\s+can\s+go|somewhere(?:\s+(?:warm|sunny|hot|cold|cheap|nice|beautiful|exotic|tropical|different|new|fun|interesting|affordable|nearby|abroad|in\s+europe|in\s+asia|in\s+africa|in\s+america|far\s+away|close|nearby))?|irgendwo(?:hin)?|peu\s+importe|partout|n'importe\s+où|qualunque\s+destinazione?|donde\s+sea|cualquier\s+(?:destino|lugar)|overalt|varsomhelst|bilo\s+gdje|kudo|ergens|irgendwohin)\b/i
   if (anywhereRe.test(q)) {
     result.anywhere_destination = true
     // Clear the failed destination since it's intentional
     delete result.failed_destination_raw
     // Keep destination undefined so the UI can show an "Explore" mode
   }
+
+  // ── 9. Passenger composition ──────────────────────────────────────────────
+  const pax = extractPassengers(q)
+  if (pax.adults !== undefined) result.adults = pax.adults
+  if (pax.children !== undefined) result.children = pax.children
+  if (pax.infants !== undefined) result.infants = pax.infants
+  if (pax.context) result.passenger_context = pax.context
+  if (pax.group_size !== undefined) result.group_size = pax.group_size
+  if (pax.require_adjacent_seats) result.require_adjacent_seats = true
+  if (pax.require_seat_selection) result.require_seat_selection = true
+  if (pax.require_bassinet) result.require_bassinet = true
+  if (pax.prefer_direct) result.prefer_direct = true
+
+  // ── 10. Ancillaries ───────────────────────────────────────────────────────
+  const anc = extractAncillaries(q)
+  if (anc.require_checked_baggage) result.require_checked_baggage = true
+  if (anc.carry_on_only) result.carry_on_only = true
+  if (anc.require_meals) result.require_meals = true
+  if (anc.require_cancellation) result.require_cancellation = true
+  if (anc.require_lounge) result.require_lounge = true
+
+  // ── 11. Time-of-day preferences ───────────────────────────────────────────
+  const tp = extractTimePrefs(q)
+  if (tp.depart_time_pref) result.depart_time_pref = tp.depart_time_pref
+  if (tp.arrive_time_pref) result.arrive_time_pref = tp.arrive_time_pref
+
+  // ── 12. Trip purpose ──────────────────────────────────────────────────────
+  const purpose = extractTripPurpose(q)
+  if (purpose) result.trip_purpose = purpose
+
+  // ── 13. Seat preference ───────────────────────────────────────────────────
+  const seatPref = extractSeatPref(q)
+  if (seatPref) result.seat_pref = seatPref
+
+  // ── 14. Airline preference / exclusion ────────────────────────────────────
+  const airlinePref = extractAirlinePreference(q)
+  if (airlinePref.preferred) result.preferred_airline = airlinePref.preferred
+  if (airlinePref.excluded) result.excluded_airline = airlinePref.excluded
+
+  // ── 15. Urgency ───────────────────────────────────────────────────────────
+  const urgency = extractUrgency(q)
+  if (urgency) result.urgency = urgency
+
+  // ── 16. Best-window strategy ──────────────────────────────────────────────
+  // Explicit: "cheapest week in June", "best time in August"
+  const bw = extractExplicitBestWindow(q)
+  if (bw.find_best_window) {
+    result.find_best_window = true
+    if (bw.date_window_month) result.date_window_month = bw.date_window_month
+    if (bw.date_window_year) result.date_window_year = bw.date_window_year
+  }
+  // Implicit: month-only date + trip duration → scan for cheapest window
+  if (!result.find_best_window && result.date_month_only && result.min_trip_days !== undefined) {
+    result.find_best_window = true
+    // Extract the window month from the already-parsed date
+    if (result.date) {
+      const mFromDate = parseInt(result.date.slice(5, 7), 10)
+      if (mFromDate >= 1 && mFromDate <= 12) result.date_window_month = mFromDate
+    }
+  }
+
+  // ── 16b. "between MONTH and MONTH" / "MONTH or MONTH" → date window ──────
+  // "between June and July", "June or July", "between June and August", "sometime in July or August"
+  if (!result.find_best_window) {
+    const monthRangeM =
+      ql.match(/\bbetween\s+([a-z]+)\s+and\s+([a-z]+)\b/i) ??
+      ql.match(/\bin\s+([a-z]+)\s+or\s+([a-z]+)\b/i) ??
+      ql.match(/\b([a-z]+)\s+or\s+([a-z]+)\b/i)
+    if (monthRangeM) {
+      const m1 = _matchMonthByName(monthRangeM[1])
+      const m2 = _matchMonthByName(monthRangeM[2])
+      if (m1 !== null && m2 !== null) {
+        result.find_best_window = true
+        result.date_window_month = m1 + 1
+        result.date_month_only = true
+        // Set date to start of first month
+        if (!result.date) {
+          const yr = today.getFullYear()
+          const d = new Date(yr, m1, 1)
+          if (d < today) d.setFullYear(yr + 1)
+          result.date = toLocalDateStr(d)
+        }
+      }
+    }
+  }
+
+  // ── 16c. Season → date window ─────────────────────────────────────────────
+  // "in summer", "this winter", "next spring", "autumn trip"
+  // Northern hemisphere: spring=Mar-May, summer=Jun-Aug, autumn/fall=Sep-Nov, winter=Dec-Feb
+  if (!result.find_best_window) {
+    const seasonM = ql.match(/\b(?:(?:this|next|coming|upcoming|in(?:\s+the)?)\s+)?(?:(spring|summer|autumn|fall|winter))\b/i)
+    if (seasonM) {
+      const season = seasonM[1].toLowerCase()
+      const isNext = /\bnext\b/i.test(ql)
+      const seasonMonthMap: Record<string, number> = {
+        spring: 3, summer: 6, autumn: 9, fall: 9, winter: 12,
+      }
+      const startMonth = seasonMonthMap[season]
+      if (startMonth) {
+        result.find_best_window = true
+        result.date_window_month = startMonth
+        result.date_month_only = true
+        if (!result.date) {
+          const yr = today.getFullYear()
+          const d = new Date(yr, startMonth - 1, 1)
+          if (!isNext && d < today) d.setFullYear(yr + 1)
+          if (isNext) d.setFullYear(d < today ? yr + 1 : yr + 1)
+          result.date = toLocalDateStr(d)
+        }
+      }
+    }
+  }
+
+  // ── 16d. "flexible dates" / "anytime" / "open dates" → find_best_window ──
+  if (!result.find_best_window) {
+    const flexDatesRe = /\b(?:any(?:time|where\s+in\s+time)?|flexible(?:\s+(?:on\s+)?(?:dates?|timing|schedule))?|open\s+(?:dates?|schedule|to\s+dates?)|no\s+fixed\s+(?:dates?|schedule|timeline)|whenever(?:\s+(?:is\s+)?(?:cheapest|best|cheapest|cheapest))?|doesn?'?t?\s+matter\s+(?:when|the\s+date)|date\s+flexible|dates?\s+(?:don'?t?\s+matter|are\s+flexible)|pick\s+(?:any|the\s+best|cheapest)\s+(?:date|time|week))\b/i
+    if (flexDatesRe.test(q)) {
+      result.find_best_window = true
+    }
+  }
+
+  // ── 16e. School holidays / holiday periods → date hints ───────────────────
+  // "Easter", "Easter break/holidays", "Christmas", "school holidays", "half term", "summer holidays"
+  if (!result.date) {
+    const yr = today.getFullYear()
+    const halfTermRe = /\b(?:half[\s-]?term(?:\s+(?:break|holiday|week))?|mid[\s-]?term\s+(?:break|holiday))\b/i
+    const easterRe = /\b(?:easter(?:\s+(?:break|holiday|holidays|week|weekend))?)\b/i
+    const christmasRe = /\b(?:christmas(?:\s+(?:break|holiday|holidays|week))?|xmas(?:\s+(?:break|holidays|week))?|festive(?:\s+(?:break|period|holidays))?)\b/i
+    const summerHolRe = /\b(?:summer\s+holiday(?:s)?|school\s+(?:summer\s+)?holidays?|july\s+(?:or\s+)?august\b)\b/i
+    const newYearRe = /\b(?:new\s+year(?:'s)?(?:\s+(?:eve|break|holiday))?)\b/i
+
+    if (easterRe.test(q)) {
+      // Easter typically falls in late March or April — use April 1 as approximate
+      const d = new Date(yr, 3, 1)  // April 1
+      if (d < today) d.setFullYear(yr + 1)
+      result.date = toLocalDateStr(d)
+      result.find_best_window = true
+      result.date_window_month = 4
+    } else if (christmasRe.test(q)) {
+      const d = new Date(yr, 11, 20)  // Dec 20
+      if (d < today) d.setFullYear(yr + 1)
+      result.date = toLocalDateStr(d)
+      result.date_window_month = 12
+    } else if (newYearRe.test(q)) {
+      const d = new Date(yr + 1, 0, 1)  // Jan 1
+      result.date = toLocalDateStr(d)
+      result.date_window_month = 1
+    } else if (summerHolRe.test(q)) {
+      const d = new Date(yr, 6, 15)  // Jul 15
+      if (d < today) d.setFullYear(yr + 1)
+      result.date = toLocalDateStr(d)
+      result.find_best_window = true
+      result.date_window_month = 7
+    } else if (halfTermRe.test(q)) {
+      // Half-term: approximately mid-Feb or late May or late Oct — use nearest upcoming
+      const candidates = [new Date(yr, 1, 17), new Date(yr, 4, 26), new Date(yr, 9, 27)]
+      const upcoming = candidates.find(d => d >= today) ?? new Date(yr + 1, 1, 17)
+      result.date = toLocalDateStr(upcoming)
+      result.find_best_window = true
+      result.date_window_month = upcoming.getMonth() + 1
+    }
+  }
+
+  // ── 17. Purpose → cabin upgrade hints ─────────────────────────────────────
+  // Honeymoon / business trip → suggest business class if no cabin set
+  if (!result.cabin) {
+    if (result.trip_purpose === 'honeymoon') result.cabin = 'C' // business as a romantic upgrade hint
+    // (business trip — leave cabin undefined; let user decide, but prefer_direct is already set)
+  }
+
+  // ── 18. Hard vs soft stop inference ─────────────────────────────────────
+  // If prefer_direct is set but stops=0 not yet set, don't override user's filter.
+  // The UI/search layer handles prefer_direct as a soft sort preference.
 
   return result
 }
