@@ -10,13 +10,8 @@ import type { Offer } from './page'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useExperiment, type ExperimentConfig } from '../../../lib/ab-testing'
-import CheckoutSurvey, { CHECKOUT_SURVEY_EXPERIMENT_ID } from './CheckoutSurvey'
+import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
 import CheckoutCountdown, { CHECKOUT_COUNTDOWN_EXPERIMENT_ID } from './CheckoutCountdown'
-
-const CHECKOUT_SURVEY_EXPERIMENT: ExperimentConfig<'control' | 'survey'> = {
-  id: CHECKOUT_SURVEY_EXPERIMENT_ID,
-  variants: { control: 0.5, survey: 0.5 },
-}
 
 const CHECKOUT_COUNTDOWN_EXPERIMENT: ExperimentConfig<'control' | 'countdown'> = {
   id: CHECKOUT_COUNTDOWN_EXPERIMENT_ID,
@@ -396,12 +391,7 @@ export default function CheckoutPanel({
     : ''
 
   // ── A/B experiments ──────────────────────────────────────────────────
-  const { variant: surveyVariant } = useExperiment(CHECKOUT_SURVEY_EXPERIMENT, analyticsSearchId)
   const { variant: countdownVariant } = useExperiment(CHECKOUT_COUNTDOWN_EXPERIMENT, analyticsSearchId)
-  const [surveyDismissed, setSurveyDismissed] = useState<boolean>(() => {
-    try { return !!sessionStorage.getItem('lfg_ck_survey_done') } catch { return false }
-  })
-  const [surveyVisible, setSurveyVisible] = useState(false)
 
   // Start in 'checking' — we always verify unlock status on mount.
   const [step, setStep] = useState<CheckoutStep>({ type: 'checking' })
@@ -436,12 +426,10 @@ export default function CheckoutPanel({
   const isUnlocked = step.type === 'unlocked'
   const isLoading = step.type === 'checking' || step.type === 'verifying-payment'
 
-  // ── Survey popup: show after 2 min if user hasn't unlocked or dismissed ──
+  // Mark that user visited checkout so results page can detect a "back from checkout" return
   useEffect(() => {
-    if (surveyVariant !== 'survey' || isUnlocked || surveyDismissed) return
-    const timer = window.setTimeout(() => setSurveyVisible(true), 2 * 60 * 1000)
-    return () => window.clearTimeout(timer)
-  }, [surveyVariant, isUnlocked, surveyDismissed])
+    try { sessionStorage.setItem(SS_KEY_CHECKOUT_VISITED, '1') } catch { /* ignore */ }
+  }, [])
 
   const getLegTitle = useCallback((leg: 'outbound' | 'inbound') => (
     leg === 'outbound' ? 'Flight there' : 'Flight back'
@@ -1425,28 +1413,14 @@ export default function CheckoutPanel({
 
       </div>
 
-      {/* ── Checkout survey popup (variant B only, after 2 min) ──────────── */}
-      {surveyVariant === 'survey' && surveyVisible && !isUnlocked && !surveyDismissed && (
-        <div
-          className="ck-survey-overlay"
-          onClick={() => {
-            setSurveyDismissed(true)
-            try { sessionStorage.setItem('lfg_ck_survey_done', '1') } catch { /* ignore */ }
-          }}
-        >
-          <div className="ck-survey-popup" onClick={e => e.stopPropagation()}>
-            <CheckoutSurvey
-              searchId={analyticsSearchId}
-              offerId={offer.id}
-              isTestSearch={isTestSearch}
-              onDismiss={() => {
-                setSurveyDismissed(true)
-                setSurveyVisible(false)
-                try { sessionStorage.setItem('lfg_ck_survey_done', '1') } catch { /* ignore */ }
-              }}
-            />
-          </div>
-        </div>
+      {/* ── Booking friction survey (bottom slide-up, after 3 min on checkout) ── */}
+      {!isUnlocked && (
+        <BookingFrictionSurvey
+          searchId={analyticsSearchId}
+          offerId={offer.id}
+          isTestSearch={isTestSearch}
+          context="checkout"
+        />
       )}
     </div>
   )

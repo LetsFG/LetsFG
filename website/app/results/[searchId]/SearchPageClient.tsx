@@ -16,15 +16,9 @@ import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useSearchParams } from 'next/navigation'
-import { useExperiment, type ExperimentConfig } from '../../../lib/ab-testing'
-import ResultsFrictionSurvey, { RESULTS_FRICTION_EXPERIMENT_ID } from './ResultsFrictionSurvey'
+import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
-
-const RESULTS_FRICTION_EXPERIMENT: ExperimentConfig<'control' | 'friction-survey'> = {
-  id: RESULTS_FRICTION_EXPERIMENT_ID,
-  variants: { control: 0.5, 'friction-survey': 0.5 },
-}
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
 const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
 const X_URL = 'https://x.com/LetsFG_'
@@ -393,7 +387,7 @@ export default function SearchPageClient({
   const trackedExpiredRef = useRef(false)
   const trackedStreamingRef = useRef(false)
 
-  // ── Friction survey state ─────────────────────────────────────────────
+  // ── Survey state ──────────────────────────────────────────────────────
   // Timestamp when all results finished loading; null while still searching.
   // Initialized to now if the page was already completed on mount (SSR/cache hit).
   const [resultsCompletedAt, setResultsCompletedAt] = useState<number | null>(
@@ -402,12 +396,11 @@ export default function SearchPageClient({
   const completedAtSetRef = useRef(initialStatus === 'completed')
   // True once user clicks "Select" on any offer (navigates toward checkout).
   const [hasUnlockedOffer, setHasUnlockedOffer] = useState(false)
+  // True if user came back to results after visiting checkout without booking.
+  const [cameFromCheckout, setCameFromCheckout] = useState(false)
 
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
-
-  // ── A/B experiments ──────────────────────────────────────────────────
-  const { variant: frictionVariant } = useExperiment(RESULTS_FRICTION_EXPERIMENT, analyticsSearchId)
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
   const homeHref = isTestSearch ? '/en?probe=1' : '/en'
   const searchParams = useSearchParams()
@@ -431,12 +424,16 @@ export default function SearchPageClient({
     }
   }, [status])
 
-  const handleOfferSelect = useCallback(() => {
-    setHasUnlockedOffer(true)
+  // Detect if user came back from checkout (visited checkout but didn't complete booking)
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(SS_KEY_CHECKOUT_VISITED)) {
+        sessionStorage.removeItem(SS_KEY_CHECKOUT_VISITED)
+        setCameFromCheckout(true)
+      }
+    } catch { /* private mode — ignore */ }
   }, [])
 
-  // Detect ?monitor_active=<id> — set after Stripe success redirect
-  useEffect(() => {
     const monitorActive = searchParams.get('monitor_active')
     if (!monitorActive) return
     setConfirmedMonitorId(monitorActive)
@@ -1061,13 +1058,14 @@ export default function SearchPageClient({
         )}
       </section>
 
-      {/* Friction survey — variant only, results page */}
-      {frictionVariant === 'friction-survey' && !isExpired && (
-        <ResultsFrictionSurvey
+      {/* Booking friction survey — results page */}
+      {!isExpired && !hasUnlockedOffer && (
+        <BookingFrictionSurvey
           searchId={analyticsSearchId}
           isTestSearch={isTestSearch}
+          context="results"
           resultsCompletedAt={resultsCompletedAt}
-          hasUnlocked={hasUnlockedOffer}
+          showImmediately={cameFromCheckout}
         />
       )}
     </main>
