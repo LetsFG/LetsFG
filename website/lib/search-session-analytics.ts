@@ -57,6 +57,9 @@ export interface SearchSessionPayload {
   other_costs?: number
   results_preview?: SearchSessionOfferPreview[]
   event?: SearchSessionEventPayload
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
 }
 
 interface TrackOptions {

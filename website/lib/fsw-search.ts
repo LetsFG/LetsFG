@@ -29,6 +29,9 @@ export interface WebSearchAnalyticsContext {
   source_search_id?: string
   session_uid?: string
   is_test_search?: boolean
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
 }
 
 export interface StartWebSearchResult {
@@ -94,12 +97,15 @@ export async function startWebSearch(
       currency: params.currency,
       max_stops: params.max_stops,
       cabin: params.cabin,
-      source: analytics?.source || 'website',
+      source: analytics?.utm_source || analytics?.source || 'website',
       source_path: analytics?.source_path,
       referrer_path: analytics?.referrer_path,
       source_search_id: analytics?.source_search_id || (isTestSearch ? searchId : undefined),
       session_uid: analytics?.session_uid,
       is_test_search: isTestSearch || undefined,
+      utm_source: analytics?.utm_source,
+      utm_medium: analytics?.utm_medium,
+      utm_campaign: analytics?.utm_campaign,
       status: 'searching',
       cache_hit: Boolean(data.cache_hit),
       search_started_at: startedAt,

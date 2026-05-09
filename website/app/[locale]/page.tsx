@@ -92,9 +92,9 @@ function GitHubIcon() {
   )
 }
 
-export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; probe?: string; cur?: string }> }) {
+export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; probe?: string; cur?: string; utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string }> }) {
   const { locale } = await params
-  const { q, probe, cur } = await searchParams
+  const { q, probe, cur, utm_source, utm_medium, utm_campaign, utm_content, utm_term } = await searchParams
   const isProbe = isProbeModeValue(probe)
   const requestHeaders = await headers()
   const cookieStore = await cookies()
@@ -107,8 +107,14 @@ export default async function Home({ params, searchParams }: { params: Promise<{
   // ?q= support: agents (and humans) can navigate directly to /?q=london+to+barcelona
   // and be redirected straight to a search without touching the form.
   if (q?.trim()) {
-    redirect(getTrackedSourcePath(`/results?q=${encodeURIComponent(q.trim())}&cur=${encodeURIComponent(initialCurrency)}`, isProbe))
-  }
+      const utmParts = [
+        utm_source && `utm_source=${encodeURIComponent(utm_source)}`,
+        utm_medium && `utm_medium=${encodeURIComponent(utm_medium)}`,
+        utm_campaign && `utm_campaign=${encodeURIComponent(utm_campaign)}`,
+        utm_content && `utm_content=${encodeURIComponent(utm_content)}`,
+        utm_term && `utm_term=${encodeURIComponent(utm_term)}`,
+      ].filter(Boolean).join('&')
+      redirect(getTrackedSourcePath(`/results?q=${encodeURIComponent(q.trim())}&cur=${encodeURIComponent(initialCurrency)}${utmParts ? `&${utmParts}` : ''}`, isProbe))
 
   const [stats, t, githubStars] = await Promise.all([
     getPublicStats(),

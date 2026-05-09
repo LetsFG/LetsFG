@@ -265,6 +265,9 @@ async function startFSWSearch(
   query?: string,
   isProbe = false,
   currency: CurrencyCode = 'EUR',
+  utmSource?: string,
+  utmMedium?: string,
+  utmCampaign?: string,
 ): Promise<{ searchId: string | null; cache: 'hit' | 'miss' }> {
   if (!parsed.origin || !parsed.destination || !parsed.date) {
     return { searchId: null, cache: 'miss' }
@@ -289,9 +292,12 @@ async function startFSWSearch(
       query,
       origin_name: parsed.origin_name,
       destination_name: parsed.destination_name,
-      source: 'website-results-page',
+      source: utmSource || 'website-results-page',
       source_path: getTrackedSourcePath('/results', isProbe),
       is_test_search: isProbe,
+      utm_source: utmSource,
+      utm_medium: utmMedium,
+      utm_campaign: utmCampaign,
     }, userIp)
     return result
   } catch {
@@ -389,6 +395,9 @@ async function SearchContent({
   isProbe,
   currency,
   mt,
+  utmSource,
+  utmMedium,
+  utmCampaign,
 }: {
   query: string
   sid?: string
@@ -396,6 +405,9 @@ async function SearchContent({
   isProbe: boolean
   currency: CurrencyCode
   mt?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
 }) {
   const parsed = parseNLQuery(query)
 
@@ -503,7 +515,7 @@ async function SearchContent({
       )
     }
 
-    const fswResult = await startFSWSearch(parsed, query, isProbe, currency)
+    const fswResult = await startFSWSearch(parsed, query, isProbe, currency, utmSource, utmMedium, utmCampaign)
     searchId = fswResult.searchId ?? undefined
     cacheHit = fswResult.cache === 'hit'
     if (!searchId) {
@@ -607,9 +619,9 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 export default async function ResultsQueryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sid?: string; started?: string; probe?: string; cur?: string; mt?: string }>
+  searchParams: Promise<{ q?: string; sid?: string; started?: string; probe?: string; cur?: string; mt?: string; utm_source?: string; utm_medium?: string; utm_campaign?: string }>
 }) {
-  const { q, sid, started, probe, cur, mt } = await searchParams
+  const { q, sid, started, probe, cur, mt, utm_source, utm_medium, utm_campaign } = await searchParams
   const isProbe = isProbeModeValue(probe)
   const requestHeaders = await headers()
   const cookieStore = await cookies()
@@ -627,7 +639,7 @@ export default async function ResultsQueryPage({
 
   return (
     <Suspense fallback={<SearchFallback query={query} isProbe={isProbe} initialCurrency={resolvedCurrency} />}>
-      <SearchContent query={query} sid={sid?.trim()} started={started?.trim()} isProbe={isProbe} currency={resolvedCurrency} mt={mt?.trim()} />
+      <SearchContent query={query} sid={sid?.trim()} started={started?.trim()} isProbe={isProbe} currency={resolvedCurrency} mt={mt?.trim()} utmSource={utm_source?.trim()} utmMedium={utm_medium?.trim()} utmCampaign={utm_campaign?.trim()} />
     </Suspense>
   )
 }
