@@ -428,6 +428,9 @@ function getSortEffectivePrice(offer: FlightOffer, sortMode: string, displayCurr
     const total = getOfferDisplayTotalWithAncillary(offer, seat, displayCurrency)
     return total ?? getOfferDisplayTotalPrice(offer, displayCurrency)
   }
+  if (sortMode === 'price_with_all') {
+    return convertCurrencyAmount(getOfferKnownTotalPrice(offer), offer.currency, displayCurrency)
+  }
   return getOfferDisplayTotalPrice(offer, displayCurrency)
 }
 
@@ -446,6 +449,9 @@ interface Props {
   newOfferIds?: Set<string>
   isSearching?: boolean
   progress?: { checked: number; total: number; found: number }
+  defaultSort?: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'
+  requireSeatPerPerson?: boolean
+  requireBagPerPerson?: boolean
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -462,6 +468,9 @@ export default function ResultsPanel({
   newOfferIds,
   isSearching = false,
   progress,
+  defaultSort,
+  requireSeatPerPerson = false,
+  requireBagPerPerson = false,
 }: Props) {
   const t = useTranslations('ResultsPanel')
   const locale = useLocale()
@@ -470,7 +479,7 @@ export default function ResultsPanel({
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(searchId ? `/results/${searchId}` : '/results', isTestSearch)
   // ── Filter state ──────────────────────────────────────────────────────────
-  const [sort, setSort] = useState<'price' | 'price_with_bag' | 'price_with_seat' | 'duration'>('price')
+  const [sort, setSort] = useState<'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'>(defaultSort ?? 'price')
   const [stopsFilter, setStopsFilter] = useState<string[]>([])          // [] = all
   const [airlinesFilter, setAirlinesFilter] = useState<string[]>([])    // [] = all
   const [amenityFilters, setAmenityFilters] = useState<string[]>([])
@@ -741,7 +750,7 @@ export default function ResultsPanel({
     })
   }, [analyticsSearchId, isTestSearch, priceMax, priceMin, resultsSourcePath])
 
-  const handleSortChange = useCallback((nextSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'duration') => {
+  const handleSortChange = useCallback((nextSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration') => {
     setSort(nextSort)
     setVisibleCount(20)
     trackSearchSessionEvent(analyticsSearchId, 'sort_changed', { sort: nextSort }, {
@@ -794,6 +803,7 @@ export default function ResultsPanel({
           <button className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price')}>{t('sortPrice')}</button>
           <button className={`rf-chip${sort === 'price_with_bag' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_bag')}>+ Bag</button>
           <button className={`rf-chip${sort === 'price_with_seat' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_seat')}>+ Seat</button>
+          <button className={`rf-chip${sort === 'price_with_all' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_all')}>+ All</button>
           <button className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('duration')}>{t('sortDuration')}</button>
         </div>
       </div>
@@ -969,6 +979,12 @@ export default function ResultsPanel({
               onClick={() => handleSortChange('price_with_seat')}
             >
               + Seat
+            </button>
+            <button
+              className={`rf-chip${sort === 'price_with_all' ? ' rf-chip--on' : ''}`}
+              onClick={() => handleSortChange('price_with_all')}
+            >
+              + All
             </button>
             <button
               className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`}
@@ -1231,7 +1247,7 @@ export default function ResultsPanel({
                         <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
                       </div>
                       {hasPaidAncillary(checkedBag) && (
-                        <div className={`rf-price-breakdown-row${sort === 'price_with_bag' ? ' rf-price-breakdown-row--on' : ''}`}>
+                        <div className={`rf-price-breakdown-row${(sort === 'price_with_bag' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
                           <span className="rf-price-breakdown-label">🧳 Bag</span>
                           <span className="rf-price-breakdown-value">+{fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale)}</span>
                         </div>
@@ -1242,7 +1258,7 @@ export default function ResultsPanel({
                         </div>
                       )}
                       {hasPaidAncillary(seatSelection) && (
-                        <div className={`rf-price-breakdown-row${sort === 'price_with_seat' ? ' rf-price-breakdown-row--on' : ''}`}>
+                        <div className={`rf-price-breakdown-row${(sort === 'price_with_seat' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
                           <span className="rf-price-breakdown-label">💺 Seat</span>
                           <span className="rf-price-breakdown-value">+{fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale)}</span>
                         </div>

@@ -95,6 +95,36 @@ const TIME_KEYWORDS: Record<string, string[]> = {
   sq: ['mëngjes', 'pasdite', 'mbrëmje', 'nisje'],
 }
 
+// Passenger / group context keywords (used for ghost-text suggestion detection)
+const PASSENGER_KEYWORDS: Record<string, string[]> = {
+  en: ['with kids', 'with children', 'with family', 'as a couple', 'solo', '2 adults', 'family of'],
+  pl: ['z dziećmi', 'z rodziną', 'jako para', 'sam', '2 dorosłych'],
+  de: ['mit kindern', 'mit der familie', 'als paar', 'alleine', '2 erwachsene'],
+  es: ['con niños', 'con familia', 'en pareja', 'solo', '2 adultos'],
+  fr: ['avec enfants', 'en famille', 'en couple', 'seul', '2 adultes'],
+  it: ['con bambini', 'in famiglia', 'in coppia', 'da solo', '2 adulti'],
+  pt: ['com crianças', 'em família', 'a dois', 'sozinho', '2 adultos'],
+  nl: ['met kinderen', 'met gezin', 'als koppel', 'alleen', '2 volwassenen'],
+  sv: ['med barn', 'med familj', 'som par', 'ensam', '2 vuxna'],
+  hr: ['s djecom', 's obitelji', 'kao par', 'sam', '2 odrasla'],
+  sq: ['me fëmijë', 'me familje', 'si çift', 'vetëm', '2 të rritur'],
+}
+
+// Ancillary / inclusion keywords (used for ghost-text suggestion detection)
+const ANCILLARY_KEYWORDS: Record<string, string[]> = {
+  en: ['with bags', 'with checked baggage', 'carry-on only', 'with seat selection', 'refundable', 'with meals'],
+  pl: ['z bagażem', 'z wyborem miejsca', 'tylko bagaż podręczny', 'z posiłkiem'],
+  de: ['mit gepäck', 'mit sitzplatzwahl', 'nur handgepäck', 'mit mahlzeit'],
+  es: ['con equipaje', 'con selección de asiento', 'solo equipaje de mano', 'reembolsable'],
+  fr: ['avec bagages', 'avec choix de siège', 'bagage cabine uniquement', 'remboursable'],
+  it: ['con bagagli', 'con scelta del posto', 'solo bagaglio a mano', 'rimborsabile'],
+  pt: ['com bagagem', 'com seleção de assento', 'só bagagem de mão', 'reembolsável'],
+  nl: ['met bagage', 'met stoekkeuze', 'alleen handbagage', 'restitueerbaar'],
+  sv: ['med bagage', 'med platsval', 'bara handbagage', 'återbetalningsbar'],
+  hr: ['s prtljagom', 's odabirom sjedišta', 'samo ručna prtljaga'],
+  sq: ['me bagazh', 'me zgjedhje vendi', 'vetëm bagazh dore'],
+}
+
 // Month names by locale
 const MONTH_NAMES: Record<string, string[]> = {
   en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -236,6 +266,10 @@ interface ParsedQuery {
   hasDirectKeyword: boolean
   hasClassKeyword: boolean
   hasTimeKeyword: boolean
+  hasPassengerKeyword: boolean   // "with kids", "2 adults", "as a couple", "solo", etc.
+  hasAncillaryKeyword: boolean   // "with bags", "with seat selection", "refundable", etc.
+  hasPurposeKeyword: boolean     // "honeymoon", "business trip", "ski trip", "beach holiday"
+  hasTripDuration: boolean       // "for 2 weeks", "for 10 days", "14-day trip"
   remainder: string
 }
 
@@ -290,6 +324,24 @@ function parseQuery(query: string, locale: string): ParsedQuery {
   const hasTimeKeyword = timeWords.some(w => lowerQuery.includes(w.toLowerCase())) || 
                          /\b\d{1,2}(:|h)\d{0,2}\s*(am|pm)?\b/i.test(query) ||
                          /\b(after|before|between)\s+\d/i.test(query)
+
+  // Check for passenger / group context keywords
+  const passengerWords = PASSENGER_KEYWORDS[locale] || PASSENGER_KEYWORDS.en
+  const hasPassengerKeyword = passengerWords.some(w => lowerQuery.includes(w.toLowerCase())) ||
+    /\b(?:solo|alone|just\s+me|as\s+a\s+couple|with\s+(?:kids?|children|family|my\s+partner|my\s+wife|my\s+husband)|family\s+(?:trip|of)|group\s+of|\d+\s+(?:adults?|kids?|children|passengers?|people)|with\s+a\s+baby|honeymoon)\b/i.test(query)
+
+  // Check for ancillary keywords
+  const ancillaryWords = ANCILLARY_KEYWORDS[locale] || ANCILLARY_KEYWORDS.en
+  const hasAncillaryKeyword = ancillaryWords.some(w => lowerQuery.includes(w.toLowerCase())) ||
+    /\b(?:with\s+(?:bags?|checked?\s+bag|seat\s+selection|meals?|lounge)|carry[- ]?on\s+only|hand\s+luggage\s+only|refundable|free\s+cancellation|fully\s+flexible|window\s+seat|aisle\s+seat|extra\s+legroom)\b/i.test(query)
+
+  // Check for trip purpose keywords
+  const hasPurposeKeyword =
+    /\b(?:honeymoon|romantic|anniversary|business\s+trip|for\s+work|ski(?:ing)?\s+(?:trip|holiday)|beach\s+(?:trip|holiday|vacation)|city\s+break|weekend\s+(?:trip|break|getaway)|long\s+weekend)\b/i.test(query)
+
+  // Check for trip duration keywords
+  const hasTripDuration =
+    /\bfor\s+\d+\s+(?:days?|nights?|weeks?)\b|\b\d+[- ]\d+\s+(?:days?|nights?)\b|\bfor\s+a\s+(?:week|fortnight|two\s+weeks)\b/i.test(query)
   
   return {
     origin,
@@ -301,6 +353,10 @@ function parseQuery(query: string, locale: string): ParsedQuery {
     hasDirectKeyword,
     hasClassKeyword,
     hasTimeKeyword,
+    hasPassengerKeyword,
+    hasAncillaryKeyword,
+    hasPurposeKeyword,
+    hasTripDuration,
     remainder: query,
   }
 }
@@ -498,6 +554,23 @@ function getSuggestion(query: string, locale: string): string {
       }
       return generateTimeSuggestion(locale)
     }
+
+    // Stage 9: Have time (or direct/class filled), suggest passenger context if missing
+    const hasEnoughContext = parsed.hasReturnDate || parsed.hasReturnKeyword || parsed.hasTripDuration
+    if (hasEnoughContext && !parsed.hasPassengerKeyword) {
+      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
+      if (endsWithSep) {
+        return generatePassengerSuggestion(locale)
+      }
+    }
+
+    // Stage 10: Have passengers, suggest ancillaries if missing
+    if (parsed.hasPassengerKeyword && !parsed.hasAncillaryKeyword) {
+      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
+      if (endsWithSep) {
+        return generateAncillarySuggestion(locale)
+      }
+    }
   }
   
   return ''
@@ -518,6 +591,44 @@ function generateTripDurationSuggestion(locale: string): string {
     sv: [', i 7 dagar', ', i 10-14 dagar', ', i 2 veckor'],
     hr: [', za 7 dana', ', za 10-14 dana'],
     sq: [', për 7 ditë', ', për 10-14 ditë'],
+  }
+  const list = examples[locale] || examples.en
+  return list[Math.floor(Math.random() * list.length)]
+}
+
+// Passenger context ghost-text suggestions
+function generatePassengerSuggestion(locale: string): string {
+  const examples: Record<string, string[]> = {
+    en: ['with 2 adults', 'for a family', 'as a couple', 'solo', 'with kids'],
+    pl: ['dla 2 dorosłych', 'dla rodziny', 'jako para', 'samotnie', 'z dziećmi'],
+    de: ['für 2 Erwachsene', 'für die Familie', 'als Paar', 'alleine', 'mit Kindern'],
+    es: ['para 2 adultos', 'para la familia', 'en pareja', 'solo', 'con niños'],
+    fr: ['pour 2 adultes', 'en famille', 'en couple', 'seul', 'avec enfants'],
+    it: ['per 2 adulti', 'in famiglia', 'in coppia', 'da solo', 'con bambini'],
+    pt: ['para 2 adultos', 'em família', 'a dois', 'sozinho', 'com crianças'],
+    nl: ['voor 2 volwassenen', 'met gezin', 'als koppel', 'alleen', 'met kinderen'],
+    sv: ['för 2 vuxna', 'med familj', 'som par', 'ensam', 'med barn'],
+    hr: ['za 2 odrasle', 's obitelji', 'kao par', 'sam', 's djecom'],
+    sq: ['për 2 të rritur', 'me familje', 'si çift', 'vetëm', 'me fëmijë'],
+  }
+  const list = examples[locale] || examples.en
+  return list[Math.floor(Math.random() * list.length)]
+}
+
+// Ancillary ghost-text suggestions
+function generateAncillarySuggestion(locale: string): string {
+  const examples: Record<string, string[]> = {
+    en: ['with checked baggage', 'with seat selection', 'refundable', 'carry-on only', 'with meals'],
+    pl: ['z bagażem rejestrowanym', 'z wyborem miejsca', 'z możliwością zwrotu', 'tylko bagaż podręczny'],
+    de: ['mit Gepäck', 'mit Sitzplatzwahl', 'erstattungsfähig', 'nur Handgepäck'],
+    es: ['con equipaje facturado', 'con selección de asiento', 'reembolsable', 'solo equipaje de mano'],
+    fr: ['avec bagages enregistrés', 'avec choix de siège', 'remboursable', 'bagage cabine uniquement'],
+    it: ['con bagaglio registrato', 'con scelta del posto', 'rimborsabile', 'solo bagaglio a mano'],
+    pt: ['com bagagem despachada', 'com seleção de assento', 'reembolsável', 'só bagagem de mão'],
+    nl: ['met ruimbagage', 'met stoelkeuze', 'restitueerbaar', 'alleen handbagage'],
+    sv: ['med incheckat bagage', 'med platsval', 'återbetalningsbar', 'bara handbagage'],
+    hr: ['s predanom prtljagom', 's odabirom sjedišta', 'povratna karta', 'samo ručna prtljaga'],
+    sq: ['me bagazh të kontrolluar', 'me zgjedhje vendi', 'i rimbursueshëm', 'vetëm bagazh dore'],
   }
   const list = examples[locale] || examples.en
   return list[Math.floor(Math.random() * list.length)]
