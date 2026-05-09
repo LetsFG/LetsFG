@@ -596,7 +596,6 @@ export default function HomeSearchForm({
   const [dropdownActiveIdx, setDropdownActiveIdx] = useState(-1)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const [mounted, setMounted] = useState(false)
-  const [utmParams, setUtmParams] = useState<Record<string, string>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const dropdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -669,16 +668,24 @@ export default function HomeSearchForm({
   }, [initialCurrency])
 
   const handleSearch = (event: FormEvent) => {
-    if (!inputValue.trim()) {
-      event.preventDefault()
-      return
-    }
+    event.preventDefault()
+    if (!inputValue.trim()) return
     if (DEMO_LOADING) {
-      event.preventDefault()
       setIsLoading(true)
       router.push(`/results/demo-loading${probeMode ? '?probe=1' : ''}`)
       return
     }
+    // Read UTMs synchronously from the current URL (no state timing dependency)
+    const sp = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams()
+    params.set('q', inputValue.trim())
+    if (prefCurrency) params.set('cur', prefCurrency)
+    if (probeMode) params.set('probe', '1')
+    for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+      const val = sp.get(key)
+      if (val) params.set(key, val)
+    }
+    router.push(`/results?${params.toString()}`)
   }
 
   // Select an airport from the dropdown and insert it into the query
@@ -701,15 +708,6 @@ export default function HomeSearchForm({
 
   // Set mounted flag for portal
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search)
-    const utms: Record<string, string> = {}
-    for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
-      const val = p.get(key)
-      if (val) utms[key] = val
-    }
-    if (Object.keys(utms).length > 0) setUtmParams(utms)
-  }, [])
 
   // Debounce syncing inputValue → query (drives suggestion + dropdown).
   // The input itself always updates instantly via inputValue.
@@ -813,12 +811,7 @@ export default function HomeSearchForm({
         </div>
       )}
 
-      <form action="/results" method="get" onSubmit={handleSearch} className="lp-sf-form">
-        {probeMode && <input type="hidden" name="probe" value="1" />}
-        <input type="hidden" name="cur" value={prefCurrency} readOnly aria-hidden="true" />
-        {Object.entries(utmParams).map(([k, v]) => (
-          <input key={k} type="hidden" name={k} value={v} aria-hidden="true" />
-        ))}
+      <form onSubmit={handleSearch} className="lp-sf-form">
         <div className="lp-sf-frame-wrap" ref={frameRef}>
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
