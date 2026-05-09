@@ -22,7 +22,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch VAPID key' }, { status: resp.status })
     }
     return NextResponse.json(data)
-  } catch {
+  } catch (_) {
     return NextResponse.json({ error: 'Service unavailable' }, { status: 503 })
   }
 }

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   let body: { monitor_id?: unknown; subscription?: unknown }
   try {
     body = await req.json()
-  } catch {
+  } catch (_) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(data)
-  } catch {
+  } catch (_) {
     return NextResponse.json({ error: 'Service unavailable' }, { status: 503 })
   }
 }

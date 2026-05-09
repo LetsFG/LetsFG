@@ -43,7 +43,7 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, resultsC
       if (localStorage.getItem(LS_KEY_DONE) || sessionStorage.getItem(SS_KEY_DISMISSED)) {
         setSuppressed(true)
       }
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
   }, [])
 
   const [bannerVisible, setBannerVisible] = useState(false)
@@ -100,7 +100,7 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, resultsC
     setBannerVisible(false)
     setOverlayVisible(false)
     // Permanently suppress — answered once, never ask again
-    try { localStorage.setItem(LS_KEY_DONE, '1') } catch { /* ignore */ }
+    try { localStorage.setItem(LS_KEY_DONE, '1') } catch (_) { /* ignore */ }
   }, [submitted, searchId, isTestSearch])
 
   const dismissBanner = () => {
@@ -108,14 +108,14 @@ export default function ResultsFrictionSurvey({ searchId, isTestSearch, resultsC
     setBannerDismissed(true)
     // Also prevent the exit-intent overlay this session — user already saw the survey
     setOverlayDismissed(true)
-    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch { /* ignore */ }
+    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch (_) { /* ignore */ }
   }
 
   const dismissOverlay = () => {
     setOverlayVisible(false)
     setOverlayDismissed(true)
     setBannerDismissed(true)
-    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch { /* ignore */ }
+    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch (_) { /* ignore */ }
   }
 
   if (suppressed || hasUnlocked) return null

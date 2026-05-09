@@ -63,7 +63,7 @@ function fmtDate(iso: string) {
     return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
     })
-  } catch {
+  } catch (_) {
     return iso
   }
 }
@@ -119,10 +119,10 @@ export default function MonitorModal({
         applicationServerKey: urlBase64ToUint8Array(public_key),
       })
       // Stash for the success page — it reads this and registers with the backend
-      try { sessionStorage.setItem('letsfg_push_pending_sub', JSON.stringify(sub.toJSON())) } catch { /* ignore */ }
+      try { sessionStorage.setItem('letsfg_push_pending_sub', JSON.stringify(sub.toJSON())) } catch (_) { /* ignore */ }
       setPushState('done')
       trackSearchSessionEvent(searchId, 'monitor_push_enabled', {})
-    } catch {
+    } catch (_) {
       setPushState('unavailable')
     }
   }
@@ -185,13 +185,13 @@ export default function MonitorModal({
 
       // Persist monitor_id and return URL so the success page can redirect back
       if (data.monitor_id) {
-        try { sessionStorage.setItem('letsfg_monitor_id', data.monitor_id) } catch { /* ignore */ }
-        try { sessionStorage.setItem('letsfg_monitor_return_url', window.location.href) } catch { /* ignore */ }
+        try { sessionStorage.setItem('letsfg_monitor_id', data.monitor_id) } catch (_) { /* ignore */ }
+        try { sessionStorage.setItem('letsfg_monitor_return_url', window.location.href) } catch (_) { /* ignore */ }
       }
 
       // Redirect to Stripe Checkout
       window.location.href = data.checkout_url
-    } catch {
+    } catch (_) {
       setErrorMsg('Network error. Please check your connection and try again.')
       setState('error')
     }

@@ -828,7 +828,7 @@ function resolveEpochMs(
         const ms = new Date(v).getTime()
         if (!isNaN(ms)) { _epochMap.set(searchId, ms); return ms }
       }
-    } catch { /* sessionStorage unavailable */ }
+    } catch (_) { /* sessionStorage unavailable */ }
   }
   // 3. searchedAt from server
   if (searchedAt) {
@@ -866,7 +866,7 @@ export default function SearchingTasks({
     const epochMs = resolveEpochMs(searchId, searchedAt)
     // Write to sessionStorage so Ctrl+R reloads also recover correctly
     if (searchId && typeof window !== 'undefined') {
-      try { sessionStorage.setItem(`lfg_st_${searchId}`, new Date(epochMs).toISOString()) } catch { /* ignore */ }
+      try { sessionStorage.setItem(`lfg_st_${searchId}`, new Date(epochMs).toISOString()) } catch (_) { /* ignore */ }
     }
     setElapsed(Math.max(0, (Date.now() - epochMs) / 1000))
     const id = setInterval(() => setElapsed((Date.now() - epochMs) / 1000), 100)

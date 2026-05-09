@@ -63,7 +63,7 @@ export default function ResultsActions() {
     const url = window.location.href
     try {
       await navigator.clipboard.writeText(url)
-    } catch {
+    } catch (_) {
       // Fallback for browsers without clipboard API
       const el = document.createElement('input')
       el.value = url

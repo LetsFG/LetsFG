@@ -29,7 +29,7 @@ export async function POST(
     })
     const body = await fswRes.json().catch(() => ({}))
     return NextResponse.json(body, { status: fswRes.ok ? 200 : fswRes.status })
-  } catch {
+  } catch (_) {
     // Swallow errors — the cancel is best-effort
     return NextResponse.json({ ok: true, note: 'fsw unreachable' })
   }

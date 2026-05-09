@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   let body: { monitor_id?: unknown; user?: unknown }
   try {
     body = await req.json()
-  } catch {
+  } catch (_) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, first_name: telegramUser.first_name })
-  } catch {
+  } catch (_) {
     return NextResponse.json({ error: 'Service unavailable' }, { status: 503 })
   }
 }

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         'X-Letsfg-Analytics-Upstream-Url': response.url,
       }),
     })
-  } catch {
+  } catch (_) {
     return NextResponse.json(
       { error: 'Analytics proxy failed' },
       { status: 502, headers: debugHeaders() },

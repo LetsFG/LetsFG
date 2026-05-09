@@ -69,7 +69,7 @@ async function getPublicStats(): Promise<PublicStats> {
         }
       }
     }
-  } catch {}
+  } catch (_) {}
 
   // API unavailable — show dashes rather than misleading zeros
   return { totalSearches: null, avgSavings: null, connectorsAvailable: null }

@@ -34,7 +34,7 @@ interface Monitor {
 function fmtDate(iso: string) {
   try {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-  } catch {
+  } catch (_) {
     return iso
   }
 }
@@ -42,7 +42,7 @@ function fmtDate(iso: string) {
 function fmtDateTime(iso: string) {
   try {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-  } catch {
+  } catch (_) {
     return iso
   }
 }
@@ -50,7 +50,7 @@ function fmtDateTime(iso: string) {
 function fmtPrice(price: number, currency: string) {
   try {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(price)
-  } catch {
+  } catch (_) {
     return `${currency} ${price.toFixed(0)}`
   }
 }

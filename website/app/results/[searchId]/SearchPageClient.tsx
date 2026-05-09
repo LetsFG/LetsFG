@@ -74,13 +74,13 @@ function MonitorConfirmedOverlay({
   // has no webhook, so activation must happen here before the push sub is stored).
   useEffect(() => {
     let pending: string | null = null
-    try { pending = sessionStorage.getItem('letsfg_push_pending_sub') } catch { /* ignore */ }
+    try { pending = sessionStorage.getItem('letsfg_push_pending_sub') } catch (_) { /* ignore */ }
     if (!pending) return
 
     const sub = JSON.parse(pending) as object
 
     const registerPush = () => {
-      try { sessionStorage.removeItem('letsfg_push_pending_sub') } catch { /* ignore */ }
+      try { sessionStorage.removeItem('letsfg_push_pending_sub') } catch (_) { /* ignore */ }
       setPushState('loading')
       fetch('/api/monitor/push', {
         method: 'POST',
@@ -93,9 +93,9 @@ function MonitorConfirmedOverlay({
 
     // Activate the monitor first (needed in test mode — no webhook running locally)
     let cs: string | null = null
-    try { cs = sessionStorage.getItem('letsfg_checkout_cs') } catch { /* ignore */ }
+    try { cs = sessionStorage.getItem('letsfg_checkout_cs') } catch (_) { /* ignore */ }
     if (cs) {
-      try { sessionStorage.removeItem('letsfg_checkout_cs') } catch { /* ignore */ }
+      try { sessionStorage.removeItem('letsfg_checkout_cs') } catch (_) { /* ignore */ }
       fetch('/api/monitor/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -126,7 +126,7 @@ function MonitorConfirmedOverlay({
         if (!resp.ok || !data.ok) { setTgState('error'); return }
         setTgName(data.first_name || user.first_name)
         setTgState('done')
-      } catch { setTgState('error') }
+      } catch (_) { setTgState('error') }
     }
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -167,7 +167,7 @@ function MonitorConfirmedOverlay({
       })
       if (!subResp.ok) { setPushState('error'); return }
       setPushState('done')
-    } catch { setPushState('error') }
+    } catch (_) { setPushState('error') }
   }
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
@@ -431,9 +431,10 @@ export default function SearchPageClient({
         sessionStorage.removeItem(SS_KEY_CHECKOUT_VISITED)
         setCameFromCheckout(true)
       }
-    } catch { /* private mode — ignore */ }
+    } catch (_) { /* private mode — ignore */ }
   }, [])
 
+  useEffect(() => {
     const monitorActive = searchParams.get('monitor_active')
     if (!monitorActive) return
     setConfirmedMonitorId(monitorActive)
@@ -442,7 +443,7 @@ export default function SearchPageClient({
       const url = new URL(window.location.href)
       url.searchParams.delete('monitor_active')
       window.history.replaceState(null, '', url.toString())
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
   }, [searchParams])
 
   useEffect(() => {
@@ -487,7 +488,7 @@ export default function SearchPageClient({
         setStatus('completed')
         setOffers(dedup(cached.offers))
       }
-    } catch { /* private mode or parse error — ignore */ }
+    } catch (_) { /* private mode or parse error — ignore */ }
   }, [searchId, initialStatus])
 
   // When search completes, persist results to sessionStorage so revisiting
@@ -496,7 +497,7 @@ export default function SearchPageClient({
     if (status !== 'completed') return
     try {
       writeBrowserCachedResults(searchId, offers.slice(0, SESSION_RESULT_CACHE_LIMIT))
-    } catch { /* storage full or unavailable */ }
+    } catch (_) { /* storage full or unavailable */ }
   }, [status, searchId, offers])
 
   // Client-side poll — replaces SearchPoller + router.refresh().
@@ -542,7 +543,7 @@ export default function SearchPageClient({
           setStatus(data.status)
           return // stop polling
         }
-      } catch {
+      } catch (_) {
         // Network error — silently retry next interval
       }
 
@@ -724,7 +725,7 @@ export default function SearchPageClient({
   const fmtDate = (iso: string) => {
     try {
       return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    } catch { return iso }
+    } catch (_) { return iso }
   }
 
   const travelerCount = parsed.passengers || 1
@@ -941,7 +942,7 @@ export default function SearchPageClient({
             })
             setMonitorOpen(true)
           } : undefined}
-          onOfferSelect={handleOfferSelect}
+          onOfferSelect={undefined}
           newOfferIds={isSearching ? newOfferIds : undefined}
           isSearching={isSearching}
           progress={progress}

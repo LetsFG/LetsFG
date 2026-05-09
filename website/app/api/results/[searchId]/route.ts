@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { cacheOffers } from '../../../../lib/offer-cache'
 import { cacheCompletedSearchResult, getCachedSearchResult } from '../../../../lib/results-cache'
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
@@ -266,7 +266,7 @@ export async function GET(
       }
       const data = await res.json()
       return NextResponse.json(data)
-    } catch {
+    } catch (_) {
       return NextResponse.json({ error: 'Search service unavailable' }, { status: 503 })
     }
   }

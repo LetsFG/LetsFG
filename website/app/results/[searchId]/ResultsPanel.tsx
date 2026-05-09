@@ -20,6 +20,7 @@ import {
   hasIncludedAncillary,
   hasPaidAncillary,
 } from '../../../lib/offer-pricing'
+import { calculateFee } from '../../../lib/pricing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { SearchProgressBarInline } from './SearchProgressBar'
 // build:2026-05-05b
@@ -611,7 +612,7 @@ export default function ResultsPanel({
       if (!res.ok) return
       const data = await res.json() as { unlocked?: boolean }
       setIsUnlocked(Boolean(data.unlocked))
-    } catch {
+    } catch (_) {
       // Ignore transient unlock-status failures.
     }
   }, [searchId])
@@ -671,7 +672,7 @@ export default function ResultsPanel({
             : ''
 
         return label ? { offerId: offer.id, label } : null
-      } catch {
+      } catch (_) {
         return null
       }
     })).then((results) => {
@@ -1036,8 +1037,6 @@ export default function ResultsPanel({
                   ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale) })
                   : null,
             ].filter((value): value is string => Boolean(value))
-            const checkedBagTotal = getOfferDisplayTotalWithAncillary(offer, checkedBag, currency)
-            const seatSelectionTotal = getOfferDisplayTotalWithAncillary(offer, seatSelection, currency)
             const sourceLabel = revealedSources[offer.id]
             const outboundCtx = computeFlightTimeContext(offer.departure_time, offer.arrival_time, offer.duration_minutes)
             const inboundCtx = offer.inbound
@@ -1219,34 +1218,41 @@ export default function ResultsPanel({
                   )}
 
                   <div className="rf-price-wrap">
+                    <span className="rf-price-total-label">Total</span>
                     <span className="rf-price">{fmt(getSortEffectivePrice(offer, sort, currency))}</span>
                     <span className="rf-price-sub">{t('perPerson')}</span>
-                    {(checkedBag || seatSelection) && (
-                      <div className="rf-price-breakdown">
-                        {hasPaidAncillary(checkedBag) && checkedBagTotal !== null && (
-                          <div className={`rf-price-breakdown-row${sort === 'price_with_bag' ? ' rf-price-breakdown-row--on' : ''}`}>
-                            <span className="rf-price-breakdown-label">🧳 + bag</span>
-                            <span className="rf-price-breakdown-value">{fmt(checkedBagTotal)}</span>
-                          </div>
-                        )}
-                        {hasIncludedAncillary(checkedBag) && (
-                          <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
-                            <span className="rf-price-breakdown-label">🧳 bag incl.</span>
-                          </div>
-                        )}
-                        {hasPaidAncillary(seatSelection) && seatSelectionTotal !== null && (
-                          <div className={`rf-price-breakdown-row${sort === 'price_with_seat' ? ' rf-price-breakdown-row--on' : ''}`}>
-                            <span className="rf-price-breakdown-label">💺 + seat</span>
-                            <span className="rf-price-breakdown-value">{fmt(seatSelectionTotal)}</span>
-                          </div>
-                        )}
-                        {hasIncludedAncillary(seatSelection) && (
-                          <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
-                            <span className="rf-price-breakdown-label">💺 seat incl.</span>
-                          </div>
-                        )}
+                    <div className="rf-price-breakdown">
+                      <div className="rf-price-breakdown-row">
+                        <span className="rf-price-breakdown-label">✈ Ticket</span>
+                        <span className="rf-price-breakdown-value">{fmt(convertCurrencyAmount(offer.price, offer.currency, currency))}</span>
                       </div>
-                    )}
+                      <div className="rf-price-breakdown-row">
+                        <span className="rf-price-breakdown-label">LetsFG fee</span>
+                        <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
+                      </div>
+                      {hasPaidAncillary(checkedBag) && (
+                        <div className={`rf-price-breakdown-row${sort === 'price_with_bag' ? ' rf-price-breakdown-row--on' : ''}`}>
+                          <span className="rf-price-breakdown-label">🧳 Bag</span>
+                          <span className="rf-price-breakdown-value">+{fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale)}</span>
+                        </div>
+                      )}
+                      {hasIncludedAncillary(checkedBag) && (
+                        <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
+                          <span className="rf-price-breakdown-label">🧳 Bag incl.</span>
+                        </div>
+                      )}
+                      {hasPaidAncillary(seatSelection) && (
+                        <div className={`rf-price-breakdown-row${sort === 'price_with_seat' ? ' rf-price-breakdown-row--on' : ''}`}>
+                          <span className="rf-price-breakdown-label">💺 Seat</span>
+                          <span className="rf-price-breakdown-value">+{fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale)}</span>
+                        </div>
+                      )}
+                      {hasIncludedAncillary(seatSelection) && (
+                        <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
+                          <span className="rf-price-breakdown-label">💺 Seat incl.</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <a

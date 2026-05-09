@@ -169,7 +169,7 @@ export default function ExplorePageClient({
         doneRef.current = true
         if (!data.explore_destinations?.length) setFailed(true)
       }
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
   }, [searchId])
 
   useEffect(() => {

@@ -56,7 +56,7 @@ function LoadingInner() {
           progress: data.progress,
           searchedAt: data.searched_at,
         })
-      } catch {
+      } catch (_) {
         // silently ignore — animation still runs via simulated counter
       }
     }

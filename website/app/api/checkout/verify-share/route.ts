@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
   let formData: FormData
   try {
     formData = await req.formData()
-  } catch {
+  } catch (_) {
     return NextResponse.json({ unlocked: false, error: 'Invalid form data' }, { status: 400 })
   }
 

@@ -42,7 +42,7 @@ async function fetchRoutes(): Promise<SitemapRoute[]> {
       session_count: r.session_count,
       snapshot_computed_at: r.snapshot_computed_at,
     }))
-  } catch {
+  } catch (_) {
     return []
   }
 }

@@ -57,13 +57,13 @@ function MonitorSuccessInner() {
     // Store cs in sessionStorage so the results overlay can call activate later
     const cs = searchParams.get('cs')
     if (cs && cs.startsWith('cs_')) {
-      try { sessionStorage.setItem('letsfg_checkout_cs', cs) } catch { /* ignore */ }
+      try { sessionStorage.setItem('letsfg_checkout_cs', cs) } catch (_) { /* ignore */ }
     }
 
     try {
       const stored = sessionStorage.getItem('letsfg_monitor_id')
       if (stored) { setMonitorId(stored); return }
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
 
     const mid = searchParams.get('mid')
     if (mid) { setMonitorId(mid); return }
@@ -85,7 +85,7 @@ function MonitorSuccessInner() {
     try {
       returnUrl = sessionStorage.getItem('letsfg_monitor_return_url')
       if (returnUrl) sessionStorage.removeItem('letsfg_monitor_return_url')
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
 
     if (returnUrl) {
       // Redirect — leave letsfg_push_pending_sub for the overlay to handle
@@ -94,7 +94,7 @@ function MonitorSuccessInner() {
         const url = new URL(returnUrl)
         url.searchParams.set('monitor_active', monitorId)
         router.replace(url.toString())
-      } catch {
+      } catch (_) {
         router.replace('/en')
       }
       return
@@ -115,7 +115,7 @@ function MonitorSuccessInner() {
           .then(r => r.ok ? setPushState('done') : setPushState('error'))
           .catch(() => setPushState('error'))
       }
-    } catch { /* ignore */ }
+    } catch (_) { /* ignore */ }
   }, [monitorId, redirecting, router])
 
   // Service worker registration
@@ -141,7 +141,7 @@ function MonitorSuccessInner() {
         if (!resp.ok || !data.ok) { setTgState('error'); return }
         setTgName(data.first_name || user.first_name)
         setTgState('done')
-      } catch {
+      } catch (_) {
         setTgState('error')
       }
     }
@@ -185,7 +185,7 @@ function MonitorSuccessInner() {
       })
       if (!subResp.ok) { setPushState('error'); return }
       setPushState('done')
-    } catch {
+    } catch (_) {
       setPushState('error')
     }
   }

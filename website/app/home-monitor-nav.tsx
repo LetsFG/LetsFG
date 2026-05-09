@@ -41,7 +41,7 @@ export default function HomeMonitorNav({ locale }: HomeMonitorNavProps) {
       dialogRef.current?.showModal()
       document.body.style.overflow = 'hidden'
     } else {
-      try { dialogRef.current?.close() } catch { /* ignore */ }
+      try { dialogRef.current?.close() } catch (_) { /* ignore */ }
       document.body.style.overflow = ''
     }
     return () => { document.body.style.overflow = '' }

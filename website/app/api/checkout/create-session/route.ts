@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   let offerId: string, searchId: string, probe: string | undefined
   try {
     ;({ offerId, searchId, probe } = await req.json())
-  } catch {
+  } catch (_) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       if (new URL(requestOrigin).host === new URL(configuredSiteUrl).host) {
         origin = requestOrigin
       }
-    } catch {
+    } catch (_) {
       origin = configuredSiteUrl
     }
   }

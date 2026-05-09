@@ -300,7 +300,7 @@ async function startFSWSearch(
       utm_campaign: utmCampaign,
     }, userIp)
     return result
-  } catch {
+  } catch (_) {
     return { searchId: null, cache: 'miss' }
   }
 }
@@ -320,7 +320,7 @@ async function pollFSW(searchId: string, maxWaitMs: number): Promise<{ offers: R
         if (data.status === 'completed') return { offers: data.offers || [] }
         if (data.status === 'failed') return { offers: [] }
       }
-    } catch {}
+    } catch (_) {}
     if (Date.now() + 3000 < deadline) {
       await new Promise(r => setTimeout(r, 3000))
     } else {
@@ -444,7 +444,7 @@ async function SearchContent({
             return_days: returnDays,
           })
           exploreSearchId = result.searchId
-        } catch {
+        } catch (_) {
           // FSW unavailable — fall through to error UI
         }
       }

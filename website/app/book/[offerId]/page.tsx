@@ -87,7 +87,7 @@ async function getOffer(offerId: string, from?: string, ref?: string, isProbe = 
     const res = await fetch(url.toString(), { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
-  } catch {
+  } catch (_) {
     return null
   }
 }

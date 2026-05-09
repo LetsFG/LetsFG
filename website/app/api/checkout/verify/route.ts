@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   let stripeSessionId: string
   try {
     ;({ stripeSessionId } = await req.json())
-  } catch {
+  } catch (_) {
     return NextResponse.json({ unlocked: false, error: 'Invalid body' }, { status: 400 })
   }
 

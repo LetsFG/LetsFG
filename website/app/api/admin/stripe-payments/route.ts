@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     if (body.hours) hours = Math.min(Math.max(parseInt(body.hours), 1), 8760)
-  } catch {
+  } catch (_) {
     // use default
   }
 
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           skipped++
           continue
         }
-      } catch {
+      } catch (_) {
         // Can't verify — skip to be safe
         skipped++
         continue

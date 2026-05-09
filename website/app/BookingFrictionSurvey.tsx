@@ -63,7 +63,7 @@ export default function BookingFrictionSurvey({
       if (localStorage.getItem(LS_KEY_DONE) || sessionStorage.getItem(SS_KEY_DISMISSED)) {
         setSuppressed(true)
       }
-    } catch { /* private mode — ignore */ }
+    } catch (_) { /* private mode — ignore */ }
   }, [])
 
   const [visible, setVisible] = useState(false)
@@ -103,7 +103,7 @@ export default function BookingFrictionSurvey({
   const handleDismiss = useCallback(() => {
     setVisible(false)
     setDismissed(true)
-    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch { /* ignore */ }
+    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch (_) { /* ignore */ }
   }, [])
 
   const handleSubmit = useCallback((key: OptionKey, text?: string) => {
@@ -120,7 +120,7 @@ export default function BookingFrictionSurvey({
     })
     setSubmitted(true)
     setVisible(false)
-    try { localStorage.setItem(LS_KEY_DONE, '1') } catch { /* ignore */ }
+    try { localStorage.setItem(LS_KEY_DONE, '1') } catch (_) { /* ignore */ }
   }, [submitted, searchId, offerId, context, isTestSearch])
 
   if (suppressed || dismissed) return null
