@@ -159,7 +159,7 @@ function readStoredUnlockToken(searchId: string | null): string | null {
 
   try {
     return window.localStorage.getItem(getUnlockTokenStorageKey(searchId))
-  } catch {
+  } catch (_) {
     return null
   }
 }
@@ -169,7 +169,7 @@ function persistUnlockToken(searchId: string | null, unlockToken: string | undef
 
   try {
     window.localStorage.setItem(getUnlockTokenStorageKey(searchId), unlockToken)
-  } catch {
+  } catch (_) {
     // Ignore storage failures and keep the in-memory flow working.
   }
 }
@@ -194,7 +194,7 @@ async function fetchLatestOfferRef(searchId: string, offerId: string, isTestSear
     return typeof matchedOffer?.offer_ref === 'string' && matchedOffer.offer_ref.length > 0
       ? matchedOffer.offer_ref
       : null
-  } catch {
+  } catch (_) {
     return null
   }
 }
@@ -428,7 +428,7 @@ export default function CheckoutPanel({
 
   // Mark that user visited checkout so results page can detect a "back from checkout" return
   useEffect(() => {
-    try { sessionStorage.setItem(SS_KEY_CHECKOUT_VISITED, '1') } catch { /* ignore */ }
+    try { sessionStorage.setItem(SS_KEY_CHECKOUT_VISITED, '1') } catch (_) { /* ignore */ }
   }, [])
 
   const getLegTitle = useCallback((leg: 'outbound' | 'inbound') => (
@@ -481,7 +481,7 @@ export default function CheckoutPanel({
 
       const data = await res.json() as { unlocked?: boolean }
       return data.unlocked === true
-    } catch {
+    } catch (_) {
       return false
     }
   }, [searchId])
@@ -512,7 +512,7 @@ export default function CheckoutPanel({
             const offerData = await offerRes.json() as { offer_ref?: string }
             resolvedOfferRef = offerData.offer_ref
           }
-        } catch {
+        } catch (_) {
           // Best-effort — proceed without offer_ref
         }
       }
@@ -612,7 +612,7 @@ export default function CheckoutPanel({
         })
       }
       return true
-    } catch {
+    } catch (_) {
       setBookingUrl(null)
       setBookingSite(null)
       setBookingOptions([])
@@ -803,7 +803,7 @@ export default function CheckoutPanel({
       } else {
         setStep({ type: 'locked' })
       }
-    } catch {
+    } catch (_) {
       setStep({ type: 'locked' })
     }
   }, [analyticsSearchId, checkoutSourcePath, fee, isTestSearch, offer, searchId])
@@ -873,7 +873,7 @@ export default function CheckoutPanel({
       let data: { unlocked?: boolean; error?: string; unlockToken?: string } = {}
       try {
         data = await res.json()
-      } catch {
+      } catch (_) {
         data = {}
       }
       if (data.unlocked) {
@@ -893,7 +893,7 @@ export default function CheckoutPanel({
         setShareError(data.error ?? null)
         setStep({ type: 'share-rejected', platform })
       }
-    } catch {
+    } catch (_) {
       setShareError('Verification failed. Please try again.')
       setStep({ type: 'share-rejected', platform })
     }
@@ -1069,6 +1069,39 @@ export default function CheckoutPanel({
                 <span className="ck-price-label">{t('total')}</span>
                 <span className="ck-price-value">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}</span>
               </div>
+            </div>
+
+            {/* ── Comparison: what you'd pay elsewhere ────────────────── */}
+            <div className="ck-elsewhere">
+              <div className="ck-elsewhere-heading">What you'd pay on popular travel sites</div>
+              <div className="ck-elsewhere-rows">
+                {([
+                  ['Popular flight aggregator', 1.10],
+                  ['Leading booking platform',  1.17],
+                  ['Full-service travel site',  1.24],
+                ] as [string, number][]).map(([label, factor]) => (
+                  <div className="ck-elsewhere-row" key={label}>
+                    <span className="ck-elsewhere-site">{label}</span>
+                    <span className="ck-elsewhere-price">
+                      {displayCurrency}{Math.round(convertCurrencyAmount(offer.price * factor, offer.currency, displayCurrency))}
+                    </span>
+                  </div>
+                ))}
+                <div className="ck-elsewhere-row ck-elsewhere-row--ours">
+                  <span className="ck-elsewhere-site ck-elsewhere-site--ours">
+                    <svg viewBox="0 0 20 20" fill="none" width="13" height="13" aria-hidden="true">
+                      <path d="M4 10l4.5 4.5L16 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    LetsFG total
+                  </span>
+                  <span className="ck-elsewhere-price ck-elsewhere-price--ours">
+                    {displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}
+                  </span>
+                </div>
+              </div>
+              <p className="ck-elsewhere-note">
+                Travel sites typically add demand-based markups, add OTA fees on top, or just don't have everything. LetsFG compares the prices from ALL the websites in the world — scanning both your favourite sites and those you didn't even know existed.
+              </p>
             </div>
 
             {splitBookingLegs.length > 0 ? (

@@ -3861,6 +3861,16 @@ body:has(.res-page) {
   gap: 2px;
 }
 
+.rf-price-total-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(20, 45, 60, 0.35);
+  line-height: 1;
+  margin-bottom: 1px;
+}
+
 .rf-price {
   font-size: 1.45rem;
   font-weight: 800;
@@ -3905,10 +3915,10 @@ body:has(.res-page) {
   justify-content: space-between;
   align-items: center;
   gap: 6px;
-  padding: 2px 5px;
-  border-radius: 5px;
-  font-size: 0.72rem;
-  color: rgba(20, 45, 60, 0.48);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.67rem;
+  color: rgba(20, 45, 60, 0.42);
 }
 
 .rf-price-breakdown-row--on {
@@ -8047,6 +8057,83 @@ body:has(.res-page) {
   font-size: 1.3rem;
   font-weight: 800;
   color: #142d3c;
+}
+
+/* ── Market price comparison ─────────────────────────────────── */
+.ck-elsewhere {
+  border: 1px solid rgba(20, 45, 60, 0.09);
+  border-radius: 10px;
+  padding: 12px 14px 10px;
+  margin-bottom: 16px;
+  background: rgba(20, 45, 60, 0.02);
+}
+
+.ck-elsewhere-heading {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(20, 45, 60, 0.42);
+  margin-bottom: 9px;
+}
+
+.ck-elsewhere-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ck-elsewhere-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.ck-elsewhere-row--ours {
+  margin-top: 7px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(20, 45, 60, 0.1);
+}
+
+.ck-elsewhere-site {
+  font-size: 0.81rem;
+  color: rgba(20, 45, 60, 0.42);
+}
+
+.ck-elsewhere-site--ours {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: #0a5c6e;
+}
+
+.ck-elsewhere-price {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.42);
+  text-decoration: line-through;
+  text-decoration-color: rgba(20, 45, 60, 0.22);
+  flex-shrink: 0;
+}
+
+.ck-elsewhere-price--ours {
+  text-decoration: none;
+  color: #0a5c6e;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.ck-elsewhere-note {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(20, 45, 60, 0.07);
+  font-size: 0.71rem;
+  color: rgba(20, 45, 60, 0.36);
+  line-height: 1.45;
 }
 
 .ck-leg-breakdown {
