@@ -3896,6 +3896,8 @@ body:has(.res-page) {
   gap: 2px;
   margin-top: 5px;
   width: 100%;
+  border-top: 1px dashed rgba(20, 45, 60, 0.1);
+  padding-top: 4px;
 }
 
 .rf-price-breakdown-row {
@@ -9008,6 +9010,167 @@ body:has(.res-page) {
   .rf-option {
     font-size: 0.78rem;
     padding: 5px 10px;
+  }
+}
+
+/* ── Booking Friction Survey (bfs) ─────────────────────────────────────────── */
+/* Unified bottom slide-up card shown on results page and checkout page.        */
+
+.bfs-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 950;
+  background: #fff;
+  border-top: 2px solid rgba(10, 77, 104, 0.18);
+  box-shadow: 0 -6px 28px rgba(20, 45, 60, 0.13);
+  padding: 18px 24px 20px;
+  animation: bfs-slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes bfs-slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.bfs-bar--thanks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0a7a4a;
+  padding: 16px 24px;
+}
+
+.bfs-thanks-check {
+  font-size: 1rem;
+  color: #0a7a4a;
+}
+
+.bfs-inner {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.bfs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bfs-question {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0a4d68;
+  line-height: 1.35;
+}
+
+.bfs-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: rgba(20, 45, 60, 0.38);
+  padding: 4px 6px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.bfs-close:hover {
+  color: rgba(20, 45, 60, 0.75);
+  background: rgba(20, 45, 60, 0.06);
+}
+
+.bfs-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bfs-option {
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1.5px solid rgba(10, 77, 104, 0.22);
+  background: #fff;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #0a4d68;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
+  white-space: nowrap;
+}
+
+.bfs-option:hover {
+  background: #e8f4fb;
+  border-color: #0a4d68;
+}
+
+.bfs-option:active {
+  background: #cce8f5;
+}
+
+.bfs-other-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.bfs-other-input {
+  padding: 6px 12px;
+  border: 1.5px solid rgba(10, 77, 104, 0.25);
+  border-radius: 20px;
+  font-size: 0.82rem;
+  color: #142d3c;
+  background: #fff;
+  font-family: inherit;
+  outline: none;
+  width: 220px;
+  transition: border-color 0.15s;
+}
+
+.bfs-other-input:focus {
+  border-color: #0a4d68;
+}
+
+.bfs-other-send {
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #0a4d68 0%, #0d6b92 100%);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.12s;
+  white-space: nowrap;
+}
+
+.bfs-other-send:hover { opacity: 0.88; }
+.bfs-other-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 600px) {
+  .bfs-bar {
+    padding: 16px 16px 18px;
+  }
+
+  .bfs-options {
+    gap: 6px;
+  }
+
+  .bfs-option {
+    font-size: 0.78rem;
+    padding: 6px 11px;
+  }
+
+  .bfs-other-input {
+    width: 160px;
   }
 }
 
