@@ -1,9 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback, useId } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useTranslations } from 'next-intl'
 import { trackSearchSessionEvent } from '../lib/search-session-analytics'
+import { useExperiment } from '../lib/ab-testing'
+import type { ExperimentConfig } from '../lib/ab-testing'
 
 export const BOOKING_FRICTION_EXPERIMENT_ID = 'exp_booking-friction-survey-v1'
+
+const BOOKING_FRICTION_EXPERIMENT: ExperimentConfig<'control' | 'survey'> = {
+  id: BOOKING_FRICTION_EXPERIMENT_ID,
+  variants: { control: 0.5, survey: 0.5 },
+}
 
 // Results page: show 3.5 minutes after search fully completes
 const RESULTS_DELAY_MS = 3.5 * 60 * 1000
@@ -17,17 +25,28 @@ const LS_KEY_DONE = 'lfg_bfs_done'
 // Set by CheckoutPanel on mount so results page can detect "came back from checkout"
 export const SS_KEY_CHECKOUT_VISITED = 'lfg_checkout_visited'
 
-const OPTIONS = [
-  { key: 'dont_trust',       label: "I don't trust your results" },
-  { key: 'price_might_drop', label: 'I think that when I buy now, the price might be lower later' },
-  { key: 'not_looking',      label: "I'm not looking to fly, I was just curious about your website" },
-  { key: 'better_elsewhere', label: 'I want to see if there are better offers elsewhere' },
-  { key: 'no_bnpl',          label: "I like the option Buy now pay later, which I can't find here" },
-  { key: 'concierge_fee',    label: "I don't want to pay LetsFG concierge fee" },
-  { key: 'other',            label: 'Other' },
+// Keys used in analytics — never translate these, stats dashboard maps them to English labels
+const OPTION_KEYS = [
+  'dont_trust',
+  'price_might_drop',
+  'not_looking',
+  'better_elsewhere',
+  'no_bnpl',
+  'concierge_fee',
+  'other',
 ] as const
 
-type OptionKey = (typeof OPTIONS)[number]['key']
+type OptionKey = (typeof OPTION_KEYS)[number]
+
+// Keys that have a follow-up question (other = submit immediately)
+const KEYS_WITH_FOLLOWUP = new Set<OptionKey>([
+  'dont_trust',
+  'price_might_drop',
+  'not_looking',
+  'better_elsewhere',
+  'no_bnpl',
+  'concierge_fee',
+])
 
 interface Props {
   searchId: string | null
@@ -56,6 +75,9 @@ export default function BookingFrictionSurvey({
   resultsCompletedAt,
   showImmediately,
 }: Props) {
+  const t = useTranslations('BookingFrictionSurvey')
+  const { isControl } = useExperiment(BOOKING_FRICTION_EXPERIMENT, searchId)
+
   // SSR-safe suppression: hydrate from storage on client only
   const [suppressed, setSuppressed] = useState(false)
   useEffect(() => {
@@ -69,9 +91,9 @@ export default function BookingFrictionSurvey({
   const [visible, setVisible] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [otherSelected, setOtherSelected] = useState(false)
-  const [otherText, setOtherText] = useState('')
-  const otherId = useId()
+  // Two-step flow: first pick an option, then optionally answer a followup
+  const [pendingKey, setPendingKey] = useState<OptionKey | null>(null)
+  const [followupText, setFollowupText] = useState('')
 
   // Results: show immediately when user came back from checkout without booking
   useEffect(() => {
@@ -113,7 +135,7 @@ export default function BookingFrictionSurvey({
       response_key: key,
       context,
       ...(offerId ? { offer_id: offerId } : {}),
-      ...(key === 'other' && text ? { response_text: text.slice(0, 500) } : {}),
+      ...(text ? { response_text: text.slice(0, 500) } : {}),
     }, {
       source: context === 'results' ? 'website-results' : 'website-checkout',
       is_test_search: isTestSearch || undefined,
@@ -123,24 +145,31 @@ export default function BookingFrictionSurvey({
     try { localStorage.setItem(LS_KEY_DONE, '1') } catch (_) { /* ignore */ }
   }, [submitted, searchId, offerId, context, isTestSearch])
 
+  // All hooks must be above any conditional returns
+  if (isControl) return null
   if (suppressed || dismissed) return null
 
   if (submitted) {
     return (
       <div className="bfs-bar bfs-bar--thanks" role="status" aria-live="polite">
         <span className="bfs-thanks-check" aria-hidden="true">✓</span>
-        Thanks — that helps a lot!
+        {t('thanks')}
       </div>
     )
   }
 
   if (!visible) return null
 
+  const hasFollowup = pendingKey !== null && KEYS_WITH_FOLLOWUP.has(pendingKey)
+  const selectedLabel = pendingKey ? t(`opt_${pendingKey}`) : null
+
   return (
     <div className="bfs-bar" role="complementary" aria-label="Quick survey">
       <div className="bfs-inner">
         <div className="bfs-header">
-          <span className="bfs-question">Why aren&apos;t you booking?</span>
+          <span className="bfs-question">
+            {hasFollowup ? t(`followup_${pendingKey}`) : t('headerFull')}
+          </span>
           <button
             className="bfs-close"
             onClick={handleDismiss}
@@ -148,50 +177,58 @@ export default function BookingFrictionSurvey({
             type="button"
           >✕</button>
         </div>
-        <div className="bfs-options">
-          {OPTIONS.map((opt) => {
-            if (opt.key === 'other') {
-              return otherSelected ? (
-                <span key="other" className="bfs-other-wrap">
-                  <input
-                    id={otherId}
-                    className="bfs-other-input"
-                    type="text"
-                    autoFocus
-                    maxLength={500}
-                    placeholder="Tell us more…"
-                    value={otherText}
-                    onChange={(e) => setOtherText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && otherText.trim()) handleSubmit('other', otherText.trim())
-                    }}
-                  />
-                  <button
-                    className="bfs-other-send"
-                    type="button"
-                    disabled={!otherText.trim()}
-                    onClick={() => handleSubmit('other', otherText.trim())}
-                  >Send</button>
-                </span>
-              ) : (
-                <button
-                  key="other"
-                  className="bfs-option"
-                  onClick={() => setOtherSelected(true)}
-                  type="button"
-                >Other</button>
-              )
-            }
-            return (
+
+        {hasFollowup ? (
+          <div className="bfs-followup">
+            <p className="bfs-followup-selected">✓ {selectedLabel}</p>
+            <textarea
+              className="bfs-followup-input"
+              autoFocus
+              maxLength={500}
+              rows={2}
+              placeholder={t(`placeholder_${pendingKey}`)}
+              value={followupText}
+              onChange={(e) => setFollowupText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSubmit(pendingKey!, followupText.trim() || undefined)
+                }
+              }}
+            />
+            <div className="bfs-followup-actions">
               <button
-                key={opt.key}
-                className="bfs-option"
-                onClick={() => handleSubmit(opt.key as OptionKey)}
+                className="bfs-other-send"
                 type="button"
-              >{opt.label}</button>
-            )
-          })}
-        </div>
+                onClick={() => handleSubmit(pendingKey!, followupText.trim() || undefined)}
+              >{t('send')}</button>
+              <button
+                className="bfs-followup-skip"
+                type="button"
+                onClick={() => handleSubmit(pendingKey!, undefined)}
+              >{t('skip')}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="bfs-options">
+            {OPTION_KEYS.map((key) => (
+              <button
+                key={key}
+                className="bfs-option"
+                type="button"
+                onClick={() => {
+                  if (KEYS_WITH_FOLLOWUP.has(key)) {
+                    setPendingKey(key)
+                    setFollowupText('')
+                  } else {
+                    // 'other' — submit immediately, no follow-up
+                    handleSubmit(key)
+                  }
+                }}
+              >{t(`opt_${key}`)}</button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

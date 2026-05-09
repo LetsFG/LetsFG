@@ -9242,6 +9242,60 @@ body:has(.res-page) {
 .bfs-other-send:hover { opacity: 0.88; }
 .bfs-other-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ── Follow-up step ─────────────────────────────────────────────────────── */
+
+.bfs-followup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bfs-followup-selected {
+  font-size: 0.78rem;
+  color: #4a7a8a;
+  margin: 0;
+  font-style: italic;
+}
+
+.bfs-followup-input {
+  padding: 8px 12px;
+  border: 1.5px solid rgba(10, 77, 104, 0.25);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: #142d3c;
+  background: #fff;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  resize: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.bfs-followup-input:focus {
+  border-color: #0a4d68;
+}
+
+.bfs-followup-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bfs-followup-skip {
+  background: none;
+  border: none;
+  font-size: 0.8rem;
+  color: #7a9aaa;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bfs-followup-skip:hover { color: #0a4d68; }
+
 @media (max-width: 600px) {
   .bfs-bar {
     padding: 16px 16px 18px;

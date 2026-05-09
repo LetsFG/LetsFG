@@ -185,5 +185,30 @@
     "uploadLabel": "将截图拖放到这里或浏览文件",
     "uploadHint": "PNG、JPG、HEIC · 最大10MB",
     "uploadAriaLabel": "上传截图"
+  },
+  "BookingFrictionSurvey": {
+    "followup_dont_trust": "什么会让你信任我们？",
+    "skip": "跳过",
+    "followup_better_elsewhere": "LetsFG 扫描了网络上的大多数订票网站 — 什么会让你觉得我们已经检查了所有内容？",
+    "opt_dont_trust": "我不信任你们的搜索结果",
+    "opt_not_looking": "我不是在找机票，只是随便看看",
+    "placeholder_not_looking": "例如：1 – 不太可能，5 – 肯定会，因为…",
+    "send": "发送",
+    "followup_no_bnpl": "如果我们明天加入先买后付功能，你回来的可能性是 1–5 中的几？",
+    "placeholder_price_might_drop": "例如：价格历史、最佳购买时机提示…",
+    "headerFull": "你为什么还没有预订？",
+    "followup_price_might_drop": "你试过我们的价格监控功能吗？什么会让你今天有信心预订？",
+    "opt_better_elsewhere": "我想看看别处是否有更好的优惠",
+    "placeholder_dont_trust": "例如：更多评价、价格保证、退款政策…",
+    "placeholder_concierge_fee": "例如：免费、5欧元以下、节省金额的百分比…",
+    "placeholder_better_elsewhere": "例如：显示价格历史、与直接订票比较…",
+    "opt_no_bnpl": "我喜欢先买后付，但这里没有这个功能",
+    "opt_price_might_drop": "我觉得等一等价格会更低",
+    "followup_not_looking": "谢谢！如果你真的要找机票，你使用 LetsFG 的可能性是 1–5 中的几？简单说说为什么？",
+    "opt_other": "其他",
+    "placeholder_no_bnpl": "例如：1 – 不太可能，5 – 肯定会",
+    "followup_concierge_fee": "你认为多少费用是合理的？",
+    "opt_concierge_fee": "我不想支付 LetsFG 的服务费",
+    "thanks": "谢谢 — 非常有帮助！"
   }
 }

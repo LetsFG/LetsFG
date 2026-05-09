@@ -185,5 +185,30 @@
     "uploadLabel": "スクリーンショットをここにドロップするか参照",
     "uploadHint": "PNG、JPG、HEIC · 最大10MB",
     "uploadAriaLabel": "スクリーンショットをアップロード"
+  },
+  "BookingFrictionSurvey": {
+    "followup_dont_trust": "信頼してもらうために何が必要ですか？",
+    "skip": "スキップ",
+    "followup_better_elsewhere": "LetsFGはほとんどの予約サイトを検索します。すべて確認したと感じるために何が必要ですか？",
+    "opt_dont_trust": "結果を信頼できない",
+    "opt_not_looking": "飛行機を探しているわけではなく、サイトを見ていただけ",
+    "placeholder_not_looking": "例：1 – ない、5 – 絶対に、理由：…",
+    "send": "送信",
+    "followup_no_bnpl": "明日「今すぐ購入、後で支払い」を追加したら戻ってくる可能性は1〜5で？",
+    "placeholder_price_might_drop": "例：価格履歴、購入タイミングの提案など",
+    "headerFull": "なぜ予約しないのですか？",
+    "followup_price_might_drop": "価格モニタリング機能を試しましたか？今日予約する気になるためには何が必要ですか？",
+    "opt_better_elsewhere": "他にもっと良い料金があるか確認したい",
+    "placeholder_dont_trust": "例：レビューが多い、価格保証、返金ポリシーなど",
+    "placeholder_concierge_fee": "例：無料、5€以下、節約額の割合など",
+    "placeholder_better_elsewhere": "例：価格履歴を表示、直接予約と比較など",
+    "opt_no_bnpl": "後払いオプションが好きだが、ここでは見つからない",
+    "opt_price_might_drop": "待てば価格が下がると思う",
+    "followup_not_looking": "ありがとうございます！実際にフライトを探すとき、LetsFGを使う可能性は1〜5で？簡単に理由も教えてください。",
+    "opt_other": "その他",
+    "placeholder_no_bnpl": "例：1 – ない、5 – 絶対に",
+    "followup_concierge_fee": "どのくらいの手数料なら公平だと感じますか？",
+    "opt_concierge_fee": "LetsFGの手数料を払いたくない",
+    "thanks": "ありがとうございます — とても参考になります！"
   }
 }
