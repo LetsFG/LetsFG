@@ -455,6 +455,7 @@ interface Props {
   initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
+  viaIata?: string
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -477,6 +478,7 @@ export default function ResultsPanel({
   initialDepTimePref,
   initialRetTimePref,
   tripContext,
+  viaIata,
 }: Props) {
   // Persona-based grouping: 0 = ideal match, higher = less preferred
   function personaGroup(o: FlightOffer): number {
@@ -635,6 +637,47 @@ export default function ResultsPanel({
       if (o.duration_minutes < durationRange[0] || o.duration_minutes > durationRange[1]) return false
       return true
     })
+    // Via-IATA filter: NL query specified a preferred stopover airport/city.
+    // Only keep offers that pass through the requested airport (or a same-city sibling).
+    // Direct flights are excluded — they have no stopover by definition.
+    if (viaIata) {
+      const targetUpper = viaIata.toUpperCase()
+      // Known same-city airport groups — e.g. IST and SAW both serve Istanbul
+      const SAME_CITY: Record<string, string[]> = {
+        IST: ['IST', 'SAW'], SAW: ['IST', 'SAW'],
+        LHR: ['LHR', 'LGW', 'STN', 'LCY', 'LTN', 'SEN'],
+        LGW: ['LHR', 'LGW', 'STN', 'LCY', 'LTN', 'SEN'],
+        STN: ['LHR', 'LGW', 'STN', 'LCY', 'LTN', 'SEN'],
+        LCY: ['LHR', 'LGW', 'STN', 'LCY', 'LTN', 'SEN'],
+        LTN: ['LHR', 'LGW', 'STN', 'LCY', 'LTN', 'SEN'],
+        JFK: ['JFK', 'LGA', 'EWR'], LGA: ['JFK', 'LGA', 'EWR'], EWR: ['JFK', 'LGA', 'EWR'],
+        NRT: ['NRT', 'HND'], HND: ['NRT', 'HND'],
+        MXP: ['MXP', 'LIN', 'BGY'], LIN: ['MXP', 'LIN', 'BGY'], BGY: ['MXP', 'LIN', 'BGY'],
+        CDG: ['CDG', 'ORY', 'BVA'], ORY: ['CDG', 'ORY', 'BVA'], BVA: ['CDG', 'ORY', 'BVA'],
+        FCO: ['FCO', 'CIA'], CIA: ['FCO', 'CIA'],
+        DXB: ['DXB', 'DWC'], DWC: ['DXB', 'DWC'],
+      }
+      const acceptedAirports = new Set<string>(SAME_CITY[targetUpper] ?? [targetUpper])
+      list = list.filter(o => {
+        // Direct flights have no stopover — exclude
+        if (o.stops === 0) return false
+        // Check outbound segment destinations for the via airport
+        const outSegs = o.segments ?? []
+        if (outSegs.length > 0) {
+          const outMatch = outSegs.slice(0, -1).some(s => acceptedAirports.has((s.destination ?? '').toUpperCase()))
+          if (outMatch) return true
+          // Check inbound for round-trips
+          const inSegs = o.inbound?.segments ?? []
+          if (inSegs.length > 0) {
+            return inSegs.slice(0, -1).some(s => acceptedAirports.has((s.destination ?? '').toUpperCase()))
+          }
+          // Outbound segments present but no match found — exclude
+          return false
+        }
+        // No segment data available — keep (cannot verify stopover)
+        return true
+      })
+    }
     if (sort === 'duration') {
       list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
     } else {
@@ -666,7 +709,7 @@ export default function ResultsPanel({
       list = [...list].sort((a, b) => personaGroup(a) - personaGroup(b))
     }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, tripContext])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, tripContext, viaIata])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
@@ -1404,6 +1447,13 @@ export default function ResultsPanel({
                               <span className="rf-layover-text">
                                 {t('layover', { duration: fmtDuration(segs[si - 1].layover_minutes), city: segs[si - 1].destination_name })}
                               </span>
+                              {(segs[si - 1].destination ?? '').toUpperCase() !== (seg.origin ?? '').toUpperCase() &&
+                                (segs[si - 1].destination ?? '') !== '' && (seg.origin ?? '') !== '' && (
+                                <span
+                                  className="rf-layover-airport-change"
+                                  title={`Arrives ${segs[si - 1].destination}, departs ${seg.origin} — different airport`}
+                                >⚠ Airport change</span>
+                              )}
                             </div>
                           )}
                           <div className="rf-leg">
