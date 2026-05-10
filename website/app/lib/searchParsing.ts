@@ -1,4 +1,4 @@
-// Shared NL query parser — used by /api/search and the SSR /results?q= page
+﻿// Shared NL query parser — used by /api/search and the SSR /results?q= page
 // Handles: EN, DE, ES, FR, IT, NL, PL, PT, SQ (Albanian), HR (Croatian), SV (Swedish)
 // Also handles: filler words, typos via accent-stripping, ordinals, DD/MM/YYYY, relative dates
 
@@ -14,6 +14,8 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'londyn': { code: 'LON', name: 'London' },
   'londynu': { code: 'LON', name: 'London' },          // PL genitive
   'londen': { code: 'LON', name: 'London' },
+  'londres': { code: 'LON', name: 'London' },           // FR/ES/PT
+  'londër': { code: 'LON', name: 'London' },            // SQ
   'heathrow': { code: 'LHR', name: 'London Heathrow' },
   'gatwick': { code: 'LGW', name: 'London Gatwick' },
   'stansted': { code: 'STN', name: 'London Stansted' },
@@ -277,10 +279,16 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'bruxelles': { code: 'BRU', name: 'Brussels' },
   'brüssel': { code: 'BRU', name: 'Brussels' },
   'bruselas': { code: 'BRU', name: 'Brussels' },
+  'bruxelas': { code: 'BRU', name: 'Brussels' },        // PT
+  'bryssel': { code: 'BRU', name: 'Brussels' },         // SV
+  'brisel': { code: 'BRU', name: 'Brussels' },          // HR (informal)
+  'bruksel': { code: 'BRU', name: 'Brussels' },         // SQ
   'lisbon': { code: 'LIS', name: 'Lisbon' },
   'lisbonne': { code: 'LIS', name: 'Lisbon' },
   'lissabon': { code: 'LIS', name: 'Lisbon' },
   'lisbona': { code: 'LIS', name: 'Lisbon' },
+  'lisboa': { code: 'LIS', name: 'Lisbon' },            // PT
+  'lisabon': { code: 'LIS', name: 'Lisbon' },           // HR
   'porto': { code: 'OPO', name: 'Porto' },
   'faro': { code: 'FAO', name: 'Faro' },
   'funchal': { code: 'FNC', name: 'Funchal (Madeira)' },
@@ -289,10 +297,18 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'azores': { code: 'PDL', name: 'Ponta Delgada (Azores)' },
   // ── Central Europe ──────────────────────────────────────────────────────────
   'berlin': { code: 'BER', name: 'Berlin' },
+  'berlino': { code: 'BER', name: 'Berlin' },           // IT
+  'berlim': { code: 'BER', name: 'Berlin' },            // PT
   'munich': { code: 'MUC', name: 'Munich' },
   'munchen': { code: 'MUC', name: 'Munich' },
   'münchen': { code: 'MUC', name: 'Munich' },
+  'monachium': { code: 'MUC', name: 'Munich' },         // PL
+  'munique': { code: 'MUC', name: 'Munich' },           // PT
+  'monaco di baviera': { code: 'MUC', name: 'Munich' }, // IT
   'frankfurt': { code: 'FRA', name: 'Frankfurt' },
+  'francoforte': { code: 'FRA', name: 'Frankfurt' },    // IT
+  'hamburgo': { code: 'HAM', name: 'Hamburg' },         // ES/PT
+  'amburgo': { code: 'HAM', name: 'Hamburg' },          // IT
   'hamburg': { code: 'HAM', name: 'Hamburg' },
   'dusseldorf': { code: 'DUS', name: 'Düsseldorf' },
   'düsseldorf': { code: 'DUS', name: 'Düsseldorf' },
@@ -305,6 +321,10 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'vienna': { code: 'VIE', name: 'Vienna' },
   'wien': { code: 'VIE', name: 'Vienna' },
   'vienne': { code: 'VIE', name: 'Vienna' },
+  'viena': { code: 'VIE', name: 'Vienna' },             // ES/PT
+  'wenen': { code: 'VIE', name: 'Vienna' },             // NL
+  'bec': { code: 'VIE', name: 'Vienna' },               // HR (Beč stripped)
+  'vjene': { code: 'VIE', name: 'Vienna' },             // SQ (Vjenë stripped)
   'innsbruck': { code: 'INN', name: 'Innsbruck' },
   'inn': { code: 'INN', name: 'Innsbruck' },
   // ── Austrian ski resorts (all via Innsbruck or Salzburg) ─────────────────────
@@ -359,6 +379,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'prag': { code: 'PRG', name: 'Prague' },
   'praga': { code: 'PRG', name: 'Prague' },
   'pragi': { code: 'PRG', name: 'Prague' },            // PL genitive
+  'praag': { code: 'PRG', name: 'Prague' },             // NL
+  'praze': { code: 'PRG', name: 'Prague' },             // CZ locative
+  'prahu': { code: 'PRG', name: 'Prague' },             // CZ accusative
   'rzym': { code: 'FCO', name: 'Rome' },               // PL
   'rzymu': { code: 'FCO', name: 'Rome' },              // PL genitive
   'wiedeń': { code: 'VIE', name: 'Vienna' },           // PL
@@ -379,7 +402,13 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'dubaju': { code: 'DXB', name: 'Dubai' },            // PL genitive
   'nowy jork': { code: 'JFK', name: 'New York' },      // PL
   'nowego jorku': { code: 'JFK', name: 'New York' },   // PL genitive
+  'nueva york': { code: 'JFK', name: 'New York' },      // ES
+  'nova york': { code: 'JFK', name: 'New York' },       // PT
+  'nova iorque': { code: 'JFK', name: 'New York' },     // PT alternate
   'budapest': { code: 'BUD', name: 'Budapest' },
+  'budimpesta': { code: 'BUD', name: 'Budapest' },      // HR (Budimpešta stripped)
+  'budapeszt': { code: 'BUD', name: 'Budapest' },       // PL
+  'budapeste': { code: 'BUD', name: 'Budapest' },       // PT
   'bratislava': { code: 'BTS', name: 'Bratislava' },
   'bratislawa': { code: 'BTS', name: 'Bratislava' },
   'pressburg': { code: 'BTS', name: 'Bratislava' },
@@ -441,6 +470,8 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'szy': { code: 'SZY', name: 'Szymany (Mazury)' },
   // ── Scandinavia & Baltics ────────────────────────────────────────────────────
   'stockholm': { code: 'ARN', name: 'Stockholm' },
+  'estocolmo': { code: 'ARN', name: 'Stockholm' },      // ES/PT
+  'stoccolma': { code: 'ARN', name: 'Stockholm' },      // IT
   'arlanda': { code: 'ARN', name: 'Stockholm-Arlanda Airport' },
   'arl': { code: 'ARN', name: 'Stockholm-Arlanda Airport' },
   'goteborg': { code: 'GOT', name: 'Gothenburg' },
@@ -482,6 +513,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'kobenhavn': { code: 'CPH', name: 'Copenhagen' },
   'københavn': { code: 'CPH', name: 'Copenhagen' },
   'kopenhagen': { code: 'CPH', name: 'Copenhagen' },
+  'copenhague': { code: 'CPH', name: 'Copenhagen' },    // FR/ES/PT
+  'copenaghen': { code: 'CPH', name: 'Copenhagen' },   // IT
+  'kopenhamn': { code: 'CPH', name: 'Copenhagen' },    // SV (Köpenhamn stripped)
   'aarhus': { code: 'AAR', name: 'Aarhus' },
   'aalborg': { code: 'AAL', name: 'Aalborg' },
   'odense': { code: 'ODE', name: 'Odense' },
@@ -499,6 +533,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'mosca': { code: 'SVO', name: 'Moscow' },
   'moscu': { code: 'SVO', name: 'Moscow' },
   'moscú': { code: 'SVO', name: 'Moscow' },
+  'moskwa': { code: 'SVO', name: 'Moscow' },            // PL
+  'moskva': { code: 'SVO', name: 'Moscow' },            // SV/HR/RU romanized
+  'moszkva': { code: 'SVO', name: 'Moscow' },           // HU
   'saint petersburg': { code: 'LED', name: 'Saint Petersburg' },
   'st petersburg': { code: 'LED', name: 'Saint Petersburg' },
   'st. petersburg': { code: 'LED', name: 'Saint Petersburg' },
@@ -506,13 +543,22 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'rome': { code: 'FCO', name: 'Rome' },
   'roma': { code: 'FCO', name: 'Rome' },
   'rom': { code: 'FCO', name: 'Rome' },
+  'rim': { code: 'FCO', name: 'Rome' },                 // HR
   'milan': { code: 'MXP', name: 'Milan' },
   'milano': { code: 'MXP', name: 'Milan' },
   'mailand': { code: 'MXP', name: 'Milan' },
   'mediolan': { code: 'MXP', name: 'Milan' },
+  'milaan': { code: 'MXP', name: 'Milan' },             // NL
+  'milao': { code: 'MXP', name: 'Milan' },              // PT
+  'mediolanu': { code: 'MXP', name: 'Milan' },          // PL genitive
   'naples': { code: 'NAP', name: 'Naples' },
   'napoli': { code: 'NAP', name: 'Naples' },
   'neapel': { code: 'NAP', name: 'Naples' },
+  'napels': { code: 'NAP', name: 'Naples' },            // NL
+  'neapol': { code: 'NAP', name: 'Naples' },            // PL
+  'neapolu': { code: 'NAP', name: 'Naples' },           // PL genitive
+  'napulj': { code: 'NAP', name: 'Naples' },            // HR
+  'napoles': { code: 'NAP', name: 'Naples' },           // ES/PT
   'amalfi': { code: 'NAP', name: 'Amalfi (via Naples)' },
   'positano': { code: 'NAP', name: 'Positano (via Naples)' },
   'sorrento': { code: 'NAP', name: 'Sorrento (via Naples)' },
@@ -522,9 +568,20 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'venezia': { code: 'VCE', name: 'Venice' },
   'venedig': { code: 'VCE', name: 'Venice' },
   'venise': { code: 'VCE', name: 'Venice' },
+  'venecia': { code: 'VCE', name: 'Venice' },           // ES/SQ
+  'venetie': { code: 'VCE', name: 'Venice' },           // NL
+  'veneza': { code: 'VCE', name: 'Venice' },            // PT
+  'wenecja': { code: 'VCE', name: 'Venice' },           // PL
+  'wenecji': { code: 'VCE', name: 'Venice' },           // PL gen/loc
+  'venecija': { code: 'VCE', name: 'Venice' },          // HR
   'florence': { code: 'FLR', name: 'Florence' },
   'firenze': { code: 'FLR', name: 'Florence' },
   'florenz': { code: 'FLR', name: 'Florence' },
+  'florencia': { code: 'FLR', name: 'Florence' },       // ES
+  'florenca': { code: 'FLR', name: 'Florence' },        // PT
+  'florencja': { code: 'FLR', name: 'Florence' },       // PL
+  'florencji': { code: 'FLR', name: 'Florence' },       // PL gen/loc
+  'firenca': { code: 'FLR', name: 'Florence' },         // HR
   'pisa': { code: 'PSA', name: 'Pisa' },
   'cinque terre': { code: 'PSA', name: 'Cinque Terre (via Pisa)' },
   'bologna': { code: 'BLQ', name: 'Bologna' },
@@ -593,6 +650,11 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'athens': { code: 'ATH', name: 'Athens' },
   'athen': { code: 'ATH', name: 'Athens' },
   'athenes': { code: 'ATH', name: 'Athens' },
+  'atenas': { code: 'ATH', name: 'Athens' },            // ES/PT
+  'atene': { code: 'ATH', name: 'Athens' },             // IT
+  'athene': { code: 'ATH', name: 'Athens' },            // NL
+  'atena': { code: 'ATH', name: 'Athens' },             // HR
+  'athine': { code: 'ATH', name: 'Athens' },            // SQ (Athinë stripped)
   'thessaloniki': { code: 'SKG', name: 'Thessaloniki' },
   'heraklion': { code: 'HER', name: 'Heraklion (Crete)' },
   'crete': { code: 'HER', name: 'Heraklion (Crete)' },
@@ -619,6 +681,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'volos': { code: 'VOL', name: 'Volos' },
   'alexandroupolis': { code: 'AXD', name: 'Alexandroupolis' },
   'istanbul': { code: 'IST', name: 'Istanbul' },
+  'estambul': { code: 'IST', name: 'Istanbul' },        // ES
+  'istambul': { code: 'IST', name: 'Istanbul' },        // PT
+  'stamboll': { code: 'IST', name: 'Istanbul' },        // SQ
   'ankara': { code: 'ESB', name: 'Ankara' },
   'antalya': { code: 'AYT', name: 'Antalya' },
   'izmir': { code: 'ADB', name: 'İzmir' },
@@ -728,6 +793,10 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   // ── Africa ───────────────────────────────────────────────────────────────────
   'cairo': { code: 'CAI', name: 'Cairo' },
   'kairo': { code: 'CAI', name: 'Cairo' },
+  'kair': { code: 'CAI', name: 'Cairo' },               // PL
+  'le caire': { code: 'CAI', name: 'Cairo' },           // FR
+  'el cairo': { code: 'CAI', name: 'Cairo' },           // ES
+  'il cairo': { code: 'CAI', name: 'Cairo' },           // IT
   'hurghada': { code: 'HRG', name: 'Hurghada' },
   'sharm el sheikh': { code: 'SSH', name: 'Sharm el-Sheikh' },
   'sharm el-sheikh': { code: 'SSH', name: 'Sharm el-Sheikh' },
@@ -836,6 +905,7 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'sez': { code: 'SEZ', name: 'Mahé (Seychelles)' },
   // ── Asia ─────────────────────────────────────────────────────────────────────
   'tokyo': { code: 'TYO', name: 'Tokyo' },
+  'tokio': { code: 'TYO', name: 'Tokyo' },              // DE/ES/IT/NL/PL/PT/HR/SQ
   'osaka': { code: 'KIX', name: 'Osaka' },
   'nagoya': { code: 'NGO', name: 'Nagoya' },
   'sapporo': { code: 'CTS', name: 'Sapporo' },
@@ -975,6 +1045,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'macau': { code: 'MFM', name: 'Macau' },
   'taipei': { code: 'TPE', name: 'Taipei' },
   'singapore': { code: 'SIN', name: 'Singapore' },
+  'singapur': { code: 'SIN', name: 'Singapore' },       // DE/ES/PL/HR/SQ
+  'singapour': { code: 'SIN', name: 'Singapore' },      // FR
+  'singapura': { code: 'SIN', name: 'Singapore' },      // PT
   'bangkok': { code: 'BKK', name: 'Bangkok' },
   'phuket': { code: 'HKT', name: 'Phuket' },
   'chiang mai': { code: 'CNX', name: 'Chiang Mai' },
@@ -1196,9 +1269,12 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'georgia usa': { code: 'ATL', name: 'Georgia (US)' },
   'georgia us': { code: 'ATL', name: 'Georgia (US)' },
   'georgia state': { code: 'ATL', name: 'Georgia (US)' },
-  'wisconsin': { code: 'MKE', name: 'Wisconsin' },
   'milwaukee': { code: 'MKE', name: 'Milwaukee' },
   'mke': { code: 'MKE', name: 'Milwaukee' },
+  'la crosse': { code: 'LSE', name: 'La Crosse' },
+  'lacrosse': { code: 'LSE', name: 'La Crosse' },
+  'crosse': { code: 'LSE', name: 'La Crosse' },
+  'lse': { code: 'LSE', name: 'La Crosse' },
   'iowa': { code: 'DSM', name: 'Iowa' },
   'des moines': { code: 'DSM', name: 'Des Moines' },
   'dsm': { code: 'DSM', name: 'Des Moines' },
@@ -1804,6 +1880,321 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'wadi rum': { code: 'AQJ', name: 'Wadi Rum (via Aqaba)' },
   'dead sea': { code: 'AMM', name: 'Dead Sea (via Amman)' },
   'nazareth': { code: 'TLV', name: 'Nazareth (via Tel Aviv)' },
+
+  // ── Japanese-language city names (katakana / kanji) ───────────────────────
+  '東京': { code: 'TYO', name: 'Tokyo' },
+  'ロンドン': { code: 'LON', name: 'London' },
+  'パリ': { code: 'CDG', name: 'Paris' },
+  'ニューヨーク': { code: 'JFK', name: 'New York' },
+  'ベルリン': { code: 'BER', name: 'Berlin' },
+  'バルセロナ': { code: 'BCN', name: 'Barcelona' },
+  'ローマ': { code: 'FCO', name: 'Rome' },
+  'ミラノ': { code: 'MXP', name: 'Milan' },
+  'ナポリ': { code: 'NAP', name: 'Naples' },
+  'ベネチア': { code: 'VCE', name: 'Venice' },
+  'フィレンツェ': { code: 'FLR', name: 'Florence' },
+  'マドリード': { code: 'MAD', name: 'Madrid' },
+  'アムステルダム': { code: 'AMS', name: 'Amsterdam' },
+  'ウィーン': { code: 'VIE', name: 'Vienna' },
+  'ブリュッセル': { code: 'BRU', name: 'Brussels' },
+  'プラハ': { code: 'PRG', name: 'Prague' },
+  'ブダペスト': { code: 'BUD', name: 'Budapest' },
+  'ワルシャワ': { code: 'WAW', name: 'Warsaw' },
+  'イスタンブール': { code: 'IST', name: 'Istanbul' },
+  'アテネ': { code: 'ATH', name: 'Athens' },
+  'コペンハーゲン': { code: 'CPH', name: 'Copenhagen' },
+  'ストックホルム': { code: 'ARN', name: 'Stockholm' },
+  'ヘルシンキ': { code: 'HEL', name: 'Helsinki' },
+  'オスロ': { code: 'OSL', name: 'Oslo' },
+  'リスボン': { code: 'LIS', name: 'Lisbon' },
+  'シンガポール': { code: 'SIN', name: 'Singapore' },
+  'ドバイ': { code: 'DXB', name: 'Dubai' },
+  'バンコク': { code: 'BKK', name: 'Bangkok' },
+  'シドニー': { code: 'SYD', name: 'Sydney' },
+  'ソウル': { code: 'ICN', name: 'Seoul' },
+  '北京': { code: 'PEK', name: 'Beijing' },
+  '上海': { code: 'PVG', name: 'Shanghai' },
+  '大阪': { code: 'KIX', name: 'Osaka' },
+  '香港': { code: 'HKG', name: 'Hong Kong' },
+  'バリ': { code: 'DPS', name: 'Bali' },
+  'プーケット': { code: 'HKT', name: 'Phuket' },
+  'クアラルンプール': { code: 'KUL', name: 'Kuala Lumpur' },
+  'ジャカルタ': { code: 'CGK', name: 'Jakarta' },
+  'ホーチミン': { code: 'SGN', name: 'Ho Chi Minh City' },
+  'ハノイ': { code: 'HAN', name: 'Hanoi' },
+  'カイロ': { code: 'CAI', name: 'Cairo' },
+  'モスクワ': { code: 'SVO', name: 'Moscow' },
+  'ミュンヘン': { code: 'MUC', name: 'Munich' },
+  'フランクフルト': { code: 'FRA', name: 'Frankfurt' },
+  'ハンブルク': { code: 'HAM', name: 'Hamburg' },
+  'チューリッヒ': { code: 'ZRH', name: 'Zurich' },
+  'ジュネーブ': { code: 'GVA', name: 'Geneva' },
+  'バンクーバー': { code: 'YVR', name: 'Vancouver' },
+  'トロント': { code: 'YYZ', name: 'Toronto' },
+  'シカゴ': { code: 'ORD', name: 'Chicago' },
+  'ロサンゼルス': { code: 'LAX', name: 'Los Angeles' },
+  'マイアミ': { code: 'MIA', name: 'Miami' },
+  'ムンバイ': { code: 'BOM', name: 'Mumbai' },
+  'デリー': { code: 'DEL', name: 'Delhi' },
+  'チェンナイ': { code: 'MAA', name: 'Chennai' },
+  'ドーハ': { code: 'DOH', name: 'Doha' },
+  'アブダビ': { code: 'AUH', name: 'Abu Dhabi' },
+  'リヤド': { code: 'RUH', name: 'Riyadh' },
+  'メキシコシティ': { code: 'MEX', name: 'Mexico City' },
+  'サンパウロ': { code: 'GRU', name: 'São Paulo' },
+  'ブエノスアイレス': { code: 'EZE', name: 'Buenos Aires' },
+  'ヨハネスブルグ': { code: 'JNB', name: 'Johannesburg' },
+  'ナイロビ': { code: 'NBO', name: 'Nairobi' },
+  'ケープタウン': { code: 'CPT', name: 'Cape Town' },
+
+  // ── Chinese-language city names (simplified hanzi) ────────────────────────
+  '伦敦': { code: 'LON', name: 'London' },
+  '巴黎': { code: 'CDG', name: 'Paris' },
+  '柏林': { code: 'BER', name: 'Berlin' },
+  '纽约': { code: 'JFK', name: 'New York' },
+  '罗马': { code: 'FCO', name: 'Rome' },
+  '巴塞罗那': { code: 'BCN', name: 'Barcelona' },
+  '马德里': { code: 'MAD', name: 'Madrid' },
+  '阿姆斯特丹': { code: 'AMS', name: 'Amsterdam' },
+  '布鲁塞尔': { code: 'BRU', name: 'Brussels' },
+  '维也纳': { code: 'VIE', name: 'Vienna' },
+  '伊斯坦布尔': { code: 'IST', name: 'Istanbul' },
+  '雅典': { code: 'ATH', name: 'Athens' },
+  '哥本哈根': { code: 'CPH', name: 'Copenhagen' },
+  '斯德哥尔摩': { code: 'ARN', name: 'Stockholm' },
+  '赫尔辛基': { code: 'HEL', name: 'Helsinki' },
+  '奥斯陆': { code: 'OSL', name: 'Oslo' },
+  '里斯本': { code: 'LIS', name: 'Lisbon' },
+  '米兰': { code: 'MXP', name: 'Milan' },
+  '那不勒斯': { code: 'NAP', name: 'Naples' },
+  '威尼斯': { code: 'VCE', name: 'Venice' },
+  '佛罗伦萨': { code: 'FLR', name: 'Florence' },
+  '开罗': { code: 'CAI', name: 'Cairo' },
+  '迪拜': { code: 'DXB', name: 'Dubai' },
+  '莫斯科': { code: 'SVO', name: 'Moscow' },
+  '新加坡': { code: 'SIN', name: 'Singapore' },
+  '曼谷': { code: 'BKK', name: 'Bangkok' },
+  '悉尼': { code: 'SYD', name: 'Sydney' },
+  '吉隆坡': { code: 'KUL', name: 'Kuala Lumpur' },
+  '雅加达': { code: 'CGK', name: 'Jakarta' },
+  '河内': { code: 'HAN', name: 'Hanoi' },
+  '胡志明市': { code: 'SGN', name: 'Ho Chi Minh City' },
+  '东京': { code: 'TYO', name: 'Tokyo' },
+  '首尔': { code: 'ICN', name: 'Seoul' },
+  '澳门': { code: 'MFM', name: 'Macau' },
+  '台北': { code: 'TPE', name: 'Taipei' },
+  '慕尼黑': { code: 'MUC', name: 'Munich' },
+  '法兰克福': { code: 'FRA', name: 'Frankfurt' },
+  '汉堡': { code: 'HAM', name: 'Hamburg' },
+  '苏黎世': { code: 'ZRH', name: 'Zurich' },
+  '日内瓦': { code: 'GVA', name: 'Geneva' },
+  '温哥华': { code: 'YVR', name: 'Vancouver' },
+  '多伦多': { code: 'YYZ', name: 'Toronto' },
+  '芝加哥': { code: 'ORD', name: 'Chicago' },
+  '洛杉矶': { code: 'LAX', name: 'Los Angeles' },
+  '迈阿密': { code: 'MIA', name: 'Miami' },
+  '孟买': { code: 'BOM', name: 'Mumbai' },
+  '新德里': { code: 'DEL', name: 'Delhi' },
+  '金奈': { code: 'MAA', name: 'Chennai' },
+  '多哈': { code: 'DOH', name: 'Doha' },
+  '阿布扎比': { code: 'AUH', name: 'Abu Dhabi' },
+  '利雅得': { code: 'RUH', name: 'Riyadh' },
+  '墨西哥城': { code: 'MEX', name: 'Mexico City' },
+  '圣保罗': { code: 'GRU', name: 'São Paulo' },
+  '约翰内斯堡': { code: 'JNB', name: 'Johannesburg' },
+  '内罗毕': { code: 'NBO', name: 'Nairobi' },
+  '开普敦': { code: 'CPT', name: 'Cape Town' },
+
+  // ── Russian-language city names (Cyrillic) ────────────────────────────────
+  'москва': { code: 'SVO', name: 'Moscow' },
+  'санкт-петербург': { code: 'LED', name: 'Saint Petersburg' },
+  'лондон': { code: 'LON', name: 'London' },
+  'париж': { code: 'CDG', name: 'Paris' },
+  'берлин': { code: 'BER', name: 'Berlin' },
+  'рим': { code: 'FCO', name: 'Rome' },
+  'мюнхен': { code: 'MUC', name: 'Munich' },
+  'франкфурт': { code: 'FRA', name: 'Frankfurt' },
+  'гамбург': { code: 'HAM', name: 'Hamburg' },
+  'вена': { code: 'VIE', name: 'Vienna' },
+  'прага': { code: 'PRG', name: 'Prague' },
+  'будапешт': { code: 'BUD', name: 'Budapest' },
+  'варшава': { code: 'WAW', name: 'Warsaw' },
+  'краков': { code: 'KRK', name: 'Krakow' },
+  'стокгольм': { code: 'ARN', name: 'Stockholm' },
+  'копенгаген': { code: 'CPH', name: 'Copenhagen' },
+  'хельсинки': { code: 'HEL', name: 'Helsinki' },
+  'осло': { code: 'OSL', name: 'Oslo' },
+  'амстердам': { code: 'AMS', name: 'Amsterdam' },
+  'брюссель': { code: 'BRU', name: 'Brussels' },
+  'барселона': { code: 'BCN', name: 'Barcelona' },
+  'мадрид': { code: 'MAD', name: 'Madrid' },
+  'лиссабон': { code: 'LIS', name: 'Lisbon' },
+  'стамбул': { code: 'IST', name: 'Istanbul' },
+  'афины': { code: 'ATH', name: 'Athens' },
+  'дубай': { code: 'DXB', name: 'Dubai' },
+  'нью-йорк': { code: 'JFK', name: 'New York' },
+  'токио': { code: 'TYO', name: 'Tokyo' },
+  'пекин': { code: 'PEK', name: 'Beijing' },
+  'шанхай': { code: 'PVG', name: 'Shanghai' },
+  'гонконг': { code: 'HKG', name: 'Hong Kong' },
+  'сингапур': { code: 'SIN', name: 'Singapore' },
+  'бангкок': { code: 'BKK', name: 'Bangkok' },
+  'сидней': { code: 'SYD', name: 'Sydney' },
+  'куала-лумпур': { code: 'KUL', name: 'Kuala Lumpur' },
+  'джакарта': { code: 'CGK', name: 'Jakarta' },
+  'каир': { code: 'CAI', name: 'Cairo' },
+  'найроби': { code: 'NBO', name: 'Nairobi' },
+  'йоханнесбург': { code: 'JNB', name: 'Johannesburg' },
+  'кейптаун': { code: 'CPT', name: 'Cape Town' },
+  'дели': { code: 'DEL', name: 'Delhi' },
+  'мумбаи': { code: 'BOM', name: 'Mumbai' },
+  'мехико': { code: 'MEX', name: 'Mexico City' },
+  'торонто': { code: 'YYZ', name: 'Toronto' },
+  'ванкувер': { code: 'YVR', name: 'Vancouver' },
+  'чикаго': { code: 'ORD', name: 'Chicago' },
+  'лос-анджелес': { code: 'LAX', name: 'Los Angeles' },
+  'майами': { code: 'MIA', name: 'Miami' },
+  'милан': { code: 'MXP', name: 'Milan' },
+  'неаполь': { code: 'NAP', name: 'Naples' },
+  'венеция': { code: 'VCE', name: 'Venice' },
+  'флоренция': { code: 'FLR', name: 'Florence' },
+  'доха': { code: 'DOH', name: 'Doha' },
+  'абу-даби': { code: 'AUH', name: 'Abu Dhabi' },
+  'эр-рияд': { code: 'RUH', name: 'Riyadh' },
+  'сеул': { code: 'ICN', name: 'Seoul' },
+  'осака': { code: 'KIX', name: 'Osaka' },
+  'ханой': { code: 'HAN', name: 'Hanoi' },
+  'хошимин': { code: 'SGN', name: 'Ho Chi Minh City' },
+  'пхукет': { code: 'HKT', name: 'Phuket' },
+  'бали': { code: 'DPS', name: 'Bali' },
+  'цюрих': { code: 'ZRH', name: 'Zurich' },
+  'женева': { code: 'GVA', name: 'Geneva' },
+  'сан-паулу': { code: 'GRU', name: 'São Paulo' },
+  'буэнос-айрес': { code: 'EZE', name: 'Buenos Aires' },
+
+  // ── Korean-language city names (Hangul) ───────────────────────────────────
+  '런던': { code: 'LON', name: 'London' },
+  '파리': { code: 'CDG', name: 'Paris' },
+  '베를린': { code: 'BER', name: 'Berlin' },
+  '뉴욕': { code: 'JFK', name: 'New York' },
+  '로마': { code: 'FCO', name: 'Rome' },
+  '바르셀로나': { code: 'BCN', name: 'Barcelona' },
+  '마드리드': { code: 'MAD', name: 'Madrid' },
+  '암스테르담': { code: 'AMS', name: 'Amsterdam' },
+  '브뤼셀': { code: 'BRU', name: 'Brussels' },
+  '비엔나': { code: 'VIE', name: 'Vienna' },
+  '이스탄불': { code: 'IST', name: 'Istanbul' },
+  '아테네': { code: 'ATH', name: 'Athens' },
+  '코펜하겐': { code: 'CPH', name: 'Copenhagen' },
+  '스톡홀름': { code: 'ARN', name: 'Stockholm' },
+  '헬싱키': { code: 'HEL', name: 'Helsinki' },
+  '오슬로': { code: 'OSL', name: 'Oslo' },
+  '리스본': { code: 'LIS', name: 'Lisbon' },
+  '밀라노': { code: 'MXP', name: 'Milan' },
+  '나폴리': { code: 'NAP', name: 'Naples' },
+  '베네치아': { code: 'VCE', name: 'Venice' },
+  '피렌체': { code: 'FLR', name: 'Florence' },
+  '도쿄': { code: 'TYO', name: 'Tokyo' },
+  '오사카': { code: 'KIX', name: 'Osaka' },
+  '베이징': { code: 'PEK', name: 'Beijing' },
+  '상하이': { code: 'PVG', name: 'Shanghai' },
+  '홍콩': { code: 'HKG', name: 'Hong Kong' },
+  '싱가포르': { code: 'SIN', name: 'Singapore' },
+  '방콕': { code: 'BKK', name: 'Bangkok' },
+  '시드니': { code: 'SYD', name: 'Sydney' },
+  '쿠알라룸푸르': { code: 'KUL', name: 'Kuala Lumpur' },
+  '자카르타': { code: 'CGK', name: 'Jakarta' },
+  '하노이': { code: 'HAN', name: 'Hanoi' },
+  '호치민': { code: 'SGN', name: 'Ho Chi Minh City' },
+  '카이로': { code: 'CAI', name: 'Cairo' },
+  '모스크바': { code: 'SVO', name: 'Moscow' },
+  '뮌헨': { code: 'MUC', name: 'Munich' },
+  '프라하': { code: 'PRG', name: 'Prague' },
+  '부다페스트': { code: 'BUD', name: 'Budapest' },
+  '바르샤바': { code: 'WAW', name: 'Warsaw' },
+  '두바이': { code: 'DXB', name: 'Dubai' },
+  '발리': { code: 'DPS', name: 'Bali' },
+  '푸껫': { code: 'HKT', name: 'Phuket' },
+  '취리히': { code: 'ZRH', name: 'Zurich' },
+  '제네바': { code: 'GVA', name: 'Geneva' },
+  '멜버른': { code: 'MEL', name: 'Melbourne' },
+  '토론토': { code: 'YYZ', name: 'Toronto' },
+  '밴쿠버': { code: 'YVR', name: 'Vancouver' },
+  '시카고': { code: 'ORD', name: 'Chicago' },
+  '로스앤젤레스': { code: 'LAX', name: 'Los Angeles' },
+  '마이애미': { code: 'MIA', name: 'Miami' },
+  '뭄바이': { code: 'BOM', name: 'Mumbai' },
+  '델리': { code: 'DEL', name: 'Delhi' },
+  '도하': { code: 'DOH', name: 'Doha' },
+  '아부다비': { code: 'AUH', name: 'Abu Dhabi' },
+  '리야드': { code: 'RUH', name: 'Riyadh' },
+  '멕시코시티': { code: 'MEX', name: 'Mexico City' },
+  '상파울루': { code: 'GRU', name: 'São Paulo' },
+  '부에노스아이레스': { code: 'EZE', name: 'Buenos Aires' },
+  '요하네스버그': { code: 'JNB', name: 'Johannesburg' },
+  '나이로비': { code: 'NBO', name: 'Nairobi' },
+  '케이프타운': { code: 'CPT', name: 'Cape Town' },
+
+  // ── Arabic-language city names ────────────────────────────────────────────
+  'لندن': { code: 'LON', name: 'London' },
+  'باريس': { code: 'CDG', name: 'Paris' },
+  'برلين': { code: 'BER', name: 'Berlin' },
+  'نيويورك': { code: 'JFK', name: 'New York' },
+  'روما': { code: 'FCO', name: 'Rome' },
+  'برشلونة': { code: 'BCN', name: 'Barcelona' },
+  'مدريد': { code: 'MAD', name: 'Madrid' },
+  'أمستردام': { code: 'AMS', name: 'Amsterdam' },
+  'بروكسل': { code: 'BRU', name: 'Brussels' },
+  'فيينا': { code: 'VIE', name: 'Vienna' },
+  'إسطنبول': { code: 'IST', name: 'Istanbul' },
+  'أثينا': { code: 'ATH', name: 'Athens' },
+  'كوبنهاغن': { code: 'CPH', name: 'Copenhagen' },
+  'ستوكهولم': { code: 'ARN', name: 'Stockholm' },
+  'هلسنكي': { code: 'HEL', name: 'Helsinki' },
+  'أوسلو': { code: 'OSL', name: 'Oslo' },
+  'لشبونة': { code: 'LIS', name: 'Lisbon' },
+  'ميلانو': { code: 'MXP', name: 'Milan' },
+  'البندقية': { code: 'VCE', name: 'Venice' },
+  'فلورنسا': { code: 'FLR', name: 'Florence' },
+  'القاهرة': { code: 'CAI', name: 'Cairo' },
+  'دبي': { code: 'DXB', name: 'Dubai' },
+  'موسكو': { code: 'SVO', name: 'Moscow' },
+  'سنغافورة': { code: 'SIN', name: 'Singapore' },
+  'بانكوك': { code: 'BKK', name: 'Bangkok' },
+  'سيدني': { code: 'SYD', name: 'Sydney' },
+  'كوالالمبور': { code: 'KUL', name: 'Kuala Lumpur' },
+  'جاكرتا': { code: 'CGK', name: 'Jakarta' },
+  'هانوي': { code: 'HAN', name: 'Hanoi' },
+  'طوكيو': { code: 'TYO', name: 'Tokyo' },
+  'بكين': { code: 'PEK', name: 'Beijing' },
+  'شنغهاي': { code: 'PVG', name: 'Shanghai' },
+  'هونغ كونغ': { code: 'HKG', name: 'Hong Kong' },
+  'الرياض': { code: 'RUH', name: 'Riyadh' },
+  'أبوظبي': { code: 'AUH', name: 'Abu Dhabi' },
+  'الدوحة': { code: 'DOH', name: 'Doha' },
+  'مومباي': { code: 'BOM', name: 'Mumbai' },
+  'دلهي': { code: 'DEL', name: 'Delhi' },
+  'مراكش': { code: 'RAK', name: 'Marrakech' },
+  'كازابلانكا': { code: 'CMN', name: 'Casablanca' },
+  'نيروبي': { code: 'NBO', name: 'Nairobi' },
+  'جوهانسبرغ': { code: 'JNB', name: 'Johannesburg' },
+  'كيب تاون': { code: 'CPT', name: 'Cape Town' },
+  'مكسيكو سيتي': { code: 'MEX', name: 'Mexico City' },
+  'سان باولو': { code: 'GRU', name: 'São Paulo' },
+  'بوينوس آيريس': { code: 'EZE', name: 'Buenos Aires' },
+  'تورنتو': { code: 'YYZ', name: 'Toronto' },
+  'فانكوفر': { code: 'YVR', name: 'Vancouver' },
+  'شيكاغو': { code: 'ORD', name: 'Chicago' },
+  'لوس أنجلوس': { code: 'LAX', name: 'Los Angeles' },
+  'ميامي': { code: 'MIA', name: 'Miami' },
+  'ميونخ': { code: 'MUC', name: 'Munich' },
+  'فرانكفورت': { code: 'FRA', name: 'Frankfurt' },
+  'زيورخ': { code: 'ZRH', name: 'Zurich' },
+  'جنيف': { code: 'GVA', name: 'Geneva' },
+  'سيول': { code: 'ICN', name: 'Seoul' },
+  'أوساكا': { code: 'KIX', name: 'Osaka' },
+  'بالي': { code: 'DPS', name: 'Bali' },
+  'بوكيت': { code: 'HKT', name: 'Phuket' },
 }
 
 // ── Country name → primary hub airport ───────────────────────────────────────
@@ -2301,17 +2692,27 @@ function resolveLocation(raw: string): { code: string; name: string } | null {
 function extractCabin(text: string): 'M' | 'W' | 'C' | 'F' | undefined {
   const t = stripAccents(text.toLowerCase())
   // Order: most specific first (first class before first, premium economy before economy)
-  if (/\b(?:first\s+class|erste\s+klasse|primera\s+clase|premi[eè]re\s+classe|prima\s+classe|eerste\s+klas|pierwsza\s+klasa|primeira\s+classe|f[oö]rsta\s+klass|prva\s+klasa|klasa\s+e\s+par[eë])\b/.test(t)) return 'F'
-  if (/\b(?:premium\s+economy|premium\s+[eé]conomique|premium\s+economi[ck]a|premium\s+econ[oô]mica|premium\s+econ[oô]mica)\b/.test(t)) return 'W'
-  if (/\b(?:business\s+class|businessklasse|clase\s+(?:business|ejecutiva)|ejecutiva|classe\s+(?:affaires|business)|affaires|klasa\s+biznes|classe\s+executiva|executiva|businessklass|poslovna\s+klasa|zakenklasse|zakelijk|biznes|business)\b/.test(t)) return 'C'
-  if (/\b(?:economy\s+class|wirtschaftsklasse|clase\s+turista|turista|classe\s+[eé]conomique|[eé]conomique|classe\s+economica|economica|economyclass|klasa\s+ekonomiczna|ekonomiklass|ekonomska\s+klasa|economy|coach|economica|economi[ck]a)\b/.test(t)) return 'M'
+  if (/\b(?:first\s+class|erste\s+klasse|primera\s+clase|premi[eè]re\s+classe|prima\s+classe|eerste\s+klas|pierwsza\s+klasa|primeira\s+classe|f[oö]rsta\s+klass|prva\s+klasa|klasa\s+e\s+par[eë])\b/.test(t) ||
+      /ファーストクラス|一等座/.test(text) || /фарский класс|первый класс/.test(text) || /일등석|퍼스트 클래스/.test(text)) return 'F'
+  if (/\b(?:premium\s+economy|premium\s+[eé]conomique|premium\s+economi[ck]a|premium\s+econ[oô]mica|premium\s+econ[oô]mica)\b/.test(t) ||
+      /プレミアムエコノミー/.test(text) || /премиум эконом/.test(text) || /프리미엄 이코노미/.test(text)) return 'W'
+  if (/\b(?:business\s+class|businessklasse|clase\s+(?:business|ejecutiva)|ejecutiva|classe\s+(?:affaires|business)|affaires|klasa\s+biznes|classe\s+executiva|executiva|businessklass|poslovna\s+klasa|zakenklasse|zakelijk|biznes|business)\b/.test(t) ||
+      /ビジネスクラス|ビジネス座/.test(text) || /бизнес[- ]класс|класс бизнес/.test(text) || /비즈니스 클래스/.test(text)) return 'C'
+  if (/\b(?:economy\s+class|wirtschaftsklasse|clase\s+turista|turista|classe\s+[eé]conomique|[eé]conomique|classe\s+economica|economica|economyclass|klasa\s+ekonomiczna|ekonomiklass|ekonomska\s+klasa|economy|coach|economica|economi[ck]a)\b/.test(t) ||
+      /エコノミークラス|エコノミー座/.test(text) || /эконом[ыич]еский класс|эконом/.test(text) || /이코노미 클래스/.test(text)) return 'M'
   return undefined
 }
 
 // ── Direct/nonstop extraction (all languages) ─────────────────────────────────
 function extractDirect(text: string): boolean {
   const t = stripAccents(text.toLowerCase())
-  return /\b(?:direct|nonstop|non[- ]stop|direkt(?:flug)?|ohne\s+(?:umstieg|zwischenstopp|stop)|nur\s+direkt|directo|sin\s+escalas?|vuelo\s+directo|sin\s+paradas?|sans?\s+escale[s]?|vol\s+direct|sans?\s+(?:correspondance|connexion)|diretto|volo\s+diretto|senza\s+scal[ei]|senza\s+fermate|rechtstreeks|zonder\s+(?:tussenstop|overstap)|directe\s+vlucht|bezpo[śs]rednio|bezpo[śs]redni|tylko\s+bezpo[śs]redni(?:e)?|bez\s+przesiadek|lot\s+bezpo[śs]redni|sem\s+escala[s]?|direto|voo\s+direto|direktflyg|utan\s+mellanlandning|utan\s+stopp|izravno|bez\s+presjedanja|direktni\s+let|pa\s+ndalese|fluturim\s+direkt|direktni|no\s+layovers?|no\s+stops?|only\s+direct|straight\s+through)\b/.test(t)
+  return /\b(?:direct|nonstop|non[- ]stop|direkt(?:flug)?|ohne\s+(?:umstieg|zwischenstopp|stop)|nur\s+direkt|directo|sin\s+escalas?|vuelo\s+directo|sin\s+paradas?|sans?\s+escale[s]?|vol\s+direct|sans?\s+(?:correspondance|connexion)|diretto|volo\s+diretto|senza\s+scal[ei]|senza\s+fermate|rechtstreeks|zonder\s+(?:tussenstop|overstap)|directe\s+vlucht|bezpo[śs]rednio|bezpo[śs]redni|tylko\s+bezpo[śs]redni(?:e)?|bez\s+przesiadek|lot\s+bezpo[śs]redni|sem\s+escala[s]?|direto|voo\s+direto|direktflyg|utan\s+mellanlandning|utan\s+stopp|izravno|bez\s+presjedanja|direktni\s+let|pa\s+ndalese|fluturim\s+direkt|direktni|no\s+layovers?|no\s+stops?|only\s+direct|straight\s+through)\b/.test(t) ||
+    // JA (Japanese)
+    /直行便|ノンストップ|乗り継ぎなし|指定便|直行/.test(text) ||
+    // RU (Russian)
+    /\b(?:прямой\s+рейс|без\s+пересадок|прямой\s+перелёт|прямые\s+рейсы|без\s+стопов|только\s+прямые)\b/.test(text) ||
+    // KO (Korean)
+    /직항편|직항|경유편 없이/.test(text)
 }
 
 // ── Passenger count + context extraction ──────────────────────────────────────
@@ -2337,14 +2738,32 @@ function extractPassengers(text: string): PassengerExtraction {
   // Adults — EN/DE/ES/FR/IT/NL/PL/PT/SQ/HR/SV
   const adultM = t.match(/\b(\d+)\s+(?:adults?|grown[- ]?ups?|erwachsene?|adultos?|adultes?|adulti|volwassenen?|vuxna?|vuxen|dorośł(?:ych|e)|odrasli(?:h)?|t[eë]\s+rritur|punasovjet[eë])\b/)
   if (adultM) result.adults = parseInt(adultM[1])
+  // JA/RU/KO adult fallback
+  if (!result.adults) {
+    const jaA = text.match(/(\d+)\s*(?:大人|おとな)/); if (jaA) result.adults = parseInt(jaA[1])
+    const ruA = text.match(/(\d+)\s*(?:взрослых|человека)/); if (ruA) result.adults = parseInt(ruA[1])
+    const koA = text.match(/(\d+)\s*명\s*(?:어른)/); if (koA) result.adults = parseInt(koA[1])
+  }
 
   // Children — EN/DE/ES/FR/IT/NL/PL/PT/SQ/HR/SV
   const childM = t.match(/\b(\d+)\s+(?:child(?:ren)?|kids?|bambini?|enfants?|ni[ñn]os?|kinder|kinderen|dzieci|crianças?|barn|djeca|f[eë]mij[eë]|ungdomar|ungdom|barn\s+och\s+unga|barne?|callan[eë])\b/)
   if (childM) result.children = parseInt(childM[1])
+  // JA/RU/KO child fallback
+  if (!result.children) {
+    const jaC = text.match(/(\d+)\s*(?:子供|コドモ|子ども)/); if (jaC) result.children = parseInt(jaC[1])
+    const ruC = text.match(/(\d+)\s*(?:детей|ребёнка)/); if (ruC) result.children = parseInt(ruC[1])
+    const koC = text.match(/(\d+)\s*명\s*(?:어린이|소아)/); if (koC) result.children = parseInt(koC[1])
+  }
 
   // Infants — EN/DE/ES/FR/IT/NL/PL/PT/SQ/HR/SV
   const infantM = t.match(/\b(\d+)\s+(?:infants?|babies|babys?|b[eé]b[eé]s?|b[eé]b[eé]|neonati?|zuigeling(?:en)?|niemowl[eę]ta?|bebê|foshnja?|dojenčad?|spädbarn|spädbarns?)\b/)
   if (infantM) result.infants = parseInt(infantM[1])
+  // JA/RU/KO infant fallback
+  if (!result.infants) {
+    const jaI = text.match(/(\d+)\s*(?:赤ちゃん|乳児|幼児)/); if (jaI) result.infants = parseInt(jaI[1])
+    const ruI = text.match(/(\d+)\s*(?:младенца|грудничка)/); if (ruI) result.infants = parseInt(ruI[1])
+    const koI = text.match(/(\d+)\s*명\s*(?:유아|영아)/); if (koI) result.infants = parseInt(koI[1])
+  }
   // Contextual infant signals in all languages
   else if (/\bwith\s+(?:a|an|the|my|our)\s+(?:baby|infant|babe|newborn|toddler)\b/.test(t) ||
            /\btravell?ing?\s+with\s+(?:a\s+)?(?:baby|infant|toddler)\b/.test(t) ||
@@ -2713,7 +3132,10 @@ function extractTimePrefs(text: string): TimePrefs {
     /\b(?:poranny\s+lot|rano\s+lecieć|lot\s+rano|rano\s+wylot)\b/.test(t) ||                                                                                                                         // PL
     /\b(?:voo\s+(?:da\s+manhã|matinal)|partir\s+(?:de\s+)?manhã|decolagem\s+de\s+manhã)\b/.test(t) ||                                                                                                // PT
     /\b(?:morgonflyg|flyga\s+(?:p[åa]\s+morgonen|på\s+fm)|avresa\s+p[åa]\s+morgonen)\b/.test(t) ||                                                                                                   // SV
-    /\b(?:jutarnji\s+let|ujutro\s+letjeti|jutarnji\s+polazak)\b/.test(t)                                                                                                                             // HR
+    /\b(?:jutarnji\s+let|ujutro\s+letjeti|jutarnji\s+polazak)\b/.test(t) ||                                                                                                                             // HR
+    /朝の便|午前便|朝一便/.test(text) ||                                                                                                                                   // JA
+    /\b(?:утренний\s+рейс|вылететь\s+утром|утро\s+вылететь)\b/.test(text) ||                                          // RU
+    /아침\s*(?:항공편|출발|비행)/.test(text)                                                                                                                    // KO
   if (!r.depart_time_pref && isMorning) { r.depart_time_pref = 'morning'; return r }
 
   const isAfternoon =
@@ -2732,7 +3154,10 @@ function extractTimePrefs(text: string): TimePrefs {
     /\b(?:vol\s+(?:du\s+soir|de\s+nuit)|partir\s+(?:le\s+)?soir)\b/.test(t) ||                                                                                                                       // FR
     /\b(?:volo\s+(?:serale|di\s+sera|notturno)|partire\s+(?:di\s+)?sera)\b/.test(t) ||                                                                                                               // IT
     /\b(?:avondvlucht|[''s]\s*avonds?\s+(?:vliegen|vertrekken))\b/.test(t) ||                                                                                                       // NL
-    /\b(?:wieczorem|wieczorny\s+lot|wylot\s+wieczorem|lot\s+wieczorny|wyjazd\s+wieczorem)\b/.test(t)                                                                                  // PL
+    /\b(?:wieczorem|wieczorny\s+lot|wylot\s+wieczorem|lot\s+wieczorny|wyjazd\s+wieczorem)\b/.test(t) ||                                                                                  // PL
+    /夕方の便|夜の便|夜便|午後便/.test(text) ||                                                                                                                                     // JA
+    /\b(?:вечерний\s+рейс|ночной\s+рейс|вылететь\s+вечером)\b/.test(text) ||                                           // RU
+    /저녁\s*(?:항공편|출발)|밤\s*항공편/.test(text)                                                                                                   // KO
   if (!r.depart_time_pref && isEvening) { r.depart_time_pref = 'evening'; return r }
 
   // Specific time clues: "after 2pm", "before noon" — EN + DE/ES/FR
@@ -3240,6 +3665,19 @@ const MONTH_MAP: [string, number][] = ([
   ['rujan',8],['listopad',9],['studeni',10],['prosinac',11],
   ['janar',0],['shkurt',1],['mars',2],['prill',3],['qershor',5],
   ['korrik',6],['gusht',7],['shtator',8],['tetor',9],['nëntor',10],['dhjetor',11],
+  // JA (Japanese — 1月 through 12月)
+  ['1月',0],['2月',1],['3月',2],['4月',3],['5月',4],['6月',5],
+  ['7月',6],['8月',7],['9月',8],['10月',9],['11月',10],['12月',11],
+  ['一月',0],['二月',1],['三月',2],['四月',3],['五月',4],['六月',5],
+  ['七月',6],['八月',7],['九月',8],['十月',9],['十一月',10],['十二月',11],
+  // KO (Korean — 1월 through 12월)
+  ['1월',0],['2월',1],['3월',2],['4월',3],['5월',4],['6월',5],
+  ['7월',6],['8월',7],['9월',8],['10월',9],['11월',10],['12월',11],
+  // RU (Russian Cyrillic — nominative and genitive)
+  ['январь',0],['февраль',1],['март',2],['апрель',3],['май',4],['июнь',5],
+  ['июль',6],['август',7],['сентябрь',8],['октябрь',9],['ноябрь',10],['декабрь',11],
+  ['января',0],['февраля',1],['марта',2],['апреля',3],['мая',4],['июня',5],
+  ['июля',6],['августа',7],['сентября',8],['октября',9],['ноября',10],['декабря',11],
 ] as [string, number][]).sort((a, b) => b[0].length - a[0].length)
 
 function matchMonth(text: string): number | null {
@@ -3269,6 +3707,8 @@ const WEEKDAY_MAP: [string, number][] = ([
   // PL
   ['niedziela',0],['poniedziałek',1],['poniedzialek',1],['wtorek',2],['środa',3],['sroda',3],
   ['czwartek',4],['piątek',5],['piatek',5],['sobota',6],
+  // PL accusative ("w sobotę", "w niedzielę", "w środę")
+  ['sobotę',6],['niedzielę',0],['środę',3],
   // PT
   ['domingo',0],['segunda',1],['terça',2],['terca',2],['quarta',3],['quinta',4],['sexta',5],['sábado',6],['sabado',6],
   // SV
@@ -3278,6 +3718,14 @@ const WEEKDAY_MAP: [string, number][] = ([
   // SQ
   ['e diele',0],['e hënë',1],['e hene',1],['e martë',2],['e marte',2],['e mërkurë',3],['e merkure',3],
   ['e enjte',4],['e premte',5],['e shtunë',6],['e shtune',6],
+  // JA (Japanese)
+  ['日曜日',0],['月曜日',1],['火曜日',2],['水曜日',3],['木曜日',4],['金曜日',5],['土曜日',6],
+  ['日曜',0],['月曜',1],['火曜',2],['水曜',3],['木曜',4],['金曜',5],['土曜',6],
+  // RU (Russian Cyrillic — accusative forms used in "в среду", "в субботу")
+  ['воскресенье',0],['понедельник',1],['вторник',2],['среда',3],['четверг',4],['пятница',5],['суббота',6],
+  ['воскресенья',0],['понедельника',1],['вторника',2],['среду',3],['четверга',4],['пятницу',5],['субботу',6],
+  // KO (Korean)
+  ['일요일',0],['월요일',1],['화요일',2],['수요일',3],['목요일',4],['금요일',5],['토요일',6],
 ] as [string, number][]).sort((a, b) => b[0].length - a[0].length)
 
 // ── Keywords that introduce return date (all languages) ───────────────────────
@@ -3324,7 +3772,7 @@ const ROUTE_SEP_RE = new RegExp(
 // "next friday", "this saturday", "the friday after next", etc.
 const REL_DATE_NEXT_RE = /\b(?:next|diese[rns]?|nächste[rns]?|nachste[rns]?|proxim[ao]|prochain[e]?|prossim[ao]|volgende|następn[ya]|nastepn[ya]|nästa|nasta|sljedeć[ia]|sljedeci[a]?)\b/i
 const REL_DATE_THIS_RE = /\b(?:this|heute|hoy|aujourd'?hui|oggi|vandaag|dzisiaj|hoje|idag|danas|sot)\b/i
-const REL_WEEKEND_RE = /\b(?:weekend|this weekend|ten weekend|tego weekendu?|wochenende|dieses wochenende?|fin de semana|este fin de semana|week-?end|ce week-?end|fine settimana|questo fine settimana|weekeinde|dit weekeinde?|vikend|ovaj vikend|helg|denna helg)\b/i
+const REL_WEEKEND_RE = /\b(?:weekend|this weekend|ten weekend|tego weekendu?|wochenende|dieses wochenende?|fin de semana|este fin de semana|week-?end|ce week-?end|fine settimana|questo fine settimana|weekeinde|dit weekeinde?|vikend|ovaj vikend|helg|denna helg|週末|今週末|この週末|выходные|эти выходные|в эти выходные|이번 주말|주말)\b/i
 const THANKSGIVING_WEEK_RE = /\b(?:(?:the\s+)?week\s+of\s+thanksgiving|thanksgiving\s+week)\b/i
 const THANKSGIVING_RE = /\bthanksgiving\b/i
 
@@ -3468,6 +3916,19 @@ function _preClean(raw: string): string {
     /^(?:kërkoj|dua|kam\s+nevojë\s+(?:për\s+)?|po\s+kërkoj)\s+(?:(?:një\s+|fluturime?\s+)?)?(?:fluturime?|bileta?\s+avioni|bileta?)\s*/i,
     /^dua\s+(?:të\s+fluturoj|të\s+udhëtoj|të\s+rezervoj\s+(?:një\s+)?fluturim)\s*/i,
     /^(?:ka|a\s+ka|gjeni)\s+(?:ndonjë\s+)?(?:fluturime?|bileta?)\s*/i,
+    // ── JAPANESE ─────────────────────────────────────────────────────────────
+    /^(?:安い|格安|最安値の)?(?:フライト|航空券|便)を(?:探して|見つけて|検索して|予約して)(?:ください|くれ|もらえますか)?\s*/,
+    /^(?:いちばん安い|最安|格安)(?:フライト|航空券|便)?を?\s*/,
+    /^(?:[\u30d5\u30e9\u30a4\u30c8]|[\u822a\u7a7a\u5238])を?\s*(?:[\u691c\u7d22]|[\u4e88\u7d04]|[\u63a2\u3057])\s*/,
+    // ── RUSSIAN ──────────────────────────────────────────────────────────────
+    /^(?:ищу|хочу|мне\s+нужен?|ищу\s+(?:дешёвые?\s+)?|подберите?\s+)\s*(?:(?:дешёвые?\s+)?(?:рейс|билет|перелёт)(?:ы|ов)?)?\s*/i,
+    /^хочу\s+(?:полететь|улететь|слетать|купить\s+(?:билет|рейс))\s*/i,
+    /^(?:есть\s+ли|найдите?|покажите?)\s+(?:(?:дешёвые?\s+)?(?:рейсы?|билеты?))?\s*/i,
+    /^планирую\s+(?:полететь|улететь|съездить\s+в)\s*/i,
+    // ── KOREAN ───────────────────────────────────────────────────────────────
+    /^(?:항공권|비행기\s*표|항공\s*티켓)(?:을|를)?\s*(?:찾아|검색해|예약해)(?:주세요|줘|줄\s*수\s*있나요)?\s*/,
+    /^(?:저렴한|싼|가장\s*싼)\s*(?:항공권|비행기\s*표|항공편)?\s*/,
+    /^(?:가고\s*싶어요?|여행하고\s*싶어요?|비행기\s*타고\s*싶어요?)\s*/,
   ]
 
   let s = raw
@@ -3492,6 +3953,9 @@ function _preClean(raw: string): string {
     .replace(/\s*[,.]?\s*\b(?:tack(?:\s+s[åa]\s+mycket)?|snälla?)\s*$/i, '')
     .replace(/\s*[,.]?\s*\b(?:molim|hvala(?:\s+lijepa)?)\s*$/i, '')
     .replace(/\s*[,.]?\s*\b(?:ju\s+lutem|faleminderit)\s*$/i, '')
+    .replace(/\s*(?:お願いします|ください|くださいね|よろしくお願いします)\s*$/u, '')        // JA
+    .replace(/\s*(?:пожалуйста|спасибо(?:\s+заранее)?)\s*$/iu, '')                        // RU
+    .replace(/\s*(?:부탁드립니다|감사합니다|부탁해요)\s*$/u, '')                            // KO
     .trim()
 
   return s
