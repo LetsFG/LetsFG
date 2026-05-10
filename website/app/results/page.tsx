@@ -278,13 +278,22 @@ async function startFSWSearch(
     const reqHeaders = await headers()
     const userIp = reqHeaders.get('x-forwarded-for')?.split(',')[0].trim() || undefined
 
-    // For flexible trips: if caller gave us a mid-point return_date derived from
-    // trip duration, honour it; the UI will display the duration range as context.
+    // Derive return_date from trip duration if not explicitly set.
+    // "for 4 days, round trip" → date + 4 days. For flexible ranges, use midpoint.
+    let returnDate = parsed.return_date || undefined
+    if (!returnDate && parsed.date && parsed.min_trip_days) {
+      const midDays = Math.round(
+        ((parsed.min_trip_days) + (parsed.max_trip_days ?? parsed.min_trip_days)) / 2
+      )
+      const dep = new Date(parsed.date + 'T00:00:00Z')
+      dep.setUTCDate(dep.getUTCDate() + midDays)
+      returnDate = dep.toISOString().slice(0, 10)
+    }
     const result = await startWebSearch({
       origin: parsed.origin,
       destination: parsed.destination,
       date_from: parsed.date,
-      return_date: parsed.return_date || undefined,
+      return_date: returnDate,
       adults: parsed.adults || 1,
       currency,
       ...(parsed.stops !== undefined ? { max_stops: parsed.stops } : {}),
