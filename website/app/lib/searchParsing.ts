@@ -842,6 +842,8 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'harbin': { code: 'HRB', name: 'Harbin' },
   'hrb': { code: 'HRB', name: 'Harbin' },
   'sanya': { code: 'SYX', name: 'Sanya (Hainan)' },
+  'sanya phoenix': { code: 'SYX', name: 'Sanya (Hainan)' },
+  'sanya fenghuang': { code: 'SYX', name: 'Sanya (Hainan)' },
   'hainan': { code: 'SYX', name: 'Hainan (Sanya)' },
   'syx': { code: 'SYX', name: 'Sanya' },
   'haikou': { code: 'HAK', name: 'Haikou' },

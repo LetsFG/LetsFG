@@ -180,7 +180,7 @@ AIRPORT_COUNTRY: dict[str, str] = {
     "ICN": "KR", "GMP": "KR", "CJU": "KR", "PUS": "KR", "TAE": "KR",
     "PEK": "CN", "PVG": "CN", "CAN": "CN", "SZX": "CN", "CTU": "CN",
     "KMG": "CN", "NKG": "CN", "HGH": "CN", "WUH": "CN", "XIY": "CN",
-    "TSN": "CN", "CGO": "CN", "TAO": "CN", "DLC": "CN",
+    "TSN": "CN", "CGO": "CN", "TAO": "CN", "DLC": "CN", "SYX": "CN", "HAK": "CN",
     "HKG": "HK", "MFM": "MO",
     "TPE": "TW", "KHH": "TW",
     # Oceania

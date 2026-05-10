@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Traženje leta ne bi trebalo značiti pregledavanje 47 stranica. Zato smo ovo napravili. Bez provizije. Bez praćenja. Bez cijena koje rastu jer si pogledao dvaput.",
-    "placeholder": "Zagreb do Barcelone sljedeći petak",
+    "placeholder": "Zagreb do Tokija u srpnju, 2 odrasla, direktno, 2 tjedna",
     "searchLabel": "Pretraži letove"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Pariz",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Zagreb do Barcelone sljedeći petak",
-    "tokyo_query": "Zagreb do Tokija u lipnju, poslovna klasa",
-    "newYork_query": "Zagreb do New Yorka sljedeći mjesec",
-    "paris_query": "Berlin do Pariza ovaj vikend",
-    "bali_query": "Amsterdam do Balija u srpnju",
-    "dubai_query": "Zagreb do Dubaija sljedeći tjedan"
+    "barcelona_query": "Zagreb do Barcelone ovaj vikend, odlazak petkom navečer, povratak nedjeljom, 2 odrasla, samo direktno",
+    "tokyo_query": "Zagreb do Tokija krajem lipnja, obiteljski odmor, 2 odrasla 1 dijete, 2 tjedna, sjedala uz prozor jedni pored drugih",
+    "newYork_query": "Zagreb do New Yorka sljedeći mjesec, poslovni put, 4 noći, poslovna klasa, mora biti povratna",
+    "paris_query": "Zagreb do Pariza ovaj petak navečer, povratak ponedjeljak ujutro, 2 odrasla, direktno",
+    "bali_query": "Zagreb do Balija u kolovozu, obiteljski odmor, 2 odrasla 2 djeteta, 10-14 dana, najjeftiniji tjedan",
+    "dubai_query": "Zagreb do Dubaija za Božić, obiteljski put, tjedan dana, direktni let, mora biti povratna"
   },
   "features": {
     "intro": "Napravljeno od strane zajednice putnika. Traženje leta ne bi trebalo značiti pregledavanje 47 stranica. Zato smo ovo napravili. S ❤️ od putnika, za putnike.",

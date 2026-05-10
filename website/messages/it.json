@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Trovare un volo non dovrebbe richiedere di controllare 47 siti. Per questo abbiamo creato questo. Nessuna commissione. Nessun tracciamento. Nessun prezzo che sale perché hai guardato due volte.",
-    "placeholder": "Roma a Barcellona venerdì prossimo",
+    "placeholder": "Roma a Tokyo in luglio, 2 adulti, diretto, 2 settimane",
     "searchLabel": "Cerca voli"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Parigi",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Roma a Barcellona venerdì prossimo",
-    "tokyo_query": "Milano a Tokyo a giugno, classe business",
-    "newYork_query": "Roma a New York il mese prossimo",
-    "paris_query": "Milano a Parigi questo weekend",
-    "bali_query": "Amsterdam a Bali a luglio",
-    "dubai_query": "Roma a Dubai la settimana prossima"
+    "barcelona_query": "Roma a Barcellona questo weekend, partenza venerdì sera, ritorno domenica sera, 2 adulti, volo diretto",
+    "tokyo_query": "Roma a Tokyo fine giugno, vacanza in famiglia, 2 adulti 1 bambino, 2 settimane, posti finestrino vicini",
+    "newYork_query": "Roma a New York il mese prossimo, viaggio d'affari, 4 notti, business class, deve essere rimborsabile",
+    "paris_query": "Roma a Parigi questo venerdì sera, ritorno lunedì mattina, 2 adulti, diretto",
+    "bali_query": "Roma a Bali ad agosto, vacanza in famiglia, 2 adulti 2 bambini, 10-14 giorni, trova la settimana più economica",
+    "dubai_query": "Roma a Dubai a Natale, viaggio in famiglia, 1 settimana, volo diretto, deve essere rimborsabile"
   },
   "features": {
     "intro": "Creato da una community di viaggiatori. Trovare un volo non dovrebbe richiedere di controllare 47 siti. Per questo abbiamo creato questo. Con ❤️ da viaggiatori, per viaggiatori.",

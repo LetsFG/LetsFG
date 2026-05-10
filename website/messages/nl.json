@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Een vlucht vinden zou niet moeten betekenen dat je 47 websites afstruint. Daarom hebben we dit gebouwd. Geen opslag. Geen tracking. Geen prijzen die stijgen omdat je twee keer keek.",
-    "placeholder": "Amsterdam naar Barcelona volgende vrijdag",
+    "placeholder": "Amsterdam naar Tokyo in juli, 2 volwassenen, direct, 2 weken",
     "searchLabel": "Vluchten zoeken"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Parijs",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Amsterdam naar Barcelona volgende vrijdag",
-    "tokyo_query": "Amsterdam naar Tokio in juni, businessclass",
-    "newYork_query": "Amsterdam naar New York volgende maand",
-    "paris_query": "Berlijn naar Parijs dit weekend",
-    "bali_query": "Amsterdam naar Bali in juli",
-    "dubai_query": "Amsterdam naar Dubai volgende week"
+    "barcelona_query": "Amsterdam naar Barcelona dit weekend, vrijdagavond vertrek, zondagnacht terug, 2 volwassenen, alleen direct",
+    "tokyo_query": "Amsterdam naar Tokio eind juni, familievakantie, 2 volwassenen 1 kind, 2 weken, raamplaatsen naast elkaar",
+    "newYork_query": "Amsterdam naar New York volgende maand, zakenreis, 4 nachten, business class, moet restitueerbaar zijn",
+    "paris_query": "Amsterdam naar Parijs deze vrijdagavond, maandagochtend terug, 2 volwassenen, direct",
+    "bali_query": "Amsterdam naar Bali in augustus, gezinsvakantie, 2 volwassenen 2 kinderen, 10-14 dagen, goedkoopste week",
+    "dubai_query": "Amsterdam naar Dubai met Kerst, familiereis, 1 week, directe vlucht, moet restitueerbaar zijn"
   },
   "features": {
     "intro": "Gebouwd door een community van reizigers. Een vlucht vinden zou niet moeten betekenen dat je 47 websites afstruint. Daarom hebben we dit gebouwd. Met ❤️ door reizigers, voor reizigers.",

@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Buscar un vuelo no debería significar revisar 47 webs. Por eso construimos esto. Sin comisiones. Sin rastreo. Sin precios que suben porque miraste dos veces.",
-    "placeholder": "Madrid a Barcelona el próximo viernes",
+    "placeholder": "Madrid a Tokio en julio, 2 adultos, directo, 2 semanas",
     "searchLabel": "Buscar vuelos"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "París",
     "bali": "Bali",
     "dubai": "Dubái",
-    "barcelona_query": "Madrid a Barcelona el próximo viernes",
-    "tokyo_query": "Madrid a Tokio en junio, clase business",
-    "newYork_query": "Madrid a Nueva York el próximo mes",
-    "paris_query": "Madrid a París este fin de semana",
-    "bali_query": "Ámsterdam a Bali en julio",
-    "dubai_query": "Madrid a Dubái la próxima semana"
+    "barcelona_query": "Madrid a Barcelona este fin de semana, salida viernes por la tarde, vuelta domingo noche, 2 adultos, directo",
+    "tokyo_query": "Madrid a Tokio a finales de junio, viaje familiar, 2 adultos 1 niño, 2 semanas, asientos juntos en ventana",
+    "newYork_query": "Madrid a Nueva York el mes que viene, viaje de negocios, 4 noches, clase business, tiene que ser reembolsable",
+    "paris_query": "Madrid a París este viernes por la tarde, vuelta el lunes por la mañana, 2 adultos, directo",
+    "bali_query": "Madrid a Bali en agosto, vacaciones familiares, 2 adultos 2 niños, 10-14 días, encuentra la semana más barata",
+    "dubai_query": "Madrid a Dubái en Navidad, viaje familiar, 1 semana, vuelo directo, que sea reembolsable"
   },
   "features": {
     "intro": "Creado por una comunidad de viajeros. Buscar un vuelo no debería significar revisar 47 webs. Por eso construimos esto. Hecho con ❤️ por viajeros, para viajeros.",

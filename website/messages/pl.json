@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Szukanie lotu nie powinno wymagać sprawdzania 47 stron. Dlatego to zbudowaliśmy. Bez prowizji. Bez śledzenia. Bez cen, które rosną bo spojrzałeś dwa razy.",
-    "placeholder": "Warszawa do Barcelony w przyszły piątek",
+    "placeholder": "Warszawa do Tokio w lipcu, 2 osoby, bezpośredni, 2 tygodnie",
     "searchLabel": "Szukaj lotów"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paryż",
     "bali": "Bali",
     "dubai": "Dubaj",
-    "barcelona_query": "Warszawa do Barcelony w przyszły piątek",
-    "tokyo_query": "Warszawa do Tokio w czerwcu, klasa biznes",
-    "newYork_query": "Londyn do Nowego Jorku w przyszłym miesiącu",
-    "paris_query": "Berlin do Paryża w ten weekend",
-    "bali_query": "Amsterdam do Bali w lipcu",
-    "dubai_query": "Warszawa do Dubaju w przyszłym tygodniu"
+    "barcelona_query": "Warszawa do Barcelony ten weekend, wyjazd piątek wieczorem, powrót niedziela wieczorem, 2 dorosłych, tylko bezpośredni",
+    "tokyo_query": "Warszawa do Tokio koniec czerwca, wakacje rodzinne, 2 dorosłych 1 dziecko, 2 tygodnie, miejsca przy oknie obok siebie",
+    "newYork_query": "Warszawa do Nowego Jorku za miesiąc, wyjazd służbowy, 4 noce, klasa biznes, musi być zwrotny",
+    "paris_query": "Warszawa do Paryża ten piątek wieczorem, powrót poniedziałek rano, 2 dorosłych, bezpośredni",
+    "bali_query": "Warszawa na Bali w sierpniu, wakacje rodzinne, 2 dorosłych 2 dzieci, 10-14 dni, najtańszy tydzień",
+    "dubai_query": "Warszawa do Dubaju na Boże Narodzenie, rodzinny wyjazd, tydzień, bezpośredni, musi być zwrotny"
   },
   "features": {
     "intro": "Stworzone przez społeczność podróżników. Szukanie lotu nie powinno wymagać sprawdzania 47 stron. Dlatego to zbudowaliśmy. Z ❤️ od podróżników, dla podróżników.",
