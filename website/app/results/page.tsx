@@ -14,7 +14,7 @@ import {
   resolveSearchCurrency,
   type CurrencyCode,
 } from '../../lib/currency-preference'
-import { parseNLQuery, resolveCity } from '../lib/searchParsing'
+import { parseNLQuery, resolveCity, type ParsedQuery } from '../lib/searchParsing'
 import { vertexParse } from '../lib/vertex-parse'
 import { IATA_TO_NAME, getAirlineNameFromCode, looksLikeIataCode } from '../airlineLogos'
 import { startWebSearch, startExploreSearch } from '../../lib/fsw-search'
@@ -411,31 +411,69 @@ async function SearchContent({
   utmCampaign?: string
 }) {
   const today = new Date().toISOString().slice(0, 10)
-  // Run regex parser and Gemini in parallel — Gemini is primary, regex is fallback.
-  const [_rawParsed, _ai] = await Promise.all([
-    Promise.resolve(parseNLQuery(query)),
-    vertexParse(query, today).catch(() => null),
-  ])
+  // Gemini is the primary parser — regex is only the fallback when Gemini is unavailable.
+  const _ai = await vertexParse(query, today).catch(() => null)
 
-  let parsed = _rawParsed
+  const CABIN_MAP: Record<string, ParsedQuery['cabin']> = {
+    economy: 'M', premium_economy: 'W', business: 'C', first: 'F',
+  }
+
+  let parsed: ParsedQuery
   if (_ai) {
     const aiOrigin = _ai.origin_city ? resolveCity(_ai.origin_city) : null
     const aiDest   = (_ai.destination_city && _ai.destination_city !== 'ANYWHERE')
       ? resolveCity(_ai.destination_city) : null
-    const aiDate       = _ai.date        || null
-    const aiReturnDate = _ai.return_date || null
+    const aiVia    = _ai.via_city ? resolveCity(_ai.via_city) : null
     parsed = {
-      ..._rawParsed,
-      // Gemini takes precedence for locations and dates; fall back to regex when AI returns null
-      ...(aiOrigin     ? { origin: aiOrigin.code, origin_name: aiOrigin.name }           : {}),
-      ...(aiDest       ? { destination: aiDest.code, destination_name: aiDest.name }     : {}),
-      ...(aiDate       ? { date: aiDate }                                                 : {}),
-      ...(aiReturnDate ? { return_date: aiReturnDate }                                    : {}),
-      // Gemini enrichment for passengers / cabin / preferences (only when regex didn't detect)
-      ...(!_rawParsed.cabin       && _ai.cabin       ? { cabin: ({
-        economy: 'M', premium_economy: 'W', business: 'C', first: 'F',
-      } as Record<string, string>)[_ai.cabin] ?? undefined } : {}),
+      // Locations
+      ...(aiOrigin ? { origin: aiOrigin.code, origin_name: aiOrigin.name }
+        : _ai.origin_city ? { failed_origin_raw: _ai.origin_city } : {}),
+      ...(_ai.destination_city === 'ANYWHERE' ? { anywhere_destination: true } : {}),
+      ...(aiDest ? { destination: aiDest.code, destination_name: aiDest.name }
+        : (_ai.destination_city && _ai.destination_city !== 'ANYWHERE') ? { failed_destination_raw: _ai.destination_city } : {}),
+      ...(aiVia ? { via_iata: aiVia.code, via_name: aiVia.name } : {}),
+      // Dates
+      ...(_ai.date              ? { date: _ai.date }                                : {}),
+      ...(_ai.return_date       ? { return_date: _ai.return_date }                  : {}),
+      ...(_ai.date_month_only   ? { date_month_only: true }                         : {}),
+      ...(_ai.find_best_window  ? { find_best_window: true,
+        ...(_ai.date_window_month != null ? { date_window_month: _ai.date_window_month } : {}),
+        ...(_ai.date_window_year  != null ? { date_window_year:  _ai.date_window_year  } : {}),
+      } : {}),
+      ...(_ai.min_trip_days != null ? { min_trip_days: _ai.min_trip_days } : {}),
+      ...(_ai.max_trip_days != null ? { max_trip_days: _ai.max_trip_days } : {}),
+      // Passengers
+      adults: _ai.adults || 1,
+      ...(_ai.children  ? { children: _ai.children }   : {}),
+      ...(_ai.infants   ? { infants:  _ai.infants }    : {}),
+      ...(_ai.context   ? { passenger_context: (
+        _ai.context === 'business' ? 'business_traveler' : _ai.context
+      ) as ParsedQuery['passenger_context'] } : {}),
+      // Flight preferences
+      ...(_ai.cabin                  ? { cabin: CABIN_MAP[_ai.cabin] }              : {}),
+      ...(_ai.direct_only            ? { stops: 0 }
+        : _ai.max_stops != null      ? { stops: _ai.max_stops }                     : {}),
+      ...(_ai.preferred_airline      ? { preferred_airline: _ai.preferred_airline } : {}),
+      ...(_ai.excluded_airline       ? { excluded_airline:  _ai.excluded_airline }  : {}),
+      // Price
+      ...(_ai.max_price != null      ? { max_price: _ai.max_price }                 : {}),
+      // Time prefs
+      ...(_ai.depart_time_pref        ? { depart_time_pref:        _ai.depart_time_pref }        : {}),
+      ...(_ai.return_depart_time_pref ? { return_depart_time_pref: _ai.return_depart_time_pref } : {}),
+      // Ancillaries
+      ...(_ai.require_checked_baggage ? { require_checked_baggage: true } : {}),
+      ...(_ai.carry_on_only           ? { carry_on_only:           true } : {}),
+      ...(_ai.require_meals           ? { require_meals:           true } : {}),
+      ...(_ai.require_cancellation    ? { require_cancellation:    true } : {}),
+      ...(_ai.require_lounge          ? { require_lounge:          true } : {}),
+      // Seat / purpose / urgency
+      ...(_ai.seat_pref    ? { seat_pref:    _ai.seat_pref }    : {}),
+      ...(_ai.trip_purpose ? { trip_purpose: _ai.trip_purpose } : {}),
+      ...(_ai.urgency      ? { urgency:      _ai.urgency }      : {}),
     }
+  } else {
+    // Gemini unavailable (local dev, quota, timeout) — fall back to regex parser
+    parsed = parseNLQuery(query)
   }
 
   // Build route label — include flexible date/duration context when relevant
