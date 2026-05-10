@@ -83,7 +83,7 @@
     "copyright": "LetsFG © 2026"
   },
   "Clarify": {
-    "prompt": "検索中に一つ質問があります…",
+    "prompt": "より良い結果をお届けするために、教えてください",
     "tripTypeQ": "どんな旅行ですか？",
     "opt_business": "出張",
     "opt_family": "家族旅行",

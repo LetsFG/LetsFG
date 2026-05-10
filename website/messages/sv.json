@@ -83,7 +83,7 @@
     "copyright": "LetsFG © 2026"
   },
   "Clarify": {
-    "prompt": "En snabb fråga medan vi söker…",
+    "prompt": "För att ge dig bättre resultat, berätta för oss",
     "tripTypeQ": "Vad är det för typ av resa?",
     "opt_business": "Affärsresa",
     "opt_family": "Semesterresa med familjen",

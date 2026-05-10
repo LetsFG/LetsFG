@@ -83,7 +83,7 @@
     "copyright": "LetsFG © 2026"
   },
   "Clarify": {
-    "prompt": "Uma pergunta rápida enquanto pesquisamos…",
+    "prompt": "Para te dar melhores resultados, diz-nos",
     "tripTypeQ": "Que tipo de viagem é esta?",
     "opt_business": "Viagem de negócios",
     "opt_family": "Férias em família",

@@ -401,11 +401,6 @@ export default function SearchPageClient({
   // True if user came back to results after visiting checkout without booking.
   const [cameFromCheckout, setCameFromCheckout] = useState(false)
 
-  // ── Clarifying-questions state ──────────────────────────────────────────────
-  const [clarifyStep, setClarifyStep] = useState(0)
-  const [clarifyDismissed, setClarifyDismissed] = useState(false)
-  const [pendingAppends, setPendingAppends] = useState<string[]>([])
-
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
@@ -739,57 +734,6 @@ export default function SearchPageClient({
   // (passenger composition, ancillary requirements, etc.) that the API
   // parsed object doesn't expose.
   const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
-  const tc = useTranslations('Clarify')
-
-  // Detect an ambiguous date fragment (e.g. "10/12") in the original query.
-  // We surface this as the first clarification so users can confirm before results load.
-  const ambigDate = useMemo(() => {
-    const m = /\b(\d{1,2})[\/\.](\d{1,2})\b(?!\s*[\/\.]\s*\d{4})/.exec(query)
-    if (!m) return null
-    const n1 = parseInt(m[1], 10)
-    const n2 = parseInt(m[2], 10)
-    if (n1 < 1 || n1 > 12 || n2 < 1 || n2 > 12 || n1 === n2) return null
-    const yr = new Date().getFullYear()
-    const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-    const dA = new Date(yr, n1 - 1, n2); if (dA <= new Date()) dA.setFullYear(yr + 1)
-    const dB = new Date(yr, n2 - 1, n1); if (dB <= new Date()) dB.setFullYear(yr + 1)
-    return { fragment: m[0], labelA: fmt(dA), labelB: fmt(dB), appendA: dA.toLocaleDateString('en-US', { day: 'numeric', month: 'long' }), appendB: dB.toLocaleDateString('en-US', { day: 'numeric', month: 'long' }) }
-  }, [query])
-
-  // Build list of questions — only ask what we genuinely don't know.
-  const clarifyQuestions = useMemo(() => {
-    type Q = { id: string; question: string; options: Array<{ label: string; append: string }> }
-    const qs: Q[] = []
-
-    // 1. Ambiguous date confirmation (e.g. "10/12" → "10th December or 12th October?")
-    if (ambigDate) {
-      qs.push({
-        id: 'date_ambig',
-        question: tc('dateAmbigQ'),
-        options: [
-          { label: ambigDate.labelA, append: ambigDate.appendA },
-          { label: ambigDate.labelB, append: ambigDate.appendB },
-        ],
-      })
-    }
-
-    // 2. Trip type — only if nothing was inferred from the query
-    if (!nlParsed?.trip_purpose && !nlParsed?.passenger_context) {
-      qs.push({
-        id: 'trip_type',
-        question: tc('tripTypeQ'),
-        options: [
-          { label: tc('opt_business'), append: 'business trip' },
-          { label: tc('opt_family'),   append: 'family holiday' },
-          { label: tc('opt_couple'),   append: 'trip for two' },
-          { label: tc('opt_solo'),     append: 'solo trip' },
-          { label: tc('opt_friends'),  append: 'trip with friends' },
-        ],
-      })
-    }
-
-    return qs
-  }, [nlParsed, ambigDate, tc])
 
   const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
   const requireBagPerPerson = !!(nlParsed?.require_checked_baggage)
@@ -864,104 +808,7 @@ export default function SearchPageClient({
     }, { keepalive: true })
   }
 
-  // Navigate to /results with the original query enriched by clarify answers
-  const navigateClarified = (appends: string[]) => {
-    const extras = appends.filter(Boolean)
-    const newQuery = extras.length > 0 ? `${query}, ${extras.join(', ')}` : query
-    handleSearchSubmit(newQuery)
-    const params = new URLSearchParams()
-    params.set('q', newQuery)
-    const cur = searchParams.get('cur') || initialCurrency
-    if (cur) params.set('cur', cur)
-    if (isTestSearch) params.set('probe', '1')
-    router.push(`/results?${params.toString()}`)
-  }
 
-  const currentQ = clarifyQuestions[Math.min(clarifyStep, clarifyQuestions.length - 1)]
-  const clarifyPanel = clarifyQuestions.length > 0 && !clarifyDismissed && currentQ ? (
-    <div style={{ padding: '0 0 12px', position: 'relative', zIndex: 10 }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px',
-        boxShadow: '0 4px 32px rgba(0,0,0,0.13)',
-        padding: '20px 24px 16px',
-      }}>
-        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {tc('prompt')}
-        </p>
-        <h3 style={{ fontSize: '17px', fontWeight: 700, color: '#111827', margin: '0 0 16px', lineHeight: 1.3 }}>
-          {currentQ.question}
-        </h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
-          {currentQ.options.map(opt => (
-            <button
-              key={opt.label}
-              type="button"
-              onClick={() => {
-                const newAppends = [...pendingAppends, opt.append]
-                const nextStep = clarifyStep + 1
-                if (nextStep < clarifyQuestions.length) {
-                  setPendingAppends(newAppends)
-                  setClarifyStep(nextStep)
-                } else {
-                  navigateClarified(newAppends)
-                }
-              }}
-              style={{
-                padding: '9px 18px', borderRadius: '24px',
-                border: '1.5px solid #e5e7eb', background: '#fff',
-                color: '#111827', fontSize: '14px', fontWeight: 500,
-                cursor: 'pointer', lineHeight: 1.4, transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => {
-                const el = e.currentTarget as HTMLButtonElement
-                el.style.borderColor = '#111'
-                el.style.background = '#111'
-                el.style.color = '#fff'
-              }}
-              onMouseLeave={e => {
-                const el = e.currentTarget as HTMLButtonElement
-                el.style.borderColor = '#e5e7eb'
-                el.style.background = '#fff'
-                el.style.color = '#111827'
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {clarifyQuestions.length > 1 ? (
-            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-              {clarifyQuestions.map((_, i) => (
-                <div key={i} style={{
-                  width: i === clarifyStep ? '20px' : '6px', height: '6px',
-                  borderRadius: '3px',
-                  background: i < clarifyStep ? '#111' : i === clarifyStep ? '#374151' : '#e5e7eb',
-                  transition: 'all 0.25s',
-                }} />
-              ))}
-            </div>
-          ) : <div />}
-          <button
-            type="button"
-            onClick={() => {
-              const nextStep = clarifyStep + 1
-              if (nextStep < clarifyQuestions.length) {
-                setClarifyStep(nextStep)
-              } else if (pendingAppends.length > 0) {
-                navigateClarified(pendingAppends)
-              } else {
-                setClarifyDismissed(true)
-              }
-            }}
-            style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '13px', cursor: 'pointer', padding: '4px 0' }}
-          >
-            {tc('skip')}
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null
 
   return (
     <main className={`res-page${isStreaming || status === 'completed' ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
@@ -1014,14 +861,12 @@ export default function SearchPageClient({
               <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
             </div>
           )}
-          {!isSearching && clarifyPanel}
 
           {isSearching ? (
             <>
               <div className="res-search-shell">
                 <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
               </div>
-              {clarifyPanel}
 
               {offers.length > 0 && (
               <div className="res-meta-bar">

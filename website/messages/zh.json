@@ -83,7 +83,7 @@
     "copyright": "LetsFG © 2026"
   },
   "Clarify": {
-    "prompt": "搜索期间的一个小问题…",
+    "prompt": "为了给您更好的结果，请告诉我们",
     "tripTypeQ": "这是什么类型的旅行？",
     "opt_business": "商务出行",
     "opt_family": "家庭度假",
