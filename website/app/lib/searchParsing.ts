@@ -798,6 +798,10 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'el cairo': { code: 'CAI', name: 'Cairo' },           // ES
   'il cairo': { code: 'CAI', name: 'Cairo' },           // IT
   'hurghada': { code: 'HRG', name: 'Hurghada' },
+  'red sea': { code: 'HRG', name: 'Hurghada (Red Sea)' },
+  'red sea coast': { code: 'HRG', name: 'Hurghada (Red Sea)' },
+  'red sea riviera': { code: 'HRG', name: 'Hurghada (Red Sea)' },
+  'marsa alam': { code: 'RMF', name: 'Marsa Alam' },
   'sharm el sheikh': { code: 'SSH', name: 'Sharm el-Sheikh' },
   'sharm el-sheikh': { code: 'SSH', name: 'Sharm el-Sheikh' },
   'sharm': { code: 'SSH', name: 'Sharm el-Sheikh' },
