@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Encontrar um voo não deveria exigir verificar 47 sites. Por isso criámos isto. Sem comissões. Sem rastreamento. Sem preços que sobem porque olhaste duas vezes.",
-    "placeholder": "Lisboa para Barcelona na próxima sexta",
+    "placeholder": "Lisboa para Tóquio em julho, 2 adultos, direto, 2 semanas",
     "searchLabel": "Pesquisar voos"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paris",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Lisboa para Barcelona na próxima sexta",
-    "tokyo_query": "Lisboa para Tóquio em junho, classe executiva",
-    "newYork_query": "Lisboa para Nova Iorque no próximo mês",
-    "paris_query": "Berlim para Paris neste fim de semana",
-    "bali_query": "Amesterdão para Bali em julho",
-    "dubai_query": "Lisboa para Dubai na próxima semana"
+    "barcelona_query": "Lisboa para Barcelona neste fim de semana, sexta à noite, volta domingo à noite, 2 adultos, voo direto",
+    "tokyo_query": "Lisboa para Tóquio no final de junho, férias em família, 2 adultos 1 criança, 2 semanas, lugares de janela juntos",
+    "newYork_query": "Lisboa para Nova Iorque no próximo mês, viagem de negócios, 4 noites, executiva, tem de ser reembolsável",
+    "paris_query": "Lisboa para Paris esta sexta à noite, voltar segunda de manhã, 2 adultos, direto",
+    "bali_query": "Lisboa para Bali em agosto, férias em família, 2 adultos 2 crianças, 10-14 dias, a semana mais barata",
+    "dubai_query": "Lisboa para Dubai no Natal, viagem em família, 1 semana, voo direto, que seja reembolsável"
   },
   "features": {
     "intro": "Criado por uma comunidade de viajantes. Encontrar um voo não deveria exigir verificar 47 sites. Por isso criámos isto. Com ❤️ de viajantes, para viajantes.",

@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Gjetja e një fluturimi nuk duhet të nënkuptojë kontrollimin e 47 faqeve. Prandaj e ndërtuam këtë. Pa komision. Pa gjurmim. Pa çmime që rriten sepse shikove dy herë.",
-    "placeholder": "Tiranë drejt Barcelonës të premten e ardhshme",
+    "placeholder": "Tiranë drejt Tokios në korrik, 2 të rritur, direkt, 2 javë",
     "searchLabel": "Kërko fluturime"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paris",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Tiranë drejt Barcelonës të premten e ardhshme",
-    "tokyo_query": "Tiranë drejt Tokios në qershor, klasa biznes",
-    "newYork_query": "Tiranë drejt Nju Jorkut muajin e ardhshëm",
-    "paris_query": "Berlin drejt Parisit këtë fundjavë",
-    "bali_query": "Amsterdam drejt Balit në korrik",
-    "dubai_query": "Tiranë drejt Dubait javën e ardhshme"
+    "barcelona_query": "Tiranë drejt Barcelonës këtë fundjavë, nisje të premten mbrëmje, kthim të dielën, 2 të rritur, vetëm direkt",
+    "tokyo_query": "Tiranë drejt Tokios fund qershorit, pushime familjare, 2 të rritur 1 fëmijë, 2 javë, ulëse dritare pranë njëra-tjetrës",
+    "newYork_query": "Tiranë drejt Nju Jorkut muajin tjetër, udhëtim biznesi, 4 netë, klasa biznes, duhet të jetë i rimbursushëm",
+    "paris_query": "Tiranë drejt Parisit të premten mbrëmje, kthim të hënën mëngjes, 2 të rritur, direkt",
+    "bali_query": "Tiranë drejt Bali-t në gusht, pushime familjare, 2 të rritur 2 fëmijë, 10-14 ditë, java më e lirë",
+    "dubai_query": "Tiranë drejt Dubait për Krishtlindje, udhëtim familjar, 1 javë, fluturim direkt, duhet të jetë i rimbursushëm"
   },
   "features": {
     "intro": "Ndërtuar nga një komunitet udhëtarësh. Gjetja e një fluturimi nuk duhet të nënkuptojë kontrollimin e 47 faqeve. Prandaj e ndërtuam këtë. Me ❤️ nga udhëtarë, për udhëtarë.",

@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Einen Flug zu finden sollte nicht bedeuten, 47 Websites abzuklappern. Deshalb haben wir das hier gebaut. Kein Aufschlag. Kein Tracking. Keine Preise die steigen, weil du zweimal hingeschaut hast.",
-    "placeholder": "Berlin nach Barcelona nächsten Freitag",
+    "placeholder": "Berlin nach Tokio im Juli, 2 Erwachsene, direkt, 2 Wochen",
     "searchLabel": "Flüge suchen"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paris",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Berlin nach Barcelona nächsten Freitag",
-    "tokyo_query": "Frankfurt nach Tokio im Juni, Business Class",
-    "newYork_query": "Berlin nach New York nächsten Monat",
-    "paris_query": "Berlin nach Paris dieses Wochenende",
-    "bali_query": "Amsterdam nach Bali im Juli",
-    "dubai_query": "Berlin nach Dubai nächste Woche"
+    "barcelona_query": "Berlin nach Barcelona dieses Wochenende, Freitagabend hin, Sonntagnacht zurück, 2 Erwachsene, nur direkt",
+    "tokyo_query": "Berlin nach Tokio Ende Juni, Familienurlaub, 2 Erwachsene 1 Kind, 2 Wochen, Fensterplätze nebeneinander",
+    "newYork_query": "Berlin nach New York nächsten Monat, Geschäftsreise, 4 Nächte, Business Class, muss stornierbar sein",
+    "paris_query": "Berlin nach Paris diesen Freitagabend, zurück Montag früh, 2 Erwachsene, direkt",
+    "bali_query": "Berlin nach Bali im August, Familienurlaub, 2 Erwachsene 2 Kinder, 10-14 Tage, günstigste Woche",
+    "dubai_query": "Berlin nach Dubai über Weihnachten, Familienreise, 1 Woche, direkt, muss stornierbar sein"
   },
   "features": {
     "intro": "Von einer Community aus Reisenden gebaut. Einen Flug zu finden sollte nicht bedeuten, 47 Websites abzuklappern. Deshalb haben wir das hier gebaut. Mit ❤️ von Reisenden, für Reisende.",

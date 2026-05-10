@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Finding a flight shouldn't mean checking 47 websites. So we built this. No markup. No tracking. No prices jumping because you looked twice.",
-    "placeholder": "London to Barcelona next Friday",
+    "placeholder": "Try: London to Tokyo, May 17, back May 19, need to land by 3pm…",
     "searchLabel": "Search flights"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paris",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "London to Barcelona next Friday",
-    "tokyo_query": "NYC to Tokyo in June, business class",
-    "newYork_query": "London to New York next month",
-    "paris_query": "Berlin to Paris this weekend",
-    "bali_query": "Amsterdam to Bali in July",
-    "dubai_query": "Warsaw to Dubai next week"
+    "barcelona_query": "London to Barcelona this weekend, Friday evening out, Sunday night back, 2 adults, direct",
+    "tokyo_query": "London to Tokyo end of June, family trip, 2 adults 1 child, 2 weeks, window seats together",
+    "newYork_query": "London to New York next month, business trip, 4 nights, business class, needs to be refundable",
+    "paris_query": "London to Paris this Friday evening, back Monday morning, 2 adults, direct",
+    "bali_query": "London to Bali in August, family holiday, 2 adults 2 kids, 10-14 days, find the cheapest week",
+    "dubai_query": "London to Dubai over Christmas, family trip, 1 week, direct, needs to be refundable"
   },
   "features": {
     "intro": "Built by a community of travelers. Finding a flight shouldn't mean checking 47 websites. So we built something about it. Made with ❤️ by travelers, for travelers.",

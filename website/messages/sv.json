@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Att hitta ett flyg borde inte innebära att kolla 47 webbplatser. Därför byggde vi det här. Inget påslag. Ingen spårning. Inga priser som stiger för att du tittade två gånger.",
-    "placeholder": "Stockholm till Barcelona nästa fredag",
+    "placeholder": "Stockholm till Tokyo i juli, 2 vuxna, direktflyg, 2 veckor",
     "searchLabel": "Sök flyg"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paris",
     "bali": "Bali",
     "dubai": "Dubai",
-    "barcelona_query": "Stockholm till Barcelona nästa fredag",
-    "tokyo_query": "Stockholm till Tokyo i juni, business class",
-    "newYork_query": "Stockholm till New York nästa månad",
-    "paris_query": "Berlin till Paris den här helgen",
-    "bali_query": "Amsterdam till Bali i juli",
-    "dubai_query": "Stockholm till Dubai nästa vecka"
+    "barcelona_query": "Stockholm till Barcelona den här helgen, avresa fredag kväll, hem söndag kväll, 2 vuxna, bara direktflyg",
+    "tokyo_query": "Stockholm till Tokyo slutet av juni, familjeresa, 2 vuxna 1 barn, 2 veckor, fönsterplatser bredvid varandra",
+    "newYork_query": "Stockholm till New York nästa månad, affärsresa, 4 nätter, business class, måste vara avbokningsbar",
+    "paris_query": "Stockholm till Paris den här fredagskvällen, tillbaka måndag morgon, 2 vuxna, direkt",
+    "bali_query": "Stockholm till Bali i augusti, familjesemester, 2 vuxna 2 barn, 10-14 dagar, billigaste veckan",
+    "dubai_query": "Stockholm till Dubai över julen, familjeresa, 1 vecka, direktflyg, måste vara avbokningsbar"
   },
   "features": {
     "intro": "Byggt av en gemenskap av resenärer. Att hitta ett flyg borde inte innebära att kolla 47 webbplatser. Därför byggde vi det här. Med ❤️ av resenärer, för resenärer.",

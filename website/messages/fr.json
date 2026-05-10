@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Trouver un vol ne devrait pas nécessiter de vérifier 47 sites. C'est pourquoi on a créé ça. Sans commission. Sans tracking. Sans prix qui augmentent parce que vous avez regardé deux fois.",
-    "placeholder": "Paris à Barcelone vendredi prochain",
+    "placeholder": "Paris à Tokyo en juillet, 2 adultes, direct, 2 semaines",
     "searchLabel": "Rechercher des vols"
   },
   "stats": {
@@ -30,12 +30,12 @@
     "paris": "Paris",
     "bali": "Bali",
     "dubai": "Dubaï",
-    "barcelona_query": "Paris à Barcelone vendredi prochain",
-    "tokyo_query": "Paris à Tokyo en juin, classe affaires",
-    "newYork_query": "Paris à New York le mois prochain",
-    "paris_query": "Berlin à Paris ce week-end",
-    "bali_query": "Amsterdam à Bali en juillet",
-    "dubai_query": "Paris à Dubaï la semaine prochaine"
+    "barcelona_query": "Paris à Barcelone ce week-end, départ vendredi soir, retour dimanche soir, 2 adultes, vol direct",
+    "tokyo_query": "Paris à Tokyo fin juin, voyage en famille, 2 adultes 1 enfant, 2 semaines, sièges hublot côte à côte",
+    "newYork_query": "Paris à New York le mois prochain, voyage d'affaires, 4 nuits, classe affaires, doit être remboursable",
+    "paris_query": "Lyon à Paris ce vendredi soir, retour lundi matin, 2 adultes, direct",
+    "bali_query": "Paris à Bali en août, vacances en famille, 2 adultes 2 enfants, 10-14 jours, trouver la semaine la moins chère",
+    "dubai_query": "Paris à Dubaï à Noël, voyage en famille, 1 semaine, vol direct, doit être remboursable"
   },
   "features": {
     "intro": "Créé par une communauté de voyageurs. Trouver un vol ne devrait pas nécessiter de vérifier 47 sites. C'est pourquoi on a créé ça. Fait avec ❤️ par des voyageurs, pour des voyageurs.",
