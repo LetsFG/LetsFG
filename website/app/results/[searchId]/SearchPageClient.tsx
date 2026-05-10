@@ -961,6 +961,9 @@ export default function SearchPageClient({
           defaultSort={defaultSort}
           requireSeatPerPerson={requireSeatPerPerson}
           requireBagPerPerson={requireBagPerPerson}
+          initialDepTimePref={nlParsed?.depart_time_pref}
+          initialRetTimePref={nlParsed?.return_depart_time_pref}
+          tripContext={nlParsed?.passenger_context}
         />
       )}
 
