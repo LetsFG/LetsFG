@@ -69,7 +69,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   "follow_up_questions": []
 }
 Rules:
-- Normalize partial/informal city names: "Crosse, Wisconsin"→"La Crosse, Wisconsin"; "Schiphol"→"Amsterdam"; "the Big Apple"→"New York, New York".
+- Normalize partial/informal city names: "Crosse, Wisconsin"→"La Crosse, Wisconsin"; "Schiphol"→"Amsterdam"; "the Big Apple"→"New York, New York"; "Red Sea"→"Hurghada" (the primary Red Sea airport).
 - ambiguous_date: only when BOTH parts ≤ 12, e.g. "10/12" — set both interpretations. Otherwise pick the only valid parse.
 - Dates without year: resolve to next occurrence from today.
 - Relative dates (next Friday, in June, next weekend): resolve to YYYY-MM-DD.
