@@ -964,6 +964,7 @@ export default function SearchPageClient({
           initialDepTimePref={nlParsed?.depart_time_pref}
           initialRetTimePref={nlParsed?.return_depart_time_pref}
           tripContext={nlParsed?.passenger_context}
+          viaIata={nlParsed?.via_iata}
         />
       )}
 
