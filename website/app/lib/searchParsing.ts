@@ -4899,7 +4899,7 @@ export function parseNLQuery(query: string): ParsedQuery {
   const tripDurRe2 = /\b(\d+)\s*[-–]\s*(\d+)\s*[-\s]?(?:day|days|night|nights|nächte?|jours?|giorni?|dias?|dagar|dana)\s*(?:trip|holiday|vacation|urlaub|vacances|vacanza|vakantie|semester|ferien|viagem|viaje)?\b/i
   const tripDurSingleRe = /\bfor\s+(\d+)\s+(?:days?|nights?|nächte?|jours?|giorni?|dias?|dagar|dana|ditë)\b/i
   const tripDurWeeksRe = /\bfor\s+(\d+)\s*[-–to]\s*(\d+)\s*weeks?\b/i
-  const tripDurWeekSingleRe = /\bfor\s+(\d+)\s+weeks?\b/i
+  const tripDurWeekSingleRe = /\bfor\s+(?:(\d+)|a|an|one)\s+weeks?\b/i
   const returnAfterRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(?:between\s+)?(\d+)\s*(?:and|[-–to])\s*(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
   const returnAfterSingleRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
 
@@ -4930,8 +4930,9 @@ export function parseNLQuery(query: string): ParsedQuery {
           } else {
             const twsm = q.match(tripDurWeekSingleRe)
             if (twsm) {
-              result.min_trip_days = parseInt(twsm[1]) * 7
-              result.max_trip_days = parseInt(twsm[1]) * 7
+              const wks = twsm[1] ? parseInt(twsm[1]) : 1
+              result.min_trip_days = wks * 7
+              result.max_trip_days = wks * 7
             }
           }
         }
