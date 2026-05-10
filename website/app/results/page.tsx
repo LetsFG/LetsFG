@@ -410,32 +410,32 @@ async function SearchContent({
   utmMedium?: string
   utmCampaign?: string
 }) {
-  const _rawParsed = parseNLQuery(query)
+  const today = new Date().toISOString().slice(0, 10)
+  // Run regex parser and Gemini in parallel — Gemini is primary, regex is fallback.
+  const [_rawParsed, _ai] = await Promise.all([
+    Promise.resolve(parseNLQuery(query)),
+    vertexParse(query, today).catch(() => null),
+  ])
 
-  // Vertex AI enrichment: when the regex parser can't resolve origin, destination,
-  // or date (e.g. "on Jun" with no day number), ask Gemini to fill the gaps.
   let parsed = _rawParsed
-  if (!_rawParsed.origin || !_rawParsed.destination || !_rawParsed.date) {
-    try {
-      const today = new Date().toISOString().slice(0, 10)
-      const ai = await vertexParse(query, today)
-      if (ai) {
-        const aiOrigin =
-          (!_rawParsed.origin && ai.origin_city) ? resolveCity(ai.origin_city) : null
-        const aiDest =
-          (!_rawParsed.destination && ai.destination_city && ai.destination_city !== 'ANYWHERE')
-            ? resolveCity(ai.destination_city) : null
-        const aiDate = (!_rawParsed.date && ai.date) ? ai.date : null
-        if (aiOrigin || aiDest || aiDate) {
-          parsed = {
-            ..._rawParsed,
-            ...(aiOrigin ? { origin: aiOrigin.code, origin_name: aiOrigin.name } : {}),
-            ...(aiDest   ? { destination: aiDest.code, destination_name: aiDest.name } : {}),
-            ...(aiDate   ? { date: aiDate } : {}),
-          }
-        }
-      }
-    } catch { /* AI unavailable — fall through to error UI */ }
+  if (_ai) {
+    const aiOrigin = _ai.origin_city ? resolveCity(_ai.origin_city) : null
+    const aiDest   = (_ai.destination_city && _ai.destination_city !== 'ANYWHERE')
+      ? resolveCity(_ai.destination_city) : null
+    const aiDate       = _ai.date        || null
+    const aiReturnDate = _ai.return_date || null
+    parsed = {
+      ..._rawParsed,
+      // Gemini takes precedence for locations and dates; fall back to regex when AI returns null
+      ...(aiOrigin     ? { origin: aiOrigin.code, origin_name: aiOrigin.name }           : {}),
+      ...(aiDest       ? { destination: aiDest.code, destination_name: aiDest.name }     : {}),
+      ...(aiDate       ? { date: aiDate }                                                 : {}),
+      ...(aiReturnDate ? { return_date: aiReturnDate }                                    : {}),
+      // Gemini enrichment for passengers / cabin / preferences (only when regex didn't detect)
+      ...(!_rawParsed.cabin       && _ai.cabin       ? { cabin: ({
+        economy: 'M', premium_economy: 'W', business: 'C', first: 'F',
+      } as Record<string, string>)[_ai.cabin] ?? undefined } : {}),
+    }
   }
 
   // Build route label — include flexible date/duration context when relevant
