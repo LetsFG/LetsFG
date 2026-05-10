@@ -8,9 +8,9 @@ import type { ExperimentConfig } from '../lib/ab-testing'
 
 export const BOOKING_FRICTION_EXPERIMENT_ID = 'exp_booking-friction-survey-v1'
 
-const BOOKING_FRICTION_EXPERIMENT: ExperimentConfig<'control' | 'survey'> = {
+const BOOKING_FRICTION_EXPERIMENT: ExperimentConfig<'survey'> = {
   id: BOOKING_FRICTION_EXPERIMENT_ID,
-  variants: { control: 0.5, survey: 0.5 },
+  variants: { survey: 1.0 },
 }
 
 // Results page: show 3.5 minutes after search fully completes
@@ -76,7 +76,7 @@ export default function BookingFrictionSurvey({
   showImmediately,
 }: Props) {
   const t = useTranslations('BookingFrictionSurvey')
-  const { isControl } = useExperiment(BOOKING_FRICTION_EXPERIMENT, searchId)
+  useExperiment(BOOKING_FRICTION_EXPERIMENT, searchId) // fires experiment_assigned for analytics
 
   // SSR-safe suppression: hydrate from storage on client only
   const [suppressed, setSuppressed] = useState(false)
@@ -146,7 +146,6 @@ export default function BookingFrictionSurvey({
   }, [submitted, searchId, offerId, context, isTestSearch])
 
   // All hooks must be above any conditional returns
-  if (isControl) return null
   if (suppressed || dismissed) return null
 
   if (submitted) {
