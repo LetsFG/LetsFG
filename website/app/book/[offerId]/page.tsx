@@ -123,10 +123,9 @@ export async function generateMetadata({
   if (!offer) {
     return { title: resolvedFrom || resolvedRef ? 'Recovering offer — LetsFG' : 'Offer not found — LetsFG' }
   }
-  const airlineLabel = getOfferAirlineLabel(offer)
   return {
-    title: `${airlineLabel} ${offer.origin}→${offer.destination} ${offer.currency}${offer.price} — LetsFG`,
-    description: `Book ${airlineLabel} from ${offer.origin_name} to ${offer.destination_name} for ${offer.currency}${offer.price}. Zero markup — raw airline price.`,
+    title: `${offer.origin} → ${offer.destination} · ${offer.currency}${offer.price} — LetsFG`,
+    description: `Book a flight from ${offer.origin_name} to ${offer.destination_name} for ${offer.currency}${offer.price}. Zero markup — raw airline price.`,
   }
 }
 
