@@ -131,8 +131,9 @@ Rules:
 - Resolve relative dates from today's date: "next Friday", "this weekend", "in 3 weeks" → YYYY-MM-DD.
 - "in June" (no day) → date_month_only:true, date:"2026-06-01" (first of that month).
 - "cheapest week in August", "best time in July" → find_best_window:true, date_window_month:<month number>, date_window_year:<year>, date:null.
-- Return trip: "return May 29", "back on the 29th", "May 25–29" → set return_date. If only duration given ("for 4 nights") → min_trip_days AND max_trip_days = 4.
-- Passengers: "family of 4"→adults:2,children:2. "couple"→adults:2,context:couple. "solo/alone/just me"→adults:1,context:solo. "with a baby"→infants:1. "and my kid"→children:1.
+- Return trip: "return May 29", "back on the 29th", "May 25–29" → set return_date. "round trip for 4 days" or "for 4 nights, return" → BOTH set return_date = departure + 4 days AND min_trip_days = max_trip_days = 4. If only duration given with no round-trip signal → min_trip_days AND max_trip_days = 4, return_date = null.
+- CRITICAL: Trip duration numbers (days/nights) NEVER set the passenger count. "4 days" means trip duration, NOT 4 passengers. Keep these completely separate.
+- Passengers: "family of 4"→adults:2,children:2. "couple"→adults:2,context:couple. "solo/alone/just me"→adults:1,context:solo. "with a baby"→infants:1. "and my kid"→children:1. "trip with friends/mates/colleagues/buddies" without a number → adults:2. "me and 2 friends"→adults:3.
 - direct_only: true for "nonstop", "direct", "no stops". max_stops: integer when "max 1 stop", "up to 2 connections".
 - max_price: extract number in local currency as-is (e.g. "under €200" → 200, "less than $300" → 300).
 - depart_time_pref: "early morning/red-eye"→early_morning, "morning"→morning, "afternoon"→afternoon, "evening/night"→evening.
@@ -143,6 +144,8 @@ Rules:
 - urgency: "ASAP", "urgent", "tomorrow" (with no specific date) → asap. "last minute" → last_minute.
 - follow_up_questions: 0–2 short questions ONLY when critical info is missing and would materially change results.
 Few-shot examples:
+Input: "gdansk to riga august 17 for 4 days round trip direct only trip with friends"
+Output: {"origin_city":"Gdansk","destination_city":"Riga","via_city":null,"date":"2026-08-17","return_date":"2026-08-21","date_month_only":false,"find_best_window":false,"date_window_month":null,"date_window_year":null,"min_trip_days":4,"max_trip_days":4,"adults":2,"children":0,"infants":0,"context":"solo","cabin":null,"direct_only":true,"max_stops":0,"preferred_airline":null,"excluded_airline":null,"max_price":null,"depart_time_pref":null,"return_depart_time_pref":null,"require_checked_baggage":false,"carry_on_only":false,"require_meals":false,"require_cancellation":false,"require_lounge":false,"seat_pref":null,"trip_purpose":"city_break","urgency":null,"follow_up_questions":[]}
 Input: "jeddah to red sea may 25 return may 29 direct"
 Output: {"origin_city":"Jeddah","destination_city":"Hurghada","via_city":null,"date":"2026-05-25","return_date":"2026-05-29","date_month_only":false,"find_best_window":false,"date_window_month":null,"date_window_year":null,"min_trip_days":null,"max_trip_days":null,"adults":1,"children":0,"infants":0,"context":null,"cabin":null,"direct_only":true,"max_stops":0,"preferred_airline":null,"excluded_airline":null,"max_price":null,"depart_time_pref":null,"return_depart_time_pref":null,"require_checked_baggage":false,"carry_on_only":false,"require_meals":false,"require_cancellation":false,"require_lounge":false,"seat_pref":null,"trip_purpose":"beach","urgency":null,"follow_up_questions":[]}
 Input: "fort myers florida to crosse wisconsin june 12 family of 4"
