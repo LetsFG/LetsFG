@@ -2182,14 +2182,6 @@ function resolveCity(raw: string): { code: string; name: string } | null {
     // Direction verb / day-of-week abbreviations that are ambiguous 3-letter IATA-like strings
     'fly', 'fri', 'sat', 'sun', 'mon', 'tue', 'wed', 'thu',
   ])
-  // Boundary-aware contained phrase: longest key first so "new york" beats "york".
-  // This runs BEFORE the 3-letter token scan so a city phrase like "ho chi minh" in
-  // "ho chi minh city tan son nhat" wins over the token "son" → SON (wrong airport).
-  const entries = Object.entries(CITY_TO_IATA).sort((a, b) => b[0].length - a[0].length)
-  for (const [k, v] of entries) {
-    if (containsLocationKey(s, k)) return v
-  }
-
   // 3-letter token scan: catches explicit IATA codes typed inline (e.g. "fly to LHR",
   // "Hawaii KOA"). Runs after phrase lookup to avoid matching sub-words of city names.
   const explicitCodeTokens = stripped.match(/\b[a-z]{3}\b/g) || []
@@ -2199,9 +2191,20 @@ function resolveCity(raw: string): { code: string; name: string } | null {
     // Check CITY_TO_IATA first (city codes like LON, NYC that map to metro areas)
     const mapped = CITY_TO_IATA[token]
     if (mapped) return mapped
-    // Then check the full airport database for explicit IATA codes (e.g. "Hawaii KOA" → KOA)
-    const airportMatch = findExactLocationMatch(token)
-    if (airportMatch) return { code: airportMatch.code, name: airportMatch.name }
+    // Then check the full airport database for explicit IATA codes (e.g. "Hawaii KOA" → KOA).
+    // Guard: only do this for short strings (≤4 words). Long strings are full airport names
+    // like "Tan Son Nhat International Airport" where sub-tokens like "son" → SON are accidental.
+    // For long strings we fall through to the phrase lookup which correctly finds the city name.
+    if (stripped.split(/\s+/).length <= 4) {
+      const airportMatch = findExactLocationMatch(token)
+      if (airportMatch) return { code: airportMatch.code, name: airportMatch.name }
+    }
+  }
+
+  // Boundary-aware contained phrase: longest key first so "new york" beats "york"
+  const entries = Object.entries(CITY_TO_IATA).sort((a, b) => b[0].length - a[0].length)
+  for (const [k, v] of entries) {
+    if (containsLocationKey(s, k)) return v
   }
 
   // Fuzzy: edit distance tolerance scales with word length
