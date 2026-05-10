@@ -2057,6 +2057,7 @@ export interface ParsedQuery {
   // ── Time-of-day preferences ──────────────────────────────────────────────────
   depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   arrive_time_pref?: 'morning' | 'afternoon' | 'evening'
+  return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
 
   // ── Airline preferences ──────────────────────────────────────────────────────
   preferred_airline?: string         // "on Ryanair", "with British Airways" (lowercase normalised)
@@ -2077,6 +2078,10 @@ export interface ParsedQuery {
 
   // ── Urgency ──────────────────────────────────────────────────────────────────
   urgency?: 'last_minute' | 'asap'
+
+  // ── Arrival-time hard constraint ──────────────────────────────────────────────
+  // Parsed from "need to land by 3pm", "must be back in the office at 15:00", etc.
+  max_arrival_time?: string          // "HH:MM" 24-hour, e.g. "15:00"
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -2174,7 +2179,19 @@ function resolveCity(raw: string): { code: string; name: string } | null {
     'out', 'off', 'one', 'day', 'few', 'got', 'let', 'put', 'run', 'set',
     'try', 'use', 'was', 'who', 'why', 'yes', 'ago', 'due', 'get', 'had',
     'him', 'how', 'now', 'see', 'too', 'two', 'did', 'are', 'men', 'way',
+    // Direction verb / day-of-week abbreviations that are ambiguous 3-letter IATA-like strings
+    'fly', 'fri', 'sat', 'sun', 'mon', 'tue', 'wed', 'thu',
   ])
+  // Boundary-aware contained phrase: longest key first so "new york" beats "york".
+  // This runs BEFORE the 3-letter token scan so a city phrase like "ho chi minh" in
+  // "ho chi minh city tan son nhat" wins over the token "son" → SON (wrong airport).
+  const entries = Object.entries(CITY_TO_IATA).sort((a, b) => b[0].length - a[0].length)
+  for (const [k, v] of entries) {
+    if (containsLocationKey(s, k)) return v
+  }
+
+  // 3-letter token scan: catches explicit IATA codes typed inline (e.g. "fly to LHR",
+  // "Hawaii KOA"). Runs after phrase lookup to avoid matching sub-words of city names.
   const explicitCodeTokens = stripped.match(/\b[a-z]{3}\b/g) || []
   for (let idx = explicitCodeTokens.length - 1; idx >= 0; idx -= 1) {
     const token = explicitCodeTokens[idx]
@@ -2185,12 +2202,6 @@ function resolveCity(raw: string): { code: string; name: string } | null {
     // Then check the full airport database for explicit IATA codes (e.g. "Hawaii KOA" → KOA)
     const airportMatch = findExactLocationMatch(token)
     if (airportMatch) return { code: airportMatch.code, name: airportMatch.name }
-  }
-
-  // Boundary-aware contained phrase: longest key first so "new york" beats "york"
-  const entries = Object.entries(CITY_TO_IATA).sort((a, b) => b[0].length - a[0].length)
-  for (const [k, v] of entries) {
-    if (containsLocationKey(s, k)) return v
   }
 
   // Fuzzy: edit distance tolerance scales with word length
@@ -2710,6 +2721,63 @@ function extractTimePrefs(text: string): TimePrefs {
   }
 
   return r
+}
+
+// ── Max arrival time extraction ───────────────────────────────────────────────
+// Parses phrases like "need to land by 3pm", "have to be back in the office at 3",
+// "must arrive before 15:00", "back at work by 2pm", "need to be there by 5"
+function extractMaxArrivalTime(text: string): string | undefined {
+  const t = stripAccents(text.toLowerCase())
+  // Capture group 1 = hour, 2 = minute (optional), 3 = am/pm (optional)
+  const timeCapture = '(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?'
+  const contexts = [
+    // "need to land / arrive / touch down by/before/at X"
+    /\b(?:need\s+to\s+|must\s+|have\s+to\s+|got\s+to\s+)?(?:land|arrive|touch\s+down)\s+(?:by|before|at)\s+/i,
+    // "need to be back / home / there by/at X"
+    /\b(?:need\s+to\s+be|must\s+be|have\s+to\s+be|got\s+to\s+be|need\s+to\s+get)\s+(?:back|home|there)\b[^.!?]{0,30}?\b(?:by|at|before)\s+/i,
+    // "back in the office / at work / at home by/at X"
+    /\bback\s+(?:in\s+(?:the\s+)?|at\s+(?:the\s+)?)?(?:office|work|hotel|home)\s+(?:by|at)\s+/i,
+    // "in the office / at work by/at X"
+    /\b(?:in\s+(?:the\s+)?(?:office|work)|at\s+(?:the\s+)?(?:office|work))\s+(?:by|at)\s+/i,
+    // "be at my desk / in a meeting by X"
+    /\b(?:have\s+to\s+be|need\s+to\s+be|must\s+be)\s+(?:at\s+(?:my\s+)?(?:desk|office|work)|in\s+(?:a\s+)?(?:meeting|the\s+office))\s+(?:by|at)\s+/i,
+    // "get back to the office / work by X"
+    /\bget\s+(?:back\s+)?to\s+(?:the\s+)?(?:office|work)\s+(?:by|at)\s+/i,
+    // "home by X" (short form)
+    /\bhome\s+(?:by|at)\s+/i,
+  ]
+
+  for (const ctxRe of contexts) {
+    const combined = new RegExp(ctxRe.source + timeCapture, 'i')
+    const m = t.match(combined)
+    if (!m) continue
+    // Last 3 capture groups are hour, minute, meridiem
+    const groups = m.slice(1) // m[1..n]
+    // Find numeric hour — it's the first digit group after the context
+    let hStr: string | undefined, mStr: string | undefined, mer: string | undefined
+    // groups may have spurious captures from context alternations; scan backwards for time
+    for (let i = groups.length - 1; i >= 0; i--) {
+      if (/^(am|pm)$/i.test(groups[i] ?? '')) { mer = groups[i]; continue }
+      if (/^\d{2}$/.test(groups[i] ?? '') && !hStr) { mStr = groups[i]; continue }
+      if (/^\d{1,2}$/.test(groups[i] ?? '') && !hStr) { hStr = groups[i]; break }
+    }
+    if (!hStr) {
+      // Simpler: just match the trailing time part directly
+      const timeM = (m[0] + ' ').match(new RegExp(timeCapture + '\\s', 'i'))
+      if (timeM) { hStr = timeM[1]; mStr = timeM[2]; mer = timeM[3] }
+    }
+    if (!hStr) continue
+    let hour = parseInt(hStr)
+    const minute = parseInt(mStr ?? '0')
+    if (isNaN(hour) || hour < 0 || hour > 23) continue
+    const merLc = (mer ?? '').toLowerCase()
+    if (merLc === 'pm' && hour < 12) hour += 12
+    if (merLc === 'am' && hour === 12) hour = 0
+    // Heuristic: no meridiem + hour 1–11 → assume PM (office context)
+    if (!merLc && hour >= 1 && hour <= 11) hour += 12
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  }
+  return undefined
 }
 
 // ── Trip purpose / occasion extraction ────────────────────────────────────────
@@ -3303,6 +3371,14 @@ function _preClean(raw: string): string {
     /^(?:show|get|find|book)\s+me\s+(?:(?:a|an|some|cheap|affordable|the\s+cheapest?)\s+)?(?:flights?|tickets?)?\s*/i,
     // "I need a flight" (without 'to fly')
     /^i\s+need\s+(?:a|an|some)?\s+(?:flight|ticket|connection)\s*/i,
+    // "I have a business/family/etc trip to" — conversational opener
+    /^i\s+have\s+(?:a|an)\s+(?:\w+\s+){0,3}(?:trip|flight|journey|holiday|vacation)\s+/i,
+    // "I'm going on a [family/summer/etc] trip/holiday"
+    /^i(?:'m|\s+am)\s+going\s+on\s+(?:a|an)\s+(?:\w+\s+){0,3}(?:trip|holiday|vacation|getaway)\s*/i,
+    // "planning a [family/business/etc] trip" (without I'm prefix)
+    /^planning\s+(?:a|an)\s+(?:\w+\s+){0,3}(?:trip|holiday|vacation|getaway)\s+/i,
+    // "I'm planning a family trip" — extends existing to cover modifier words before "trip"
+    /^i(?:'m|\s+am)\s+planning\s+(?:a|an)\s+(?:\w+\s+){0,3}(?:trip|holiday|vacation|getaway)\s+/i,
     // ── GERMAN ───────────────────────────────────────────────────────────────
     /^ich\s+(?:suche(?:\s+nach)?|m[öo]chte|will|brauche|w[üu]rde\s+gerne?\s+(?:einen?\s+)?(?:flug\s+)?(?:buchen|finden|haben))\s+(?:(?:einen?|einen?\s+g[üu]nstigen?|billigen?|g[üu]nstige\s+)?(?:fl[üu]ge?|flugticket|flugverbindung|ticket)s?)?\s*/i,
     /^ich\s+(?:m[öo]chte|will|w[üu]rde\s+gerne?)\s+(?:fliegen|reisen|einen?\s+flug\s+buchen)\s*/i,
@@ -3414,6 +3490,100 @@ export function parseNLQuery(query: string): ParsedQuery {
     result.date = dep
     if (ret) result.return_date = ret
     return result
+  }
+
+  // ── 0c. Directional day + time-of-day hints ────────────────────────────────
+  // Detects which leg (outbound/return) a weekday + time-of-day applies to.
+  // Covers many phrasings regardless of word order:
+  //   "Friday evening out", "fly out Friday evening", "leave on Friday morning",
+  //   "departing Friday afternoon", "Friday evening flight",
+  //   "Sunday night back", "fly back Sunday evening", "returning Monday morning",
+  //   "coming back Thursday afternoon", "home Sunday night", etc.
+  {
+    const _dn = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday'
+    const _tw = 'early\\s+morning|morning|afternoon|evening|night|noon|lunchtime|midday'
+    const _dc = `(${_dn})`           // day capture (required)
+    const _tc = `(${_tw})?`          // tod capture (optional)
+    const _tcR = `(${_tw})`          // tod capture (required — for patterns where tod must be present)
+    const _oo = '(?:on\\s+)?'        // optional "on "
+
+    // Extract [day, tod] from capture groups by matching against known word lists
+    const _ext = (m: RegExpMatchArray | null): [string|undefined, string|undefined] => {
+      if (!m) return [undefined, undefined]
+      const _dRe = new RegExp(`^(${_dn})$`, 'i')
+      const _tRe = /^(?:early\s+morning|morning|afternoon|evening|night|noon|lunchtime|midday)$/i
+      let _d: string|undefined, _t: string|undefined
+      for (const g of m.slice(1)) {
+        if (!g) continue
+        const gl = g.replace(/\s+/g, ' ').toLowerCase()
+        if (!_d && _dRe.test(gl)) _d = gl
+        else if (!_t && _tRe.test(gl)) _t = gl
+      }
+      return [_d, _t]
+    }
+
+    const _ql2 = q.toLowerCase()
+
+    // ── Outbound patterns (day + optional time-of-day for the departure leg) ───
+    const _outPats: RegExp[] = [
+      // "Friday evening out / outbound / depart / leave / fly out / going out"
+      new RegExp(`\\b${_dc}\\s+${_tc}\\s*(?:out(?:bound)?|depart(?:ure|ing)?|leave|leaving|fly(?:ing)?(?:\\s+out)?|going\\s+out|heading\\s+out|take\\s*off)\\b`, 'i'),
+      // "fly out Friday evening", "leave Friday afternoon", "depart Friday morning"
+      new RegExp(`\\b(?:fl(?:y|ying)\\s+out|leave|leaving|depart(?:ing)?|going\\s+out|heading\\s+out)\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "outbound Friday evening", "departing Friday morning", "departure Friday"
+      new RegExp(`\\b(?:out(?:bound|going)|departing|departure)\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "fly on Friday evening", "leave on Friday afternoon"
+      new RegExp(`\\b(?:fly(?:ing)?|leave|depart(?:ing)?)\\s+on\\s+${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "Friday morning departure", "Friday evening flight", "Friday night service"
+      new RegExp(`\\b${_dc}\\s+${_tcR}\\s+(?:departure|flight|service|dep(?:arture)?)\\b`, 'i'),
+      // "morning flight on Friday", "evening departure Friday", "afternoon flight Friday"
+      new RegExp(`\\b${_tcR}\\s+(?:departure|flight|service)\\s+${_oo}${_dc}\\b`, 'i'),
+      // "take / catch an evening flight on Friday"
+      new RegExp(`\\b(?:take|catch|get)\\s+(?:a|the|an)\\s+${_tcR}\\s+(?:flight|plane)\\s+${_oo}${_dc}\\b`, 'i'),
+      // "going Friday evening", "heading out Friday afternoon"
+      new RegExp(`\\b(?:going|heading)\\s+${_oo}${_dc}\\s+${_tc}\\b`, 'i'),
+    ]
+
+    // ── Return patterns (day + optional time-of-day for the return leg) ─────────
+    const _retPats: RegExp[] = [
+      // "Sunday night back / return / inbound / home"
+      new RegExp(`\\b${_dc}\\s+${_tc}\\s*(?:back|return(?:ing)?|in(?:bound)?|home)\\b`, 'i'),
+      // "fly back Sunday evening", "come back Monday morning", "head back Thursday afternoon"
+      new RegExp(`\\b(?:fl(?:y|ying)\\s+back|come\\s+back|coming\\s+back|head(?:ing)?\\s+back|get(?:ting)?\\s+back|go(?:ing)?\\s+back|arrive\\s+back|land(?:ing)?\\s+back)\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "returning Sunday morning", "return on Monday afternoon"
+      new RegExp(`\\breturn(?:ing)?\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "back on Sunday evening", "back Sunday morning"
+      new RegExp(`\\bback\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "home Sunday night", "home on Monday morning"
+      new RegExp(`\\bhome\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "inbound Sunday morning", "inbound on Monday"
+      new RegExp(`\\binbound\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "Sunday morning inbound", "Sunday evening return flight"
+      new RegExp(`\\b${_dc}\\s+${_tcR}\\s+(?:return(?:\\s+flight)?|inbound|flight\\s+back)\\b`, 'i'),
+      // "evening return on Sunday", "morning flight back Monday"
+      new RegExp(`\\b${_tcR}\\s+(?:return(?:\\s+flight)?|flight\\s+back)\\s+${_oo}${_dc}\\b`, 'i'),
+      // "arriving back Sunday evening", "landing back Monday morning"
+      new RegExp(`\\b(?:arriv(?:e|ing)|land(?:ing)?)\\s+back\\s+${_oo}${_dc}(?:\\s+${_tc})?\\b`, 'i'),
+      // "Sunday back evening" (unusual but valid)
+      new RegExp(`\\b${_dc}\\s+back\\s+${_tc}\\b`, 'i'),
+    ]
+
+    let _depDay: string|undefined, _depTod: string|undefined
+    let _retDay: string|undefined, _retTod: string|undefined
+
+    for (const _p of _outPats) {
+      const [d, t] = _ext(_ql2.match(_p))
+      if (d) { _depDay = d; _depTod = t; break }
+    }
+    for (const _p of _retPats) {
+      const [d, t] = _ext(_ql2.match(_p))
+      if (d) { _retDay = d; _retTod = t; break }
+    }
+
+    if (_depDay) (result as any).__explicitDepartureDay = _depDay
+    if (_depTod) (result as any).__explicitDepartureTimePref = _depTod
+    if (_retDay) (result as any).__explicitReturnDay = _retDay
+    if (_retTod) (result as any).__explicitReturnTimePref = _retTod
   }
 
   // ── 1. Split at return keywords ──────────────────────────────────────────
@@ -3730,6 +3900,13 @@ export function parseNLQuery(query: string): ParsedQuery {
       // Strip trailing time-position modifiers left over when the month name was consumed
       // by the route-regex lookahead (e.g. "Houston end of" ← "Grand Rapids to Houston end of May")
       .replace(/\s+(?:end|beginning|start|late|early|mid(?:dle)?)(?:\s+of)?\s*$/i, '')
+      // Strip "fly out Thursday morning" / "fly back Sunday" suffixes that got absorbed into destStr
+      .replace(/[,\s]+fly(?:ing)?\s+(?:out|back|return(?:ing)?)\b.*/i, '')
+      // Strip numeric date expressions (e.g. "10.01 10.07", "7/3") that were not caught above
+      .replace(/[,\s]+\d{1,2}[./]\d{1,2}(?:[,\s]+\d{1,2}[./]\d{1,2})?.*/i, '')
+      // Strip trailing airport-name words so "Ho Chi Minh City Tan Son Nhat International Airport"
+      // resolves to the city and not a token inside the airport name
+      .replace(/\s+(?:international\s+)?(?:airport|intl\.?)\s*$/i, '')
       .replace(DEST_PREFIX_RE, '')
       .trim()
   }
@@ -3789,14 +3966,58 @@ export function parseNLQuery(query: string): ParsedQuery {
       return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`
     }
 
-    // DD/MM or DD.MM (no year — assume current/next year)
-    const dmM = t.match(/\b(\d{1,2})[./](\d{1,2})\b/)
+    // DD/MM, DD.MM, or MM/DD (no year — assume current/next year)
+    // For '/' separator with both numbers ≤12, prefer the interpretation that gives
+    // the nearest future date — resolves US MM/DD vs European DD/MM ambiguity.
+    // "7/3" from May 2026 → July 3 (MM/DD, 54 days) beats March 7 (DD/MM, 300 days).
+    const dmM = t.match(/\b(\d{1,2})([./])(\d{1,2})\b/)
     if (dmM) {
-      const day = parseInt(dmM[1]), mon = parseInt(dmM[2]) - 1
-      if (day >= 1 && day <= 31 && mon >= 0 && mon <= 11) {
-        const d = new Date(today.getFullYear(), mon, day)
+      const a = parseInt(dmM[1]), sep = dmM[2], b = parseInt(dmM[3])
+      const _tryD = (day: number, mon0: number): Date | null => {
+        if (day < 1 || day > 31 || mon0 < 0 || mon0 > 11) return null
+        const d = new Date(today.getFullYear(), mon0, day)
         if (d < today) d.setFullYear(today.getFullYear() + 1)
-        return toLocalDateStr(d)
+        return d
+      }
+      if (sep === '.') {
+        // Dot separator is European DD.MM convention — but if DD.MM gives a past date
+        // and MM.DD gives a nearer future date, prefer MM.DD (e.g. "10.01" on May 10
+        // → Jan 10 is past/far-future 2027, but Oct 1 2026 is nearer).
+        if (a > 12) {
+          // a can't be a month → definitely DD.MM
+          const d = _tryD(a, b - 1)
+          if (d) return toLocalDateStr(d)
+        } else if (b > 12) {
+          // b can't be a month → definitely MM.DD (a=month, b=day)
+          const d = _tryD(b, a - 1)
+          if (d) return toLocalDateStr(d)
+        } else {
+          // Both ≤12: try DD.MM first (European convention), but fall back to MM.DD
+          // if it gives a closer future date (avoids year-roll for "10.01" → Oct 1 not Jan 2027)
+          const dDM = _tryD(a, b - 1)  // DD.MM
+          const dMD = _tryD(b, a - 1)  // MM.DD
+          if (dDM && dMD) return toLocalDateStr(dMD < dDM ? dMD : dDM)
+          if (dDM) return toLocalDateStr(dDM)
+          if (dMD) return toLocalDateStr(dMD)
+        }
+      } else {
+        // Slash separator → possibly MM/DD (US) or DD/MM (EU)
+        if (a > 12) {
+          // First number can't be a month → must be DD/MM
+          const d = _tryD(a, b - 1)
+          if (d) return toLocalDateStr(d)
+        } else if (b > 12) {
+          // Second number can't be a month → must be MM/DD (a=month, b=day)
+          const d = _tryD(b, a - 1)
+          if (d) return toLocalDateStr(d)
+        } else {
+          // Both ≤12 — ambiguous: pick whichever gives the nearest future date
+          const dDM = _tryD(a, b - 1)  // DD/MM: a=day, b=month
+          const dMD = _tryD(b, a - 1)  // MM/DD: a=month, b=day
+          if (dDM && dMD) return toLocalDateStr(dMD < dDM ? dMD : dDM)
+          if (dMD) return toLocalDateStr(dMD)
+          if (dDM) return toLocalDateStr(dDM)
+        }
       }
     }
 
@@ -4019,6 +4240,51 @@ export function parseNLQuery(query: string): ParsedQuery {
       if (mIdx !== null) addHit(m.index, mIdx, parseInt(m[1]))
     }
 
+    // Numeric date pairs: "10.01 10.07", "7/3 7/5", "10.01, 10.07" etc.
+    // Try both MM.DD and DD.MM conventions across the pair, pick the one where
+    // BOTH dates are valid, chronological, and require no year-roll (i.e. both future).
+    // Falls back to nearest-future if only one convention works.
+    if (hits.length === 0) {
+      const numPairRe = /(\d{1,2})([./])(\d{1,2})[,\s]+(\d{1,2})\2(\d{1,2})/g
+      while ((m = numPairRe.exec(cleaned)) !== null) {
+        const a1 = parseInt(m[1]), b1 = parseInt(m[3])
+        const a2 = parseInt(m[4]), b2 = parseInt(m[5])
+        const _nd = (day: number, mon0: number): Date | null => {
+          if (day < 1 || day > 31 || mon0 < 0 || mon0 > 11) return null
+          const d = new Date(today.getFullYear(), mon0, day)
+          return d
+        }
+        // MM.DD interpretation (a=month, b=day)
+        const dMD1 = _nd(b1, a1 - 1), dMD2 = _nd(b2, a2 - 1)
+        // DD.MM interpretation (a=day, b=month)
+        const dDM1 = _nd(a1, b1 - 1), dDM2 = _nd(a2, b2 - 1)
+        const isGoodPair = (d1: Date | null, d2: Date | null): boolean => {
+          if (!d1 || !d2) return false
+          return d1 >= today && d2 > d1
+        }
+        let chosenD1: Date | null = null, chosenD2: Date | null = null
+        if (isGoodPair(dMD1, dMD2) && !isGoodPair(dDM1, dDM2)) {
+          chosenD1 = dMD1; chosenD2 = dMD2
+        } else if (isGoodPair(dDM1, dDM2) && !isGoodPair(dMD1, dMD2)) {
+          chosenD1 = dDM1; chosenD2 = dDM2
+        } else if (isGoodPair(dMD1, dMD2) && isGoodPair(dDM1, dDM2)) {
+          // Both valid: prefer the pair with the shorter span (more likely a trip)
+          const spanMD = dMD2!.getTime() - dMD1!.getTime()
+          const spanDM = dDM2!.getTime() - dDM1!.getTime()
+          if (spanMD <= spanDM) { chosenD1 = dMD1; chosenD2 = dMD2 }
+          else { chosenD1 = dDM1; chosenD2 = dDM2 }
+        } else {
+          // Neither pair is both-future: roll past dates to next year
+          if (dMD1 && dMD2) { if (dMD1 < today) dMD1.setFullYear(today.getFullYear() + 1); if (dMD2 < today) dMD2.setFullYear(today.getFullYear() + 1); if (dMD2 > dMD1) { chosenD1 = dMD1; chosenD2 = dMD2 } }
+          if (!chosenD1 && dDM1 && dDM2) { if (dDM1 < today) dDM1.setFullYear(today.getFullYear() + 1); if (dDM2 < today) dDM2.setFullYear(today.getFullYear() + 1); if (dDM2 > dDM1) { chosenD1 = dDM1; chosenD2 = dDM2 } }
+        }
+        if (chosenD1 && chosenD2) {
+          hits.push({ pos: m.index, date: toLocalDateStr(chosenD1) })
+          hits.push({ pos: m.index + m[0].length, date: toLocalDateStr(chosenD2) })
+        }
+      }
+    }
+
     // Deduplicate by DATE VALUE, then sort chronologically.
     // Different regex patterns (mdRe, dmRe, smRange*) can match the same calendar date
     // at nearby positions — deduplicate by value to avoid counting "June 1st" twice.
@@ -4050,6 +4316,20 @@ export function parseNLQuery(query: string): ParsedQuery {
     result.date = toLocalDateStr(d)
   }
 
+  // Override with explicit "Friday evening out"-style weekday (more specific than "this weekend")
+  const _explicitDepDay: string | undefined = (result as any).__explicitDepartureDay
+  if (_explicitDepDay) {
+    const _wi: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+    if (_explicitDepDay in _wi) {
+      const _d = new Date(today)
+      let _diff = (_wi[_explicitDepDay] - today.getDay() + 7) % 7
+      if (_diff === 0) _diff = 7
+      _d.setDate(today.getDate() + _diff)
+      result.date = toLocalDateStr(_d)
+    }
+    delete (result as any).__explicitDepartureDay
+  }
+
   // ── 5. Extract return date ───────────────────────────────────────────────
   if (returnRaw) {
     result.return_date = extractDate(returnRaw)
@@ -4059,6 +4339,22 @@ export function parseNLQuery(query: string): ParsedQuery {
     const pair = scanTwoDates(outboundRaw)
     if (pair) result.return_date = pair[1]
   }
+
+  // Apply "Sunday night back"-style return weekday when no return date was found yet
+  const _explicitRetDay: string | undefined = (result as any).__explicitReturnDay
+  if (_explicitRetDay && !result.return_date) {
+    const _wi2: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+    if (_explicitRetDay in _wi2) {
+      const _d = new Date(today)
+      let _diff = (_wi2[_explicitRetDay] - today.getDay() + 7) % 7
+      if (_diff === 0) _diff = 7
+      _d.setDate(today.getDate() + _diff)
+      // Ensure return is after departure
+      if (result.date && toLocalDateStr(_d) <= result.date) _d.setDate(_d.getDate() + 7)
+      result.return_date = toLocalDateStr(_d)
+    }
+  }
+  delete (result as any).__explicitReturnDay
 
   // ── 6. Extract cabin class + direct filter from full query ───────────────
   const cabin = extractCabin(q)
@@ -4169,6 +4465,38 @@ export function parseNLQuery(query: string): ParsedQuery {
   const tp = extractTimePrefs(q)
   if (tp.depart_time_pref) result.depart_time_pref = tp.depart_time_pref
   if (tp.arrive_time_pref) result.arrive_time_pref = tp.arrive_time_pref
+  // Map raw time-of-day words → ParsedQuery enum values
+  const _mapTod = (tod: string | undefined): ParsedQuery['depart_time_pref'] | undefined => {
+    if (!tod) return undefined
+    const t = tod.replace(/\s+/g, ' ').toLowerCase()
+    if (t.includes('early') || t === 'early morning') return 'early_morning'
+    if (t === 'morning') return 'morning'
+    if (t === 'afternoon' || t === 'noon' || t === 'lunchtime' || t === 'midday') return 'afternoon'
+    if (t === 'evening' || t === 'night') return 'evening'
+    return undefined
+  }
+  // Apply departure time-of-day from step 0c (fills in when extractTimePrefs couldn't detect)
+  const _depTod: string | undefined = (result as any).__explicitDepartureTimePref
+  if (_depTod && !result.depart_time_pref) result.depart_time_pref = _mapTod(_depTod)
+  delete (result as any).__explicitDepartureTimePref
+  // Apply return time-of-day from step 0c
+  const _retTod11: string | undefined = (result as any).__explicitReturnTimePref
+  if (_retTod11) result.return_depart_time_pref = _mapTod(_retTod11)
+  delete (result as any).__explicitReturnTimePref
+  // If RETURN_SPLIT_RE fired, also scan the return portion for bare time-of-day words
+  // (e.g. returnRaw="Sunday evening" → return_depart_time_pref='evening')
+  if (returnRaw && !result.return_depart_time_pref) {
+    const _rtp = extractTimePrefs(returnRaw)
+    if (_rtp.depart_time_pref) {
+      result.return_depart_time_pref = _rtp.depart_time_pref
+    } else {
+      const _rl = returnRaw.toLowerCase()
+      if (/\bearly\s+morning\b/.test(_rl)) result.return_depart_time_pref = 'early_morning'
+      else if (/\bmorning\b/.test(_rl)) result.return_depart_time_pref = 'morning'
+      else if (/\b(?:afternoon|noon|lunchtime|midday)\b/.test(_rl)) result.return_depart_time_pref = 'afternoon'
+      else if (/\b(?:evening|night)\b/.test(_rl)) result.return_depart_time_pref = 'evening'
+    }
+  }
 
   // ── 12. Trip purpose ──────────────────────────────────────────────────────
   const purpose = extractTripPurpose(q)
@@ -4317,6 +4645,13 @@ export function parseNLQuery(query: string): ParsedQuery {
   // ── 18. Hard vs soft stop inference ─────────────────────────────────────
   // If prefer_direct is set but stops=0 not yet set, don't override user's filter.
   // The UI/search layer handles prefer_direct as a soft sort preference.
+
+  // ── 19. Max arrival time (e.g. "need to land by 3pm", "back in office at 15:00") ──
+  if (!result.max_arrival_time) {
+    const fullText = query + (returnRaw ? ' ' + returnRaw : '')
+    const maxArr = extractMaxArrivalTime(fullText)
+    if (maxArr) result.max_arrival_time = maxArr
+  }
 
   return result
 }

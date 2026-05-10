@@ -452,6 +452,9 @@ interface Props {
   defaultSort?: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'
   requireSeatPerPerson?: boolean
   requireBagPerPerson?: boolean
+  initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -471,7 +474,45 @@ export default function ResultsPanel({
   defaultSort,
   requireSeatPerPerson = false,
   requireBagPerPerson = false,
+  initialDepTimePref,
+  initialRetTimePref,
+  tripContext,
 }: Props) {
+  // Persona-based grouping: 0 = ideal match, higher = less preferred
+  function personaGroup(o: FlightOffer): number {
+    if (!tripContext || tripContext === 'solo' || tripContext === 'group') return 0
+    const stops = o.stops ?? 0
+    const dep = isoToMins(o.departure_time)
+    const goodHours = dep >= 360 && dep <= 1260  // 6am–9pm
+    if (tripContext === 'family') {
+      // Kids on plane: direct flights first, then by stop count
+      return stops
+    }
+    if (tripContext === 'business_traveler') {
+      // Direct + civilised hours > direct + bad hours > connecting + good hours > rest
+      if (stops === 0 && goodHours) return 0
+      if (stops === 0) return 1
+      if (goodHours) return 2
+      return 3
+    }
+    if (tripContext === 'couple') {
+      return stops === 0 ? 0 : 1
+    }
+    return 0
+  }
+  // Convert time-of-day pref to minute-range [lo, hi] used for soft-boost scoring
+  function timePrefRange(pref: string | undefined): [number, number] {
+    if (pref === 'early_morning') return [0, 360]
+    if (pref === 'morning') return [360, 720]
+    if (pref === 'afternoon') return [720, 1080]
+    if (pref === 'evening' || pref === 'red_eye') return [1080, 1439]
+    return [0, 1439]
+  }
+  function inTimePref(mins: number, pref: string | undefined): boolean {
+    if (!pref) return true
+    const [lo, hi] = timePrefRange(pref)
+    return mins >= lo && mins <= hi
+  }
   const t = useTranslations('ResultsPanel')
   const locale = useLocale()
   const searchParams = useSearchParams()
@@ -599,8 +640,33 @@ export default function ResultsPanel({
     } else {
       list = [...list].sort((a, b) => getSortEffectivePrice(a, sort, currency) - getSortEffectivePrice(b, sort, currency))
     }
+    // Soft time-pref boost: if NL query specified time-of-day preferences and the
+    // user hasn't manually adjusted the sliders, pin matching offers to the top
+    // (all offers still visible — matching ones just float up).
+    if ((initialDepTimePref || initialRetTimePref) && depRange[0] === 0 && depRange[1] === 1439 && retRange[0] === 0 && retRange[1] === 1439) {
+      const matched: typeof list = []
+      const rest: typeof list = []
+      for (const o of list) {
+        const depMins = isoToMins(o.departure_time)
+        const retMins = isoToMins(o.inbound?.departure_time ?? o.arrival_time)
+        const depOk = inTimePref(depMins, initialDepTimePref)
+        const retOk = inTimePref(retMins, initialRetTimePref)
+        if (depOk && retOk) matched.push(o)
+        else rest.push(o)
+      }
+      list = [...matched, ...rest]
+    }
+    // Persona-based grouping: for family/business/couple, pin best-fit flights to the top.
+    // Within each group the existing price/duration sort is preserved (stable sort).
+    if (tripContext && tripContext !== 'solo' && tripContext !== 'group') {
+      // For family, re-sort by duration inside groups (kids care more about time than price)
+      if (tripContext === 'family' && sort !== 'duration') {
+        list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
+      }
+      list = [...list].sort((a, b) => personaGroup(a) - personaGroup(b))
+    }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, tripContext])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
