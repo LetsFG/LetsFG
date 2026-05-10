@@ -82,6 +82,19 @@
     "support": "Support",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "Une question rapide pendant qu'on cherche…",
+    "tripTypeQ": "Quel type de voyage est-ce ?",
+    "opt_business": "Voyage d'affaires",
+    "opt_family": "Vacances en famille",
+    "opt_couple": "Voyage en amoureux",
+    "opt_solo": "Voyage solo",
+    "opt_friends": "Avec des amis",
+    "skip": "Passer",
+    "dateAmbigQ": "Juste pour confirmer — vouliez-vous dire :",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "Filtres",
     "clearAll": "Tout effacer",

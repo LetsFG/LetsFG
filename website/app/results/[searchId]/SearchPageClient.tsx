@@ -739,45 +739,57 @@ export default function SearchPageClient({
   // (passenger composition, ancillary requirements, etc.) that the API
   // parsed object doesn't expose.
   const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
+  const tc = useTranslations('Clarify')
 
-  // Questions to ask based on what the NL parser didn't detect
+  // Detect an ambiguous date fragment (e.g. "10/12") in the original query.
+  // We surface this as the first clarification so users can confirm before results load.
+  const ambigDate = useMemo(() => {
+    const m = /\b(\d{1,2})[\/\.](\d{1,2})\b(?!\s*[\/\.]\s*\d{4})/.exec(query)
+    if (!m) return null
+    const n1 = parseInt(m[1], 10)
+    const n2 = parseInt(m[2], 10)
+    if (n1 < 1 || n1 > 12 || n2 < 1 || n2 > 12 || n1 === n2) return null
+    const yr = new Date().getFullYear()
+    const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    const dA = new Date(yr, n1 - 1, n2); if (dA <= new Date()) dA.setFullYear(yr + 1)
+    const dB = new Date(yr, n2 - 1, n1); if (dB <= new Date()) dB.setFullYear(yr + 1)
+    return { fragment: m[0], labelA: fmt(dA), labelB: fmt(dB), appendA: dA.toLocaleDateString('en-US', { day: 'numeric', month: 'long' }), appendB: dB.toLocaleDateString('en-US', { day: 'numeric', month: 'long' }) }
+  }, [query])
+
+  // Build list of questions — only ask what we genuinely don't know.
   const clarifyQuestions = useMemo(() => {
     type Q = { id: string; question: string; options: Array<{ label: string; append: string }> }
     const qs: Q[] = []
-    const today = new Date()
-    const monthName = (d: Date) => d.toLocaleDateString('en-US', { month: 'long' })
-    const m1 = new Date(today.getFullYear(), today.getMonth() + 1, 1)
-    const m2 = new Date(today.getFullYear(), today.getMonth() + 2, 1)
 
-    if (!nlParsed?.date && !nlParsed?.date_month_only && !nlParsed?.min_trip_days && !nlParsed?.anywhere_destination) {
+    // 1. Ambiguous date confirmation (e.g. "10/12" → "10th December or 12th October?")
+    if (ambigDate) {
       qs.push({
-        id: 'timing',
-        question: 'When are you thinking of flying?',
+        id: 'date_ambig',
+        question: tc('dateAmbigQ'),
         options: [
-          { label: `This month (${monthName(today)})`, append: `in ${monthName(today)}` },
-          { label: monthName(m1), append: `in ${monthName(m1)}` },
-          { label: monthName(m2), append: `in ${monthName(m2)}` },
-          { label: "I'm flexible", append: '' },
+          { label: ambigDate.labelA, append: ambigDate.appendA },
+          { label: ambigDate.labelB, append: ambigDate.appendB },
         ],
       })
     }
 
-    if (!nlParsed?.passenger_context && !nlParsed?.trip_purpose) {
+    // 2. Trip type — only if nothing was inferred from the query
+    if (!nlParsed?.trip_purpose && !nlParsed?.passenger_context) {
       qs.push({
         id: 'trip_type',
-        question: 'What kind of trip is this?',
+        question: tc('tripTypeQ'),
         options: [
-          { label: 'Business', append: 'for business' },
-          { label: 'Holiday', append: 'for leisure' },
-          { label: 'Family trip', append: 'family trip' },
-          { label: 'Honeymoon', append: 'honeymoon' },
-          { label: 'Solo', append: 'solo trip' },
+          { label: tc('opt_business'), append: 'business trip' },
+          { label: tc('opt_family'),   append: 'family holiday' },
+          { label: tc('opt_couple'),   append: 'trip for two' },
+          { label: tc('opt_solo'),     append: 'solo trip' },
+          { label: tc('opt_friends'),  append: 'trip with friends' },
         ],
       })
     }
 
     return qs
-  }, [nlParsed])
+  }, [nlParsed, ambigDate, tc])
 
   const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
   const requireBagPerPerson = !!(nlParsed?.require_checked_baggage)
@@ -874,7 +886,7 @@ export default function SearchPageClient({
         padding: '20px 24px 16px',
       }}>
         <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          One quick question while we search…
+          {tc('prompt')}
         </p>
         <h3 style={{ fontSize: '17px', fontWeight: 700, color: '#111827', margin: '0 0 16px', lineHeight: 1.3 }}>
           {currentQ.question}
@@ -944,7 +956,7 @@ export default function SearchPageClient({
             }}
             style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '13px', cursor: 'pointer', padding: '4px 0' }}
           >
-            Skip
+            {tc('skip')}
           </button>
         </div>
       </div>

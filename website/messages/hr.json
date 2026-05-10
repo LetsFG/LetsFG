@@ -82,6 +82,19 @@
     "support": "Support",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "Brzo pitanje dok pretražujemo…",
+    "tripTypeQ": "Kakvo je ovo putovanje?",
+    "opt_business": "Poslovno putovanje",
+    "opt_family": "Obiteljski odmor",
+    "opt_couple": "Putovanje za dvoje",
+    "opt_solo": "Solo putovanje",
+    "opt_friends": "S prijateljima",
+    "skip": "Preskoči",
+    "dateAmbigQ": "Samo da potvrdim — jeste li mislili:",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "Filtri",
     "clearAll": "Obriši sve",

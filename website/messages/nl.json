@@ -82,6 +82,19 @@
     "support": "Support",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "Snelle vraag terwijl we zoeken…",
+    "tripTypeQ": "Wat voor soort reis is dit?",
+    "opt_business": "Zakenreis",
+    "opt_family": "Familievakantie",
+    "opt_couple": "Reis voor twee",
+    "opt_solo": "Soloreis",
+    "opt_friends": "Met vrienden",
+    "skip": "Overslaan",
+    "dateAmbigQ": "Ter bevestiging — bedoelde u:",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "Filters",
     "clearAll": "Alles wissen",

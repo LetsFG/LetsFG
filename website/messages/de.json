@@ -82,6 +82,19 @@
     "support": "Support",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "Kurze Frage während wir suchen…",
+    "tripTypeQ": "Was für eine Reise ist das?",
+    "opt_business": "Geschäftsreise",
+    "opt_family": "Familienurlaub",
+    "opt_couple": "Reise zu zweit",
+    "opt_solo": "Alleinreise",
+    "opt_friends": "Mit Freunden",
+    "skip": "Überspringen",
+    "dateAmbigQ": "Nur zur Bestätigung — meinten Sie:",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "Filter",
     "clearAll": "Alle löschen",
