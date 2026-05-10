@@ -412,10 +412,10 @@ async function SearchContent({
 }) {
   const _rawParsed = parseNLQuery(query)
 
-  // Vertex AI enrichment: when regex parser can't resolve origin or destination,
-  // ask Gemini to normalise the city names and re-resolve via the IATA map.
+  // Vertex AI enrichment: when the regex parser can't resolve origin, destination,
+  // or date (e.g. "on Jun" with no day number), ask Gemini to fill the gaps.
   let parsed = _rawParsed
-  if (!_rawParsed.origin || !_rawParsed.destination) {
+  if (!_rawParsed.origin || !_rawParsed.destination || !_rawParsed.date) {
     try {
       const today = new Date().toISOString().slice(0, 10)
       const ai = await vertexParse(query, today)
@@ -425,11 +425,13 @@ async function SearchContent({
         const aiDest =
           (!_rawParsed.destination && ai.destination_city && ai.destination_city !== 'ANYWHERE')
             ? resolveCity(ai.destination_city) : null
-        if (aiOrigin || aiDest) {
+        const aiDate = (!_rawParsed.date && ai.date) ? ai.date : null
+        if (aiOrigin || aiDest || aiDate) {
           parsed = {
             ..._rawParsed,
             ...(aiOrigin ? { origin: aiOrigin.code, origin_name: aiOrigin.name } : {}),
             ...(aiDest   ? { destination: aiDest.code, destination_name: aiDest.name } : {}),
+            ...(aiDate   ? { date: aiDate } : {}),
           }
         }
       }
