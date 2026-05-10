@@ -858,45 +858,6 @@ export default function SearchPageClient({
             </div>
           )}
 
-          {/* ── Context quick-chips (shown when no passenger_context detected) ── */}
-          {status === 'completed' && !nlParsed?.passenger_context && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
-              padding: '0 2px 6px',
-            }}>
-              {[
-                { label: '💼 Business', suffix: 'for business' },
-                { label: '🌴 Leisure',  suffix: 'for leisure' },
-                { label: '👨‍👩‍👧 Family',   suffix: 'for family' },
-                { label: '💑 Couple',   suffix: 'for couple' },
-              ].map(({ label, suffix }) => (
-                <button
-                  key={suffix}
-                  type="button"
-                  onClick={() => handleSearchSubmit(`${query} ${suffix}`)}
-                  style={{
-                    padding: '5px 14px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.18)',
-                    background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.75)',
-                    fontSize: '12px', cursor: 'pointer', lineHeight: 1.4,
-                    transition: 'background 0.15s, color 0.15s',
-                  }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget as HTMLButtonElement
-                    el.style.background = 'rgba(255,255,255,0.18)'
-                    el.style.color = '#fff'
-                  }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget as HTMLButtonElement
-                    el.style.background = 'rgba(255,255,255,0.06)'
-                    el.style.color = 'rgba(255,255,255,0.75)'
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-
           {isSearching ? (
             <>
               <div className="res-search-shell">
