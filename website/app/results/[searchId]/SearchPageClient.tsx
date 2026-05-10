@@ -15,7 +15,7 @@ import { formatOfferDisplayPrice, getOfferDisplayTotalPrice } from '../../../lib
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
 import { parseNLQuery } from '../../lib/searchParsing'
 
@@ -375,6 +375,7 @@ export default function SearchPageClient({
   expiresAt,
 }: SearchPageClientProps) {
   const t = useTranslations('Results')
+  const router = useRouter()
 
   const [status, setStatus] = useState(initialStatus)
   const [progress, setProgress] = useState(initialProgress)
@@ -399,6 +400,11 @@ export default function SearchPageClient({
   const [hasUnlockedOffer, setHasUnlockedOffer] = useState(false)
   // True if user came back to results after visiting checkout without booking.
   const [cameFromCheckout, setCameFromCheckout] = useState(false)
+
+  // ── Clarifying-questions state ──────────────────────────────────────────────
+  const [clarifyStep, setClarifyStep] = useState(0)
+  const [clarifyDismissed, setClarifyDismissed] = useState(false)
+  const [pendingAppends, setPendingAppends] = useState<string[]>([])
 
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
@@ -733,6 +739,46 @@ export default function SearchPageClient({
   // (passenger composition, ancillary requirements, etc.) that the API
   // parsed object doesn't expose.
   const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
+
+  // Questions to ask based on what the NL parser didn't detect
+  const clarifyQuestions = useMemo(() => {
+    type Q = { id: string; question: string; options: Array<{ label: string; append: string }> }
+    const qs: Q[] = []
+    const today = new Date()
+    const monthName = (d: Date) => d.toLocaleDateString('en-US', { month: 'long' })
+    const m1 = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const m2 = new Date(today.getFullYear(), today.getMonth() + 2, 1)
+
+    if (!nlParsed?.date && !nlParsed?.date_month_only && !nlParsed?.min_trip_days && !nlParsed?.anywhere_destination) {
+      qs.push({
+        id: 'timing',
+        question: 'When are you thinking of flying?',
+        options: [
+          { label: `This month (${monthName(today)})`, append: `in ${monthName(today)}` },
+          { label: monthName(m1), append: `in ${monthName(m1)}` },
+          { label: monthName(m2), append: `in ${monthName(m2)}` },
+          { label: "I'm flexible", append: '' },
+        ],
+      })
+    }
+
+    if (!nlParsed?.passenger_context && !nlParsed?.trip_purpose) {
+      qs.push({
+        id: 'trip_type',
+        question: 'What kind of trip is this?',
+        options: [
+          { label: 'Business', append: 'for business' },
+          { label: 'Holiday', append: 'for leisure' },
+          { label: 'Family trip', append: 'family trip' },
+          { label: 'Honeymoon', append: 'honeymoon' },
+          { label: 'Solo', append: 'solo trip' },
+        ],
+      })
+    }
+
+    return qs
+  }, [nlParsed])
+
   const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
   const requireBagPerPerson = !!(nlParsed?.require_checked_baggage)
   const defaultSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' =
@@ -806,6 +852,105 @@ export default function SearchPageClient({
     }, { keepalive: true })
   }
 
+  // Navigate to /results with the original query enriched by clarify answers
+  const navigateClarified = (appends: string[]) => {
+    const extras = appends.filter(Boolean)
+    const newQuery = extras.length > 0 ? `${query}, ${extras.join(', ')}` : query
+    handleSearchSubmit(newQuery)
+    const params = new URLSearchParams()
+    params.set('q', newQuery)
+    const cur = searchParams.get('cur') || initialCurrency
+    if (cur) params.set('cur', cur)
+    if (isTestSearch) params.set('probe', '1')
+    router.push(`/results?${params.toString()}`)
+  }
+
+  const currentQ = clarifyQuestions[Math.min(clarifyStep, clarifyQuestions.length - 1)]
+  const clarifyPanel = clarifyQuestions.length > 0 && !clarifyDismissed && currentQ ? (
+    <div style={{ padding: '0 0 12px', position: 'relative', zIndex: 10 }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px',
+        boxShadow: '0 4px 32px rgba(0,0,0,0.13)',
+        padding: '20px 24px 16px',
+      }}>
+        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          One quick question while we search…
+        </p>
+        <h3 style={{ fontSize: '17px', fontWeight: 700, color: '#111827', margin: '0 0 16px', lineHeight: 1.3 }}>
+          {currentQ.question}
+        </h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+          {currentQ.options.map(opt => (
+            <button
+              key={opt.label}
+              type="button"
+              onClick={() => {
+                const newAppends = [...pendingAppends, opt.append]
+                const nextStep = clarifyStep + 1
+                if (nextStep < clarifyQuestions.length) {
+                  setPendingAppends(newAppends)
+                  setClarifyStep(nextStep)
+                } else {
+                  navigateClarified(newAppends)
+                }
+              }}
+              style={{
+                padding: '9px 18px', borderRadius: '24px',
+                border: '1.5px solid #e5e7eb', background: '#fff',
+                color: '#111827', fontSize: '14px', fontWeight: 500,
+                cursor: 'pointer', lineHeight: 1.4, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.borderColor = '#111'
+                el.style.background = '#111'
+                el.style.color = '#fff'
+              }}
+              onMouseLeave={e => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.borderColor = '#e5e7eb'
+                el.style.background = '#fff'
+                el.style.color = '#111827'
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {clarifyQuestions.length > 1 ? (
+            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+              {clarifyQuestions.map((_, i) => (
+                <div key={i} style={{
+                  width: i === clarifyStep ? '20px' : '6px', height: '6px',
+                  borderRadius: '3px',
+                  background: i < clarifyStep ? '#111' : i === clarifyStep ? '#374151' : '#e5e7eb',
+                  transition: 'all 0.25s',
+                }} />
+              ))}
+            </div>
+          ) : <div />}
+          <button
+            type="button"
+            onClick={() => {
+              const nextStep = clarifyStep + 1
+              if (nextStep < clarifyQuestions.length) {
+                setClarifyStep(nextStep)
+              } else if (pendingAppends.length > 0) {
+                navigateClarified(pendingAppends)
+              } else {
+                setClarifyDismissed(true)
+              }
+            }}
+            style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '13px', cursor: 'pointer', padding: '4px 0' }}
+          >
+            Skip
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <main className={`res-page${isStreaming || status === 'completed' ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
       <section className={`res-hero${isStreaming || status === 'completed' ? ' res-hero--results' : isSearching ? ' res-hero--searching' : ''}`}>
@@ -857,12 +1002,14 @@ export default function SearchPageClient({
               <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
             </div>
           )}
+          {!isSearching && clarifyPanel}
 
           {isSearching ? (
             <>
               <div className="res-search-shell">
                 <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
               </div>
+              {clarifyPanel}
 
               {offers.length > 0 && (
               <div className="res-meta-bar">
