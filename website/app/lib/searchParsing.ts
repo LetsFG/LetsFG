@@ -2811,7 +2811,7 @@ function extractPassengers(text: string): PassengerExtraction {
                 t.match(/\bvoor\s+(\d+)(?:\s+(?:personen?|volwassenen?|passagiers?))?\b/) ??
                 t.match(/\bdla\s+(\d+)(?:\s+(?:os[oó]b|doros[lł]ych|pasa[zż]er[oó]w))?\b/) ??
                 t.match(/\bpara\s+(\d+)(?:\s+(?:personas?|adultos?|pasajeros?|pessoas?|adultos?|passageiros?))?\b/) ??
-                t.match(/\bf[oö]r\s+(\d+)(?:\s+(?:personer?|vuxna?|passagerare?))?\b/)
+                t.match(/\bf[oö]r\s+(\d+)(?!\s+(?:days?|nights?|weeks?|hours?|months?|minutes?|years?|yrs?|hrs?|nätter?|dagar?|veckor?|timmar?|månader?))(?:\s+(?:personer?|vuxna?|passagerare?))?\b/)
   if (forNM && !result.group_size) {
     const n = parseInt(forNM[1])
     if (n >= 1 && n <= 20) { result.group_size = n; if (!result.adults) result.adults = n }
