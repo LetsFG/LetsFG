@@ -285,7 +285,7 @@ async function startFSWSearch(
       destination: parsed.destination,
       date_from: parsed.date,
       return_date: parsed.return_date || undefined,
-      adults: 1,
+      adults: parsed.adults || 1,
       currency,
       ...(parsed.stops !== undefined ? { max_stops: parsed.stops } : {}),
       ...(parsed.cabin ? { cabin: parsed.cabin } : {}),
@@ -434,7 +434,14 @@ async function SearchContent({
       ...(aiVia ? { via_iata: aiVia.code, via_name: aiVia.name } : {}),
       // Dates
       ...(_ai.date              ? { date: _ai.date }                                : {}),
-      ...(_ai.return_date       ? { return_date: _ai.return_date }                  : {}),
+      // Derive return_date from trip duration when Gemini gives days but no explicit return date
+      ...((() => {
+        const rd = _ai.return_date
+          || (_ai.date && _ai.min_trip_days != null
+            ? (() => { const d = new Date(_ai.date!); d.setUTCDate(d.getUTCDate() + _ai.min_trip_days!); return d.toISOString().slice(0, 10) })()
+            : null)
+        return rd ? { return_date: rd } : {}
+      })()),
       ...(_ai.date_month_only   ? { date_month_only: true }                         : {}),
       ...(_ai.find_best_window  ? { find_best_window: true,
         ...(_ai.date_window_month != null ? { date_window_month: _ai.date_window_month } : {}),
