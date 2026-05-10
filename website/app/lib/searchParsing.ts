@@ -4335,7 +4335,21 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   // ── 5. Extract return date ───────────────────────────────────────────────
   if (returnRaw) {
-    result.return_date = extractDate(returnRaw)
+    // Temporarily clear date_month_only before extracting return date so that
+    // a month-only return ("returning in january") doesn't set the flag on the
+    // shared result — that would incorrectly trigger find_best_window.
+    const _depMonthOnly = result.date_month_only
+    result.date_month_only = undefined
+    const retDate = extractDate(returnRaw)
+    // Restore departure's month-only flag; discard any month-only flag from return.
+    // If the user said "in december returning in january" they have a concrete round-trip
+    // — month-only flag no longer meaningful once we have a return date.
+    if (retDate) {
+      result.return_date = retDate
+      result.date_month_only = undefined  // concrete round-trip: don't trigger best-window
+    } else {
+      result.date_month_only = _depMonthOnly
+    }
   } else {
     // No explicit return keyword — scan for two date expressions (implicit round-trip)
     // Handles: "May 1st, May 6th" / "May 1-6" / "1 May - 6 May" / "May 1 to May 6"
@@ -4358,6 +4372,19 @@ export function parseNLQuery(query: string): ParsedQuery {
     }
   }
   delete (result as any).__explicitReturnDay
+
+  // When departure was month-only ("in december") but we now have a return date,
+  // use the 15th as the departure anchor instead of the 1st — gives connectors
+  // a better mid-month target and avoids results that happen to be cheapest on Dec 1.
+  if (result.date && result.return_date) {
+    const depDate = result.date  // already set to 1st of month by extractDate
+    // Only nudge if it's actually the 1st (i.e. came from month-only)
+    if (depDate.endsWith('-01')) {
+      const d = new Date(depDate)
+      d.setDate(15)
+      result.date = toLocalDateStr(d)
+    }
+  }
 
   // ── 6. Extract cabin class + direct filter from full query ───────────────
   const cabin = extractCabin(q)
@@ -4526,8 +4553,10 @@ export function parseNLQuery(query: string): ParsedQuery {
     if (bw.date_window_month) result.date_window_month = bw.date_window_month
     if (bw.date_window_year) result.date_window_year = bw.date_window_year
   }
-  // Implicit: month-only date + trip duration → scan for cheapest window
-  if (!result.find_best_window && result.date_month_only && result.min_trip_days !== undefined) {
+  // Implicit: month-only date + trip duration → scan for cheapest window.
+  // Guard: if the user already gave a return date (concrete round-trip like
+  // "in december returning in january"), don't trigger best-window mode.
+  if (!result.find_best_window && result.date_month_only && result.min_trip_days !== undefined && !result.return_date) {
     result.find_best_window = true
     // Extract the window month from the already-parsed date
     if (result.date) {
