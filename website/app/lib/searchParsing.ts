@@ -2566,7 +2566,7 @@ function containsLocationKey(text: string, key: string): boolean {
 // 2. Explicit 3-letter code inside a longer phrase ("new york jfk" → JFK)
 // 3. Boundary-aware contained phrase match (longest key first)
 // 4. Fuzzy edit-distance fallback (handles typos like "Barcelna" → Barcelona)
-function resolveCity(raw: string): { code: string; name: string } | null {
+export function resolveCity(raw: string): { code: string; name: string } | null {
   const s = raw.toLowerCase().trim()
   if (!s || s.length < 2) return null
 
