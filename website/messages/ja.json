@@ -82,6 +82,19 @@
     "support": "サポート",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "検索中に一つ質問があります…",
+    "tripTypeQ": "どんな旅行ですか？",
+    "opt_business": "出張",
+    "opt_family": "家族旅行",
+    "opt_couple": "二人旅",
+    "opt_solo": "一人旅",
+    "opt_friends": "友人との旅行",
+    "skip": "スキップ",
+    "dateAmbigQ": "確認させてください — こちらでよろしいですか：",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "フィルター",
     "clearAll": "すべてクリア",

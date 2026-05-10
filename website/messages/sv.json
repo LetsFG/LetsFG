@@ -82,6 +82,19 @@
     "support": "Support",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "En snabb fråga medan vi söker…",
+    "tripTypeQ": "Vad är det för typ av resa?",
+    "opt_business": "Affärsresa",
+    "opt_family": "Semesterresa med familjen",
+    "opt_couple": "Resa för två",
+    "opt_solo": "Soloresa",
+    "opt_friends": "Med vänner",
+    "skip": "Hoppa över",
+    "dateAmbigQ": "Bara för att bekräfta — menade du:",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "Filter",
     "clearAll": "Rensa allt",

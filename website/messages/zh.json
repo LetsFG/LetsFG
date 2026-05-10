@@ -82,6 +82,19 @@
     "support": "支持",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "搜索期间的一个小问题…",
+    "tripTypeQ": "这是什么类型的旅行？",
+    "opt_business": "商务出行",
+    "opt_family": "家庭度假",
+    "opt_couple": "情侣旅行",
+    "opt_solo": "独自旅行",
+    "opt_friends": "与朋友同行",
+    "skip": "跳过",
+    "dateAmbigQ": "请确认一下——您是指：",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "筛选",
     "clearAll": "清除所有",

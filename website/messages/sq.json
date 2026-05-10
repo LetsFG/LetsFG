@@ -82,6 +82,19 @@
     "support": "Support",
     "copyright": "LetsFG © 2026"
   },
+  "Clarify": {
+    "prompt": "Një pyetje e shpejtë ndërkohë që kërkojmë…",
+    "tripTypeQ": "Çfarë lloji udhëtimi është ky?",
+    "opt_business": "Udhëtim biznesi",
+    "opt_family": "Pushime familjare",
+    "opt_couple": "Udhëtim për dy",
+    "opt_solo": "Udhëtim solo",
+    "opt_friends": "Me miq",
+    "skip": "Kalo",
+    "dateAmbigQ": "Vetëm për të konfirmuar — a keni dashur të thoni:",
+    "dateOptA": "{date}",
+    "dateOptB": "{date}"
+  },
   "ResultsPanel": {
     "filterTitle": "Filtrat",
     "clearAll": "Fshi të gjitha",
