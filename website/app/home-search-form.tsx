@@ -10,6 +10,7 @@ import {
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
+import { parseNLQuery } from './lib/searchParsing'
 
 const DESTINATION_KEYS = [
   { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
@@ -696,6 +697,7 @@ export default function HomeSearchForm({
   const locale = (params?.locale as string) || 'en'
   const td = useTranslations('destinations')
   const th = useTranslations('hero')
+  const tc = useTranslations('Clarify')
   const [inputValue, setInputValue] = useState(initialQuery)
   const [query, setQuery] = useState(initialQuery)
   const [prefCurrency, setPrefCurrency] = useState<CurrencyCode>(initialCurrency)
@@ -786,7 +788,19 @@ export default function HomeSearchForm({
     pendingQuery: string       // full original query
   } | null>(null)
 
+  // ── Trip-type clarification state ─────────────────────────────────────────────
+  const [tripClarify, setTripClarify] = useState<{ pendingQuery: string } | null>(null)
+  const [tripClarifyInput, setTripClarifyInput] = useState('')
+
   const _MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  // Commit trip-type clarify — append user's answer to query then navigate.
+  const commitTripClarify = (append: string) => {
+    const base = tripClarify?.pendingQuery ?? ''
+    setTripClarify(null)
+    setTripClarifyInput('')
+    navigateSearch(append ? `${base}, ${append}` : base)
+  }
 
   // Navigate to results with the given query string.
   const navigateSearch = (q: string) => {
@@ -851,8 +865,14 @@ export default function HomeSearchForm({
       }
     }
 
-    // No ambiguity — navigate immediately.
+    // No ambiguity — check if we need to ask about trip type.
     setDateClarify(null)
+    let _nlp: ReturnType<typeof parseNLQuery> | null = null
+    try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
+    if (!_nlp?.trip_purpose && !_nlp?.passenger_context) {
+      setTripClarify({ pendingQuery: trimmed })
+      return
+    }
     navigateSearch(trimmed)
   }
 
@@ -1098,6 +1118,88 @@ export default function HomeSearchForm({
               fontSize: '18px', lineHeight: 1,
             }}
           >×</button>
+        </div>
+      )}
+
+      {/* ── Trip-type clarification card ─────────────────────────────────── */}
+      {tripClarify && !dateClarify && (
+        <div style={{ marginTop: '10px' }}>
+          <div style={{
+            background: '#fff', borderRadius: '22px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
+            padding: '18px 22px 16px',
+          }}>
+            <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              {tc('prompt')}
+            </p>
+            {/* Question + text input inline */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>
+                {tc('tripTypeQ')}
+              </span>
+              <input
+                type="text"
+                autoFocus
+                value={tripClarifyInput}
+                onChange={e => setTripClarifyInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitTripClarify(tripClarifyInput.trim()) }
+                  else if (e.key === 'Escape') commitTripClarify('')
+                }}
+                placeholder="type your answer…"
+                style={{
+                  flex: '1 1 160px', border: '1.5px solid #e5e7eb', borderRadius: '20px',
+                  padding: '7px 15px', fontSize: '14px', outline: 'none',
+                  color: '#111827', background: '#f9fafb', minWidth: '0',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = '#111827' }}
+                onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb' }}
+              />
+            </div>
+            {/* Pill options + Skip all in one row */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', alignItems: 'center' }}>
+              {([
+                { label: tc('opt_business'), append: 'business trip' },
+                { label: tc('opt_family'),   append: 'family holiday' },
+                { label: tc('opt_couple'),   append: 'trip for two' },
+                { label: tc('opt_solo'),     append: 'solo trip' },
+                { label: tc('opt_friends'),  append: 'trip with friends' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.append}
+                  type="button"
+                  onClick={() => commitTripClarify(opt.append)}
+                  style={{
+                    padding: '7px 16px', borderRadius: '20px',
+                    border: '1.5px solid #e5e7eb', background: '#fff',
+                    color: '#111827', fontSize: '13px', fontWeight: 500,
+                    cursor: 'pointer', transition: 'all 0.15s', lineHeight: 1.4,
+                  }}
+                  onMouseEnter={e => {
+                    const el = e.currentTarget as HTMLButtonElement
+                    el.style.borderColor = '#111'; el.style.background = '#111'; el.style.color = '#fff'
+                  }}
+                  onMouseLeave={e => {
+                    const el = e.currentTarget as HTMLButtonElement
+                    el.style.borderColor = '#e5e7eb'; el.style.background = '#fff'; el.style.color = '#111827'
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => commitTripClarify('')}
+                style={{
+                  marginLeft: 'auto', padding: '7px 12px', borderRadius: '20px',
+                  border: 'none', background: 'none',
+                  color: '#9ca3af', fontSize: '13px', cursor: 'pointer',
+                }}
+              >
+                {tc('skip')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
