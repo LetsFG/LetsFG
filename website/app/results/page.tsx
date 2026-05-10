@@ -14,7 +14,8 @@ import {
   resolveSearchCurrency,
   type CurrencyCode,
 } from '../../lib/currency-preference'
-import { parseNLQuery } from '../lib/searchParsing'
+import { parseNLQuery, resolveCity } from '../lib/searchParsing'
+import { vertexParse } from '../lib/vertex-parse'
 import { IATA_TO_NAME, getAirlineNameFromCode, looksLikeIataCode } from '../airlineLogos'
 import { startWebSearch, startExploreSearch } from '../../lib/fsw-search'
 import { upsertSearchSessionServer } from '../../lib/search-session-analytics-server'
@@ -409,7 +410,31 @@ async function SearchContent({
   utmMedium?: string
   utmCampaign?: string
 }) {
-  const parsed = parseNLQuery(query)
+  const _rawParsed = parseNLQuery(query)
+
+  // Vertex AI enrichment: when regex parser can't resolve origin or destination,
+  // ask Gemini to normalise the city names and re-resolve via the IATA map.
+  let parsed = _rawParsed
+  if (!_rawParsed.origin || !_rawParsed.destination) {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const ai = await vertexParse(query, today)
+      if (ai) {
+        const aiOrigin =
+          (!_rawParsed.origin && ai.origin_city) ? resolveCity(ai.origin_city) : null
+        const aiDest =
+          (!_rawParsed.destination && ai.destination_city && ai.destination_city !== 'ANYWHERE')
+            ? resolveCity(ai.destination_city) : null
+        if (aiOrigin || aiDest) {
+          parsed = {
+            ..._rawParsed,
+            ...(aiOrigin ? { origin: aiOrigin.code, origin_name: aiOrigin.name } : {}),
+            ...(aiDest   ? { destination: aiDest.code, destination_name: aiDest.name } : {}),
+          }
+        }
+      }
+    } catch { /* AI unavailable — fall through to error UI */ }
+  }
 
   // Build route label — include flexible date/duration context when relevant
   const destLabel = parsed.anywhere_destination

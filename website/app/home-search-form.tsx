@@ -778,18 +778,26 @@ export default function HomeSearchForm({
     return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, sync)
   }, [initialCurrency])
 
-  const handleSearch = (event: FormEvent) => {
-    event.preventDefault()
-    if (!inputValue.trim()) return
+  // ── Date-clarification state ─────────────────────────────────────────────────
+  const [dateClarify, setDateClarify] = useState<{
+    a_date: string; b_date: string
+    a_label: string; b_label: string
+    originalFragment: string   // the "10/12" token to replace
+    pendingQuery: string       // full original query
+  } | null>(null)
+
+  const _MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  // Navigate to results with the given query string.
+  const navigateSearch = (q: string) => {
     if (DEMO_LOADING) {
       setIsLoading(true)
       router.push(`/results/demo-loading${probeMode ? '?probe=1' : ''}`)
       return
     }
-    // Read UTMs synchronously from the current URL (no state timing dependency)
     const sp = new URLSearchParams(window.location.search)
     const params = new URLSearchParams()
-    params.set('q', inputValue.trim())
+    params.set('q', q)
     if (prefCurrency) params.set('cur', prefCurrency)
     if (probeMode) params.set('probe', '1')
     for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
@@ -797,6 +805,55 @@ export default function HomeSearchForm({
       if (val) params.set(key, val)
     }
     router.push(`/results?${params.toString()}`)
+  }
+
+  // When the user picks a date from the clarification strip, replace the ambiguous
+  // fragment with an unambiguous "12 October" / "October 12" form and navigate.
+  const pickDate = (isoDate: string) => {
+    if (!dateClarify) return
+    const d = new Date(isoDate + 'T00:00:00')
+    const replacement = `${d.getDate()} ${_MONTHS[d.getMonth()]}`
+    const newQuery = dateClarify.pendingQuery.replace(dateClarify.originalFragment, replacement)
+    setDateClarify(null)
+    navigateSearch(newQuery)
+  }
+
+  const handleSearch = (event: FormEvent) => {
+    event.preventDefault()
+    const trimmed = inputValue.trim()
+    if (!trimmed) return
+
+    // Detect ambiguous date fragment like "10/12" or "3.11" where both parts ≤ 12.
+    // Do this before navigating so we can ask the user which interpretation they meant.
+    const ambRe = /\b(\d{1,2})[\/\.](\d{1,2})\b(?!\s*[\/\.]\s*\d{4})/
+    const ambMatch = ambRe.exec(trimmed)
+    if (ambMatch) {
+      const n1 = parseInt(ambMatch[1], 10)
+      const n2 = parseInt(ambMatch[2], 10)
+      if (n1 >= 1 && n1 <= 12 && n2 >= 1 && n2 <= 12 && n1 !== n2) {
+        const today = new Date()
+        const yr = today.getFullYear()
+        // Interpretation A: n1 = month, n2 = day  (MM/DD — US style)
+        const dA = new Date(yr, n1 - 1, n2)
+        if (dA <= today) dA.setFullYear(yr + 1)
+        // Interpretation B: n1 = day, n2 = month  (DD/MM — international style)
+        const dB = new Date(yr, n2 - 1, n1)
+        if (dB <= today) dB.setFullYear(yr + 1)
+        setDateClarify({
+          a_date: dA.toISOString().slice(0, 10),
+          b_date: dB.toISOString().slice(0, 10),
+          a_label: `${_MONTHS[dA.getMonth()]} ${dA.getDate()}`,
+          b_label: `${dB.getDate()} ${_MONTHS[dB.getMonth()]}`,
+          originalFragment: ambMatch[0],
+          pendingQuery: trimmed,
+        })
+        return   // hold — wait for user to pick
+      }
+    }
+
+    // No ambiguity — navigate immediately.
+    setDateClarify(null)
+    navigateSearch(trimmed)
   }
 
   // Select an airport from the dropdown and insert it into the query
@@ -992,6 +1049,57 @@ export default function HomeSearchForm({
           document.body
         )}
       </form>
+
+      {/* ── Ambiguous-date clarification strip ─────────────────────────────── */}
+      {dateClarify && (
+        <div style={{
+          display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px',
+          padding: '10px 14px', marginTop: '8px',
+          background: 'rgba(255,255,255,0.07)', borderRadius: '12px',
+          fontSize: '13px', color: 'rgba(255,255,255,0.85)',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <span style={{ opacity: 0.7 }}>Did you mean</span>
+          <button
+            type="button"
+            onClick={() => pickDate(dateClarify.a_date)}
+            style={{
+              padding: '4px 12px', borderRadius: '20px', border: 'none', cursor: 'pointer',
+              background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '13px',
+              fontWeight: 600, transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.28)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.15)' }}
+          >
+            {dateClarify.a_label}
+          </button>
+          <span style={{ opacity: 0.5 }}>or</span>
+          <button
+            type="button"
+            onClick={() => pickDate(dateClarify.b_date)}
+            style={{
+              padding: '4px 12px', borderRadius: '20px', border: 'none', cursor: 'pointer',
+              background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '13px',
+              fontWeight: 600, transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.28)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.15)' }}
+          >
+            {dateClarify.b_label}
+          </button>
+          <span style={{ opacity: 0.5 }}>?</span>
+          <button
+            type="button"
+            onClick={() => { setDateClarify(null); navigateSearch(dateClarify.pendingQuery) }}
+            aria-label="Skip — search anyway"
+            style={{
+              marginLeft: 'auto', padding: '2px 8px', borderRadius: '20px', border: 'none',
+              cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.4)',
+              fontSize: '18px', lineHeight: 1,
+            }}
+          >×</button>
+        </div>
+      )}
 
       {!compact && (
         <div className="lp-dest-row" aria-label="Popular destinations">
