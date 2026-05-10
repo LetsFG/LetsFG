@@ -12,6 +12,7 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'london': { code: 'LON', name: 'London' },
   'londra': { code: 'LON', name: 'London' },
   'londyn': { code: 'LON', name: 'London' },
+  'londynu': { code: 'LON', name: 'London' },          // PL genitive
   'londen': { code: 'LON', name: 'London' },
   'heathrow': { code: 'LHR', name: 'London Heathrow' },
   'gatwick': { code: 'LGW', name: 'London Gatwick' },
@@ -87,7 +88,11 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'ork': { code: 'ORK', name: 'Cork' },
   // ── Western Europe ──────────────────────────────────────────────────────────
   'barcelona': { code: 'BCN', name: 'Barcelona' },
+  'barcelony': { code: 'BCN', name: 'Barcelona' },    // PL genitive
+  'barcelonie': { code: 'BCN', name: 'Barcelona' },   // PL locative
   'madrid': { code: 'MAD', name: 'Madrid' },
+  'madryt': { code: 'MAD', name: 'Madrid' },           // PL
+  'madrytu': { code: 'MAD', name: 'Madrid' },          // PL genitive
   'malaga': { code: 'AGP', name: 'Malaga' },
   'malága': { code: 'AGP', name: 'Malaga' },
   'seville': { code: 'SVQ', name: 'Seville' },
@@ -167,6 +172,8 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'parijs': { code: 'CDG', name: 'Paris' },
   'paryz': { code: 'CDG', name: 'Paris' },
   'paryż': { code: 'CDG', name: 'Paris' },
+  'paryza': { code: 'CDG', name: 'Paris' },            // PL genitive (accent-stripped)
+  'paryżu': { code: 'CDG', name: 'Paris' },            // PL locative
   'nice': { code: 'NCE', name: 'Nice' },
   // ── French Riviera (all served by Nice NCE) ───────────────────────────────
   'saint tropez': { code: 'NCE', name: 'Saint-Tropez (via Nice)' },
@@ -262,6 +269,7 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   "alpe d'huez": { code: 'GNB', name: 'Alpe d\'Huez (via Grenoble)' },
   'les deux alpes': { code: 'GNB', name: 'Les Deux Alpes (via Grenoble)' },
   'amsterdam': { code: 'AMS', name: 'Amsterdam' },
+  'amsterdamu': { code: 'AMS', name: 'Amsterdam' },    // PL genitive
   'rotterdam': { code: 'RTM', name: 'Rotterdam' },
   'eindhoven': { code: 'EIN', name: 'Eindhoven' },
   'brussels': { code: 'BRU', name: 'Brussels' },
@@ -350,6 +358,27 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'praha': { code: 'PRG', name: 'Prague' },
   'prag': { code: 'PRG', name: 'Prague' },
   'praga': { code: 'PRG', name: 'Prague' },
+  'pragi': { code: 'PRG', name: 'Prague' },            // PL genitive
+  'rzym': { code: 'FCO', name: 'Rome' },               // PL
+  'rzymu': { code: 'FCO', name: 'Rome' },              // PL genitive
+  'wiedeń': { code: 'VIE', name: 'Vienna' },           // PL
+  'wiednia': { code: 'VIE', name: 'Vienna' },          // PL genitive
+  'stambuł': { code: 'IST', name: 'Istanbul' },        // PL
+  'stambulu': { code: 'IST', name: 'Istanbul' },       // PL genitive
+  'ateny': { code: 'ATH', name: 'Athens' },            // PL
+  'aten': { code: 'ATH', name: 'Athens' },             // PL genitive
+  'lizbona': { code: 'LIS', name: 'Lisbon' },          // PL
+  'lizbony': { code: 'LIS', name: 'Lisbon' },          // PL genitive
+  'bruksela': { code: 'BRU', name: 'Brussels' },       // PL
+  'brukseli': { code: 'BRU', name: 'Brussels' },       // PL genitive
+  'kopenhaga': { code: 'CPH', name: 'Copenhagen' },    // PL
+  'kopenhagi': { code: 'CPH', name: 'Copenhagen' },    // PL genitive
+  'sztokholm': { code: 'ARN', name: 'Stockholm' },     // PL
+  'sztokholmu': { code: 'ARN', name: 'Stockholm' },    // PL genitive
+  'dubaj': { code: 'DXB', name: 'Dubai' },             // PL
+  'dubaju': { code: 'DXB', name: 'Dubai' },            // PL genitive
+  'nowy jork': { code: 'JFK', name: 'New York' },      // PL
+  'nowego jorku': { code: 'JFK', name: 'New York' },   // PL genitive
   'budapest': { code: 'BUD', name: 'Budapest' },
   'bratislava': { code: 'BTS', name: 'Bratislava' },
   'bratislawa': { code: 'BTS', name: 'Bratislava' },
@@ -2282,7 +2311,7 @@ function extractCabin(text: string): 'M' | 'W' | 'C' | 'F' | undefined {
 // ── Direct/nonstop extraction (all languages) ─────────────────────────────────
 function extractDirect(text: string): boolean {
   const t = stripAccents(text.toLowerCase())
-  return /\b(?:direct|nonstop|non[- ]stop|direkt(?:flug)?|ohne\s+(?:umstieg|zwischenstopp|stop)|nur\s+direkt|directo|sin\s+escalas?|vuelo\s+directo|sin\s+paradas?|sans?\s+escale[s]?|vol\s+direct|sans?\s+(?:correspondance|connexion)|diretto|volo\s+diretto|senza\s+scal[ei]|senza\s+fermate|rechtstreeks|zonder\s+(?:tussenstop|overstap)|directe\s+vlucht|bezpo[śs]rednio|bez\s+przesiadek|lot\s+bezpo[śs]redni|sem\s+escala[s]?|direto|voo\s+direto|direktflyg|utan\s+mellanlandning|utan\s+stopp|izravno|bez\s+presjedanja|direktni\s+let|pa\s+ndalese|fluturim\s+direkt|direktni|no\s+layovers?|no\s+stops?|only\s+direct|straight\s+through)\b/.test(t)
+  return /\b(?:direct|nonstop|non[- ]stop|direkt(?:flug)?|ohne\s+(?:umstieg|zwischenstopp|stop)|nur\s+direkt|directo|sin\s+escalas?|vuelo\s+directo|sin\s+paradas?|sans?\s+escale[s]?|vol\s+direct|sans?\s+(?:correspondance|connexion)|diretto|volo\s+diretto|senza\s+scal[ei]|senza\s+fermate|rechtstreeks|zonder\s+(?:tussenstop|overstap)|directe\s+vlucht|bezpo[śs]rednio|bezpo[śs]redni|tylko\s+bezpo[śs]redni(?:e)?|bez\s+przesiadek|lot\s+bezpo[śs]redni|sem\s+escala[s]?|direto|voo\s+direto|direktflyg|utan\s+mellanlandning|utan\s+stopp|izravno|bez\s+presjedanja|direktni\s+let|pa\s+ndalese|fluturim\s+direkt|direktni|no\s+layovers?|no\s+stops?|only\s+direct|straight\s+through)\b/.test(t)
 }
 
 // ── Passenger count + context extraction ──────────────────────────────────────
@@ -2702,7 +2731,8 @@ function extractTimePrefs(text: string): TimePrefs {
     /\b(?:vuelo\s+(?:de\s+(?:tarde|noche)|vespertino|nocturno)|salir\s+(?:por\s+la\s+)?(?:tarde|noche))\b/.test(t) ||                                                                               // ES
     /\b(?:vol\s+(?:du\s+soir|de\s+nuit)|partir\s+(?:le\s+)?soir)\b/.test(t) ||                                                                                                                       // FR
     /\b(?:volo\s+(?:serale|di\s+sera|notturno)|partire\s+(?:di\s+)?sera)\b/.test(t) ||                                                                                                               // IT
-    /\b(?:avondvlucht|['s]\s*avonds?\s+(?:vliegen|vertrekken))\b/.test(t)                                                                                                                            // NL
+    /\b(?:avondvlucht|[''s]\s*avonds?\s+(?:vliegen|vertrekken))\b/.test(t) ||                                                                                                       // NL
+    /\b(?:wieczorem|wieczorny\s+lot|wylot\s+wieczorem|lot\s+wieczorny|wyjazd\s+wieczorem)\b/.test(t)                                                                                  // PL
   if (!r.depart_time_pref && isEvening) { r.depart_time_pref = 'evening'; return r }
 
   // Specific time clues: "after 2pm", "before noon" — EN + DE/ES/FR
@@ -3294,7 +3324,7 @@ const ROUTE_SEP_RE = new RegExp(
 // "next friday", "this saturday", "the friday after next", etc.
 const REL_DATE_NEXT_RE = /\b(?:next|diese[rns]?|nächste[rns]?|nachste[rns]?|proxim[ao]|prochain[e]?|prossim[ao]|volgende|następn[ya]|nastepn[ya]|nästa|nasta|sljedeć[ia]|sljedeci[a]?)\b/i
 const REL_DATE_THIS_RE = /\b(?:this|heute|hoy|aujourd'?hui|oggi|vandaag|dzisiaj|hoje|idag|danas|sot)\b/i
-const REL_WEEKEND_RE = /\b(?:weekend|this weekend|wochenende|fin de semana|week-?end|fine settimana|weekeinde|vikend|helg)\b/i
+const REL_WEEKEND_RE = /\b(?:weekend|this weekend|ten weekend|tego weekendu?|wochenende|dieses wochenende?|fin de semana|este fin de semana|week-?end|ce week-?end|fine settimana|questo fine settimana|weekeinde|dit weekeinde?|vikend|ovaj vikend|helg|denna helg)\b/i
 const THANKSGIVING_WEEK_RE = /\b(?:(?:the\s+)?week\s+of\s+thanksgiving|thanksgiving\s+week)\b/i
 const THANKSGIVING_RE = /\bthanksgiving\b/i
 
@@ -3899,7 +3929,9 @@ export function parseNLQuery(query: string): ParsedQuery {
     destStr = destStr
       // "next month" and multilingual equivalents must come first (before the next/this weekday rule)
       .replace(/\s+(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+miesięcu?|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b.*/i, '')
-      .replace(/\s+(?:(?:next|this)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend)|(?:the\s+week\s+of\s+thanksgiving|thanksgiving\s+week|thanksgiving))\b.*/i, '')
+      .replace(/\s+(?:(?:next|this|ten|tego|t[ęe]|ta)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|vikend|helg|wochenende|fin\s+de\s+semana|week[-\s]?end|fine\s+settimana|weekeinde)|(?:the\s+week\s+of\s+thanksgiving|thanksgiving\s+week|thanksgiving))\b.*/i, '')
+      // Strip Polish departure/arrival keywords absorbed into destStr (e.g. "Barcelony wyjazd piątek")
+      .replace(/[,\s]+(?:wyjazd|wylot|odlot|powrót|przylot|lot\s+powrotny)\b.*/i, '')
       .replace(/\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na|dne|dia|den|am)\s.*/i, '')
       .replace(/\s+\d{1,2}(?:st|nd|rd|th)?\s.*/i, '')
       // Strip trailing time-position modifiers left over when the month name was consumed
