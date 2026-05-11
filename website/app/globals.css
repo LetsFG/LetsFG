@@ -3757,16 +3757,22 @@ body:has(.res-page) {
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-radius: 16px;
-  border: 1px solid rgba(20, 45, 60, 0.08);
-  box-shadow: 0 1px 4px rgba(20, 53, 76, 0.06);
+  border-radius: 24px;
+  border: 1px solid rgba(20, 45, 60, 0.09);
+  box-shadow:
+    0 1px 4px rgba(20, 53, 76, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(20, 45, 60, 0.04);
   transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .rf-card:hover {
-  box-shadow: 0 6px 24px rgba(20, 53, 76, 0.11);
+  box-shadow:
+    0 6px 24px rgba(20, 53, 76, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(20, 45, 60, 0.04);
   border-color: rgba(20, 45, 60, 0.14);
   transform: translateY(-1px);
 }
@@ -3781,6 +3787,24 @@ body:has(.res-page) {
   align-items: center;
   gap: 20px;
   padding: 20px 24px;
+}
+
+.rf-card-row--locked {
+  grid-template-columns: 1fr 160px 130px;
+}
+
+/* Hero card has no button inside the row — collapse to 2 columns */
+.rf-card--hero .rf-card-row--locked {
+  grid-template-columns: 1fr 220px;
+}
+
+/* Carrier type header — shown above the card row when airline is not yet revealed */
+.rf-carrier-type-header {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgba(20, 45, 60, 0.55);
+  letter-spacing: 0.01em;
+  padding: 14px 24px 0;
 }
 
 .rf-card--best {
@@ -3892,6 +3916,14 @@ body:has(.res-page) {
   margin-top: 1px;
 }
 
+/* Hidden airline state — category + cabin on one line */
+.rf-airline-hidden-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.4);
+  letter-spacing: 0.01em;
+}
+
 .rf-airline-name {
   font-size: 0.9rem;
   font-weight: 700;
@@ -3980,6 +4012,17 @@ body:has(.res-page) {
 
 .rf-endpoint--arr {
   align-items: flex-end;
+}
+
+/* Flight date label above the departure time */
+.rf-flight-date {
+  font-size: 0.63rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(20, 45, 60, 0.36);
+  line-height: 1;
+  margin-bottom: 2px;
 }
 
 .rf-time {
@@ -4080,7 +4123,7 @@ body:has(.res-page) {
 }
 
 .rf-price-total-label {
-  font-size: 0.62rem;
+  font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -4090,7 +4133,7 @@ body:has(.res-page) {
 }
 
 .rf-price {
-  font-size: 1.45rem;
+  font-size: 1.65rem;
   font-weight: 800;
   letter-spacing: -0.04em;
   color: #0d1e28;
@@ -4135,7 +4178,7 @@ body:has(.res-page) {
   gap: 6px;
   padding: 1px 4px;
   border-radius: 4px;
-  font-size: 0.67rem;
+  font-size: 0.72rem;
   color: rgba(20, 45, 60, 0.42);
 }
 
@@ -4207,7 +4250,7 @@ body:has(.res-page) {
   justify-content: center;
   gap: 5px;
   padding: 8px 24px;
-  background: none;
+  background: rgba(20, 45, 60, 0.03);
   border: none;
   border-top: 1px solid rgba(20, 45, 60, 0.07);
   cursor: pointer;
@@ -4221,7 +4264,7 @@ body:has(.res-page) {
 
 .rf-details-btn:hover {
   color: #142d3e;
-  background: rgba(20, 45, 60, 0.03);
+  background: rgba(20, 45, 60, 0.07);
 }
 
 /* Expanded details panel */
@@ -4706,7 +4749,7 @@ body:has(.res-page) {
 /* ── Curated layout (no sidebar) ────────────────────────────────────────── */
 .rf-layout--curated {
   display: block;
-  width: min(820px, calc(100vw - 48px));
+  width: min(1060px, calc(100vw - 40px));
 }
 
 .rf-layout--curated .rf-card-shell {
@@ -4715,52 +4758,423 @@ body:has(.res-page) {
 }
 
 /* ── Hero pick header ────────────────────────────────────────────────────── */
+/* Concierge intro (above hero card) */
+/* ── Concierge intro (hero recommendation block) ─────────────────────────── */
+.rf-concierge-intro {
+  padding: 0 6px;
+}
+
+/* Pick header — badge row */
 .rf-pick-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 20px 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
-.rf-pick-kicker {
+.rf-pick-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 0.78rem;
+  gap: 5px;
+  font-size: 0.68rem;
   font-weight: 800;
-  color: #e87722;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: #e87722;
+  background: rgba(232, 119, 34, 0.10);
+  border: 1px solid rgba(232, 119, 34, 0.22);
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
   white-space: nowrap;
+  user-select: none;
+}
+
+.rf-pick-star {
+  font-size: 0.62rem;
+  line-height: 1;
+  color: #e87722;
+}
+
+.rf-pick-label {
+  color: rgba(232, 119, 34, 0.75);
+  font-weight: 700;
+}
+
+/* Animated searching dot (three pulsing dots) */
+.rf-pick-searching {
+  display: inline-flex;
+  align-items: center;
+  width: 22px;
+  height: 8px;
+  position: relative;
+}
+
+.rf-pick-searching::before,
+.rf-pick-searching::after,
+.rf-pick-searching span {
+  display: none;
+}
+
+/* Simple spinning ring indicator */
+.rf-pick-searching {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(232, 119, 34, 0.18);
+  border-top-color: #e87722;
+  border-radius: 50%;
+  animation: rf-spin 0.8s linear infinite;
   flex-shrink: 0;
 }
 
-.rf-pick-reason {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: rgba(20, 45, 60, 0.62);
+@keyframes rf-spin {
+  to { transform: rotate(360deg); }
 }
 
-/* ── Hero card styling ───────────────────────────────────────────────────── */
+.rf-concierge-headline {
+  margin: 0 0 10px;
+  font-size: 1.42rem;
+  font-weight: 800;
+  color: #0f1f2e;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.rf-concierge-reason {
+  margin: 0;
+  min-height: 44px;
+}
+
+.rf-reasoning-text {
+  font-size: 0.935rem;
+  font-weight: 400;
+  color: rgba(20, 45, 60, 0.72);
+  line-height: 1.65;
+}
+
+.rf-reasoning-text--gemini {
+  font-style: normal;
+}
+
+/* Conversational searching state — faint italic text */
+.rf-reasoning-searching {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: rgba(20, 45, 60, 0.40);
+  font-style: italic;
+  line-height: 1.65;
+}
+
+/* Flowing blur animation — shown while Gemini is thinking after search completes */
+.rf-reasoning-blur {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.rf-reasoning-blur-line {
+  height: 12px;
+  border-radius: 8px;
+  background: rgba(20, 45, 60, 0.07);
+  filter: blur(3px);
+  animation: rf-blur-flow 2.4s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+.rf-reasoning-blur-line:nth-child(2) { animation-delay: 0.18s; }
+.rf-reasoning-blur-line:nth-child(3) { animation-delay: 0.36s; }
+.rf-reasoning-blur-line:nth-child(4) { animation-delay: 0.54s; }
+
+@keyframes rf-blur-flow {
+  0%, 100% {
+    opacity: 0.4;
+    filter: blur(3px);
+    transform: scaleX(0.97);
+  }
+  50% {
+    opacity: 0.9;
+    filter: blur(1.5px);
+    transform: scaleX(1);
+  }
+}
+
+/* Shimmer skeleton (legacy, kept for reference) */
+.rf-reasoning-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.rf-reasoning-skeleton-line {
+  height: 11px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(20, 45, 60, 0.06) 0%,
+    rgba(232, 119, 34, 0.10) 50%,
+    rgba(20, 45, 60, 0.06) 100%
+  );
+  background-size: 300% 100%;
+  animation: rf-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes rf-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Hero card — clean white */
 .rf-card--hero {
-  border-left: 3px solid #e87722;
-  border-radius: 10px;
-  background: #fffaf6;
+  background: #fff;
 }
 
-/* ── Runner-up "why not" label ───────────────────────────────────────────── */
+/* Hero footer — two CTAs in a row under the offer */
+.rf-hero-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 14px;
+}
+
+.rf-hero-footer .rf-book-btn {
+  flex: 1;
+}
+
+/* Hero action buttons */
+.rf-hero-btns {
+  display: none;
+}
+
+.rf-book-for-me {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(20, 45, 60, 0.10);
+  color: rgba(20, 45, 60, 0.38);
+  font-size: 0.84rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-family: inherit;
+  cursor: not-allowed;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.rf-soon-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(232, 119, 34, 0.12);
+  color: #e87722;
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+
+/* Runner-up "why" block */
 .rf-runner-why {
-  padding: 6px 20px 2px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: rgba(20, 45, 60, 0.5);
+  padding: 20px 20px 8px;
+}
+
+.rf-runner-rank {
+  display: inline-block;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: rgba(20, 45, 60, 0.38);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  user-select: none;
+}
+
+.rf-runner-text {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: rgba(20, 45, 60, 0.72);
+  line-height: 1.6;
 }
 
 .rf-card--runner {
-  opacity: 0.92;
+  opacity: 1;
 }
 
-/* ── Section divider ─────────────────────────────────────────────────────── */
+/* Arrow-only list cards (index ≥ 3) — compact, ticket-style */
+.rf-card--list .rf-card-row {
+  padding: 13px 22px;
+  grid-template-columns: 170px 1fr 120px 52px;
+}
+
+.rf-card--list .rf-card-row--locked {
+  grid-template-columns: 1fr 160px 52px;
+}
+
+.rf-card--list .rf-price {
+  font-size: 1.35rem;
+}
+
+.rf-card--list .rf-time {
+  font-size: 1.12rem;
+}
+
+/* Dashed separator between price and arrow — classic airline ticket tear-here effect */
+.rf-card--list .rf-price-wrap {
+  border-right: 1.5px dashed rgba(20, 45, 60, 0.15);
+  padding-right: 4px;
+}
+
+/* Runner "Choose instead" button variant — soft, non-distracting */
+.rf-book-btn--choose {
+  background: #fff;
+  color: rgba(20, 45, 60, 0.60);
+  border: 1.5px solid rgba(20, 45, 60, 0.18);
+}
+
+.rf-book-btn--choose:hover {
+  background: rgba(20, 45, 60, 0.04);
+  color: #1a2d3a;
+  border-color: rgba(20, 45, 60, 0.3);
+  transform: scale(1.03);
+}
+
+/* Regular list card — icon-only round arrow button */
+.rf-book-btn--arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(20, 45, 60, 0.08);
+  color: #1a2d3a;
+  text-decoration: none;
+  flex-shrink: 0;
+  justify-self: center;
+  transition: background 0.14s, transform 0.12s;
+}
+
+.rf-book-btn--arrow:hover {
+  background: rgba(20, 45, 60, 0.16);
+  transform: scale(1.08);
+}
+
+/* ── Legacy: keep old .rf-reasoning-loading if somehow referenced ─────────── */
+.rf-reasoning-loading {
+  display: inline-block;
+  color: rgba(20, 45, 60, 0.35);
+  font-style: italic;
+  animation: rf-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes rf-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* Track prices — compact pill in results bar */
+/* Track-prices nudge banner (between top-3 and full list) */
+.rf-track-nudge {
+  /* break out of rf-list's 16px side padding to go edge-to-edge */
+  margin: 24px -16px 16px;
+  padding: 48px 32px 46px;
+  background: linear-gradient(160deg, rgba(244, 122, 28, 0.11) 0%, rgba(255, 195, 80, 0.07) 100%);
+  border-top: 1px solid rgba(232, 119, 34, 0.22);
+  border-bottom: 1px solid rgba(232, 119, 34, 0.18);
+  text-align: center;
+}
+
+.rf-track-nudge-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #f47a1c;
+  margin-bottom: 18px;
+}
+
+.rf-track-nudge-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.rf-track-nudge-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rf-track-nudge-heading {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #0d1e28;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+}
+
+.rf-track-nudge-price {
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: rgba(20, 45, 60, 0.5);
+  letter-spacing: -0.01em;
+}
+
+.rf-track-nudge-price strong {
+  font-weight: 800;
+  color: #0d1e28;
+}
+
+.rf-track-nudge-sub {
+  font-size: 1rem;
+  font-weight: 450;
+  color: rgba(20, 45, 60, 0.62);
+  line-height: 1.55;
+  max-width: 420px;
+}
+
+.rf-track-nudge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 15px 32px;
+  border-radius: 999px;
+  border: none;
+  background: #f47a1c;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 800;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s, transform 0.12s;
+}
+
+.rf-track-nudge-btn:hover {
+  background: #d96a10;
+  transform: scale(1.03);
+}
+
+/* Section divider */
 .rf-section-divider {
   display: flex;
   align-items: center;
@@ -4787,21 +5201,25 @@ body:has(.res-page) {
 
 .rf-section-divider--rest .rf-section-label {
   color: rgba(20, 45, 60, 0.3);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.76rem;
 }
 
 .rf-card-shell {
   flex: 1;
   min-width: 0;
   background: #ffffff;
-  border-radius: 16px;
+  border-radius: 24px;
   box-shadow: 0 6px 36px rgba(15, 35, 60, 0.15), 0 1px 4px rgba(15, 35, 60, 0.06);
-  overflow: visible;
+  overflow: hidden;
 }
 
-/* Individual cards inside shell: remove their own shadow */
+/* Individual cards inside shell: remove their own drop shadow, keep radius */
 .rf-card-shell .rf-card {
-  box-shadow: none;
-  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(20, 45, 60, 0.04);
 }
 
 /* ── Card enter animation (progressive results) ──────────────────────────── */

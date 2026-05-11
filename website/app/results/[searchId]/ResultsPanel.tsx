@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import { getAirlineCodeFromName, getAirlineLogoUrl, getAirlineNameFromCode, looksLikeIataCode } from '../../airlineLogos'
@@ -23,6 +23,7 @@ import {
 import { calculateFee } from '../../../lib/pricing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { SearchProgressBarInline } from './SearchProgressBar'
+import { rankOffers, getProfileLabel, type RankingContext, type RankedOffer } from '../../lib/rankOffers'
 // build:2026-05-05b
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ interface FlightSegment {
   flight_number: string
   duration_minutes: number
   layover_minutes: number
+  aircraft?: string
 }
 
 interface InboundLeg {
@@ -70,6 +72,7 @@ interface FlightOffer {
   price: number
   google_flights_price?: number
   offer_ref?: string
+  source?: string
   currency: string
   airline: string
   airline_code: string
@@ -434,6 +437,184 @@ function getSortEffectivePrice(offer: FlightOffer, sortMode: string, displayCurr
   return getOfferDisplayTotalPrice(offer, displayCurrency)
 }
 
+// ── Deal reasoning helpers ────────────────────────────────────────────────────
+function computeDealReason(
+  offer: FlightOffer,
+  allOffers: FlightOffer[],
+  tripContext: string | undefined,
+  depTimePref: string | undefined,
+  currency: string,
+  locale: string,
+): string {
+  const price = getOfferDisplayTotalPrice(offer, currency)
+  const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price)
+
+  const parts: string[] = []
+
+  if (googleSavings !== null && googleSavings > 20) {
+    const label = formatGoogleFlightsSavings(
+      convertCurrencyAmount(googleSavings, offer.currency, currency),
+      currency,
+      locale,
+    )
+    parts.push(`${label} cheaper than Google Flights`)
+  }
+
+  const isCheapestDirect = offer.stops === 0 &&
+    allOffers.filter(o => o.stops === 0).every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
+  const isOverallCheapest = allOffers.every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
+
+  if (isCheapestDirect) {
+    parts.push('cheapest direct flight')
+  } else if (isOverallCheapest && offer.stops > 0) {
+    parts.push('cheapest option found')
+  } else if (offer.stops === 0) {
+    parts.push('direct flight')
+  }
+
+  if (parts.length < 2) {
+    if (tripContext === 'family' && offer.stops === 0) {
+      parts.push('no layover — ideal for families')
+    } else if (tripContext === 'business_traveler' && offer.stops === 0) {
+      parts.push('direct — reliable for business')
+    } else if (tripContext === 'couple' && offer.stops === 0) {
+      parts.push('smooth and direct')
+    }
+  }
+
+  if (depTimePref && parts.length < 2) {
+    const depMins = isoToMins(offer.departure_time)
+    const [lo, hi]: [number, number] =
+      depTimePref === 'early_morning' ? [0, 360]
+      : depTimePref === 'morning' ? [360, 720]
+      : depTimePref === 'afternoon' ? [720, 1080]
+      : [1080, 1439]
+    if (depMins >= lo && depMins <= hi) {
+      const label =
+        depTimePref === 'early_morning' ? 'early morning departure'
+        : depTimePref === 'morning' ? 'morning departure'
+        : depTimePref === 'afternoon' ? 'afternoon departure'
+        : 'evening departure'
+      parts.push(label)
+    }
+  }
+
+  if (parts.length === 0) return 'Best value found across 200+ airlines'
+  return parts.slice(0, 2).join(' · ')
+}
+
+// ── Concierge-voice deal reason (punchy scan-and-fact paragraph for hero) ────
+function computeDealReasonParagraph(
+  offer: FlightOffer,
+  allOffers: FlightOffer[],
+  tripContext: string | undefined,
+  depTimePref: string | undefined,
+  currency: string,
+  locale: string,
+): string {
+  const total = allOffers.length
+  const price = getOfferDisplayTotalPrice(offer, currency)
+  const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price)
+  const facts: string[] = []
+
+  const directOffers = allOffers.filter(o => o.stops === 0)
+  const isCheapestDirect = offer.stops === 0 && directOffers.every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
+  const isOverallCheapest = allOffers.every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
+
+  if (googleSavings !== null && googleSavings > 15) {
+    const label = formatGoogleFlightsSavings(
+      convertCurrencyAmount(googleSavings, offer.currency, currency),
+      currency,
+      locale,
+    )
+    facts.push(`${label} cheaper than Google Flights`)
+  }
+
+  if (isCheapestDirect) {
+    facts.push('cheapest direct flight on this route')
+  } else if (isOverallCheapest) {
+    facts.push('cheapest option overall')
+  } else if (offer.stops === 0) {
+    facts.push('direct — no layovers')
+  }
+
+  const checkedBag = offer.ancillaries?.checked_bag
+  if (hasIncludedAncillary(checkedBag) && facts.length < 2) {
+    const nearbyWithBag = allOffers
+      .filter(o => o.id !== offer.id)
+      .slice(0, 10)
+      .filter(o => hasIncludedAncillary(o.ancillaries?.checked_bag)).length
+    facts.push(nearbyWithBag < 3 ? 'bag included (most others charge extra)' : 'bag included')
+  }
+
+  if (facts.length < 2) {
+    if (tripContext === 'family' && offer.stops === 0) {
+      facts.push('no layover — easy with kids')
+    } else if (tripContext === 'business_traveler' && offer.stops === 0) {
+      facts.push('direct keeps your schedule')
+    } else if (tripContext === 'couple' && facts.length < 1) {
+      facts.push('smooth and comfortable')
+    }
+  }
+
+  if (depTimePref && facts.length < 2) {
+    const depMins = isoToMins(offer.departure_time)
+    const [lo, hi]: [number, number] =
+      depTimePref === 'early_morning' ? [0, 360]
+      : depTimePref === 'morning' ? [360, 720]
+      : depTimePref === 'afternoon' ? [720, 1080]
+      : [1080, 1439]
+    if (depMins >= lo && depMins <= hi) {
+      const timeLabel =
+        depTimePref === 'early_morning' ? 'early departure'
+        : depTimePref === 'morning' ? 'morning departure'
+        : depTimePref === 'afternoon' ? 'afternoon departure'
+        : 'evening departure'
+      facts.push(timeLabel)
+    }
+  }
+
+  const countPfx = total > 5 ? `${total} flights scanned. ` : ''
+  if (facts.length === 0) return `${countPfx}Best overall value across all sources checked.`
+  const joined = facts.slice(0, 2).join(', ')
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  return `${countPfx}${cap(joined)}.`
+}
+
+function computeWhyNot(
+  offer: FlightOffer,
+  hero: FlightOffer,
+  currency: string,
+  locale: string,
+): string {
+  const heroPrice = getOfferDisplayTotalPrice(hero, currency)
+  const offerPrice = getOfferDisplayTotalPrice(offer, currency)
+  const priceDiff = Math.round(offerPrice - heroPrice)
+  const parts: string[] = []
+
+  if (priceDiff > 5) {
+    parts.push(`it costs ${formatCurrencyAmount(priceDiff, currency, locale)} more`)
+  } else if (priceDiff < -5) {
+    parts.push(`it's ${formatCurrencyAmount(-priceDiff, currency, locale)} cheaper`)
+  }
+
+  const stopsDiff = offer.stops - hero.stops
+  if (stopsDiff > 0) {
+    parts.push(`it has ${stopsDiff === 1 ? 'a stop' : `${stopsDiff} stops`}`)
+  } else if (stopsDiff < 0) {
+    parts.push('it has fewer stops')
+  }
+
+  const durDiff = offer.duration_minutes - hero.duration_minutes
+  if (durDiff > 60 && parts.length < 2) {
+    parts.push(`the journey is ${fmtDuration(durDiff)} longer`)
+  }
+
+  if (parts.length === 0) return 'This is a very strong alternative — nearly identical to the top pick.'
+  if (parts.length === 1) return `I didn't choose this as #1 because ${parts[0]}.`
+  return `I didn't choose this as #1 because ${parts[0]} and ${parts[1]}.`
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   allOffers: FlightOffer[]
@@ -454,7 +635,11 @@ interface Props {
   requireBagPerPerson?: boolean
   initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  initialArrTimePref?: 'morning' | 'afternoon' | 'evening'
   tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
+  tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
+  preferredAirline?: string
+  preferQuickFlight?: boolean
   viaIata?: string
 }
 
@@ -462,8 +647,8 @@ interface Props {
 export default function ResultsPanel({
   allOffers,
   currency,
-  priceMin,
-  priceMax,
+  priceMin: _priceMin,
+  priceMax: _priceMax,
   searchId,
   trackingSearchId,
   isTestSearch = false,
@@ -473,11 +658,15 @@ export default function ResultsPanel({
   isSearching = false,
   progress,
   defaultSort,
-  requireSeatPerPerson = false,
+  requireSeatPerPerson: _requireSeatPerPerson = false,
   requireBagPerPerson = false,
   initialDepTimePref,
   initialRetTimePref,
+  initialArrTimePref,
   tripContext,
+  tripPurpose,
+  preferredAirline,
+  preferQuickFlight,
   viaIata,
 }: Props) {
   // Persona-based grouping: 0 = ideal match, higher = less preferred
@@ -526,7 +715,7 @@ export default function ResultsPanel({
   const [stopsFilter, setStopsFilter] = useState<string[]>([])          // [] = all
   const [airlinesFilter, setAirlinesFilter] = useState<string[]>([])    // [] = all
   const [amenityFilters, setAmenityFilters] = useState<string[]>([])
-  const [priceRange, setPriceRange] = useState<[number, number]>([priceMin, priceMax])
+  const [priceRange, setPriceRange] = useState<[number, number]>([_priceMin, _priceMax])
   const [depRange, setDepRange] = useState<[number, number]>([0, 1439])
   const [retRange, setRetRange] = useState<[number, number]>([0, 1439])
   const [durationRange, setDurationRange] = useState<[number, number]>([0, Infinity])
@@ -536,6 +725,20 @@ export default function ResultsPanel({
   const [visibleCount, setVisibleCount] = useState(20)
   const [isUnlocked, setIsUnlocked] = useState(false)
   const [revealedSources, setRevealedSources] = useState<Record<string, string>>({})
+  const [geminiJustification, setGeminiJustification] = useState<{
+    title?: string
+    hero: string
+    runners: string[]
+  } | 'loading' | null>(null)
+  // Tracks which generation phase has fired and what hero it was based on
+  const geminiStateRef = useRef<{
+    phase: 'none' | 'early' | 'mid' | 'final'
+    heroId: string | null
+    midFired: boolean
+    finalFired: boolean
+    finalSentIds: string | null
+    finalRefired: boolean
+  }>({ phase: 'none', heroId: null, midFired: false, finalFired: false, finalSentIds: null, finalRefired: false })
 
   // ── Sidebar stats (always based on all offers) ────────────────────────────
   const stopsStats = useMemo(() => {
@@ -680,42 +883,220 @@ export default function ResultsPanel({
     }
     if (sort === 'duration') {
       list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
-    } else {
+    } else if (sort !== 'price') {
+      // Explicit ancillary sort chosen by user — respect it
       list = [...list].sort((a, b) => getSortEffectivePrice(a, sort, currency) - getSortEffectivePrice(b, sort, currency))
-    }
-    // Soft time-pref boost: if NL query specified time-of-day preferences and the
-    // user hasn't manually adjusted the sliders, pin matching offers to the top
-    // (all offers still visible — matching ones just float up).
-    if ((initialDepTimePref || initialRetTimePref) && depRange[0] === 0 && depRange[1] === 1439 && retRange[0] === 0 && retRange[1] === 1439) {
-      const matched: typeof list = []
-      const rest: typeof list = []
-      for (const o of list) {
-        const depMins = isoToMins(o.departure_time)
-        const retMins = isoToMins(o.inbound?.departure_time ?? o.arrival_time)
-        const depOk = inTimePref(depMins, initialDepTimePref)
-        const retOk = inTimePref(retMins, initialRetTimePref)
-        if (depOk && retOk) matched.push(o)
-        else rest.push(o)
+    } else {
+      // Default: personalized ranking based on user intent
+      const rctx: RankingContext = {
+        tripContext,
+        tripPurpose,
+        depTimePref: initialDepTimePref,
+        retTimePref: initialRetTimePref,
+        arrivalTimePref: initialArrTimePref,
+        requireBag: requireBagPerPerson,
+        preferredAirline,
+        preferQuickFlight,
       }
-      list = [...matched, ...rest]
+      // Inject displayPrice so the engine ranks by what the user actually pays
+      const listWithDisplayPrice = list.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
+      list = rankOffers(listWithDisplayPrice, rctx).map(r => r.offer as typeof list[number])
     }
-    // Persona-based grouping: for family/business/couple, pin best-fit flights to the top.
-    // Within each group the existing price/duration sort is preserved (stable sort).
-    if (tripContext && tripContext !== 'solo' && tripContext !== 'group') {
-      // For family, re-sort by duration inside groups (kids care more about time than price)
-      if (tripContext === 'family' && sort !== 'duration') {
-        list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
+
+    // Soft time-pref boost and persona grouping only apply when user has
+    // explicitly selected a non-price sort (ranking already handles these).
+    if (sort !== 'price') {
+      if ((initialDepTimePref || initialRetTimePref) && depRange[0] === 0 && depRange[1] === 1439 && retRange[0] === 0 && retRange[1] === 1439) {
+        const matched: typeof list = []
+        const rest: typeof list = []
+        for (const o of list) {
+          const depMins = isoToMins(o.departure_time)
+          const retMins = isoToMins(o.inbound?.departure_time ?? o.arrival_time)
+          const depOk = inTimePref(depMins, initialDepTimePref)
+          const retOk = inTimePref(retMins, initialRetTimePref)
+          if (depOk && retOk) matched.push(o)
+          else rest.push(o)
+        }
+        list = [...matched, ...rest]
       }
-      list = [...list].sort((a, b) => personaGroup(a) - personaGroup(b))
+      if (tripContext && tripContext !== 'solo' && tripContext !== 'group') {
+        if (tripContext === 'family' && sort !== 'duration') {
+          list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
+        }
+        list = [...list].sort((a, b) => personaGroup(a) - personaGroup(b))
+      }
     }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, tripContext, viaIata])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, tripPurpose, preferredAirline, requireBagPerPerson, viaIata])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
+  // Top 5 from ALL offers ranked by personalized score — used for Gemini justification.
+  // Runs on allOffers (not filtered) so it represents the true best picks.
+  const globalRankTopThree = useMemo((): RankedOffer<FlightOffer>[] => {
+    if (allOffers.length === 0) return []
+    const rctx: RankingContext = {
+      tripContext,
+      tripPurpose,
+      depTimePref: initialDepTimePref,
+      retTimePref: initialRetTimePref,
+      arrivalTimePref: initialArrTimePref,
+      requireBag: requireBagPerPerson,
+      preferredAirline,
+      preferQuickFlight,
+    }
+    // Inject displayPrice so the engine sees the true total cost per user's currency
+    const offersWithDisplayPrice = allOffers.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
+    const allRanked = rankOffers(offersWithDisplayPrice, rctx) as RankedOffer<FlightOffer>[]
+    const top3 = allRanked.slice(0, 3)
+    // If the cheapest offer isn't the hero and isn't already visible, inject it as runner #3
+    // so the user can always see what the cheapest option is and why it wasn't the top pick.
+    if (top3.length >= 3) {
+      const cheapest = offersWithDisplayPrice.reduce((a, b) =>
+        (a.displayPrice ?? a.price) <= (b.displayPrice ?? b.price) ? a : b
+      )
+      const heroIsCheapest = top3[0]?.offer.id === cheapest.id
+      const cheapestInTop3 = top3.some(r => r.offer.id === cheapest.id)
+      if (!heroIsCheapest && !cheapestInTop3) {
+        const cheapestRanked = allRanked.find(r => r.offer.id === cheapest.id)
+        if (cheapestRanked) top3[2] = { ...cheapestRanked, rank: 3 }
+      }
+    }
+    return top3
+  }, [allOffers, tripContext, tripPurpose, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline])
+
+  const profileLabel = useMemo(() => getProfileLabel({
+    tripContext, tripPurpose, requireBag: requireBagPerPerson, preferredAirline,
+  }), [tripContext, tripPurpose, requireBagPerPerson, preferredAirline])
+
+  // ── 3-generation Gemini justification system ─────────────────────────────
+  // Gen 1 (early):  fires as soon as ≥5 offers arrive, even while still searching
+  // Gen 2 (mid):    fires at ≥90% progress if the hero changed since Gen 1
+  // Gen 3 (final):  fires when search completes if the hero changed since last gen
+  //                 (if hero didn't change, we just clear the "still searching" tone)
+  // Max 3 Gemini calls total per search session.
+
+  const rawQuery = typeof window !== 'undefined'
+    ? (new URL(window.location.href).searchParams.get('q') ?? '')
+    : ''
+
+  const callGemini = useCallback((phase: 'early' | 'mid' | 'final') => {
+    if (globalRankTopThree.length === 0) return
+    setGeminiJustification('loading')
+    const heroId = globalRankTopThree[0].offer.id
+    geminiStateRef.current.heroId = heroId
+    geminiStateRef.current.phase = phase
+
+    void fetch('/api/rank', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phase,
+        topOffers: globalRankTopThree.map(r => ({
+          offer: {
+            id: r.offer.id,
+            airline: r.offer.airline,
+            price: r.offer.price,
+            source: r.offer.source,
+            currency: r.offer.currency,
+            origin: r.offer.origin,
+            destination: r.offer.destination,
+            departure_time: r.offer.departure_time,
+            arrival_time: r.offer.arrival_time,
+            duration_minutes: r.offer.duration_minutes,
+            stops: r.offer.stops,
+            google_flights_price: r.offer.google_flights_price,
+            ancillaries: r.offer.ancillaries,
+            segments: r.offer.segments,
+          },
+          score: r.score,
+          breakdown: r.breakdown,
+          heroFacts: r.heroFacts,
+          tradeoffs: r.tradeoffs,
+        })),
+        rawQuery,
+        context: {
+          tripContext,
+          tripPurpose,
+          depTimePref: initialDepTimePref,
+          arrivalTimePref: initialArrTimePref,
+          requireBag: requireBagPerPerson,
+          preferredAirline,
+          preferQuickFlight,
+        } satisfies RankingContext,
+      }),
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { title?: string; hero?: string; runners?: string[] } | null) => {
+        if (data?.hero && data.hero.length > 10) {
+          setGeminiJustification({ title: data.title, hero: data.hero, runners: data.runners ?? [] })
+        } else {
+          setGeminiJustification(null)
+        }
+      })
+      .catch(() => setGeminiJustification(null))
+  }, [globalRankTopThree, rawQuery, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight])
+
+  // Gen 1 — fires once the first wave of fast API connectors have all reported back.
+  // Waiting for progress.checked >= 6 ensures we have results from multiple independent
+  // sources (Ryanair, Wizz, EasyJet, Kiwi, Skyscanner, Norwegian etc.) before ranking.
+  // A single-connector pool would produce a meaningless Gemini justification.
   useEffect(() => {
-    setPriceRange([priceMin, priceMax])
-  }, [priceMin, priceMax])
+    if (geminiStateRef.current.phase !== 'none') return  // already started
+    if (globalRankTopThree.length === 0) return
+    if (!progress || progress.checked < 6) return
+    callGemini('early')
+  }, [progress, globalRankTopThree, callGemini])
+
+  // Gen 2 (mid) — fires at ≥90% progress, only if hero changed
+  useEffect(() => {
+    if (!isSearching) return  // search done, leave it to Gen 3
+    if (geminiStateRef.current.midFired) return
+    if (geminiStateRef.current.phase === 'none') return  // Gen 1 not done yet
+    if (globalRankTopThree.length === 0) return
+    const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
+    if (progressPct < 0.90) return
+    const currentHeroId = globalRankTopThree[0].offer.id
+    if (currentHeroId === geminiStateRef.current.heroId) return  // hero unchanged, skip
+    geminiStateRef.current.midFired = true
+    callGemini('mid')
+  }, [isSearching, progress, globalRankTopThree, callGemini])
+
+  // Gen 3 (final) — fires when search completes
+  useEffect(() => {
+    if (isSearching) return
+    if (geminiStateRef.current.phase === 'none') return  // Gen 1 never ran (no offers yet)
+    if (globalRankTopThree.length === 0) return
+    const sentIds = globalRankTopThree.map(r => r.offer.id).join(',')
+    if (geminiStateRef.current.finalFired) {
+      // Already had one final call — re-fire once if top-3 changed (race condition guard)
+      if (geminiStateRef.current.finalRefired) return
+      if (geminiStateRef.current.finalSentIds === sentIds) return
+      geminiStateRef.current.finalRefired = true
+      geminiStateRef.current.finalSentIds = sentIds
+      callGemini('final')
+      return
+    }
+    geminiStateRef.current.finalFired = true
+    geminiStateRef.current.finalSentIds = sentIds
+    const currentHeroId = globalRankTopThree[0].offer.id
+    if (currentHeroId === geminiStateRef.current.heroId) {
+      // Hero didn't change — just upgrade the existing justification tone silently
+      // (remove "still searching" caveat by re-fetching as final if we're still on early tone,
+      // but only if we haven't already shown a mid/final result)
+      if (geminiStateRef.current.phase === 'early') {
+        callGemini('final')
+      }
+      // if phase was 'mid' or 'final', already has definitive tone, do nothing
+      return
+    }
+    // Hero changed — full new generation
+    callGemini('final')
+  }, [isSearching, globalRankTopThree, callGemini])
+
+  useEffect(() => {
+    setPriceRange([_priceMin, _priceMax])
+  }, [_priceMin, _priceMax])
 
   const refreshUnlockState = useCallback(async () => {
     if (!searchId) {
@@ -847,7 +1228,7 @@ export default function ResultsPanel({
     setStopsFilter([])
     setAirlinesFilter([])
     setAmenityFilters([])
-    setPriceRange([priceMin, priceMax])
+    setPriceRange([_priceMin, _priceMax])
     setDepRange([0, 1439])
     setRetRange([0, 1439])
     setDurationRange([0, Infinity])
@@ -857,7 +1238,7 @@ export default function ResultsPanel({
       source_path: resultsSourcePath,
       is_test_search: isTestSearch || undefined,
     })
-  }, [analyticsSearchId, isTestSearch, priceMax, priceMin, resultsSourcePath])
+  }, [analyticsSearchId, isTestSearch, _priceMax, _priceMin, resultsSourcePath])
 
   const handleSortChange = useCallback((nextSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration') => {
     setSort(nextSort)
@@ -870,7 +1251,7 @@ export default function ResultsPanel({
   }, [analyticsSearchId, isTestSearch, resultsSourcePath])
 
   const hasActiveFilters = stopsFilter.length > 0 || airlinesFilter.length > 0 || amenityFilters.length > 0
-    || priceRange[0] > priceMin || priceRange[1] < priceMax
+    || priceRange[0] > _priceMin || priceRange[1] < _priceMax
     || depRange[0] > 0 || depRange[1] < 1439
     || retRange[0] > 0 || retRange[1] < 1439
     || durationRange[0] > durationBounds.min || durationRange[1] < durationBounds.max
@@ -890,153 +1271,8 @@ export default function ResultsPanel({
   ]
 
   return (
-    <div className="rf-layout">
-      {/* ── Mobile filter overlay backdrop ─────────────────────────────── */}
-      {mobileFiltersOpen && (
-        <div className="rf-filters-backdrop" onClick={() => setMobileFiltersOpen(false)} aria-hidden="true" />
-      )}
-
-      {/* ── Mobile filter toggle bar ───────────────────────────────────── */}
-      <div className="rf-mobile-topbar">
-        <button
-          className={`rf-mobile-filter-btn${mobileFiltersOpen ? ' rf-mobile-filter-btn--active' : ''}`}
-          onClick={() => setMobileFiltersOpen(o => !o)}
-        >
-          <svg viewBox="0 0 20 20" fill="none" width="15" height="15" aria-hidden="true">
-            <path d="M3 5h14M6 10h8M9 15h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          {t('filterTitle')}{hasActiveFilters ? ' ·' : ''}
-        </button>
-        <div className="rf-mobile-sort">
-          <span className="rf-bar-label">{t('sort')}</span>
-          <button className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price')}>{t('sortPrice')}</button>
-          <button className={`rf-chip${sort === 'price_with_bag' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_bag')}>+ Bag</button>
-          <button className={`rf-chip${sort === 'price_with_seat' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_seat')}>+ Seat</button>
-          <button className={`rf-chip${sort === 'price_with_all' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('price_with_all')}>+ All</button>
-          <button className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`} onClick={() => handleSortChange('duration')}>{t('sortDuration')}</button>
-        </div>
-      </div>
-      {/* ── Filter sidebar ─────────────────────────────────────────────────── */}
-      <aside className={`rf-filters${mobileFiltersOpen ? ' rf-filters--mobile-open' : ''}`}>
-        <div className="rf-filters-header">
-          <span className="rf-filters-title">{t('filterTitle')}</span>
-          <div className="rf-filters-header-actions">
-            {hasActiveFilters && (
-              <button className="rf-filters-clear" onClick={clearAll}>{t('clearAll')}</button>
-            )}
-            <button className="rf-filters-close" onClick={() => setMobileFiltersOpen(false)} aria-label={t('closeFilters')}>
-              <svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true">
-                <path d="M5 5l10 10M15 5l-10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Stops */}
-        <div className="rf-filter-section">
-          <div className="rf-filter-heading"><span>{t('stops')}</span></div>
-          {stopsOptions.map(({ key, label }) => {
-            const stat = stopsStats[key]
-            if (!stat || stat.count === 0) return null
-            const active = stopsFilter.includes(key)
-            return (
-              <button key={key} className={`rf-filter-row${active ? ' rf-filter-row--on' : ''}`}
-                onClick={() => toggleStop(key)}>
-                <span className={`rf-filter-check${active ? ' rf-filter-check--on' : ''}`} aria-hidden="true" />
-                <span className="rf-filter-label">{label}</span>
-                {stat.min !== Infinity && (
-                  <span className="rf-filter-price">{fmtOfferPrice(stat.min, stat.currency || currency, currency, locale)}</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Price range */}
-        <div className="rf-filter-section">
-          <div className="rf-filter-heading"><span>{t('priceRange')}</span></div>
-          <DualRange
-            min={priceMin} max={priceMax}
-            low={priceRange[0]} high={priceRange[1]}
-            onChange={(lo, hi) => setPriceRange([lo, hi])}
-            formatLabel={fmt}
-          />
-        </div>
-
-        {/* Departure time */}
-        <div className="rf-filter-section">
-          <div className="rf-filter-heading"><span>{t('departureTime')}</span></div>
-          <div className="rf-filter-sub">{t('outbound')}</div>
-          <DualRange
-            min={0} max={1439}
-            low={depRange[0]} high={depRange[1]}
-            onChange={(lo, hi) => setDepRange([lo, hi])}
-            formatLabel={minsToLabel}
-          />
-        </div>
-
-        {/* Return/arrival time */}
-        <div className="rf-filter-section">
-          <div className="rf-filter-heading"><span>{t('returnTime')}</span></div>
-          <DualRange
-            min={0} max={1439}
-            low={retRange[0]} high={retRange[1]}
-            onChange={(lo, hi) => setRetRange([lo, hi])}
-            formatLabel={minsToLabel}
-          />
-        </div>
-
-        {/* Flight duration */}
-        <div className="rf-filter-section">
-          <div className="rf-filter-heading"><span>{t('flightTime')}</span></div>
-          <DualRange
-            min={durationBounds.min} max={durationBounds.max}
-            low={Math.max(durationBounds.min, isFinite(durationRange[0]) ? durationRange[0] : durationBounds.min)}
-            high={Math.min(durationBounds.max, isFinite(durationRange[1]) ? durationRange[1] : durationBounds.max)}
-            onChange={(lo, hi) => setDurationRange([lo, hi])}
-            formatLabel={fmtDuration}
-          />
-        </div>
-
-        {/* Airlines */}
-        <div className="rf-filter-section">
-          <button className="rf-filter-heading rf-filter-heading--btn"
-            onClick={() => setAirlinesOpen(o => !o)}>
-            <span>{t('airlines')}</span>
-            <ChevronIcon open={airlinesOpen} />
-          </button>
-          {airlinesOpen && airlineOptions.map(({ airline, minPrice, currency: airlineCurrency }) => {
-            const active = airlinesFilter.includes(airline)
-            return (
-              <button key={airline} className={`rf-filter-row${active ? ' rf-filter-row--on' : ''}`}
-                onClick={() => toggleAirline(airline)}>
-                <span className={`rf-filter-check${active ? ' rf-filter-check--on' : ''}`} aria-hidden="true" />
-                <span className="rf-filter-label">{airline}</span>
-                <span className="rf-filter-price">{fmtOfferPrice(minPrice, airlineCurrency || currency, currency, locale)}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Amenities */}
-        <div className="rf-filter-section rf-filter-section--last">
-          <div className="rf-filter-heading">
-            <span>{t('amenities')}</span>
-          </div>
-          {amenityOptions.map(({ key, label, count }) => {
-            if (count === 0) return null
-            const active = amenityFilters.includes(key)
-            return (
-              <button key={key} className={`rf-filter-row${active ? ' rf-filter-row--on' : ''}`}
-                onClick={() => toggleAmenity(key)}>
-                <span className={`rf-filter-check${active ? ' rf-filter-check--on' : ''}`} aria-hidden="true" />
-                <span className="rf-filter-label">{label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </aside>
-
+    <div className="rf-layout rf-layout--curated">
+      {/* ── Filter sidebar (hidden — curated mode) ─────────────────────── */}
       {/* ── Results card ───────────────────────────────────────────────────── */}
       <div className="rf-card-shell">
         {/* Sort bar */}
@@ -1056,6 +1292,9 @@ export default function ResultsPanel({
                 </span>
               )
             )}
+            {onTrackPrices && !isSearching && (
+              <span>{/* track prices moved below top-3 */}</span>
+            )}
           </div>
           {!isSearching && (
             <div className="rf-bar-checked" aria-label="Sources checked">
@@ -1069,56 +1308,13 @@ export default function ResultsPanel({
               </div>
             </div>
           )}
-          <div className="rf-bar-controls">
-            <span className="rf-bar-label">{t('sort')}</span>
-            <button
-              className={`rf-chip${sort === 'price' ? ' rf-chip--on' : ''}`}
-              onClick={() => handleSortChange('price')}
-            >
-              {t('sortPrice')}
-            </button>
-            <button
-              className={`rf-chip${sort === 'price_with_bag' ? ' rf-chip--on' : ''}`}
-              onClick={() => handleSortChange('price_with_bag')}
-            >
-              + Bag
-            </button>
-            <button
-              className={`rf-chip${sort === 'price_with_seat' ? ' rf-chip--on' : ''}`}
-              onClick={() => handleSortChange('price_with_seat')}
-            >
-              + Seat
-            </button>
-            <button
-              className={`rf-chip${sort === 'price_with_all' ? ' rf-chip--on' : ''}`}
-              onClick={() => handleSortChange('price_with_all')}
-            >
-              + All
-            </button>
-            <button
-              className={`rf-chip${sort === 'duration' ? ' rf-chip--on' : ''}`}
-              onClick={() => handleSortChange('duration')}
-            >
-              {t('sortDuration')}
-            </button>
-          </div>
         </div>
 
         {/* Flight list */}
         <div className="rf-list">
-          {onTrackPrices && (
-            <div className="mon-strip">
-              <div className="mon-strip-copy">
-                <span className="mon-strip-title">Track prices for this route</span>
-                <span className="mon-strip-sub">Daily price alerts from Google Flights, Kayak, Kiwi, direct airlines, over 200 websites · Get notified when prices drop · Free booking unlock/week · $5/week</span>
-              </div>
-              <button className="mon-strip-btn" onClick={onTrackPrices} aria-haspopup="dialog">
-                Track prices
-              </button>
-            </div>
-          )}
           {visibleOffers.map((offer, index) => {
-            const isBestValue = sort !== 'duration' && index === 0
+            const isHero = index === 0
+            const isRunnerUp = index === 1 || index === 2
             const isExpanded = expandedId === offer.id
             const offerCarriers = getOfferCarriers(offer)
             const airlineLabel = getOfferAirlineLabel(offer)
@@ -1167,55 +1363,147 @@ export default function ResultsPanel({
             const inboundCtx = offer.inbound
               ? computeFlightTimeContext(offer.inbound.departure_time, offer.inbound.arrival_time, offer.inbound.duration_minutes)
               : null
+            const offerParams = new URLSearchParams()
+            if (searchId) offerParams.set('from', searchId)
+            if (offer.offer_ref) offerParams.set('ref', offer.offer_ref)
+            if (emailUnlockToken) offerParams.set('mt', emailUnlockToken)
+            if (currency) offerParams.set('cur', currency)
+            appendProbeParam(offerParams, isTestSearch)
+            const bookHref = `/book/${offer.id}${offerParams.toString() ? `?${offerParams.toString()}` : ''}`
+            const handleSelect = () => {
+              trackSearchSessionEvent(analyticsSearchId, 'offer_selected', {
+                offer_id: offer.id,
+                airline: airlineLabel,
+                currency: offer.currency,
+                price: offer.price,
+                google_flights_price: offer.google_flights_price ?? null,
+              }, {
+                source: 'website-results-panel',
+                source_path: resultsSourcePath,
+                is_test_search: isTestSearch || undefined,
+                selected_offer_id: offer.id,
+                selected_offer_airline: airlineLabel,
+                selected_offer_currency: offer.currency,
+                selected_offer_price: offer.price,
+                selected_offer_google_flights_price: offer.google_flights_price,
+              }, { keepalive: true })
+              onOfferSelect?.()
+            }
             return (
-              <div key={offer.id} className={`rf-card${isBestValue ? ' rf-card--best' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offer.id) ? ' rf-card--new' : ''}`}>
+              <Fragment key={offer.id}>
+                {isHero && (
+                  <div className="rf-concierge-intro">
+                    <div className="rf-pick-header">
+                      <span className="rf-pick-badge">
+                        <span className="rf-pick-star" aria-hidden="true">✦</span>
+                        {isSearching ? 'Top pick so far' : 'Top pick'}
+                        {profileLabel && <span className="rf-pick-label">· {profileLabel}</span>}
+                      </span>
+                      {isSearching && <span className="rf-pick-searching" aria-label="Searching" />}
+                    </div>
+                    <p className="rf-concierge-headline">
+                      {typeof geminiJustification === 'object' && geminiJustification?.title
+                        ? geminiJustification.title
+                        : isSearching ? 'Best match so far.' : 'Best flight for you.'}
+                    </p>
+                    <div className="rf-concierge-reason">
+                      {geminiJustification === 'loading' ? (
+                        <div className="rf-reasoning-blur" aria-label="Analyzing your options">
+                          <div className="rf-reasoning-blur-line" style={{ width: '95%' }} />
+                          <div className="rf-reasoning-blur-line" style={{ width: '82%' }} />
+                          <div className="rf-reasoning-blur-line" style={{ width: '68%' }} />
+                          <div className="rf-reasoning-blur-line" style={{ width: '45%' }} />
+                        </div>
+                      ) : geminiJustification?.hero ? (
+                        <span className="rf-reasoning-text rf-reasoning-text--gemini">{geminiJustification.hero}</span>
+                      ) : isSearching ? (
+                        <span className="rf-reasoning-text rf-reasoning-searching">
+                          Still scanning the last few sources — once I&apos;m done I&apos;ll have a full breakdown of why this one wins.
+                        </span>
+                      ) : (
+                        <span className="rf-reasoning-text">{computeDealReasonParagraph(offer, allOffers, tripContext, initialDepTimePref, currency, locale)}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {index === 1 && (
+                  <div className="rf-section-divider">
+                    <span className="rf-section-label">Other deals I looked at</span>
+                  </div>
+                )}
+                {isRunnerUp && (
+                  <div className="rf-runner-why">
+                    <span className="rf-runner-rank">Deal #{index + 1}</span>
+                    <p className="rf-runner-text">
+                      {typeof geminiJustification === 'object' && geminiJustification !== null && geminiJustification.runners[index - 1]
+                        ? geminiJustification.runners[index - 1]
+                        : computeWhyNot(offer, displayOffers[0], currency, locale)}
+                    </p>
+                  </div>
+                )}
+                {index === 3 && (
+                  <div className="rf-track-nudge">
+                    <div className="rf-track-nudge-label">
+                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M8 1.5a5 5 0 0 1 5 5v2.5l1.2 2H1.8L3 9V6.5a5 5 0 0 1 5-5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                      Flight Monitoring
+                    </div>
+                    <div className="rf-track-nudge-body">
+                      <div className="rf-track-nudge-text">
+                        <span className="rf-track-nudge-heading">Want to wait for better prices?</span>
+                        {displayOffers[0] && (
+                          <span className="rf-track-nudge-price">
+                            From <strong>{fmt(getOfferDisplayTotalPrice(displayOffers[0], currency))}</strong> right now
+                          </span>
+                        )}
+                        <span className="rf-track-nudge-sub">We&apos;ve scanned {displayOffers.length} flights across {progress?.total ?? CHECKED_SOURCES.length}+ sources. Prices usually rise the longer you wait — but if you&apos;re not ready, track this route and get a daily alert the moment something drops.</span>
+                      </div>
+                      {onTrackPrices && (
+                        <button className="rf-track-nudge-btn" onClick={onTrackPrices} aria-haspopup="dialog">
+                          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" aria-hidden="true"><path d="M8 2v6l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4"/></svg>
+                          Track prices
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              <div className={`rf-card${isHero ? ' rf-card--hero' : ''}${isRunnerUp ? ' rf-card--runner' : ''}${!isHero && !isRunnerUp ? ' rf-card--list' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offer.id) ? ' rf-card--new' : ''}`}>
                 {googleFlightsSavingsLabel && (
                   <div className="rf-card-badges">
                     <span className="rf-card-badge rf-card-badge--savings">{googleFlightsSavingsLabel}</span>
                   </div>
                 )}
-                <div className="rf-card-row">
-                  <div className={`rf-airline${offerCarriers.length > 1 ? ' rf-airline--multi' : ''}`}>
-                    {isUnlocked ? (
-                      /* ── Revealed: real logo + airline name ── */
-                      <>
-                        <div className={`rf-airline-logos${offerCarriers.length > 1 ? ' rf-airline-logos--multi' : ''}`}>
-                          {offerCarriers.map((carrier) => (
-                            <AirlineLogo key={`${carrier.code}-${carrier.name}`} code={carrier.code} name={carrier.name} />
-                          ))}
-                        </div>
-                        <div className={`rf-airline-copy${offerCarriers.length > 1 ? ' rf-airline-copy--multi' : ''}`}>
-                          <div
-                            className={`rf-airline-name${offerCarriers.length > 1 ? ' rf-airline-name--multi' : ''}`}
-                            title={offerCarriers.length > 1 ? airlineLabel : undefined}
-                          >
-                            {airlineLabel}
-                          </div>
-                          {sourceLabel && (
-                            <div className="rf-source-pill">Deal from {sourceLabel}</div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      /* ── Hidden: generic placeholder until unlocked ── */
-                      <>
-                        <div className="rf-airline-logos">
-                          <HiddenAirlineLogo />
-                        </div>
-                        <div className="rf-airline-copy">
-                          <div className="rf-airline-name rf-airline-name--hidden">
-                            {getAirlineCategory(offerCarriers[0]?.code || '')}
-                          </div>
-                          <div className="rf-airline-cabin">Economy class</div>
-                        </div>
-                      </>
-                    )}
+                {!isUnlocked && (
+                  <div className="rf-carrier-type-header">
+                    {getAirlineCategory(offerCarriers[0]?.code || '')} · Economy
                   </div>
+                )}
+                <div className={`rf-card-row${!isUnlocked ? ' rf-card-row--locked' : ''}`}>
+                  {isUnlocked && (
+                    <div className={`rf-airline${offerCarriers.length > 1 ? ' rf-airline--multi' : ''}`}>
+                      <div className={`rf-airline-logos${offerCarriers.length > 1 ? ' rf-airline-logos--multi' : ''}`}>
+                        {offerCarriers.map((carrier) => (
+                          <AirlineLogo key={`${carrier.code}-${carrier.name}`} code={carrier.code} name={carrier.name} />
+                        ))}
+                      </div>
+                      <div className={`rf-airline-copy${offerCarriers.length > 1 ? ' rf-airline-copy--multi' : ''}`}>
+                        <div
+                          className={`rf-airline-name${offerCarriers.length > 1 ? ' rf-airline-name--multi' : ''}`}
+                          title={offerCarriers.length > 1 ? airlineLabel : undefined}
+                        >
+                          {airlineLabel}
+                        </div>
+                        {sourceLabel && (
+                          <div className="rf-source-pill">Deal from {sourceLabel}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {offer.inbound ? (
                     <div className="rf-legs">
                       <div className="rf-route">
                         <div className="rf-endpoint">
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.departure_time)}</span>
                           <span className="rf-time">{formatFlightTime(offer.departure_time)}</span>
                           <span className="rf-city" title={outboundOriginName}>{outboundOriginName}</span>
                           <span className="rf-iata">{offer.origin}</span>
@@ -1236,6 +1524,7 @@ export default function ResultsPanel({
                           </span>
                         </div>
                         <div className="rf-endpoint rf-endpoint--arr">
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.arrival_time)}</span>
                           <span className="rf-time">
                             {formatFlightTime(offer.arrival_time)}
                             {outboundCtx.dayOffset > 0 && (
@@ -1262,6 +1551,7 @@ export default function ResultsPanel({
 
                       <div className="rf-route">
                         <div className="rf-endpoint">
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.inbound.departure_time)}</span>
                           <span className="rf-time">{formatFlightTime(offer.inbound.departure_time)}</span>
                           <span className="rf-city" title={inboundOriginName}>{inboundOriginName}</span>
                           <span className="rf-iata">{offer.inbound.origin}</span>
@@ -1282,6 +1572,7 @@ export default function ResultsPanel({
                           </span>
                         </div>
                         <div className="rf-endpoint rf-endpoint--arr">
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.inbound.arrival_time)}</span>
                           <span className="rf-time">
                             {formatFlightTime(offer.inbound.arrival_time)}
                             {inboundCtx!.dayOffset > 0 && (
@@ -1303,6 +1594,7 @@ export default function ResultsPanel({
                   ) : (
                     <div className="rf-route">
                       <div className="rf-endpoint">
+                        <span className="rf-flight-date">{formatFlightDateCompact(offer.departure_time)}</span>
                         <span className="rf-time">{formatFlightTime(offer.departure_time)}</span>
                         <span className="rf-city" title={outboundOriginName}>{outboundOriginName}</span>
                         <span className="rf-iata">{offer.origin}</span>
@@ -1323,6 +1615,7 @@ export default function ResultsPanel({
                         </span>
                       </div>
                       <div className="rf-endpoint rf-endpoint--arr">
+                        <span className="rf-flight-date">{formatFlightDateCompact(offer.arrival_time)}</span>
                         <span className="rf-time">
                           {formatFlightTime(offer.arrival_time)}
                           {outboundCtx.dayOffset > 0 && (
@@ -1351,10 +1644,12 @@ export default function ResultsPanel({
                         <span className="rf-price-breakdown-label">✈ Ticket</span>
                         <span className="rf-price-breakdown-value">{fmt(convertCurrencyAmount(offer.price, offer.currency, currency))}</span>
                       </div>
-                      <div className="rf-price-breakdown-row">
-                        <span className="rf-price-breakdown-label">LetsFG fee</span>
-                        <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
-                      </div>
+                      {offer.source !== 'serpapi_google' && offer.source !== 'google_flights' && (
+                        <div className="rf-price-breakdown-row">
+                          <span className="rf-price-breakdown-label">LetsFG fee</span>
+                          <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
+                        </div>
+                      )}
                       {hasPaidAncillary(checkedBag) && (
                         <div className={`rf-price-breakdown-row${(sort === 'price_with_bag' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
                           <span className="rf-price-breakdown-label">🧳 Bag</span>
@@ -1380,42 +1675,27 @@ export default function ResultsPanel({
                     </div>
                   </div>
 
-                  <a
-                    href={(() => {
-                      const params = new URLSearchParams()
-                      if (searchId) params.set('from', searchId)
-                      if (offer.offer_ref) params.set('ref', offer.offer_ref)
-                      if (emailUnlockToken) params.set('mt', emailUnlockToken)
-                      if (currency) params.set('cur', currency)
-                      appendProbeParam(params, isTestSearch)
-                      const query = params.toString()
-                      return `/book/${offer.id}${query ? `?${query}` : ''}`
-                    })()}
-                    className="rf-book-btn"
-                    onClick={() => {
-                      trackSearchSessionEvent(analyticsSearchId, 'offer_selected', {
-                        offer_id: offer.id,
-                        airline: airlineLabel,
-                        currency: offer.currency,
-                        price: offer.price,
-                        google_flights_price: offer.google_flights_price ?? null,
-                      }, {
-                        source: 'website-results-panel',
-                        source_path: resultsSourcePath,
-                        is_test_search: isTestSearch || undefined,
-                        selected_offer_id: offer.id,
-                        selected_offer_airline: airlineLabel,
-                        selected_offer_currency: offer.currency,
-                        selected_offer_price: offer.price,
-                        selected_offer_google_flights_price: offer.google_flights_price,
-                      }, { keepalive: true })
-                      onOfferSelect?.()
-                    }}
-                  >
-                    {t('select')}
-                    <ArrowIcon />
-                  </a>
+                  {!isHero && (
+                    isRunnerUp
+                      ? <a href={bookHref} className="rf-book-btn rf-book-btn--choose" onClick={handleSelect}>
+                          Choose instead <ArrowIcon />
+                        </a>
+                      : <a href={bookHref} className="rf-book-btn--arrow" aria-label="Select this flight" onClick={handleSelect}>
+                          <ArrowIcon />
+                        </a>
+                  )}
                 </div>
+                {isHero && (
+                  <div className="rf-hero-footer">
+                    <button className="rf-book-for-me" disabled aria-disabled="true">
+                      Book for me
+                      <span className="rf-soon-badge">Soon</span>
+                    </button>
+                    <a href={bookHref} className="rf-book-btn" onClick={handleSelect}>
+                      Get booking link <ArrowIcon />
+                    </a>
+                  </div>
+                )}
 
                 {(offer.segments?.length || offer.inbound?.segments?.length) && (
                   <>
@@ -1461,7 +1741,7 @@ export default function ResultsPanel({
                               <span className="rf-leg-num">{t('leg', { number: si + 1 })}</span>
                               <span className="rf-leg-flight">
                                 {isUnlocked
-                                  ? `${seg.flight_number} · ${getSegmentAirlineLabel(seg, mainAirline)}`
+                                  ? `${seg.flight_number} · ${getSegmentAirlineLabel(seg, mainAirline)}${seg.aircraft ? ` · ${seg.aircraft.replace(/\s*\([^)]*\)/, '')}` : ''}`
                                   : 'Economy class · Unlock to reveal'}
                               </span>
                             </div>
@@ -1515,6 +1795,7 @@ export default function ResultsPanel({
                   </>
                 )}
               </div>
+              </Fragment>
             )
           })}
           {displayOffers.length === 0 && (

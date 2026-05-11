@@ -970,7 +970,11 @@ export default function SearchPageClient({
           requireBagPerPerson={requireBagPerPerson}
           initialDepTimePref={nlParsed?.depart_time_pref}
           initialRetTimePref={nlParsed?.return_depart_time_pref}
+          initialArrTimePref={nlParsed?.arrive_time_pref}
           tripContext={nlParsed?.passenger_context}
+          tripPurpose={nlParsed?.trip_purpose}
+          preferredAirline={nlParsed?.preferred_airline}
+          preferQuickFlight={nlParsed?.prefer_quick_flight}
           viaIata={nlParsed?.via_iata}
         />
       )}

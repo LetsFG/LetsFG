@@ -206,6 +206,8 @@
     "opt_price_might_drop": "Penso che il prezzo potrebbe scendere se aspetto",
     "followup_not_looking": "Grazie! Su una scala da 1 a 5, quanto è probabile che usi LetsFG quando cerchi davvero un volo? Puoi spiegare brevemente?",
     "opt_other": "Altro",
+    "followup_other": "Può dirci qualcosa di più?",
+    "placeholder_other": "Diteci di più…",
     "placeholder_no_bnpl": "es. 1 – improbabile, 5 – sicuramente",
     "followup_concierge_fee": "Quale commissione ti sembrerebbe equa?",
     "opt_concierge_fee": "Non voglio pagare la commissione di LetsFG",

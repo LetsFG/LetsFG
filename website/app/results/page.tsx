@@ -78,6 +78,7 @@ interface RawSegment {
   airline?: string
   airline_name?: string
   carrier_name?: string
+  aircraft?: string
 }
 
 interface RawOffer {
@@ -178,6 +179,7 @@ function normalizeSegments(segments: RawSegment[], fallbackAirlineName: string, 
       arrival_time: sArr,
       duration_minutes: sDur,
       layover_minutes: layoverMins,
+      aircraft: s.aircraft || undefined,
     }
   })
 }

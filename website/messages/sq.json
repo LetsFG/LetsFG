@@ -215,6 +215,8 @@
     "opt_price_might_drop": "Mendoj se çmimi mund të ulet nëse pres",
     "followup_not_looking": "Faleminderit! Në një shkallë nga 1 deri 5, sa gjasë ka që të përdorësh LetsFG kur kërkon fluturim? Mund të shpjegosh shkurt?",
     "opt_other": "Tjetër",
+    "followup_other": "Mund të na tregoni pak më shumë?",
+    "placeholder_other": "Na tregoni më shumë…",
     "placeholder_no_bnpl": "p.sh. 1 – e pamundur, 5 – sigurisht",
     "followup_concierge_fee": "Çfarë tarife do të të dukej e drejtë?",
     "opt_concierge_fee": "Nuk dua të paguaj tarifën e LetsFG",
