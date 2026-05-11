@@ -269,7 +269,7 @@ async function startFSWSearch(
   utmSource?: string,
   utmMedium?: string,
   utmCampaign?: string,
-): Promise<{ searchId: string | null; cache: 'hit' | 'miss' }> {
+): Promise<{ searchId: string | null; cache: 'hit' | 'miss'; fswSession?: string }> {
   if (!parsed.origin || !parsed.destination || !parsed.date) {
     return { searchId: null, cache: 'miss' }
   }
