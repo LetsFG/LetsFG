@@ -37,6 +37,7 @@ export interface WebSearchAnalyticsContext {
 export interface StartWebSearchResult {
   searchId: string | null
   cache: 'hit' | 'miss'
+  fswSession?: string  // Cloud Run __session affinity cookie — must be forwarded on all /web-status calls
 }
 
 export async function startWebSearch(
@@ -112,9 +113,16 @@ export async function startWebSearch(
     })
   }
 
+  // Capture the Cloud Run session affinity cookie so callers can forward it
+  // on subsequent /web-status requests to guarantee the same FSW instance.
+  const setCookieHeader = res.headers.get('set-cookie') || ''
+  const sessionMatch = setCookieHeader.match(/(?:^|,)\s*__session=([^;,\s]+)/)
+  const fswSession = sessionMatch ? sessionMatch[1] : undefined
+
   return {
     searchId,
     cache: data.cache_hit ? 'hit' : 'miss',
+    fswSession,
   }
 }
 

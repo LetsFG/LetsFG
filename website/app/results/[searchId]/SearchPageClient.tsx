@@ -336,6 +336,7 @@ export interface SearchPageClientProps {
   initialOffers: FlightOffer[]
   searchedAt?: string
   expiresAt?: string
+  fswSession?: string  // Cloud Run __session affinity token — forwarded on every poll
 }
 
 function dedup(offers: FlightOffer[]): FlightOffer[] {
@@ -373,6 +374,7 @@ export default function SearchPageClient({
   initialOffers,
   searchedAt,
   expiresAt,
+  fswSession,
 }: SearchPageClientProps) {
   const t = useTranslations('Results')
   const router = useRouter()
@@ -518,6 +520,7 @@ export default function SearchPageClient({
       try {
         const params = new URLSearchParams()
         appendProbeParam(params, isTestSearch)
+        if (fswSession) params.set('_fss', fswSession)
         const query = params.toString()
         const res = await fetch(`/api/results/${searchId}${query ? `?${query}` : ''}`, { cache: 'no-store' })
         if (!res.ok) return

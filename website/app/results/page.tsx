@@ -575,6 +575,7 @@ async function SearchContent({
     const fswResult = await startFSWSearch(parsed, query, isProbe, currency, utmSource, utmMedium, utmCampaign)
     searchId = fswResult.searchId ?? undefined
     cacheHit = fswResult.cache === 'hit'
+    const fswSession = fswResult.fswSession
     if (!searchId) {
       return (
         <main className="res-page">
@@ -609,7 +610,8 @@ async function SearchContent({
     ? `&trip_min=${parsed.min_trip_days}&trip_max=${parsed.max_trip_days}`
     : (parsed.min_trip_days !== undefined ? `&trip_min=${parsed.min_trip_days}` : '')
   const monthCtx = parsed.date_month_only ? '&month_only=1' : ''
-  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}${mt ? `&mt=${encodeURIComponent(mt)}` : ''}${tripCtx}${monthCtx}`, isProbe))
+  const fssCtx = fswSession ? `&_fss=${encodeURIComponent(fswSession)}` : ''
+  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}${mt ? `&mt=${encodeURIComponent(mt)}` : ''}${tripCtx}${monthCtx}${fssCtx}`, isProbe))
 }
 
 // ── Suspense fallback (shown instantly while SearchContent runs) ───────────────

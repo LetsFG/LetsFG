@@ -217,6 +217,12 @@ export async function GET(
   const analyticsSearchId = getTrackingSearchId(searchId, isProbeSearch) || searchId
   const analyticsSourcePath = getTrackedSourcePath(`/api/results/${searchId}`, isProbeSearch)
 
+  // Cloud Run session affinity: forward the __session cookie so the FSW load
+  // balancer routes this poll to the same instance that owns the search state.
+  const fswSession = request.nextUrl.searchParams.get('_fss') || ''
+  const fswHeaders: Record<string, string> = { 'Authorization': `Bearer ${FSW_SECRET}` }
+  if (fswSession) fswHeaders['Cookie'] = `__session=${fswSession}`
+
   // Demo stubs for UI testing
   if (searchId === 'demo-loading') {
     return NextResponse.json({
@@ -257,7 +263,7 @@ export async function GET(
   if (searchId.startsWith('we_')) {
     try {
       const res = await fetch(`${FSW_URL}/web-status/${searchId}`, {
-        headers: { 'Authorization': `Bearer ${FSW_SECRET}` },
+        headers: fswHeaders,
         signal: AbortSignal.timeout(8_000),
         cache: 'no-store',
       })
@@ -273,7 +279,7 @@ export async function GET(
 
   try {
     const res = await fetch(`${FSW_URL}/web-status/${searchId}`, {
-      headers: { 'Authorization': `Bearer ${FSW_SECRET}` },
+      headers: fswHeaders,
       signal: AbortSignal.timeout(8_000),
       cache: 'no-store',
     })
