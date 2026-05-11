@@ -84,11 +84,12 @@ async function getApiBase(): Promise<string> {
 }
 
 // Single-shot fetch — used only for generateMetadata (fast, no blocking)
-async function getSearchResults(searchId: string, isProbe: boolean): Promise<SearchResult | null> {
+async function getSearchResults(searchId: string, isProbe: boolean, fswSession?: string): Promise<SearchResult | null> {
   try {
     const apiBase = await getApiBase()
     const url = new URL(`/api/results/${searchId}`, apiBase)
     appendProbeParam(url.searchParams, isProbe)
+    if (fswSession) url.searchParams.set('_fss', fswSession)
     const res = await fetch(url.toString(), { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
@@ -158,7 +159,7 @@ export async function generateMetadata({
   }
 }
 
-export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string; started?: string; probe?: string; cur?: string; q?: string }> }) {
+export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string; started?: string; probe?: string; cur?: string; q?: string; _fss?: string }> }) {
   const { searchId } = await params
   const sp = await searchParams
   const isProbe = isProbeModeValue(sp?.probe)
@@ -166,7 +167,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
   const trackingSearchId = getTrackingSearchId(searchId, isProbe)
   // Render immediately with the current snapshot and let SearchPageClient poll.
   // Blocking here traps users on loading.tsx while the server waits.
-  const result = await getSearchResults(searchId, isProbe)
+  const result = await getSearchResults(searchId, isProbe, sp?._fss)
 
   if (!result) {
     notFound()
@@ -240,6 +241,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         initialOffers={allOffers}
         searchedAt={searched_at || sp?.started}
         expiresAt={expires_at}
+        fswSession={sp?._fss}
       />
     </>
   )
