@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState, useRef, useEffect, KeyboardEvent, startTransition } from 'react'
+import { FormEvent, useState, useRef, useEffect, useCallback, KeyboardEvent, startTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter, useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -788,19 +788,129 @@ export default function HomeSearchForm({
     pendingQuery: string       // full original query
   } | null>(null)
 
-  // ── Trip-type clarification state ─────────────────────────────────────────────
-  const [tripClarify, setTripClarify] = useState<{ pendingQuery: string } | null>(null)
-  const [tripClarifyInput, setTripClarifyInput] = useState('')
+  // ── Conversational personalization state ─────────────────────────────────────
+  type QAnswer = { q: string; a: string }
+  interface ConvoState {
+    pendingQuery: string
+    step: number
+    answers: QAnswer[]
+    collapsing: boolean
+  }
+  const [convo, setConvo] = useState<ConvoState | null>(null)
+  const convoBottomRef = useRef<HTMLDivElement>(null)
+  const convoFreeRef = useRef<HTMLInputElement>(null)
+  const [convoFreeText, setConvoFreeText] = useState('')
+
+  type ConvoQuestion = { q: string; chips: string[]; freeHint?: string }
+
+  // Build a personalised 2-3 question set from the raw query text.
+  // Skips questions the user already answered in their query.
+  // Uses varied wording so it never feels scripted.
+  function buildConvoQuestions(raw: string): ConvoQuestion[] {
+    const t = raw.toLowerCase()
+    const qs: ConvoQuestion[] = []
+
+    // ── 1. Party size — skip if already mentioned ─────────────────────────
+    const hasPax = /\b(\d+\s*(adult|passenger|pax|person|people|of us|kids?|children)|solo|alone|just me|couple|family|group)\b/.test(t)
+    if (!hasPax) {
+      // Vary the wording based on destination vibes
+      const isBeach = /beach|ibiza|maldiv|bali|cancun|mykonos|koh|phuket|tenerife|lanzarote/.test(t)
+      const isBusiness = /business|conference|meeting|work trip/.test(t)
+      const isCity = /city|weekend|weekend break|break/.test(t)
+
+      let q = "Who's coming along?"
+      let chips = ['Solo', 'Two of us', 'Family', 'Group of friends']
+      if (isBeach) { q = "Who's joining the fun?"; chips = ['Just me', 'Partner', 'Squad', 'Family'] }
+      else if (isBusiness) { q = 'Travelling alone or with colleagues?'; chips = ['Solo', 'With a colleague', 'Small team', 'With family'] }
+      else if (isCity) { q = 'City break for how many?'; chips = ['Just me', 'Two of us', 'Small group', 'Family'] }
+      qs.push({ q, chips, freeHint: 'e.g. 2 adults 1 kid, family of 4…' })
+    }
+
+    // ── 2. Trip purpose — skip if already obvious from query ──────────────
+    const hasPurpose = /\b(holiday|vacation|honeymoon|wedding|ski|business|conference|stag|hen|birthday|anniversary|festival|weekend break)\b/.test(t)
+    if (!hasPurpose) {
+      const isLong = /\b(month|2 weeks|two weeks|3 weeks)\b/.test(t)
+      let q = "What kind of trip is this?"
+      let chips = ['Sun & relax', 'City exploring', 'Business', 'Special occasion']
+      if (isLong) { q = "Big trip — what's the vibe?"; chips = ['Adventure', 'Backpacking', 'Luxury', 'Remote work'] }
+      qs.push({ q, chips, freeHint: 'ski trip, honeymoon, stag do…' })
+    }
+
+    // ── 3. Priority — always ask unless query has hard constraints ─────────
+    const hasPriority = /\b(direct|non.?stop|cheapest|cheap|flexible|early|morning|evening|business class|first class)\b/.test(t)
+    if (!hasPriority) {
+      // Pick flavour based on earlier context
+      const budgetSignals = /budget|cheap|deal|low.?cost/.test(t)
+      const speedSignals = /quick|fast|short|weekend/.test(t)
+
+      let q = 'Anything that matters most?'
+      let chips = ['Lowest price', 'Direct flights', 'Good times', 'Flexible dates']
+      if (budgetSignals) { q = 'How tight is the budget?'; chips = ['Cheapest possible', 'Some comfort ok', 'Flexible on price', 'Business class'] }
+      else if (speedSignals) { q = "Short trip \u2014 what's the priority?"; chips = ['Direct flights only', 'Early departure', 'Cheapest option', 'Latest return'] }
+      qs.push({ q, chips, freeHint: 'e.g. morning flights, direct only…' })
+    }
+
+    // Always return at least 2 questions
+    if (qs.length === 0) {
+      qs.push({ q: "Quick one — who's travelling?", chips: ['Just me', 'Two of us', 'Family', 'Group'] })
+      qs.push({ q: 'And what matters most?', chips: ['Cheapest fare', 'No stops', 'Good timing', 'Flexible'] })
+    }
+
+    return qs
+  }
+
+  const CONVO_QUESTIONS = convo ? buildConvoQuestions(convo.pendingQuery) : []
+
+  const currentQ = convo ? CONVO_QUESTIONS[convo.step] : null
+
+  // Commit one answer and advance — or collapse and navigate if done
+  const commitConvoAnswer = useCallback((answer: string) => {
+    if (!convo) return
+    const newAnswers = [...convo.answers, { q: currentQ!.q, a: answer }]
+    const nextStep = convo.step + 1
+    if (nextStep >= CONVO_QUESTIONS.length) {
+      // All done — build context suffix and navigate
+      setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: true })
+      setTimeout(() => {
+        const contextParts = newAnswers.map(qa => qa.a).join(', ')
+        const finalQuery = `${convo.pendingQuery}, ${contextParts}`
+        setConvo(null)
+        setConvoFreeText('')
+        navigateSearch(finalQuery)
+      }, 420)
+    } else {
+      setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: false })
+      setConvoFreeText('')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convo, currentQ])
+
+  // Skip remaining questions and navigate
+  const skipConvo = useCallback(() => {
+    if (!convo) return
+    setConvo({ ...convo, collapsing: true })
+    setTimeout(() => {
+      const contextParts = convo.answers.map(qa => qa.a).join(', ')
+      const finalQuery = contextParts
+        ? `${convo.pendingQuery}, ${contextParts}`
+        : convo.pendingQuery
+      setConvo(null)
+      setConvoFreeText('')
+      navigateSearch(finalQuery)
+    }, 420)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convo])
+
+  // Scroll new question into view
+  useEffect(() => {
+    if (convo && !convo.collapsing && convoBottomRef.current) {
+      setTimeout(() => {
+        convoBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 50)
+    }
+  }, [convo?.step])
 
   const _MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-
-  // Commit trip-type clarify — append user's answer to query then navigate.
-  const commitTripClarify = (append: string) => {
-    const base = tripClarify?.pendingQuery ?? ''
-    setTripClarify(null)
-    setTripClarifyInput('')
-    navigateSearch(append ? `${base}, ${append}` : base)
-  }
 
   // Navigate to results with the given query string.
   const navigateSearch = (q: string) => {
@@ -865,12 +975,12 @@ export default function HomeSearchForm({
       }
     }
 
-    // No ambiguity — check if we need to ask about trip type.
+    // No ambiguity — launch personalization conversation
     setDateClarify(null)
     let _nlp: ReturnType<typeof parseNLQuery> | null = null
     try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
     if (!_nlp?.trip_purpose && !_nlp?.passenger_context) {
-      setTripClarify({ pendingQuery: trimmed })
+      setConvo({ pendingQuery: trimmed, step: 0, answers: [], collapsing: false })
       return
     }
     navigateSearch(trimmed)
@@ -999,7 +1109,7 @@ export default function HomeSearchForm({
         </div>
       )}
 
-      <form onSubmit={handleSearch} className="lp-sf-form">
+      <form onSubmit={handleSearch} className={`lp-sf-form${convo && !dateClarify ? ' lp-sf-form--convo-open' : ''}`}>
         <div className="lp-sf-frame-wrap" ref={frameRef}>
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
@@ -1040,7 +1150,74 @@ export default function HomeSearchForm({
             <PlaneIcon />
           </button>
         </div>
+
+        {/* ── Conversational personalization panel (absolute, overlays content below) */}
+        {convo && !dateClarify && (
+          <div className={`lp-convo${convo.collapsing ? ' lp-convo--collapsing' : ''}`}>
+            {convo.answers.map((qa, i) => (
+              <div key={i} className="lp-convo-row lp-convo-row--past">
+                <span className="lp-convo-q lp-convo-q--past">{qa.q}</span>
+                <span className="lp-convo-a">{qa.a}</span>
+              </div>
+            ))}
+            {currentQ && (
+              <div className="lp-convo-row lp-convo-row--active" ref={convoBottomRef}>
+                <span className="lp-convo-q">{currentQ.q}</span>
+                <div className="lp-convo-chips">
+                  {currentQ.chips.map(chip => (
+                    <button
+                      key={chip}
+                      type="button"
+                      className="lp-convo-chip"
+                      onClick={() => commitConvoAnswer(chip)}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+                {currentQ.freeHint && (
+                  <div className="lp-convo-free">
+                    <input
+                      ref={convoFreeRef}
+                      type="text"
+                      className="lp-convo-free-input"
+                      placeholder={currentQ.freeHint}
+                      value={convoFreeText}
+                      onChange={e => setConvoFreeText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && convoFreeText.trim()) {
+                          e.preventDefault()
+                          commitConvoAnswer(convoFreeText.trim())
+                        }
+                      }}
+                    />
+                    {convoFreeText.trim() && (
+                      <button
+                        type="button"
+                        className="lp-convo-free-go"
+                        onClick={() => commitConvoAnswer(convoFreeText.trim())}
+                      >
+                        ↵
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="lp-convo-footer">
+              <div className="lp-convo-dots">
+                {CONVO_QUESTIONS.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`lp-convo-dot${i < convo.step ? ' lp-convo-dot--done' : i === convo.step ? ' lp-convo-dot--active' : ''}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         </div>
+
         {mounted && dropdownItems.length > 0 && dropdownPos && createPortal(
           <div
             className="lp-sf-dropdown"
@@ -1121,87 +1298,7 @@ export default function HomeSearchForm({
         </div>
       )}
 
-      {/* ── Trip-type clarification card ─────────────────────────────────── */}
-      {tripClarify && !dateClarify && (
-        <div style={{ marginTop: '10px' }}>
-          <div style={{
-            background: '#fff', borderRadius: '22px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
-            padding: '18px 22px 16px',
-          }}>
-            <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-              {tc('prompt')}
-            </p>
-            {/* Question + text input inline */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>
-                {tc('tripTypeQ')}
-              </span>
-              <input
-                type="text"
-                autoFocus
-                value={tripClarifyInput}
-                onChange={e => setTripClarifyInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); commitTripClarify(tripClarifyInput.trim()) }
-                  else if (e.key === 'Escape') commitTripClarify('')
-                }}
-                placeholder="type your answer…"
-                style={{
-                  flex: '1 1 160px', border: '1.5px solid #e5e7eb', borderRadius: '20px',
-                  padding: '7px 15px', fontSize: '14px', outline: 'none',
-                  color: '#111827', background: '#f9fafb', minWidth: '0',
-                }}
-                onFocus={e => { e.currentTarget.style.borderColor = '#111827' }}
-                onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb' }}
-              />
-            </div>
-            {/* Pill options + Skip all in one row */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', alignItems: 'center' }}>
-              {([
-                { label: tc('opt_business'), append: 'business trip' },
-                { label: tc('opt_family'),   append: 'family holiday' },
-                { label: tc('opt_couple'),   append: 'trip for two' },
-                { label: tc('opt_solo'),     append: 'solo trip' },
-                { label: tc('opt_friends'),  append: 'trip with friends' },
-              ] as const).map(opt => (
-                <button
-                  key={opt.append}
-                  type="button"
-                  onClick={() => commitTripClarify(opt.append)}
-                  style={{
-                    padding: '7px 16px', borderRadius: '20px',
-                    border: '1.5px solid #e5e7eb', background: '#fff',
-                    color: '#111827', fontSize: '13px', fontWeight: 500,
-                    cursor: 'pointer', transition: 'all 0.15s', lineHeight: 1.4,
-                  }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget as HTMLButtonElement
-                    el.style.borderColor = '#111'; el.style.background = '#111'; el.style.color = '#fff'
-                  }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget as HTMLButtonElement
-                    el.style.borderColor = '#e5e7eb'; el.style.background = '#fff'; el.style.color = '#111827'
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => commitTripClarify('')}
-                style={{
-                  marginLeft: 'auto', padding: '7px 12px', borderRadius: '20px',
-                  border: 'none', background: 'none',
-                  color: '#9ca3af', fontSize: '13px', cursor: 'pointer',
-                }}
-              >
-                {tc('skip')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* convo is now rendered inside lp-sf-frame-wrap above */}
 
       {!compact && (
         <div className="lp-dest-row" aria-label="Popular destinations">
