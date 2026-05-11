@@ -219,6 +219,8 @@
     "opt_price_might_drop": "我觉得等一等价格会更低",
     "followup_not_looking": "谢谢！如果你真的要找机票，你使用 LetsFG 的可能性是 1–5 中的几？简单说说为什么？",
     "opt_other": "其他",
+    "followup_other": "您能告诉我们更多吗？",
+    "placeholder_other": "请告诉我们更多…",
     "placeholder_no_bnpl": "例如：1 – 不太可能，5 – 肯定会",
     "followup_concierge_fee": "你认为多少费用是合理的？",
     "opt_concierge_fee": "我不想支付 LetsFG 的服务费",

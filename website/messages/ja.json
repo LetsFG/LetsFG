@@ -219,6 +219,8 @@
     "opt_price_might_drop": "待てば価格が下がると思う",
     "followup_not_looking": "ありがとうございます！実際にフライトを探すとき、LetsFGを使う可能性は1〜5で？簡単に理由も教えてください。",
     "opt_other": "その他",
+    "followup_other": "もう少し教えていただけますか？",
+    "placeholder_other": "詳しく教えてください…",
     "placeholder_no_bnpl": "例：1 – ない、5 – 絶対に",
     "followup_concierge_fee": "どのくらいの手数料なら公平だと感じますか？",
     "opt_concierge_fee": "LetsFGの手数料を払いたくない",

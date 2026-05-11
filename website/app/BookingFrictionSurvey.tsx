@@ -38,7 +38,7 @@ const OPTION_KEYS = [
 
 type OptionKey = (typeof OPTION_KEYS)[number]
 
-// Keys that have a follow-up question (other = submit immediately)
+// Keys that have a follow-up question
 const KEYS_WITH_FOLLOWUP = new Set<OptionKey>([
   'dont_trust',
   'price_might_drop',
@@ -46,6 +46,7 @@ const KEYS_WITH_FOLLOWUP = new Set<OptionKey>([
   'better_elsewhere',
   'no_bnpl',
   'concierge_fee',
+  'other',
 ])
 
 interface Props {
@@ -220,7 +221,6 @@ export default function BookingFrictionSurvey({
                     setPendingKey(key)
                     setFollowupText('')
                   } else {
-                    // 'other' — submit immediately, no follow-up
                     handleSubmit(key)
                   }
                 }}

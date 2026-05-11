@@ -215,6 +215,8 @@
     "opt_price_might_drop": "Mislim da bi cijena mogla pasti ako pričekam",
     "followup_not_looking": "Hvala! Na skali 1–5, koliko je vjerojatno da bi koristio/la LetsFG kad stvarno budeš tražio/la let? Ukratko — zašto?",
     "opt_other": "Ostalo",
+    "followup_other": "Možete li nam reći nešto više?",
+    "placeholder_other": "Recite nam više…",
     "placeholder_no_bnpl": "npr. 1 – malo vjerojatno, 5 – sigurno",
     "followup_concierge_fee": "Kolika naknada bi ti se činila poštenom?",
     "opt_concierge_fee": "Ne želim platiti LetsFG naknadu",

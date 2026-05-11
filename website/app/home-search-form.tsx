@@ -800,6 +800,9 @@ export default function HomeSearchForm({
   const convoBottomRef = useRef<HTMLDivElement>(null)
   const convoFreeRef = useRef<HTMLInputElement>(null)
   const [convoFreeText, setConvoFreeText] = useState('')
+  // Pre-fired search: started in background as soon as convo begins, so the
+  // results page opens with the search already running.
+  const prefiredSearchRef = useRef<{ searchId: string; startedAt: number } | null>(null)
 
   type ConvoQuestion = { q: string; chips: string[]; freeHint?: string }
 
@@ -861,6 +864,61 @@ export default function HomeSearchForm({
 
   const CONVO_QUESTIONS = convo ? buildConvoQuestions(convo.pendingQuery) : []
 
+  // Translate convo chip answers into phrases parseNLQuery already understands.
+  // Bare chip labels like "Family" or "Sun & relax" don't match the parser's regexes,
+  // so we expand them into natural language that does.
+  const CONVO_ANSWER_PHRASES: Record<string, string> = {
+    // Party / who
+    'solo': 'travelling solo',
+    'just me': 'travelling solo',
+    'two of us': 'as a couple',
+    'partner': 'as a couple',
+    'family': 'travelling with family',
+    'group of friends': 'with friends',
+    'squad': 'with friends',
+    'small team': 'with colleagues',
+    'with a colleague': 'with a colleague',
+    'with family': 'travelling with family',
+    // Trip purpose
+    'sun & relax': 'beach holiday',
+    'city exploring': 'city break',
+    'business': 'business trip',
+    'special occasion': 'special occasion',
+    'adventure': 'adventure trip',
+    'backpacking': 'backpacking trip',
+    'luxury': 'luxury holiday',
+    'remote work': 'remote work trip',
+    'ski trip': 'ski trip',
+    'honeymoon': 'honeymoon',
+    // Priority / constraints
+    'direct flights': 'direct flights only',
+    'direct flights only': 'direct flights only',
+    'no stops': 'direct flights only',
+    'lowest price': 'cheapest option',
+    'cheapest possible': 'cheapest possible',
+    'cheapest option': 'cheapest option',
+    'cheapest fare': 'cheapest option',
+    'some comfort ok': 'comfortable flight',
+    'good times': 'good departure times',
+    'flexible dates': 'flexible dates',
+    'flexible on price': 'flexible on price',
+    'business class': 'business class',
+    'early departure': 'early morning departure',
+    'latest return': 'evening return',
+    'seat together': 'need seats together',
+    'seats together': 'need seats together',
+    'quick flight': 'shortest possible flight',
+    'comfortable': 'comfortable flight',
+    'morning flights': 'morning departure',
+    'small team': 'travelling with colleagues',
+    'with family': 'travelling with family',
+  }
+
+  function expandConvoAnswer(answer: string): string {
+    const key = answer.toLowerCase().trim()
+    return CONVO_ANSWER_PHRASES[key] ?? answer
+  }
+
   const currentQ = convo ? CONVO_QUESTIONS[convo.step] : null
 
   // Commit one answer and advance — or collapse and navigate if done
@@ -872,7 +930,7 @@ export default function HomeSearchForm({
       // All done — build context suffix and navigate
       setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: true })
       setTimeout(() => {
-        const contextParts = newAnswers.map(qa => qa.a).join(', ')
+        const contextParts = newAnswers.map(qa => expandConvoAnswer(qa.a)).join(', ')
         const finalQuery = `${convo.pendingQuery}, ${contextParts}`
         setConvo(null)
         setConvoFreeText('')
@@ -890,7 +948,7 @@ export default function HomeSearchForm({
     if (!convo) return
     setConvo({ ...convo, collapsing: true })
     setTimeout(() => {
-      const contextParts = convo.answers.map(qa => qa.a).join(', ')
+      const contextParts = convo.answers.map(qa => expandConvoAnswer(qa.a)).join(', ')
       const finalQuery = contextParts
         ? `${convo.pendingQuery}, ${contextParts}`
         : convo.pendingQuery
@@ -927,6 +985,14 @@ export default function HomeSearchForm({
     for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
       const val = sp.get(key)
       if (val) params.set(key, val)
+    }
+    // If a search was pre-fired during the convo and is still fresh (<3 min),
+    // navigate directly to the already-running search instead of starting a new one.
+    const pre = prefiredSearchRef.current
+    if (pre && Date.now() - pre.startedAt < 3 * 60 * 1000) {
+      prefiredSearchRef.current = null
+      router.push(`/results/${pre.searchId}?${params.toString()}`)
+      return
     }
     router.push(`/results?${params.toString()}`)
   }
@@ -981,6 +1047,20 @@ export default function HomeSearchForm({
     try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
     if (!_nlp?.trip_purpose && !_nlp?.passenger_context) {
       setConvo({ pendingQuery: trimmed, step: 0, answers: [], collapsing: false })
+      // Pre-fire the search immediately in the background — by the time the user
+      // finishes the convo questions the search will already be running.
+      prefiredSearchRef.current = null
+      void fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: trimmed, ...(prefCurrency ? { currency: prefCurrency } : {}) }),
+      }).then(r => r.ok ? r.json() : null)
+        .then((d: { search_id?: string } | null) => {
+          if (d?.search_id) {
+            prefiredSearchRef.current = { searchId: d.search_id, startedAt: Date.now() }
+          }
+        })
+        .catch(() => { /* silent — normal navigation is the fallback */ })
       return
     }
     navigateSearch(trimmed)

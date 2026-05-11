@@ -96,6 +96,7 @@ function normalizeOffer(raw: any, idx: number): any {
       departure_time: sDep,
       arrival_time: sArr,
       duration_minutes: sDur,
+      aircraft: s.aircraft || undefined,
     }
   })
 
@@ -122,6 +123,7 @@ function normalizeOffer(raw: any, idx: number): any {
       destination: (s.destination || '').toUpperCase(),
       departure_time: s.departure || s.departure_time || '',
       arrival_time: s.arrival || s.arrival_time || '',
+      aircraft: s.aircraft || undefined,
     }))
     inbound = {
       origin: (ibFirst.origin || '').toUpperCase(),
@@ -194,6 +196,18 @@ function buildExpiredResult(
   searchId: string,
   cachedResult?: ReturnType<typeof getCachedSearchResult> | null,
 ) {
+  // If we have cached offers, serve them as completed — the user should keep
+  // their results even after the FSW drops its in-memory state (~10 min).
+  // Only truly expire when we have nothing at all.
+  if (cachedResult && Array.isArray(cachedResult.offers) && cachedResult.offers.length > 0) {
+    return {
+      ...cachedResult,
+      search_id: searchId,
+      status: 'completed' as const,
+      // Extend expires_at 30 min from now so the UI timer doesn't immediately show expired
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    }
+  }
   return {
     search_id: searchId,
     status: 'expired' as const,
@@ -425,7 +439,9 @@ export async function GET(
           }
         : undefined,
       searched_at: new Date(now.getTime() - createdAgo).toISOString(),
-      expires_at: new Date(now.getTime() + (data.expires_in_seconds ?? 1200) * 1000).toISOString(),
+      // Use at least 30 min regardless of what FSW says — FSW drops state after ~10 min
+      // but the website serves from its own cache after that, so results stay valid much longer.
+      expires_at: new Date(now.getTime() + Math.max(data.expires_in_seconds ?? 1800, 1800) * 1000).toISOString(),
     }
 
     if (result.status === 'completed') {

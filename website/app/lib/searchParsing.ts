@@ -2472,6 +2472,7 @@ export interface ParsedQuery {
   require_seat_selection?: boolean   // seat selection required (inferred from kids / explicit)
   require_bassinet?: boolean         // "with baby/infant" → bassinet row needed
   prefer_direct?: boolean            // soft preference for direct (separate from stops=0 hard filter)
+  prefer_quick_flight?: boolean       // user wants shortest possible total flight time
 
   // ── Ancillary inclusions ─────────────────────────────────────────────────────
   require_checked_baggage?: boolean  // "with bags", "hold luggage included"
@@ -4892,6 +4893,9 @@ export function parseNLQuery(query: string): ParsedQuery {
   const cabin = extractCabin(q)
   if (cabin) result.cabin = cabin
   if (extractDirect(q)) result.stops = 0
+  if (/\b(?:quick(?:est)?|fast(?:est)?|short(?:est)?|minimum|lowest)\s*(?:possible\s*)?(?:flight\s+)?(?:time|duration|transit)?\s*(?:flight|route)?\b|\bflight\s+(?:time|duration)\s+(?:as\s+)?(?:short|quick|fast)\b|\bget\s+there\s+(?:as\s+)?(?:fast|quick|quick\s+as\s+possible)\b/i.test(q)) {
+    result.prefer_quick_flight = true
+  }
 
   // ── 7. Trip duration range ("for 14 days", "14-18 day trip", "back in 2 weeks") ──
   // Patterns: "for X days", "for X-Y days", "X-Y day trip", "X to Y days", "stay X-Y nights"
