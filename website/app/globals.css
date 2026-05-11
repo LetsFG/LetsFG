@@ -1742,7 +1742,7 @@ input {
   z-index: 1;
   width: min(1080px, 100%);
   margin: 42px auto 0;
-  padding-bottom: 36px;
+  padding-bottom: 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1837,6 +1837,12 @@ input {
     0 26px 52px rgba(56, 117, 148, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 1),
     inset 0 -10px 18px rgba(100, 151, 179, 0.08);
+}
+
+/* When convo open + focused: no bottom inset — panel is the continuation */
+.lp-sf-form--convo-open .lp-sf-frame:focus-within {
+  background: rgba(255, 255, 255, 1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
 .lp-sf-input {
@@ -2035,6 +2041,218 @@ input {
   font-size: 0.82em;
   font-weight: 400;
   color: rgba(14, 31, 43, 0.45);
+}
+
+/* ── Conversational personalization panel ───────────────────────────────── */
+
+/* When convo is open: flatten bottom radius, match panel colour exactly, no outer shadow
+   (panel carries it). Frame stays z-index: 21 so the button shadow paints on top of panel. */
+.lp-sf-form--convo-open .lp-sf-frame {
+  position: relative;
+  z-index: 21;
+  border-radius: 34px 34px 0 0;
+  border-bottom-color: transparent;
+  background: rgba(255, 255, 255, 1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.lp-sf-frame-wrap {
+  position: relative;
+}
+
+.lp-convo {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 1);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-top: none;
+  border-radius: 0 0 34px 34px;
+  box-shadow:
+    0 24px 48px rgba(56, 117, 148, 0.22),
+    0 8px 20px rgba(56, 117, 148, 0.12),
+    inset 0 -10px 18px rgba(100, 151, 179, 0.06);
+  padding: 14px 28px 20px;
+  /* Fade + slide — no clip-path so box-shadow renders unclipped */
+  animation: lp-convo-expand 0.28s cubic-bezier(0.34, 1.26, 0.64, 1) both;
+}
+
+.lp-convo--collapsing {
+  animation: lp-convo-collapse 0.22s ease-in both;
+  pointer-events: none;
+}
+
+@keyframes lp-convo-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lp-convo-collapse {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.lp-convo-row {
+  margin-bottom: 14px;
+}
+
+.lp-convo-row--past {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  opacity: 0.45;
+  font-size: 0.82rem;
+}
+
+.lp-convo-row--active {
+  animation: lp-convo-row-in 0.25s ease both;
+}
+
+@keyframes lp-convo-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.lp-convo-q {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #111827;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.lp-convo-q--past {
+  font-size: inherit;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.lp-convo-a {
+  font-size: inherit;
+  color: #111827;
+  font-weight: 600;
+}
+
+.lp-convo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.lp-convo-chip {
+  padding: 8px 18px;
+  border-radius: 24px;
+  border: 1.5px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.7);
+  color: #111827;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s, transform 0.1s;
+  line-height: 1.3;
+}
+
+.lp-convo-chip:hover {
+  border-color: #111827;
+  background: #111827;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.lp-convo-chip:active {
+  transform: translateY(0);
+}
+
+.lp-convo-free {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.lp-convo-free-input {
+  flex: 1;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 0.86rem;
+  color: #111827;
+  background: rgba(255, 255, 255, 0.5);
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+  min-width: 0;
+}
+
+.lp-convo-free-input:focus {
+  border-color: #111827;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.lp-convo-free-go {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #111827;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s, transform 0.1s;
+}
+
+.lp-convo-free-go:hover { background: #000; transform: scale(1.08); }
+
+.lp-convo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.lp-convo-dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.lp-convo-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.lp-convo-dot--done {
+  background: #d1d5db;
+}
+
+.lp-convo-dot--active {
+  background: #111827;
+  transform: scale(1.3);
 }
 
 /* Destination cards — photo cards with hover lift */
@@ -4483,6 +4701,92 @@ body:has(.res-page) {
 
 .rf-filter-row--on .rf-filter-price {
   color: rgba(232, 119, 34, 0.65);
+}
+
+/* ── Curated layout (no sidebar) ────────────────────────────────────────── */
+.rf-layout--curated {
+  display: block;
+  width: min(820px, calc(100vw - 48px));
+}
+
+.rf-layout--curated .rf-card-shell {
+  flex: unset;
+  width: 100%;
+}
+
+/* ── Hero pick header ────────────────────────────────────────────────────── */
+.rf-pick-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px 10px;
+  flex-wrap: wrap;
+}
+
+.rf-pick-kicker {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #e87722;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rf-pick-reason {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.62);
+}
+
+/* ── Hero card styling ───────────────────────────────────────────────────── */
+.rf-card--hero {
+  border-left: 3px solid #e87722;
+  border-radius: 10px;
+  background: #fffaf6;
+}
+
+/* ── Runner-up "why not" label ───────────────────────────────────────────── */
+.rf-runner-why {
+  padding: 6px 20px 2px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.5);
+}
+
+.rf-card--runner {
+  opacity: 0.92;
+}
+
+/* ── Section divider ─────────────────────────────────────────────────────── */
+.rf-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 4px;
+}
+
+.rf-section-divider::before,
+.rf-section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(20, 45, 60, 0.1);
+}
+
+.rf-section-label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: rgba(20, 45, 60, 0.38);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rf-section-divider--rest .rf-section-label {
+  color: rgba(20, 45, 60, 0.3);
 }
 
 .rf-card-shell {
