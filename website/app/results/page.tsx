@@ -481,6 +481,7 @@ async function SearchContent({
 
   let searchId = sid
   let cacheHit = false
+  let fswSession: string | undefined
 
   // Start a new search if no sid provided
   if (!searchId) {
@@ -575,7 +576,7 @@ async function SearchContent({
     const fswResult = await startFSWSearch(parsed, query, isProbe, currency, utmSource, utmMedium, utmCampaign)
     searchId = fswResult.searchId ?? undefined
     cacheHit = fswResult.cache === 'hit'
-    const fswSession = fswResult.fswSession
+    fswSession = fswResult.fswSession
     if (!searchId) {
       return (
         <main className="res-page">
