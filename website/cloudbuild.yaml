@@ -1,0 +1,92 @@
+substitutions:
+  _DEPLOY_TAG: cofounder-preview
+
+steps:
+  # ── 1. Restore .next/cache from GCS (enables Next.js incremental builds) ──
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'restore-cache'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gsutil cp gs://sms-caller-build-cache/website/next-cache.tar.gz /tmp/nc.tar.gz 2>/dev/null \
+          && mkdir -p .next \
+          && tar -xzf /tmp/nc.tar.gz -C .next \
+          && echo "Restored .next/cache" \
+          || echo "No cache — clean build"
+
+  # ── 2. Install dependencies ──
+  - name: 'node:20-alpine'
+    id: 'npm-install'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - 'apk add --no-cache libc6-compat && npm ci'
+
+  # ── 3. Build Next.js (fast when .next/cache is present) ──
+  - name: 'node:20-alpine'
+    id: 'next-build'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+    env:
+      - 'NEXT_TELEMETRY_DISABLED=1'
+
+  # ── 4. Save .next/cache back to GCS ──
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'save-cache'
+    waitFor: ['next-build']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        (gsutil ls gs://sms-caller-build-cache 2>/dev/null || gsutil mb -l us-central1 gs://sms-caller-build-cache) \
+          && tar -czf /tmp/nc.tar.gz -C .next cache \
+          && gsutil cp /tmp/nc.tar.gz gs://sms-caller-build-cache/website/next-cache.tar.gz \
+          && echo "Saved .next/cache" \
+          || echo "Cache save failed (non-fatal)"
+
+  # ── 5. Package pre-built artifacts into slim Docker image ──
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'docker-build'
+    waitFor: ['next-build']
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.cloudrun'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:latest'
+      - '.'
+
+  # ── 5b. Push image before deploy ──
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'docker-push'
+    waitFor: ['docker-build']
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
+
+  # ── 6. Deploy to Cloud Run ──
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy'
+    waitFor: ['docker-push', 'save-cache']
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'letsfg-website-preview'
+      - '--image=us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
+      - '--region=us-central1'
+      - '--project=sms-caller'
+      - '--no-traffic'
+      - '--tag=$_DEPLOY_TAG'
+      - '--quiet'
+
+images:
+  - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
