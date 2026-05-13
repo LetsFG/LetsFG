@@ -796,11 +796,14 @@ export default function ResultsPanel({
     phase: 'none' | 'early' | 'mid' | 'final'
     heroId: string | null
     lastSentIds: string | null
-    midFired: boolean
+    callCount: number
+    gen20Fired: boolean
+    gen40Fired: boolean
+    gen70Fired: boolean
     finalFired: boolean
     finalSentIds: string | null
     finalRefired: boolean
-  }>({ phase: 'none', heroId: null, lastSentIds: null, midFired: false, finalFired: false, finalSentIds: null, finalRefired: false })
+  }>({ phase: 'none', heroId: null, lastSentIds: null, callCount: 0, gen20Fired: false, gen40Fired: false, gen70Fired: false, finalFired: false, finalSentIds: null, finalRefired: false })
 
   // ── Sidebar stats (always based on all offers) ────────────────────────────
   const stopsStats = useMemo(() => {
@@ -1102,6 +1105,7 @@ export default function ResultsPanel({
     geminiStateRef.current.heroId = heroId
     geminiStateRef.current.phase = phase
     geminiStateRef.current.lastSentIds = globalRankTopThree.map(r => r.offer.id).join(',')
+    geminiStateRef.current.callCount++
 
     void fetch('/api/rank', {
       method: 'POST',
@@ -1165,6 +1169,15 @@ export default function ResultsPanel({
       .catch(() => setGeminiJustification(null))
   }, [globalRankTopThree, rawQuery, locale, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, fallbackNotes])
 
+  // ── 5-generation Gemini justification system ─────────────────────────────
+  // Max 5 Gemini calls per search session:
+  //   Gen 1 (early)  — always fires at start once ≥6 connectors have checked in
+  //   Gen 2 (mid)    — fires at 20% progress ONLY if a better hero was found
+  //   Gen 3 (mid)    — fires at 40% progress ONLY if a better hero was found
+  //   Gen 4 (mid)    — fires at 70% progress ONLY if a better hero was found
+  //   Gen 5 (final)  — always fires when search completes
+  // Middle gens (2-4) are conditional — if the ranking is stable they are skipped.
+
   // Gen 1 — fires once the first wave of fast API connectors have all reported back.
   // Waiting for progress.checked >= 6 ensures we have results from multiple independent
   // sources (Ryanair, Wizz, EasyJet, Kiwi, Skyscanner, Norwegian etc.) before ranking.
@@ -1183,28 +1196,59 @@ export default function ResultsPanel({
     callGemini('early')
   }, [progress, globalRankTopThree, callGemini, geminiJustification, isSearching, allOffers.length])
 
-  // Gen 2 (mid) — fires at ≥90% progress, only if hero changed
+  // Gen 2 — fires at 20% progress if a better offer displaced the current hero
   useEffect(() => {
-    if (!isSearching) return  // search done, leave it to Gen 3
-    if (geminiStateRef.current.midFired) return
+    if (!isSearching) return  // search done, let Gen 5 handle it
     if (geminiStateRef.current.phase === 'none') return  // Gen 1 not done yet
+    if (geminiStateRef.current.gen20Fired) return
+    if (geminiStateRef.current.callCount >= 4) return  // reserve last slot for Gen 5
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
-    if (progressPct < 0.90) return
+    if (progressPct < 0.20) return
     const currentHeroId = globalRankTopThree[0].offer.id
-    if (currentHeroId === geminiStateRef.current.heroId) return  // hero unchanged, skip
-    geminiStateRef.current.midFired = true
+    if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
+    geminiStateRef.current.gen20Fired = true
     callGemini('mid')
   }, [isSearching, progress, globalRankTopThree, callGemini])
 
-  // Gen 3 (final) — fires when search completes
+  // Gen 3 — fires at 40% progress if a better offer displaced the current hero
+  useEffect(() => {
+    if (!isSearching) return
+    if (geminiStateRef.current.phase === 'none') return
+    if (geminiStateRef.current.gen40Fired) return
+    if (geminiStateRef.current.callCount >= 4) return  // reserve last slot for Gen 5
+    if (globalRankTopThree.length === 0) return
+    const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
+    if (progressPct < 0.40) return
+    const currentHeroId = globalRankTopThree[0].offer.id
+    if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
+    geminiStateRef.current.gen40Fired = true
+    callGemini('mid')
+  }, [isSearching, progress, globalRankTopThree, callGemini])
+
+  // Gen 4 — fires at 70% progress if a better offer displaced the current hero
+  useEffect(() => {
+    if (!isSearching) return
+    if (geminiStateRef.current.phase === 'none') return
+    if (geminiStateRef.current.gen70Fired) return
+    if (geminiStateRef.current.callCount >= 4) return  // reserve last slot for Gen 5
+    if (globalRankTopThree.length === 0) return
+    const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
+    if (progressPct < 0.70) return
+    const currentHeroId = globalRankTopThree[0].offer.id
+    if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
+    geminiStateRef.current.gen70Fired = true
+    callGemini('mid')
+  }, [isSearching, progress, globalRankTopThree, callGemini])
+
+  // Gen 5 (final) — always fires when search completes, regardless of hero change
   useEffect(() => {
     if (isSearching) return
     if (geminiStateRef.current.phase === 'none') return  // Gen 1 never ran (no offers yet)
     if (globalRankTopThree.length === 0) return
     const sentIds = globalRankTopThree.map(r => r.offer.id).join(',')
     if (geminiStateRef.current.finalFired) {
-      // Already had one final call — re-fire once if top-3 changed (race condition guard)
+      // Race condition guard: one extra re-fire if top-3 changed slightly after final
       if (geminiStateRef.current.finalRefired) return
       if (geminiStateRef.current.finalSentIds === sentIds) return
       geminiStateRef.current.finalRefired = true
@@ -1214,18 +1258,6 @@ export default function ResultsPanel({
     }
     geminiStateRef.current.finalFired = true
     geminiStateRef.current.finalSentIds = sentIds
-    const currentHeroId = globalRankTopThree[0].offer.id
-    if (currentHeroId === geminiStateRef.current.heroId) {
-      // Hero didn't change — but re-call if the runner offers changed or tone needs upgrading.
-      // Runners can shift between Gen 1/2 (mid-search) and Gen 3 (final) even when the hero is stable.
-      const lastSent = geminiStateRef.current.lastSentIds
-      if (geminiStateRef.current.phase === 'early' || (lastSent !== null && lastSent !== sentIds)) {
-        callGemini('final')
-      }
-      // if phase was 'final' with same top-3, already has definitive tone, do nothing
-      return
-    }
-    // Hero changed — full new generation
     callGemini('final')
   }, [isSearching, globalRankTopThree, callGemini])
 
