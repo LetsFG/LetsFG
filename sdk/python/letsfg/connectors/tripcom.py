@@ -449,6 +449,32 @@ def _parse_ctrip(
                 f"tc_{itin_id}_{total_cny}".encode()
             ).hexdigest()[:10]
 
+            # Build Trip.com deep link — showfarefirst format
+            dep_airport = flight_segments[0].origin if flight_segments else req.origin
+            _tc_cabin_url = {"M": "y", "W": "s", "C": "c", "F": "f"}
+            cabin_url = _tc_cabin_url.get(req.cabin_class or "M", "y")
+            trip_type_url = "rt" if req.return_from else "ow"
+            nonstop = "on" if getattr(req, "max_stops", None) == 0 else "off"
+            _booking_url = (
+                f"https://www.trip.com/flights/showfarefirst"
+                f"?dcity={req.origin.lower()}"
+                f"&acity={req.destination.lower()}"
+                f"&ddate={req.date_from.isoformat()}"
+            )
+            if req.return_from:
+                _booking_url += f"&rdate={req.return_from.isoformat()}"
+            _booking_url += (
+                f"&dairport={dep_airport.lower()}"
+                f"&triptype={trip_type_url}"
+                f"&class={cabin_url}"
+                f"&lowpricesource=searchform"
+                f"&quantity={req.adults or 1}"
+                f"&searchboxarg=t"
+                f"&nonstoponly={nonstop}"
+                f"&locale=en-XX"
+                f"&curr=CNY"
+            )
+
             _tc_offer = FlightOffer(
                 id=f"tc_{h}",
                 price=price,
@@ -461,11 +487,7 @@ def _parse_ctrip(
                 source="tripcom_ota",
                 source_tier="free",
                 is_locked=False,
-                booking_url=(
-                    f"https://www.trip.com/flights/"
-                    f"{req.origin.lower()}-to-{req.destination.lower()}/"
-                    f"tickets-{req.origin.lower()}-{req.destination.lower()}"
-                ),
+                booking_url=_booking_url,
             )
             if free_checked == 0 and free_cabin == 0:
                 _tc_offer.conditions["carry_on"] = "No free baggage included"
