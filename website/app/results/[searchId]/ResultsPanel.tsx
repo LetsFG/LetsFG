@@ -778,10 +778,10 @@ export default function ResultsPanel({
         return { title: initialGemini.title, hero: initialGemini.hero, runners: initialGemini.runners }
       }
     }
-    // 2. localStorage fallback — locale-keyed so each language gets its own cache.
+    // 2. localStorage fallback — locale+currency-keyed so each language/currency gets its own cache.
     if (typeof window === 'undefined' || !searchId) return null
     try {
-      const raw = localStorage.getItem(`gemini_${searchId}_${locale}`)
+      const raw = localStorage.getItem(`gemini_${searchId}_${locale}_${currency}`)
       if (!raw) return null
       const d = JSON.parse(raw) as { title?: string; hero?: string; runners?: string[]; ts?: number }
       const age = Date.now() - (d.ts ?? 0)
@@ -1169,6 +1169,7 @@ export default function ResultsPanel({
           ? { fallbackNotes }
           : {}),
         locale,
+        displayCurrency: currency,
       }),
     })
       .then(res => (res.ok ? res.json() : null))
@@ -1178,14 +1179,14 @@ export default function ResultsPanel({
           setGeminiJustification(result)
           // Persist locale-keyed so each language version is cached independently.
           if (searchId && typeof window !== 'undefined') {
-            try { localStorage.setItem(`gemini_${searchId}_${locale}`, JSON.stringify({ ...result, ts: Date.now() })) } catch { /* ignore */ }
+            try { localStorage.setItem(`gemini_${searchId}_${locale}_${currency}`, JSON.stringify({ ...result, ts: Date.now() })) } catch { /* ignore */ }
           }
         } else {
           setGeminiJustification(null)
         }
       })
       .catch(() => setGeminiJustification(null))
-  }, [globalRankTopThree, rawQuery, locale, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, fallbackNotes])
+  }, [globalRankTopThree, rawQuery, locale, currency, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, fallbackNotes])
 
   // ── 5-generation Gemini justification system ─────────────────────────────
   // Max 5 Gemini calls per search session:
@@ -1278,6 +1279,18 @@ export default function ResultsPanel({
     geminiStateRef.current.finalSentIds = sentIds
     callGemini('final')
   }, [isSearching, globalRankTopThree, callGemini])
+
+  // Currency change — re-fire Gemini so the justification quotes prices in the
+  // new display currency (matches what the cards now show). Doesn't count
+  // against the 5-gen cap and doesn't track phase/hero state, just refreshes copy.
+  const lastCurrencyForGeminiRef = useRef<string>(currency)
+  useEffect(() => {
+    if (lastCurrencyForGeminiRef.current === currency) return
+    lastCurrencyForGeminiRef.current = currency
+    if (geminiStateRef.current.phase === 'none') return  // hasn't run yet — Gen 1 will pick up the new currency naturally
+    if (globalRankTopThree.length === 0) return
+    callGemini(geminiStateRef.current.phase === 'final' ? 'final' : 'mid')
+  }, [currency, globalRankTopThree, callGemini])
 
   useEffect(() => {
     setPriceRange([_priceMin, _priceMax])
