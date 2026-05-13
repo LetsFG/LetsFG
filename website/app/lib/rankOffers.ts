@@ -217,6 +217,21 @@ function depTimeMismatchMultiplier(depMins: number, depTimePref: string | undefi
   return 0.55                  // clearly wrong time window (e.g. 7:35am when user asked for evening)
 }
 
+/** Same multiplier logic as depTimeMismatchMultiplier but applied to the return
+ *  departure time vs retTimePref. Penalty is softer than outbound because return
+ *  availability is more constrained — we don't want to bury an otherwise ideal
+ *  flight just because the Sunday return is at 10am instead of evening. */
+function retDepTimeMismatchMultiplier(offer: RankOffer, retTimePref: string | undefined): number {
+  if (!retTimePref) return 1.0
+  const retDep = offer.inbound?.departure_time
+  if (!retDep) return 1.0  // one-way or no return info — can't penalize
+  const retDepMins = isoToMins(retDep)
+  const s = scoreDepTime(retDepMins, retTimePref)
+  if (s >= 0.55) return 1.0   // ok or good match — no penalty
+  if (s >= 0.30) return 0.88  // slightly off — gentle nudge
+  return 0.70                  // clearly wrong time window (softer than outbound 0.55)
+}
+
 /** Remove near-duplicate offers: when multiple connectors return the same physical
  *  flight (e.g. Ryanair FR1234 from both the direct connector and Kiwi/Skyscanner),
  *  keep only the cheapest. Two offers are considered identical if they share the
@@ -646,6 +661,7 @@ export function rankOffers<T extends RankOffer>(
     const score = rawScore * premiumPenalty(ep, cheapestPrice)
       * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
       * depTimeMismatchMultiplier(depMins, ctx.depTimePref)
+      * retDepTimeMismatchMultiplier(offer, ctx.retTimePref)
 
     return { offer, score, rank: 0, breakdown: bd, heroFacts: [], tradeoffs: [] }
   })
