@@ -4754,6 +4754,30 @@ export function parseNLQuery(query: string): ParsedQuery {
   const TRIP_TYPE_ORIGIN_RE = /^(?:(?:my\s+|the\s+|a\s+)?(?:family|business|solo|group|work|corporate|ski(?:ing)?|beach|sun|city|honeymoon|romantic|anniversary|graduation|school|stag|hen|bachelorette|hen\s+do|girls?(?:'s?)?\s+trip|guys?(?:'s?)?\s+trip|holiday|summer|winter|spring|autumn|christmas|easter|new\s+year(?:'s)?)\s+)?(?:trip|flight|flights?|holiday|vacation|getaway|break|journey|travel|routes?|booking|tickets?)$/i
   if (originStr && TRIP_TYPE_ORIGIN_RE.test(originStr)) originStr = ''
 
+  // Strip trailing punctuation that the route-regex terminator leaves behind
+  // (e.g. destStr "warsaw paris," after "next month" was trimmed off).
+  if (originStr) originStr = originStr.replace(/[\s,;:.\-—–]+$/u, '').trim()
+  if (destStr) destStr = destStr.replace(/[\s,;:.\-—–]+$/u, '').trim()
+
+  // Duplicate-origin typo guard: when the user accidentally repeats the origin
+  // inside the destination ("from warsaw to warsaw paris"), the lazy route
+  // regex captures origin="warsaw", dest="warsaw paris". If destStr starts with
+  // originStr as a whole word AND the remainder resolves to a real city, drop
+  // the duplicated prefix so we end up with origin=WAW, destination=PAR
+  // instead of failing destination resolution entirely.
+  if (originStr && destStr) {
+    const dupRe = new RegExp(
+      '^' + originStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[\\s,;:.-]*',
+      'i',
+    )
+    if (dupRe.test(destStr)) {
+      const remainder = destStr.replace(dupRe, '').trim()
+      if (remainder && resolveLocation(remainder)) {
+        destStr = remainder
+      }
+    }
+  }
+
   // Resolve cities. On failure, attach top fuzzy candidates so the UI can show
   // "did you mean?" chips. findCityCandidates is only called on the cold path —
   // resolveLocation already handles single-typo fuzzy matching internally.
