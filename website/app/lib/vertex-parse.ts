@@ -1,6 +1,5 @@
-// Server-only: resolve city/location names from NL flight queries via Vertex AI Gemini.
-// Only handles location normalization — all other fields (dates, passengers, etc.)
-// are handled by the regex parser in searchParsing.ts.
+// Server-only: resolve city/location names AND extract travel intent from NL flight queries via Vertex AI Gemini.
+// Extracts cities + passengers, cabin class, direct_only, sort_by, time constraints, bags, trip purpose.
 // Returns null on any failure.
 
 export interface VertexCityResult {
@@ -76,36 +75,80 @@ async function getAccessToken(): Promise<string | null> {
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a flight location resolver. Your ONLY job is to identify the origin city, destination city, and optional stopover city from a flight search query — in any language.
-Return ONLY valid JSON with exactly these three fields (no markdown, no explanation):
-{"origin_city": "...", "destination_city": "...", "via_city": ...}
+const SYSTEM_PROMPT = `You are a flight search intent extractor. Extract cities AND travel intent from a flight search query in any language.
+Return ONLY valid JSON (no markdown, no explanation) with exactly these fields:
+{
+  "origin_city": string|null,
+  "destination_city": string|null,
+  "via_city": string|null,
+  "origin_lat": number|null,
+  "origin_lon": number|null,
+  "destination_lat": number|null,
+  "destination_lon": number|null,
+  "passengers": number|null,
+  "cabin_class": "economy"|"premium_economy"|"business"|"first"|null,
+  "direct_only": boolean|null,
+  "sort_by": "price"|"duration"|null,
+  "depart_after": string|null,
+  "depart_before": string|null,
+  "bags_included": boolean|null,
+  "trip_purpose": "city_break"|"beach"|"ski"|"business"|"honeymoon"|"family_holiday"|"concert_festival"|"sports_event"|null
+}
 
-Rules:
-- origin_city: English city name. Include state/country if ambiguous (e.g. "Portland, Oregon"). null if not found.
-- destination_city: English city name. "ANYWHERE" for open-destination queries ("to anywhere", "wherever is cheapest"). null if not found.
+CITY RULES:
+- origin_city / destination_city: English city name. Include state/country if ambiguous (e.g. "Portland, Oregon"). null if not found.
+- destination_city: "ANYWHERE" for open-destination queries ("to anywhere", "wherever is cheapest").
 - via_city: preferred stopover city if explicitly mentioned ("via Dubai", "through Hong Kong"). null otherwise.
-- Normalize informal names to the nearest airport city: "Schiphol"->"Amsterdam", "Big Apple"->"New York, New York", "Red Sea"->"Hurghada", "Scottish Highlands"->"Inverness", "French Riviera"->"Nice", "Riviera Maya"->"Cancun", "the Alps"->"Geneva", "Maldives"->"Male".
-- Translate non-English city names to English AND undo any grammatical case/declension before translating: "München"->"Munich", "Moskva"->"Moscow", "Tokjo"/"Tokio"->"Tokyo", "Soulu"/"Seulu"/"Seul"->"Seoul", "Warszawy"/"Warszawie"->"Warsaw", "Barcelony"/"Barcelonie"->"Barcelona", "Guatemali"->"Guatemala City", "Guadalahary"/"Gwadalahary"->"Guadalajara", "Lizbony"->"Lisbon", "Paryża"/"Paryżu"->"Paris", "Londynu"/"Londynie"->"London", "Madrytu"/"Madrycie"->"Madrid", "Rzymu"/"Rzymie"->"Rome", "Berlina"/"Berlinie"->"Berlin", "Stambułu"/"Stambule"->"Istanbul", "Kairu"/"Kairze"->"Cairo", "Pekinu"/"Pekinie"->"Beijing", "Szanghaju"->"Shanghai", "Bangkoku"->"Bangkok", "Nowego Jorku"/"Nowym Jorku"->"New York". Apply the same un-declension to ANY Slavic, Romance, Greek or Arabic genitive/locative form: strip the case ending and translate the bare name.
-- IGNORE everything else: dates, passengers, cabin class, stops, price. Only extract cities.
+- origin_lat/lon, destination_lat/lon: approximate centre coordinates for the named city. null if unsure.
+- Normalize informal names: "Schiphol"->"Amsterdam", "Big Apple"->"New York, New York", "Red Sea"->"Hurghada", "Scottish Highlands"->"Inverness", "French Riviera"->"Nice", "Riviera Maya"->"Cancun", "the Alps"->"Geneva", "Maldives"->"Male", "Canaries"->"Las Palmas de Gran Canaria".
+- Translate non-English city names to English AND undo grammatical case/declension: "München"->"Munich", "Moskva"->"Moscow", "Tokjo"->"Tokyo", "Soulu"/"Seul"->"Seoul", "Warszawy"/"Warszawie"->"Warsaw", "Barcelony"->"Barcelona", "Guatemali"->"Guatemala City", "Lizbony"->"Lisbon", "Paryża"/"Paryżu"->"Paris", "Londynu"->"London", "Madrytu"->"Madrid", "Nowego Jorku"->"New York". Apply un-declension to any Slavic/Romance/Greek/Arabic genitive or locative form.
+
+PASSENGER RULES — count ALL travellers mentioned, including the speaker:
+- "me and my girlfriend/boyfriend/partner/wife/husband" = 2
+- "me and my friend/buddy/mate" = 2
+- "as a couple" / "just the two of us" / "we two" = 2
+- "me and 2 friends" / "3 of us" = 3
+- "family of 4" / "4 people" / "4 adults" = 4
+- "solo" / "just me" / "alone" = 1
+- Number words: "two"->"2", "three"->"3", "four"->"4", "five"->"5"
+- null if no mention of travellers
+
+INTENT RULES:
+- cabin_class: "economy" for economy/coach, "premium_economy" for premium economy, "business" for business/business class, "first" for first class. null if not mentioned.
+- direct_only: true only if user says "direct", "non-stop", "no stops", "no layovers". null otherwise.
+- sort_by: "price" if user wants cheapest/lowest price/budget; "duration" if user wants fastest/shortest flight. null if not clear.
+- depart_after: earliest acceptable departure as "HH:MM" 24 h. "morning" -> "06:00", "afternoon" -> "12:00", "evening" -> "18:00". null if not stated.
+- depart_before: latest acceptable departure as "HH:MM" 24 h. "before noon" -> "12:00", "morning flight" -> "10:00". null if not stated.
+- bags_included: true if user mentions "with bags/luggage/baggage included". null otherwise.
+- trip_purpose: infer from context — "beach holiday/beach break/sun holiday/coast" -> "beach"; "city break/city trip/sightseeing" -> "city_break"; "ski/snowboard" -> "ski"; "business/conference/meeting" -> "business"; "honeymoon/anniversary" -> "honeymoon"; "family holiday/kids" -> "family_holiday"; "concert/festival/event" -> "concert_festival"; "match/game/race" -> "sports_event". null if unclear.
+
 Few-shot examples:
-Input: "gdansk to riga august 17 for 4 days round trip direct only trip with friends"
-Output: {"origin_city":"Gdansk","destination_city":"Riga","via_city":null}
-Input: "jeddah to red sea may 25 return may 29 direct"
-Output: {"origin_city":"Jeddah","destination_city":"Hurghada","via_city":null}
-Input: "fort myers florida to crosse wisconsin june 12 family of 4"
-Output: {"origin_city":"Fort Myers, Florida","destination_city":"La Crosse, Wisconsin","via_city":null}
-Input: "london to anywhere cheapest week in august under 150 euros"
-Output: {"origin_city":"London","destination_city":"ANYWHERE","via_city":null}
-Input: "Tokyo to London next month business class"
-Output: {"origin_city":"Tokyo","destination_city":"London","via_city":null}
+Input: "London to Guatemala next week, 20th May, me and my girlfriend, round trip for 5 days, beach holiday, short flight and cheapest price"
+Output: {"origin_city":"London","destination_city":"Guatemala City","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":14.6,"destination_lon":-90.5,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":"beach"}
+
+Input: "Warsaw to Barcelona, just the two of us, honeymoon, departure before 10am"
+Output: {"origin_city":"Warsaw","destination_city":"Barcelona","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":"10:00","bags_included":null,"trip_purpose":"honeymoon"}
+
+Input: "London Copenhagen, 3 friends, departure after 10 am"
+Output: {"origin_city":"London","destination_city":"Copenhagen","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":55.7,"destination_lon":12.6,"passengers":3,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":"10:00","depart_before":null,"bags_included":null,"trip_purpose":null}
+
 Input: "BCN to NYC via LHR next friday business class"
-Output: {"origin_city":"Barcelona","destination_city":"New York, New York","via_city":"London"}
-Input: "Warszawa do Soulu 13 czerwca solo one way"
-Output: {"origin_city":"Warsaw","destination_city":"Seoul","via_city":null}
+Output: {"origin_city":"Barcelona","destination_city":"New York, New York","via_city":"London","origin_lat":41.4,"origin_lon":2.2,"destination_lat":40.7,"destination_lon":-74.0,"passengers":null,"cabin_class":"business","direct_only":null,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":null}
+
+Input: "Brasilia to Pretoria as a couple, beach holiday, direct flights only"
+Output: {"origin_city":"Brasilia","destination_city":"Pretoria","via_city":null,"origin_lat":-15.8,"origin_lon":-47.9,"destination_lat":-25.7,"destination_lon":28.2,"passengers":2,"cabin_class":null,"direct_only":true,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":"beach"}
+
+Input: "gdansk to riga august 17 for 4 days round trip direct only trip with friends"
+Output: {"origin_city":"Gdansk","destination_city":"Riga","via_city":null,"origin_lat":54.4,"origin_lon":18.6,"destination_lat":56.9,"destination_lon":24.1,"passengers":null,"cabin_class":null,"direct_only":true,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":null}
+
+Input: "fort myers florida to crosse wisconsin june 12 family of 4"
+Output: {"origin_city":"Fort Myers, Florida","destination_city":"La Crosse, Wisconsin","via_city":null,"origin_lat":26.6,"origin_lon":-81.9,"destination_lat":43.8,"destination_lon":-91.2,"passengers":4,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":"family_holiday"}
+
 Input: "z Krakowa do Guatemali w czerwcu"
-Output: {"origin_city":"Krakow","destination_city":"Guatemala City","via_city":null}
-Input: "do Barcelony z Warszawy 18 lipca"
-Output: {"origin_city":"Warsaw","destination_city":"Barcelona","via_city":null}`
+Output: {"origin_city":"Krakow","destination_city":"Guatemala City","via_city":null,"origin_lat":50.1,"origin_lon":19.9,"destination_lat":14.6,"destination_lon":-90.5,"passengers":null,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":null}
+
+Input: "Warsaw Paris next month, as a couple, round trip, city break, cheapest option, good departure times"
+Output: {"origin_city":"Warsaw","destination_city":"Paris","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":48.9,"destination_lon":2.3,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":"08:00","depart_before":"20:00","bags_included":null,"trip_purpose":"city_break"}`
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
@@ -137,7 +180,7 @@ export async function vertexParse(
         contents: [{ role: 'user', parts: [{ text: query }] }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 450,
+          maxOutputTokens: 600,
           responseMimeType: 'application/json',
         },
       }),
