@@ -4291,23 +4291,24 @@ body:has(.res-page) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 8px 24px;
-  background: rgba(20, 45, 60, 0.03);
+  gap: 6px;
+  padding: 10px 24px;
+  background: rgba(232, 106, 31, 0.06);
   border: none;
-  border-top: 1px solid rgba(20, 45, 60, 0.07);
+  border-top: 1px solid rgba(232, 106, 31, 0.15);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.73rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  color: rgba(20, 45, 60, 0.46);
+  color: #d4601a;
   transition: color 0.12s, background 0.12s;
   width: 100%;
+  letter-spacing: 0.01em;
 }
 
 .rf-details-btn:hover {
-  color: #142d3e;
-  background: rgba(20, 45, 60, 0.07);
+  color: #b84f12;
+  background: rgba(232, 106, 31, 0.12);
 }
 
 /* Expanded details panel */
@@ -6872,8 +6873,8 @@ body:has(.res-page) {
   }
 
   .rf-details-btn {
-    padding: 9px 14px;
-    font-size: 0.78rem;
+    padding: 10px 14px;
+    font-size: 0.82rem;
   }
 
   /* Meta bar: remove padding-left offset */
