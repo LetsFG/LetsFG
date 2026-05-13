@@ -2507,6 +2507,11 @@ export interface ParsedQuery {
   depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   arrive_time_pref?: 'morning' | 'afternoon' | 'evening'
   return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  /** Hard lower bound on departure time, in minutes from midnight (e.g. 600 = 10:00 am).
+   *  Flights departing before this time are heavily penalised in ranking. */
+  depart_after_mins?: number
+  /** Hard upper bound on departure time, in minutes from midnight (e.g. 540 = 9:00 am). */
+  depart_before_mins?: number
 
   // ── Airline preferences ──────────────────────────────────────────────────────
   preferred_airline?: string         // "on Ryanair", "with British Airways" (lowercase normalised)
@@ -2976,7 +2981,7 @@ function extractPassengers(text: string): PassengerExtraction {
     const n = parseInt(forNM[1])
     if (n >= 1 && n <= 20) { result.group_size = n; if (!result.adults) result.adults = n }
   }
-  const nPplM = t.match(/\b(\d+)\s+(?:people|persons?|pax|passengers?|travell?ers?|guests?|seats?)\b/) ??
+  const nPplM = t.match(/\b(\d+)\s+(?:people|persons?|pax|passengers?|travell?ers?|guests?|seats?|friends?|mates?|buddies|pals?|lads?|girls?|guys?)\b/) ??
                 t.match(/\b(\d+)\s+(?:personen?|leute|reisende?|fahrgäste?)\b/) ??
                 t.match(/\b(\d+)\s+(?:personnes?|voyageurs?|passagers?)\b/) ??
                 t.match(/\b(\d+)\s+(?:persone?|viaggiatori?|passeggeri?)\b/) ??
@@ -3273,6 +3278,8 @@ function extractAncillaries(text: string): AncillaryExtraction {
 interface TimePrefs {
   depart_time_pref?: ParsedQuery['depart_time_pref']
   arrive_time_pref?: ParsedQuery['arrive_time_pref']
+  depart_after_mins?: number
+  depart_before_mins?: number
 }
 
 function extractTimePrefs(text: string): TimePrefs {
@@ -3365,19 +3372,32 @@ function extractTimePrefs(text: string): TimePrefs {
   if (!r.depart_time_pref && isEvening) { r.depart_time_pref = 'evening'; return r }
 
   // Specific time clues: "after 2pm", "before noon" — EN + DE/ES/FR
-  if (!r.depart_time_pref) {
-    const afterM = t.match(/\b(?:departing?|leaving?|flying?|ab(?:flug)?(?:\s+um)?)\s+after\s+(\d{1,2})(?::?\d{0,2})?\s*(am|pm|uhr)?\b/) ??
-                   t.match(/\bnach\s+(\d{1,2})\s*(?:uhr|h)\b/)
-    if (afterM) {
-      const h = parseInt(afterM[1]) + (afterM[2] === 'pm' && parseInt(afterM[1]) < 12 ? 12 : 0)
+  // Parse explicit "after X" / "before X" time constraints — always runs so
+  // depart_after_mins / depart_before_mins are set even when depart_time_pref
+  // was already inferred from a keyword ("morning", "evening", etc.).
+  const afterM = t.match(/\b(?:departure|departing?|leaving?|flying?|ab(?:flug)?(?:\s+um)?)\s+after\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|uhr)?\b/) ??
+                 t.match(/\bnach\s+(\d{1,2})\s*(?:uhr|h)\b/)
+  if (afterM) {
+    const hRaw = parseInt(afterM[1])
+    const mMins = afterM[2] ? parseInt(afterM[2]) : 0
+    const suffix = afterM[3]?.toLowerCase()
+    const h = hRaw + (suffix === 'pm' && hRaw < 12 ? 12 : 0)
+    r.depart_after_mins = h * 60 + mMins
+    if (!r.depart_time_pref) {
       if (h >= 18) r.depart_time_pref = 'evening'
       else if (h >= 12) r.depart_time_pref = 'afternoon'
       else r.depart_time_pref = 'morning'
     }
-    const beforeM = t.match(/\b(?:departing?|leaving?|flying?)\s+before\s+(\d{1,2})(?::?\d{0,2})?\s*(am|pm)?\b/) ??
-                    t.match(/\bvor\s+(\d{1,2})\s*(?:uhr|h)\b/)
-    if (beforeM) {
-      const h = parseInt(beforeM[1]) + (beforeM[2] === 'pm' && parseInt(beforeM[1]) < 12 ? 12 : 0)
+  }
+  const beforeM = t.match(/\b(?:departure|departing?|leaving?|flying?)\s+before\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/) ??
+                  t.match(/\bvor\s+(\d{1,2})\s*(?:uhr|h)\b/)
+  if (beforeM) {
+    const hRaw = parseInt(beforeM[1])
+    const mMins = beforeM[2] ? parseInt(beforeM[2]) : 0
+    const suffix = beforeM[3]?.toLowerCase()
+    const h = hRaw + (suffix === 'pm' && hRaw < 12 ? 12 : 0)
+    r.depart_before_mins = h * 60 + mMins
+    if (!r.depart_time_pref) {
       if (h <= 9) r.depart_time_pref = 'early_morning'
       else if (h <= 14) r.depart_time_pref = 'morning'
       else r.depart_time_pref = 'afternoon'
@@ -5492,6 +5512,8 @@ export function parseNLQuery(query: string): ParsedQuery {
   const tp = extractTimePrefs(q)
   if (tp.depart_time_pref) result.depart_time_pref = tp.depart_time_pref
   if (tp.arrive_time_pref) result.arrive_time_pref = tp.arrive_time_pref
+  if (tp.depart_after_mins !== undefined) result.depart_after_mins = tp.depart_after_mins
+  if (tp.depart_before_mins !== undefined) result.depart_before_mins = tp.depart_before_mins
   // Map raw time-of-day words → ParsedQuery enum values
   const _mapTod = (tod: string | undefined): ParsedQuery['depart_time_pref'] | undefined => {
     if (!tod) return undefined
