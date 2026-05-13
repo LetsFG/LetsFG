@@ -1196,7 +1196,7 @@ export default function ResultsPanel({
     callGemini('early')
   }, [progress, globalRankTopThree, callGemini, geminiJustification, isSearching, allOffers.length])
 
-  // Gen 2 — fires at 20% progress if a better offer displaced the current hero
+  // Gen 2 — fires at 30% progress if a better offer displaced the current hero
   useEffect(() => {
     if (!isSearching) return  // search done, let Gen 5 handle it
     if (geminiStateRef.current.phase === 'none') return  // Gen 1 not done yet
@@ -1204,14 +1204,14 @@ export default function ResultsPanel({
     if (geminiStateRef.current.callCount >= 4) return  // reserve last slot for Gen 5
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
-    if (progressPct < 0.20) return
+    if (progressPct < 0.30) return
     const currentHeroId = globalRankTopThree[0].offer.id
     if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
     geminiStateRef.current.gen20Fired = true
     callGemini('mid')
   }, [isSearching, progress, globalRankTopThree, callGemini])
 
-  // Gen 3 — fires at 40% progress if a better offer displaced the current hero
+  // Gen 3 — fires at 55% progress if a better offer displaced the current hero
   useEffect(() => {
     if (!isSearching) return
     if (geminiStateRef.current.phase === 'none') return
@@ -1219,14 +1219,14 @@ export default function ResultsPanel({
     if (geminiStateRef.current.callCount >= 4) return  // reserve last slot for Gen 5
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
-    if (progressPct < 0.40) return
+    if (progressPct < 0.55) return
     const currentHeroId = globalRankTopThree[0].offer.id
     if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
     geminiStateRef.current.gen40Fired = true
     callGemini('mid')
   }, [isSearching, progress, globalRankTopThree, callGemini])
 
-  // Gen 4 — fires at 70% progress if a better offer displaced the current hero
+  // Gen 4 — fires at 85% progress if a better offer displaced the current hero
   useEffect(() => {
     if (!isSearching) return
     if (geminiStateRef.current.phase === 'none') return
@@ -1234,7 +1234,7 @@ export default function ResultsPanel({
     if (geminiStateRef.current.callCount >= 4) return  // reserve last slot for Gen 5
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
-    if (progressPct < 0.70) return
+    if (progressPct < 0.85) return
     const currentHeroId = globalRankTopThree[0].offer.id
     if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
     geminiStateRef.current.gen70Fired = true
