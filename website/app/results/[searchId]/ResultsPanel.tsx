@@ -23,7 +23,7 @@ import {
 import { calculateFee } from '../../../lib/pricing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { SearchProgressBarInline } from './SearchProgressBar'
-import { rankOffers, getProfileLabel, type RankingContext, type RankedOffer } from '../../lib/rankOffers'
+import { rankOffers, selectDiverseTop, getProfileLabel, type RankingContext, type RankedOffer } from '../../lib/rankOffers'
 // build:2026-05-05b
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -968,7 +968,16 @@ export default function ResultsPanel({
         preferDirect: maxStops === 0,
       }
       const listWithDisplayPrice = list.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
-      list = rankOffers(listWithDisplayPrice, rctx).map(r => r.offer as typeof list[number])
+      const ranked = rankOffers(listWithDisplayPrice, rctx)
+
+      // Pick top-3 that are genuinely different propositions (different departure
+      // time slot or different stop count). This prevents showing the same flight
+      // from 3 booking sources as "3 different options" — runner-ups are real
+      // alternatives with different trade-offs (e.g. evening 1-stop vs morning direct).
+      const diverseTop3 = selectDiverseTop(ranked, 3)
+      const diverseIds = new Set(diverseTop3.map(r => r.offer.id))
+      const rest = ranked.filter(r => !diverseIds.has(r.offer.id))
+      list = [...diverseTop3, ...rest].map(r => r.offer as typeof list[number])
 
       // Guarantee the absolute cheapest offer is always visible in the top 3.
       // If ranking placed it at position 3+ (e.g. because it departs at 3am), swap it to #3.
