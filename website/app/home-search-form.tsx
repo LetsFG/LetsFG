@@ -1065,7 +1065,26 @@ export default function HomeSearchForm({
       // All done — build context suffix and navigate
       setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: true })
       setTimeout(() => {
-        const finalQuery = buildFinalQuery(convo.pendingQuery, newAnswers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
+        // If the user edited the search box during the wizard use the current text
+        // as the base — do NOT blindly trust convo.pendingQuery which was captured
+        // at wizard open time. Also cancel the stale pre-fired search if any.
+        const currentInput = inputRef.current?.value.trim() ?? ''
+        const baseQuery = (currentInput && currentInput !== convo.pendingQuery)
+          ? currentInput
+          : convo.pendingQuery
+        if (currentInput && currentInput !== convo.pendingQuery) {
+          const stale = prefiredSearchRef.current
+          if (stale?.searchId) {
+            const cancelUrl = `/api/results/cancel/${encodeURIComponent(stale.searchId)}`
+            if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+              navigator.sendBeacon(cancelUrl)
+            } else {
+              fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
+            }
+          }
+          prefiredSearchRef.current = null
+        }
+        const finalQuery = buildFinalQuery(baseQuery, newAnswers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
         setConvo(null)
         setConvoFreeText('')
         navigateSearch(finalQuery)
@@ -1106,7 +1125,23 @@ export default function HomeSearchForm({
     if (!convo) return
     setConvo({ ...convo, collapsing: true })
     setTimeout(() => {
-      const finalQuery = buildFinalQuery(convo.pendingQuery, convo.answers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
+      const currentInput = inputRef.current?.value.trim() ?? ''
+      const baseQuery = (currentInput && currentInput !== convo.pendingQuery)
+        ? currentInput
+        : convo.pendingQuery
+      if (currentInput && currentInput !== convo.pendingQuery) {
+        const stale = prefiredSearchRef.current
+        if (stale?.searchId) {
+          const cancelUrl = `/api/results/cancel/${encodeURIComponent(stale.searchId)}`
+          if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+            navigator.sendBeacon(cancelUrl)
+          } else {
+            fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
+          }
+        }
+        prefiredSearchRef.current = null
+      }
+      const finalQuery = buildFinalQuery(baseQuery, convo.answers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
       setConvo(null)
       setConvoFreeText('')
       navigateSearch(finalQuery)
@@ -1248,6 +1283,17 @@ export default function HomeSearchForm({
       if (convo && convo.pendingQuery !== trimmed) {
         // Different query while convo is open — close it instantly then reopen so the
         // user can see the panel reset rather than appear frozen.
+        // Cancel the stale pre-fired search (for the old query) before discarding it.
+        const staleOnQueryChange = prefiredSearchRef.current
+        if (staleOnQueryChange?.searchId) {
+          const cancelUrl = `/api/results/cancel/${encodeURIComponent(staleOnQueryChange.searchId)}`
+          if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+            navigator.sendBeacon(cancelUrl)
+          } else {
+            fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
+          }
+        }
+        prefiredSearchRef.current = null
         setConvo(null)
         setConvoFreeText('')
         setConvoMultiSel([])
