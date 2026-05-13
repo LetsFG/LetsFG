@@ -294,14 +294,8 @@ class TurkishConnectorClient:
                 )
 
         # Slow path: CDP Chrome form fill + API interception
-        # Retry once: first attempt warms PX cookies; second uses them.
-        for attempt in range(2):
-            result = await self._do_search(req, attempt=attempt)
-            if result.offers or attempt == 1:
-                return result
-            logger.warning("TK: 0 offers on attempt %d — retrying with warm profile", attempt)
-            await asyncio.sleep(1.0)
-        return self._empty(req)
+        # Single attempt only — retrying doubles proxy bandwidth on failing routes.
+        return await self._do_search(req, attempt=0)
 
     async def _try_sputnik(self, req: FlightSearchRequest) -> list[FlightOffer]:
         """Fast path: EveryMundo Sputnik grouped-routes API with reverse fallback."""
