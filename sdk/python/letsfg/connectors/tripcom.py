@@ -40,6 +40,23 @@ _CNY_RATES = {
     "INR": 11.58, "AUD": 0.214, "CAD": 0.192,
     "JPY": 20.4, "KRW": 189.0, "SGD": 0.184,
     "THB": 4.66, "MYR": 0.606, "CNY": 1.0,
+    # European currencies missing from original table
+    "PLN": 0.541, "CZK": 3.175, "HUF": 50.3, "RON": 0.632,
+    "SEK": 1.385, "NOK": 1.373, "DKK": 0.946, "CHF": 0.124,
+    "HRK": 0.957, "BGN": 0.248, "ISK": 18.9,
+    # Other major currencies
+    "TRY": 4.35, "BRL": 0.782, "MXN": 2.82, "ZAR": 2.52,
+    "ILS": 0.493, "AED": 0.507, "SAR": 0.517,
+    "NZD": 0.234, "HKD": 1.075, "TWD": 4.43,
+    "PHP": 7.69, "IDR": 2140.0, "VND": 3520.0,
+    "PKR": 38.6, "BDT": 15.1, "LKR": 41.8,
+    "EGP": 6.74, "NGN": 220.0, "KES": 17.8,
+    "MAD": 1.395, "DZD": 18.6, "TND": 0.425,
+    "QAR": 0.503, "KWD": 0.0423, "BHD": 0.0520,
+    "OMR": 0.0531, "JOD": 0.0978,
+    "CLP": 130.0, "COP": 594.0, "ARS": 138.0, "PEN": 0.516,
+    "CRC": 70.9, "UYU": 5.74, "PYG": 1058.0,
+    "UAH": 5.65, "KZT": 67.6, "GEL": 0.379, "AMD": 53.6,
 }
 
 
@@ -339,11 +356,24 @@ def _parse_ctrip(
             adult_tax = float(p0.get("adultTax", 0))
             free_checked = int(p0.get("freeCheckedBaggage", 0) or 0)
             free_cabin = int(p0.get("freeCabinBaggage", 0) or 0)
-            total_cny = adult_price + adult_tax
-            if total_cny <= 0:
+            total_raw = adult_price + adult_tax
+            if total_raw <= 0:
                 continue
 
-            price = _cny_to(total_cny, target_cur)
+            # Trip.com international site may return prices in the site's display
+            # currency (often USD or EUR), not CNY. Check for a currency field first.
+            source_currency = (
+                p0.get("currency") or p0.get("priceCurrency") or "CNY"
+            ).upper()
+            if source_currency and source_currency != "CNY" and source_currency in _CNY_RATES:
+                # Prices are already in source_currency — convert directly to target
+                rate_to_eur = _CNY_RATES.get(source_currency, 1.0)  # source→CNY inverse
+                total_cny = total_raw / rate_to_eur
+                price = _cny_to(total_cny, target_cur)
+            else:
+                # Assume CNY (Ctrip domestic API or no currency field)
+                total_cny = total_raw
+                price = _cny_to(total_cny, target_cur)
 
             segments_data = itin.get("flightSegments") or []
             if not segments_data:
