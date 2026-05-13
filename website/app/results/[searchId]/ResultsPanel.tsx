@@ -756,6 +756,7 @@ export default function ResultsPanel({
   const [durationRange, setDurationRange] = useState<[number, number]>([0, Infinity])
   const [airlinesOpen, setAirlinesOpen] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const autoExpandedRef = useRef(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [visibleCount, setVisibleCount] = useState(20)
   const [isUnlocked, setIsUnlocked] = useState(false)
@@ -1036,6 +1037,16 @@ export default function ResultsPanel({
   }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, tripPurpose, preferredAirline, requireBagPerPerson, viaIata])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
+
+  // Auto-expand the top-ranked offer on first load
+  useEffect(() => {
+    if (autoExpandedRef.current) return
+    const first = displayOffers[0]
+    if (first) {
+      autoExpandedRef.current = true
+      setExpandedId(first.id)
+    }
+  }, [displayOffers])
 
   // Top 3 for Gemini justification — MUST match exactly what's shown in the top 3 cards.
   // Derived from displayOffers (which already applies all active UI filters and sort order)
