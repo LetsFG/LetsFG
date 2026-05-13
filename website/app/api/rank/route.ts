@@ -271,6 +271,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     context.preferDirect && !noDirectsAvailable ? 'asked for direct flights (none found yet — fewer stops is better)' : '',
     noDirectsAvailable ? 'asked for direct flights — none exist on this route' : '',
     context.depTimePref ? `prefers ${context.depTimePref.replace(/_/g, ' ')} departure` : '',
+    context.retTimePref ? `prefers ${context.retTimePref.replace(/_/g, ' ')} return` : '',
     context.arrivalTimePref ? `prefers ${context.arrivalTimePref} arrival` : '',
   ].filter(Boolean).join(', ')
 
@@ -285,12 +286,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const roBd = offerBreakdown(ro.price, ro.currency, roSource, ro.ancillaries as FullAncillaries, false, false)
     const roBagNote = ro.ancillaries?.checked_bag?.included === true ? ' (bag incl)' : (requireBag && roBd.bag > 0) ? ` (+${roBd.bag} ${ro.currency} bag add-on)` : ''
     const roSeatNote = ro.ancillaries?.seat_selection?.included === true ? ' (seat incl)' : ''
+    const roRetDep = (ro.inbound as { departure_time?: string } | undefined)?.departure_time
+    const roRetNote = roRetDep ? ` | return departs ${fmtMins(roRetDep)}` : ''
     return (
       `${FLIGHT_LABELS[i + 1]}: ` +
       `${roBd.total} ${ro.currency}${roBagNote}${roSeatNote}, ` +
       `${ro.stops === 0 ? 'direct' : `${ro.stops} stop(s)`}, ` +
       `${fmtDur(ro.duration_minutes)}, ` +
-      `departs ${fmtMins(ro.departure_time)} → arrives ${fmtMins(ro.arrival_time)} ` +
+      `departs ${fmtMins(ro.departure_time)} → arrives ${fmtMins(ro.arrival_time)}${roRetNote} ` +
       `| tradeoffs: ${r.tradeoffs.join('; ') || 'none'} ` +
       `| positives: ${r.heroFacts.slice(0, 2).join('; ') || 'similar value'}`
     )
@@ -336,7 +339,7 @@ TRIP: ${tripDesc}${prefs ? ` | ${prefs}` : ''}
 
 #1 RANKED FLIGHT (YOUR PICK):
 - ${FLIGHT_LABELS[0]} | ${h.origin} → ${h.destination}
-- Departs ${fmtMins(h.departure_time)}, arrives ${fmtMins(h.arrival_time)} | ${fmtDur(h.duration_minutes)} | ${stopsLabel}
+- Outbound: departs ${fmtMins(h.departure_time)}, arrives ${fmtMins(h.arrival_time)} | ${fmtDur(h.duration_minutes)} | ${stopsLabel}${h.inbound?.departure_time ? `\n- Return: departs ${fmtMins(h.inbound.departure_time)} from destination` : ''}
 - PRICE BREAKDOWN:
 ${priceBreakdownBlock}${savingsLine}${aircraftLine}
 
@@ -360,8 +363,8 @@ Title rules:
 
 Justification rules:
 - Sentence 1: Lead with the price angle — is it the cheapest? Cheaper than Google? Best value given what you get? Reference the TOTAL (${hTotal} ${h.currency}).
-- Sentence 2: Address the departure time directly. Is ${fmtMins(h.departure_time)} a good or acceptable time for THIS trip (${tripDesc})? Why or why not?
-- Sentence 3: ${noDirectsAvailable ? `The user wanted direct — cover what they're actually getting (${stopsLabel}, ${fmtDur(h.duration_minutes)}) and whether that's a reasonable trade for this route.` : `Stops and duration — ${stopsLabel}, ${fmtDur(h.duration_minutes)}. Is this good for the route? How does the journey feel?`}
+- Sentence 2: Address the outbound departure time. Is ${fmtMins(h.departure_time)} a good or acceptable time for THIS trip (${tripDesc})? Why or why not?
+- Sentence 3: ${noDirectsAvailable ? `The user wanted direct — cover what they're actually getting (${stopsLabel}, ${fmtDur(h.duration_minutes)}) and whether that's a reasonable trade for this route.` : `Stops and duration — ${stopsLabel}, ${fmtDur(h.duration_minutes)}. Is this good for the route? How does the journey feel?`}${context.retTimePref && h.inbound?.departure_time ? `\n- Sentence about return: The user asked for a ${context.retTimePref.replace(/_/g, ' ')} return. The return departs ${fmtMins(h.inbound.departure_time)}. Be HONEST about whether this matches — if it doesn't, say so plainly (e.g. "One caveat: the return is at ${fmtMins(h.inbound.departure_time)}, which isn't the evening flight back you asked for — no late returns are available on this route"). Do NOT skip this or pretend the return time is fine when it isn't.` : ''}
 - Sentence 4: Any other notable positives (bag included, savings vs Google, good arrival time). If bag/seat costs are in the breakdown, weave them in as proof the total is still solid. Skip if nothing noteworthy.
 - ${phase === 'early' ? 'Sentence 5 (REQUIRED for early phase): End with an honest caveat that search is still running and results may update — something like "Still scanning, so this could change — but it\'s looking strong." Keep it brief and natural.' : 'Sentence 5 (optional): One honest caveat — if the departure time is early/late, if there are cheaper options, say so briefly.'}
 - Max 200 words total. Do NOT start any sentence with "This flight" or "We\'ve selected".

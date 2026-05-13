@@ -228,7 +228,7 @@ function retDepTimeMismatchMultiplier(offer: RankOffer, retTimePref: string | un
   const retDepMins = isoToMins(retDep)
   const s = scoreDepTime(retDepMins, retTimePref)
   if (s >= 0.55) return 1.0   // ok or good match — no penalty
-  if (s >= 0.30) return 0.88  // slightly off — gentle nudge
+  if (s >= 0.15) return 0.88  // near-miss (e.g. 16:40 for evening) — gentle nudge
   return 0.70                  // clearly wrong time window (softer than outbound 0.55)
 }
 
@@ -363,7 +363,15 @@ function scoreDepTime(depMins: number, pref: string | undefined): number {
   const [pLo, pHi, oLo, oHi] = r
   if (depMins >= pLo && depMins <= pHi) return 1.00
   if (depMins >= oLo && depMins <= oHi) return 0.60
-  return 0.20
+  // Outside ok range: graduated falloff proportional to distance from the nearest ok/perfect
+  // boundary. Closer = higher score; farther = lower. Floor at 0.05.
+  // This means 16:40 BCN scores meaningfully higher than 07:30 BCN when the user wants
+  // an evening return — both are outside the range, but one is near-miss, not totally wrong.
+  const distBelowOk = Math.max(0, oLo - depMins)   // minutes before ok window
+  const distAboveOk = Math.max(0, depMins - oHi)    // minutes after ok window
+  const dist = distBelowOk > 0 ? distBelowOk : distAboveOk
+  const span = oHi - oLo   // ok window size in minutes
+  return Math.max(0.05, 0.20 * Math.exp(-dist / Math.max(span * 1.5, 60)))
 }
 
 function scoreArrivalTime(
