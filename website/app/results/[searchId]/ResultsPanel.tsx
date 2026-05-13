@@ -756,7 +756,7 @@ export default function ResultsPanel({
   const [durationRange, setDurationRange] = useState<[number, number]>([0, Infinity])
   const [airlinesOpen, setAirlinesOpen] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const autoExpandedRef = useRef(false)
+  const autoExpandedRef = useRef<string | null>(null) // tracks ID of the last auto-set #1 offer
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [visibleCount, setVisibleCount] = useState(20)
   const [isUnlocked, setIsUnlocked] = useState(false)
@@ -1050,13 +1050,20 @@ export default function ResultsPanel({
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
-  // Auto-expand the top-ranked offer on first load
+  // Auto-expand the top-ranked offer on first load; follow it when AI reranking swaps #1
   useEffect(() => {
-    if (autoExpandedRef.current) return
     const first = displayOffers[0]
-    if (first) {
-      autoExpandedRef.current = true
+    if (!first) return
+    if (autoExpandedRef.current === null) {
+      // Initial: expand the first offer
+      autoExpandedRef.current = first.id
       setExpandedId(first.id)
+    } else if (first.id !== autoExpandedRef.current) {
+      // #1 changed (AI rerank) — if the previously auto-expanded offer is still expanded,
+      // collapse it and expand the new #1
+      const prevId = autoExpandedRef.current
+      autoExpandedRef.current = first.id
+      setExpandedId(prev => prev === prevId ? first.id : prev)
     }
   }, [displayOffers])
 
