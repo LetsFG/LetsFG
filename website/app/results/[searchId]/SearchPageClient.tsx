@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import Link from 'next/link'
 import Image from 'next/image'
 import CurrencyButton from '../../currency-button'
@@ -313,6 +313,14 @@ interface FlightOffer {
   stops: number
 }
 
+interface FallbackNote {
+  intended: string
+  used_code: string
+  used_name: string
+  hub_name: string
+  reason: string
+}
+
 interface ParsedQuery {
   origin?: string
   origin_name?: string
@@ -322,6 +330,7 @@ interface ParsedQuery {
   return_date?: string
   passengers?: number
   cabin?: string
+  fallback_notes?: { origin?: FallbackNote; destination?: FallbackNote }
 }
 
 export interface SearchPageClientProps {
@@ -337,6 +346,7 @@ export interface SearchPageClientProps {
   searchedAt?: string
   expiresAt?: string
   fswSession?: string  // Cloud Run __session affinity token — forwarded on every poll
+  initialGemini?: { title?: string; hero: string; runners: string[]; ts: number }
 }
 
 function dedup(offers: FlightOffer[]): FlightOffer[] {
@@ -375,8 +385,10 @@ export default function SearchPageClient({
   searchedAt,
   expiresAt,
   fswSession,
+  initialGemini,
 }: SearchPageClientProps) {
   const t = useTranslations('Results')
+  const locale = useLocale()
   const router = useRouter()
 
   const [status, setStatus] = useState(initialStatus)
@@ -406,7 +418,10 @@ export default function SearchPageClient({
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
-  const homeHref = isTestSearch ? '/en?probe=1' : '/en'
+  const homeHref = isTestSearch ? `/${locale}?probe=1` : `/${locale}`
+  const searchAgainHref = status === 'expired' && query
+    ? `/${locale}?q=${encodeURIComponent(query)}${isTestSearch ? '&probe=1' : ''}`
+    : homeHref
   const searchParams = useSearchParams()
   const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : undefined
   const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : undefined
@@ -577,6 +592,23 @@ export default function SearchPageClient({
     }
   }, [searchId, isSearching, isTestSearch])
 
+  // Hard client-side timeout: if the FSW keeps reporting `searching` for an
+  // unreasonably long time (4 min for exotic / no-coverage routes like
+  // BSB→Pretoria), force the UI to a "completed" state so the user is no
+  // longer trapped on the loading screen. Whatever offers we have collected
+  // by then are shown; if zero, the empty-results UI takes over.
+  useEffect(() => {
+    if (!isSearching) return
+    const startedAtMs = searchedAt ? new Date(searchedAt).getTime() : Date.now()
+    const elapsed = Date.now() - startedAtMs
+    const HARD_TIMEOUT_MS = 4 * 60 * 1000  // 4 minutes
+    const remaining = Math.max(HARD_TIMEOUT_MS - elapsed, 5_000)
+    const id = setTimeout(() => {
+      setStatus(prev => (prev === 'searching' ? 'completed' : prev))
+    }, remaining)
+    return () => clearTimeout(id)
+  }, [isSearching, searchedAt])
+
   // Track when first partial results arrive while search is still running.
   // This lets stats reflect real progress counts even if the user navigates away mid-search.
   useEffect(() => {
@@ -729,7 +761,7 @@ export default function SearchPageClient({
 
   const fmtDate = (iso: string) => {
     try {
-      return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      return new Date(iso + 'T12:00:00').toLocaleDateString(locale, { month: 'short', day: 'numeric' })
     } catch (_) { return iso }
   }
 
@@ -767,10 +799,10 @@ export default function SearchPageClient({
   const detailSummary = detailBits.join(' · ')
 
   const statusLabel = isSearching
-    ? `Checking ${progress?.total || 180} websites in parallel`
+    ? t('checkingWebsites', { total: progress?.total || 180 })
     : isExpired
-    ? 'Search expired'
-    : `${offers.length} offers`
+    ? t('searchExpired')
+    : t('offersCount', { count: offers.length })
 
   // Offer data for ResultsPanel
   const allOffers = offers
@@ -811,8 +843,6 @@ export default function SearchPageClient({
     }, { keepalive: true })
   }
 
-
-
   return (
     <main className={`res-page${isStreaming || status === 'completed' ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
       <section className={`res-hero${isStreaming || status === 'completed' ? ' res-hero--results' : isSearching ? ' res-hero--searching' : ''}`}>
@@ -832,13 +862,13 @@ export default function SearchPageClient({
             </Link>
 
             <nav className="lp-nav res-topbar-nav">
-              <span className="lp-nav-link">Search</span>
+              <span className="lp-nav-link">{t('navSearch')}</span>
               {parsed.origin && parsed.destination && parsed.date && (
                 <button
                   className="lp-nav-link lp-nav-link-btn"
                   onClick={() => setMonitorOpen(true)}
                 >
-                  Flight Monitoring
+                  {t('navMonitor')}
                 </button>
               )}
             </nav>
@@ -940,11 +970,13 @@ export default function SearchPageClient({
                 <p className="res-notice-title">{t('expiredNoticeTitle')}</p>
                 <p className="res-notice-sub">{t('expiredNoticeSub')}</p>
               </div>
-              <Link href={homeHref} className="res-notice-btn" onClick={handleNavigateHome}>{t('searchAgain')}</Link>
+              <Link href={searchAgainHref} className="res-notice-btn" onClick={handleNavigateHome}>{t('searchAgain')}</Link>
             </div>
           )}
         </div>
       </section>
+
+
 
       {(status === 'completed' || (isSearching && allOffers.length > 0)) && (
         <ResultsPanel
@@ -975,7 +1007,11 @@ export default function SearchPageClient({
           tripPurpose={nlParsed?.trip_purpose}
           preferredAirline={nlParsed?.preferred_airline}
           preferQuickFlight={nlParsed?.prefer_quick_flight}
+          preferCheapest={nlParsed?.preferred_sort === 'price'}
           viaIata={nlParsed?.via_iata}
+          maxStops={typeof nlParsed?.stops === 'number' ? nlParsed.stops : undefined}
+          fallbackNotes={parsed.fallback_notes}
+          initialGemini={initialGemini}
         />
       )}
 

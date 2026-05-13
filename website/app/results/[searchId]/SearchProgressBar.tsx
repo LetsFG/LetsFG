@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 // The connectors we actually check — ordered roughly by how fast they return results
 const ALL_SOURCES = [
@@ -26,6 +27,7 @@ function getRemaining(checked: number, total: number): string[] {
 
 /** Full-page progress bar shown on the loading screen (no offers yet) */
 export function SearchProgressBarFull({ progress }: { progress?: Props['progress'] }) {
+  const t = useTranslations('Results')
   const mountedAt = useRef(Date.now())
   const [tick, setTick] = useState(0)
 
@@ -51,9 +53,9 @@ export function SearchProgressBarFull({ progress }: { progress?: Props['progress
         <div className="spb-top">
           <span className="spb-source">
             <span className="spb-dot" aria-hidden="true" />
-            Checking <span className="spb-source-name">{currentSource}</span>
+            {t('checking')} <span className="spb-source-name">{currentSource}</span>
           </span>
-          <span className="spb-found">{found > 0 ? `${found} results found` : 'Scanning routes…'}</span>
+          <span className="spb-found">{found > 0 ? t('resultsFound', { count: found }) : t('scanningRoutes')}</span>
         </div>
         <div
           className="spb-bar-track"
@@ -67,9 +69,9 @@ export function SearchProgressBarFull({ progress }: { progress?: Props['progress
         </div>
         <div className="spb-bottom">
           <span className="spb-progress-text">
-            {completedIdx > 0 ? `${completedIdx} of ${ALL_SOURCES.length} sources checked` : 'Connecting to sources…'}
+            {completedIdx > 0 ? t('sourcesChecked', { n: completedIdx, total: ALL_SOURCES.length }) : t('connectingSources')}
           </span>
-          <span className="spb-more-coming">More results loading…</span>
+          <span className="spb-more-coming">{t('moreResultsLoading')}</span>
         </div>
       </div>
     </div>
@@ -78,6 +80,7 @@ export function SearchProgressBarFull({ progress }: { progress?: Props['progress
 
 /** Inline progress bar — lives inside the rf-bar results header */
 export function SearchProgressBarInline({ progress }: { progress?: Props['progress'] }) {
+  const t = useTranslations('Results')
   const mountedAt = useRef(Date.now())
   const [tick, setTick] = useState(0)
 
@@ -99,7 +102,7 @@ export function SearchProgressBarInline({ progress }: { progress?: Props['progre
     <div className="spb-inline">
       <div className="spb-inline-left">
         <span className="spb-dot" aria-hidden="true" />
-        <span className="spb-inline-label">Checking <strong>{currentSource}</strong></span>
+        <span className="spb-inline-label">{t('checking')} <strong>{currentSource}</strong></span>
       </div>
       <div className="spb-inline-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
         <div className="spb-inline-fill" style={{ width: `${pct}%` }} />

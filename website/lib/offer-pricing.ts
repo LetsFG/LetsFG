@@ -71,14 +71,10 @@ export function getOfferTotalWithAncillary(offer: OfferPriceLike, ancillary?: Of
 }
 
 export function getOfferKnownTotalPrice(offer: OfferPriceLike) {
-  let total = getOfferBaseTotal(offer)
-
-  for (const ancillary of Object.values(offer.ancillaries || {})) {
-    const ancillaryAmount = getCompatibleAncillaryAmount(offer, ancillary)
-    if (ancillaryAmount !== null) {
-      total += ancillaryAmount
-    }
-  }
-
-  return Math.round(total * 100) / 100
+  // Default displayed total = ticket + LetsFG fee only.
+  // Optional ancillaries (bag, seat) are NOT auto-summed here — that caused
+  // inconsistent totals across cards (offers with populated paid ancillaries
+  // would silently include bag+seat, while others wouldn't). Use
+  // getOfferTotalWithAncillary for explicit "with bag" / "with seat" totals.
+  return getOfferBaseTotal(offer)
 }

@@ -33,6 +33,7 @@ export interface RankOffer {
   inbound?: { departure_time?: string }
   ancillaries?: {
     checked_bag?: { included?: boolean; price?: number; currency?: string }
+    seat_selection?: { included?: boolean; price?: number; currency?: string }
   }
 }
 
@@ -46,6 +47,11 @@ export interface RankingContext {
   requireSeat?: boolean
   preferredAirline?: string
   preferQuickFlight?: boolean
+  /** User said "direct" or "nonstop" — strongly boost stops weight but don't filter.
+   *  If no directs exist, 1-stop will naturally float to the top over 3-stop. */
+  preferDirect?: boolean
+  /** User explicitly asked for cheapest / lowest price — price dominates all other factors. */
+  preferCheapest?: boolean
 }
 
 export interface ScoreBreakdown {
@@ -123,9 +129,17 @@ const W: Record<string, Weights> = {
     price: 0.14, stops: 0.20, duration: 0.40, depTime: 0.06,
     arrivalTime: 0.04, baggage: 0.02, savings: 0.04, comfortHours: 0.04, layover: 0.06,
   },
+  // Cheapest — user explicitly asked for lowest price; price overwhelms all other factors
+  cheapest: {
+    price: 0.88, stops: 0.06, duration: 0.03, depTime: 0.01,
+    arrivalTime: 0.01, baggage: 0.01, savings: 0.00, comfortHours: 0.00, layover: 0.00,
+  },
 }
 
 function resolveWeights(ctx: RankingContext): Weights {
+  // preferCheapest is the highest-priority override — user explicitly asked for lowest price
+  if (ctx.preferCheapest) return { ...W.cheapest }
+
   // tripPurpose takes precedence for specific categories
   const w: Weights =
     ctx.preferQuickFlight             ? { ...W.quick_flight }
@@ -139,6 +153,31 @@ function resolveWeights(ctx: RankingContext): Weights {
     : ctx.tripContext === 'family'      ? { ...W.family }
     : ctx.tripContext === 'couple'      ? { ...W.couple }
     : { ...W.default }
+
+  // When user explicitly asked for direct/nonstop flights, heavily boost stops weight.
+  // We don't filter — if no directs exist, 1-stop naturally beats 3-stop via this weight.
+  if (ctx.preferDirect) {
+    const boost = 0.20
+    w.stops = Math.min(0.50, w.stops + boost)
+    // Absorb from price first, then duration
+    const fromPrice    = Math.min(boost * 0.60, Math.max(0.04, w.price)    - 0.04)
+    const fromDuration = Math.min(boost - fromPrice, Math.max(0.02, w.duration) - 0.02)
+    w.price    -= fromPrice
+    w.duration -= fromDuration
+  }
+
+  // When the user explicitly stated a departure time preference ("evening", "morning",
+  // etc.), honour it strongly — base profiles treat it as a soft preference but a
+  // stated pref is a hard preference and must dominate arrivalTime.
+  if (ctx.depTimePref) {
+    const boost = 0.13
+    w.depTime = Math.min(0.36, w.depTime + boost)
+    // Absorb cost from arrivalTime first, then duration
+    const fromArrival = Math.min(boost * 0.65, Math.max(0, w.arrivalTime - 0.03))
+    const fromDuration = Math.min(boost - fromArrival, Math.max(0, w.duration - 0.03))
+    w.arrivalTime -= fromArrival
+    w.duration    -= fromDuration
+  }
 
   // If user needs checked bag and the profile doesn't already weight it highly,
   // boost baggage importance at the cost of price and duration.
@@ -158,6 +197,17 @@ function isoToMins(iso: string | undefined): number {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return 0
   return d.getHours() * 60 + d.getMinutes()
+}
+
+/** Number of calendar days between departure and arrival (UTC). 0 = same day, 1 = next day, etc. */
+function daysBetween(depIso: string | undefined, arrIso: string | undefined): number {
+  if (!depIso || !arrIso) return 0
+  const dep = new Date(depIso)
+  const arr = new Date(arrIso)
+  if (isNaN(dep.getTime()) || isNaN(arr.getTime())) return 0
+  const depDay = Math.floor(dep.getTime() / 86400000)
+  const arrDay = Math.floor(arr.getTime() / 86400000)
+  return Math.max(0, arrDay - depDay)
 }
 
 function formatMins(mins: number): string {
@@ -224,6 +274,7 @@ function scoreArrivalTime(
   arrMins: number,
   pref: string | undefined,
   tripPurpose: string | undefined,
+  dayOffset: number = 0,
 ): number {
   const isExploring = (
     tripPurpose === 'city_break' || tripPurpose === 'beach' ||
@@ -231,23 +282,51 @@ function scoreArrivalTime(
   )
   if (!pref && !isExploring) return 0.50  // neutral when no preference & not time-sensitive
 
+  let base: number
+
   if (pref === 'morning') {
-    if (arrMins < 720) return 1.00; if (arrMins < 900) return 0.65; return 0.25
-  }
-  if (pref === 'afternoon') {
-    if (arrMins >= 720 && arrMins < 1020) return 1.00; if (arrMins < 1140) return 0.65; return 0.25
-  }
-  if (pref === 'evening') {
-    if (arrMins >= 1020 && arrMins < 1320) return 1.00; if (arrMins >= 900) return 0.65; return 0.25
+    if (arrMins < 720) base = 1.00
+    else if (arrMins < 900) base = 0.65
+    else base = 0.25
+  } else if (pref === 'afternoon') {
+    if (arrMins >= 720 && arrMins < 1020) base = 1.00
+    else if (arrMins < 1140) base = 0.65
+    else base = 0.25
+  } else if (pref === 'evening') {
+    if (arrMins >= 1020 && arrMins < 1320) base = 1.00
+    else if (arrMins >= 900) base = 0.65
+    else base = 0.25
+  } else {
+    // Exploring/tourism trips: earlier arrival = more day to enjoy.
+    // IMPORTANT: arriving before 6am is a red-eye — you go to sleep and lose your first
+    // morning. Don't score 02:40am as "amazing" just because it's before 10am. Reserve
+    // the top score for genuine morning arrivals (6am+) when you can actually start the day.
+    if (arrMins < 360) {
+      // Red-eye / wee-hours arrival: you can't do anything until morning.
+      // Next-day red-eye (e.g. 02:40+1) is especially bad — you've already lost
+      // a full calendar day compared to a same-day afternoon arrival.
+      base = dayOffset >= 1 ? 0.15 : 0.30
+    } else if (arrMins < 600)  base = 1.00  // 6am–10am: genuinely great morning arrival
+    else if (arrMins < 720)    base = 0.85  // 10am–noon
+    else if (arrMins < 900)    base = 0.70  // noon–3pm
+    else if (arrMins < 1080)   base = 0.55  // 3pm–6pm
+    else if (arrMins < 1260)   base = 0.35  // 6pm–9pm
+    else                       base = 0.15  // after 9pm: barely any evening left
   }
 
-  // Exploring/tourism trips: earlier arrival = more day to enjoy
-  if (arrMins < 600)  return 1.00  // before 10am: amazing
-  if (arrMins < 720)  return 0.85  // 10am–noon
-  if (arrMins < 900)  return 0.70  // noon–3pm
-  if (arrMins < 1080) return 0.55  // 3pm–6pm
-  if (arrMins < 1260) return 0.35  // 6pm–9pm
-  return 0.15                       // after 9pm: barely any evening left
+  // Penalise flights arriving a full day later than the earliest possible.
+  // day+0 and day+1 are both treated as baseline (long-haul routinely arrives
+  // the next day). day+2 means a full extra day of travel compared to the
+  // fastest options, which matters a lot for city breaks and beach trips.
+  if (dayOffset >= 2) {
+    const extraDays = dayOffset - 1  // how many days beyond "next day"
+    const penalty = isExploring
+      ? Math.min(base, extraDays * 0.45)  // steeper for tourism trips
+      : Math.min(base, extraDays * 0.25)
+    base = Math.max(0, base - penalty)
+  }
+
+  return base
 }
 
 function scoreBaggage(offer: RankOffer, requireBag: boolean | undefined): number {
@@ -478,6 +557,7 @@ export function rankOffers<T extends RankOffer>(
   const scored: RankedOffer<T>[] = offers.map(offer => {
     const depMins = isoToMins(offer.departure_time)
     const arrMins = isoToMins(offer.arrival_time)
+    const dayOffset = daysBetween(offer.departure_time, offer.arrival_time)
     const ep = effectivePrice(offer)
 
     const bd: ScoreBreakdown = {
@@ -485,7 +565,7 @@ export function rankOffers<T extends RankOffer>(
       stops:        scoreStops(offer.stops),
       duration:     scoreDuration(offer.duration_minutes, dLo, dHi),
       depTime:      scoreDepTime(depMins, ctx.depTimePref),
-      arrivalTime:  scoreArrivalTime(arrMins, ctx.arrivalTimePref, ctx.tripPurpose),
+      arrivalTime:  scoreArrivalTime(arrMins, ctx.arrivalTimePref, ctx.tripPurpose, dayOffset),
       baggage:      scoreBaggage(offer, ctx.requireBag),
       savings:      scoreSavings(offer),
       comfortHours: scoreComfortHours(depMins),
@@ -537,20 +617,20 @@ export function rankOffers<T extends RankOffer>(
  * if the default generic profile is used.
  */
 export function getProfileLabel(ctx: RankingContext): string | null {
-  if (ctx.tripPurpose === 'honeymoon')         return 'Honeymoon'
-  if (ctx.tripPurpose === 'business')          return 'Business trip'
-  if (ctx.tripPurpose === 'ski')               return 'Ski holiday'
-  if (ctx.tripPurpose === 'beach')             return 'Beach holiday'
-  if (ctx.tripPurpose === 'city_break')        return 'City break'
-  if (ctx.tripPurpose === 'family_holiday')    return 'Family holiday'
-  if (ctx.tripPurpose === 'graduation')        return 'Graduation trip'
-  if (ctx.tripPurpose === 'concert_festival')  return 'Festival'
-  if (ctx.tripPurpose === 'sports_event')      return 'Sports trip'
-  if (ctx.tripPurpose === 'spring_break')      return 'Spring break'
-  if (ctx.tripContext === 'family')            return 'Family'
-  if (ctx.tripContext === 'couple')            return 'Couple'
-  if (ctx.tripContext === 'business_traveler') return 'Business'
-  if (ctx.requireBag)                         return 'Bag included'
+  if (ctx.tripPurpose === 'honeymoon')         return 'profileHoneymoon'
+  if (ctx.tripPurpose === 'business')          return 'profileBusiness'
+  if (ctx.tripPurpose === 'ski')               return 'profileSki'
+  if (ctx.tripPurpose === 'beach')             return 'profileBeach'
+  if (ctx.tripPurpose === 'city_break')        return 'profileCityBreak'
+  if (ctx.tripPurpose === 'family_holiday')    return 'profileFamilyHoliday'
+  if (ctx.tripPurpose === 'graduation')        return 'profileGraduation'
+  if (ctx.tripPurpose === 'concert_festival')  return 'profileFestival'
+  if (ctx.tripPurpose === 'sports_event')      return 'profileSports'
+  if (ctx.tripPurpose === 'spring_break')      return 'profileSpringBreak'
+  if (ctx.tripContext === 'family')            return 'profileFamily'
+  if (ctx.tripContext === 'couple')            return 'profileCouple'
+  if (ctx.tripContext === 'business_traveler') return 'profileBusinessLabel'
+  if (ctx.requireBag)                         return 'profileBag'
   return null
 }
 

@@ -152,13 +152,16 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
                 document.cookie = `NEXT_LOCALE=${lang.code}; ${cookieOpts}`
                 setOpen(false)
 
-                // Non-locale paths (/results, /book, /probe) — refresh in-place
+                // Non-locale paths (/results, /book, /probe) — hard reload so
+                // the server picks up the new cookie and re-renders in the new
+                // language. router.refresh() alone cannot guarantee the locale
+                // context propagates correctly through NextIntlClientProvider.
                 if (
                   pathname.startsWith('/results') ||
                   pathname.startsWith('/book') ||
                   pathname.startsWith('/probe')
                 ) {
-                  router.refresh()
+                  window.location.reload()
                   return
                 }
 

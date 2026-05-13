@@ -47,6 +47,7 @@ interface SearchResult {
   offers?: FlightOffer[]
   searched_at?: string
   expires_at?: string
+  gemini_justification?: { title?: string; hero: string; runners: string[]; ts: number; locale?: string }
 }
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
@@ -173,7 +174,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
     notFound()
   }
 
-  const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at } = result
+  const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result
   const query = resultQuery?.trim() || sp?.q?.trim() || buildFallbackSearchQuery(parsed)
 
   const isSearching = status === 'searching'
@@ -242,6 +243,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         searchedAt={searched_at || sp?.started}
         expiresAt={expires_at}
         fswSession={sp?._fss}
+        initialGemini={gemini_justification}
       />
     </>
   )

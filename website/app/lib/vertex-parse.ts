@@ -7,6 +7,15 @@ export interface VertexCityResult {
   origin_city:      string | null  // English city name; include state/country if ambiguous
   destination_city: string | null  // "ANYWHERE" for open-destination searches; null if unclear
   via_city:         string | null  // preferred stopover city or null
+  // Approximate centre lat/lon for the named city. Used as a deterministic
+  // fallback by /api/search to find the nearest commercial airport (via the
+  // bundled OurAirports DB + haversine) when origin_city / destination_city
+  // doesn't map to any IATA code in our city alias table. Optional — leave
+  // null when the model isn't confident or the query is ambiguous.
+  origin_lat?:      number | null
+  origin_lon?:      number | null
+  destination_lat?: number | null
+  destination_lon?: number | null
 }
 
 // Keep old name as alias so callers importing VertexParseResult still compile
@@ -14,11 +23,15 @@ export type VertexParseResult = VertexCityResult
 
 // ── Vertex AI config ──────────────────────────────────────────────────────────
 
-const VERTEX_PROJECT = 'sms-caller'
-const VERTEX_MODEL   = 'gemini-2.5-flash-lite'
-const VERTEX_URL     =
-  `https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/global` +
+const VERTEX_PROJECT  = 'sms-caller'
+const VERTEX_LOCATION = 'us-central1'
+const VERTEX_MODEL    = 'gemini-2.5-flash-lite'
+const VERTEX_URL      =
+  `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1` +
+  `/projects/${VERTEX_PROJECT}/locations/${VERTEX_LOCATION}` +
   `/publishers/google/models/${VERTEX_MODEL}:generateContent`
+const GEMINI_DIRECT_URL =
+  `https://generativelanguage.googleapis.com/v1beta/models/${VERTEX_MODEL}:generateContent`
 
 // ── Access-token cache (tokens are valid ~1 h on Cloud Run) ──────────────────
 
@@ -54,7 +67,7 @@ Rules:
 - destination_city: English city name. "ANYWHERE" for open-destination queries ("to anywhere", "wherever is cheapest"). null if not found.
 - via_city: preferred stopover city if explicitly mentioned ("via Dubai", "through Hong Kong"). null otherwise.
 - Normalize informal names to the nearest airport city: "Schiphol"->"Amsterdam", "Big Apple"->"New York, New York", "Red Sea"->"Hurghada", "Scottish Highlands"->"Inverness", "French Riviera"->"Nice", "Riviera Maya"->"Cancun", "the Alps"->"Geneva", "Maldives"->"Male".
-- Translate non-English city names to English: "München"->"Munich", "Moskva"->"Moscow", "Tokyou"->"Tokyo".
+- Translate non-English city names to English AND undo any grammatical case/declension before translating: "München"->"Munich", "Moskva"->"Moscow", "Tokjo"/"Tokio"->"Tokyo", "Soulu"/"Seulu"/"Seul"->"Seoul", "Warszawy"/"Warszawie"->"Warsaw", "Barcelony"/"Barcelonie"->"Barcelona", "Guatemali"->"Guatemala City", "Guadalahary"/"Gwadalahary"->"Guadalajara", "Lizbony"->"Lisbon", "Paryża"/"Paryżu"->"Paris", "Londynu"/"Londynie"->"London", "Madrytu"/"Madrycie"->"Madrid", "Rzymu"/"Rzymie"->"Rome", "Berlina"/"Berlinie"->"Berlin", "Stambułu"/"Stambule"->"Istanbul", "Kairu"/"Kairze"->"Cairo", "Pekinu"/"Pekinie"->"Beijing", "Szanghaju"->"Shanghai", "Bangkoku"->"Bangkok", "Nowego Jorku"/"Nowym Jorku"->"New York". Apply the same un-declension to ANY Slavic, Romance, Greek or Arabic genitive/locative form: strip the case ending and translate the bare name.
 - IGNORE everything else: dates, passengers, cabin class, stops, price. Only extract cities.
 Few-shot examples:
 Input: "gdansk to riga august 17 for 4 days round trip direct only trip with friends"
@@ -68,7 +81,13 @@ Output: {"origin_city":"London","destination_city":"ANYWHERE","via_city":null}
 Input: "Tokyo to London next month business class"
 Output: {"origin_city":"Tokyo","destination_city":"London","via_city":null}
 Input: "BCN to NYC via LHR next friday business class"
-Output: {"origin_city":"Barcelona","destination_city":"New York, New York","via_city":"London"}`
+Output: {"origin_city":"Barcelona","destination_city":"New York, New York","via_city":"London"}
+Input: "Warszawa do Soulu 13 czerwca solo one way"
+Output: {"origin_city":"Warsaw","destination_city":"Seoul","via_city":null}
+Input: "z Krakowa do Guatemali w czerwcu"
+Output: {"origin_city":"Krakow","destination_city":"Guatemala City","via_city":null}
+Input: "do Barcelony z Warszawy 18 lipca"
+Output: {"origin_city":"Warsaw","destination_city":"Barcelona","via_city":null}`
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
@@ -77,15 +96,22 @@ export async function vertexParse(
   _today: string,   // kept for API compatibility — not needed for city-only parsing
 ): Promise<VertexCityResult | null> {
   const token = await getAccessToken()
-  if (!token) return null   // local dev or metadata server unreachable
+  const geminiApiKey = process.env.GEMINI_API_KEY
+
+  // Need at least one auth method
+  if (!token && !geminiApiKey) return null
+
+  // Prefer Vertex AI (Cloud Run), fall back to direct Gemini API key
+  const url = token
+    ? VERTEX_URL
+    : `${GEMINI_DIRECT_URL}?key=${geminiApiKey}`
+  const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) fetchHeaders['Authorization'] = `Bearer ${token}`
 
   try {
-    const res = await fetch(VERTEX_URL, {
+    const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: fetchHeaders,
       body: JSON.stringify({
         systemInstruction: {
           parts: [{ text: SYSTEM_PROMPT }],
@@ -93,7 +119,7 @@ export async function vertexParse(
         contents: [{ role: 'user', parts: [{ text: query }] }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 100,
+          maxOutputTokens: 250,
           responseMimeType: 'application/json',
         },
       }),
@@ -102,7 +128,7 @@ export async function vertexParse(
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
-      console.error(`[vertex-parse] HTTP ${res.status}:`, errText.slice(0, 200))
+      console.error(`[vertex-parse] HTTP ${res.status} url=${url} body=${errText.slice(0, 400)}`)
       return null
     }
 
