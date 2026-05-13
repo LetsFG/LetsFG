@@ -5415,6 +5415,24 @@ export function parseNLQuery(query: string): ParsedQuery {
     }
   }
 
+  // ── "Round trip" / "return flight" signal — default trip duration ─────────
+  // When the user explicitly says "round trip" (or multilingual equivalent) but
+  // gives no trip duration, infer a sensible default so we can set return_date.
+  // City-break queries → 3–4 days; everything else → 7 days.
+  if (result.min_trip_days === undefined && !result.return_date) {
+    const _rtRe = /\b(?:round[\s-]?trip|roundtrip|return\s+(?:flight|ticket|flights|tickets)|two[\s-]?way|aller[\s-]retour|hin\s+und\s+zur[üu]ck|andata\s+e\s+ritorno|ida\s+y\s+vuelta|tam\s+i\s+z\s+powrotem|bilet\s+(?:w\s+obie\s+strony|powrotny)|retourvlucht|heen\s+en\s+terug|tur\s+retur)\b/i
+    if (_rtRe.test(q)) {
+      const _cbRe = /\b(?:city\s+break|weekend\s+(?:break|trip|getaway|away)|short\s+(?:break|trip)|mini\s+(?:break|vacation|trip)|long\s+weekend)\b/i
+      if (_cbRe.test(q)) {
+        result.min_trip_days = 3
+        result.max_trip_days = 4
+      } else {
+        result.min_trip_days = 7
+        result.max_trip_days = 7
+      }
+    }
+  }
+
   // If we have a trip duration and an outbound date but no return date,
   // derive a midpoint return date for the initial search
   if (result.min_trip_days !== undefined && result.date && !result.return_date) {
