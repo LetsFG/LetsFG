@@ -311,7 +311,10 @@ class QatarConnectorClient:
         await auto_block_if_proxied(page)
 
         try:
-            # Warm Akamai cookies once by visiting the homepage
+            # Warm Akamai cookies once by visiting the homepage.
+            # Subsequent searches: navigate to a lightweight Qatar URL with wait_until="commit"
+            # (stops after first byte — no JS/CSS/Firebase SDK downloaded) to set the same-origin
+            # context needed for the CORS fetch, without reloading the full heavy homepage.
             if not _homepage_warmed:
                 logger.info("QR: warming Akamai cookies via homepage")
                 await page.goto(
@@ -322,13 +325,15 @@ class QatarConnectorClient:
                 await asyncio.sleep(3)
                 _homepage_warmed = True
             else:
-                # Reuse same page context — just go to homepage quickly
-                await page.goto(
-                    "https://www.qatarairways.com/en/homepage.html",
-                    wait_until="domcontentloaded",
-                    timeout=20000,
-                )
-                await asyncio.sleep(2)
+                # Already warmed — just commit to the domain for CORS (no resource downloads)
+                try:
+                    await page.goto(
+                        "https://www.qatarairways.com/en/homepage.html",
+                        wait_until="commit",
+                        timeout=10000,
+                    )
+                except Exception:
+                    pass  # If even commit fails, try the API anyway — cookies still in context
 
             # Call the /dapi flight-offers API from the page context
             dt = _to_datetime(req.date_from)
