@@ -232,6 +232,34 @@ function retDepTimeMismatchMultiplier(offer: RankOffer, retTimePref: string | un
   return 0.70                  // clearly wrong time window (softer than outbound 0.55)
 }
 
+/**
+ * Preference match score — purely preference-based, no price.
+ * Returns 0–1, higher = better match to the user's stated time/stops prefs.
+ * Used to identify the "ideal trip" hero candidate, bypassing price bias.
+ *
+ * Only called when ctx has at least one of depTimePref / retTimePref / preferDirect.
+ */
+function preferenceMatchScore(offer: RankOffer, ctx: RankingContext): number {
+  const parts: number[] = []
+
+  if (ctx.depTimePref) {
+    parts.push(scoreDepTime(isoToMins(offer.departure_time), ctx.depTimePref))
+  }
+
+  if (ctx.retTimePref) {
+    const retDep = offer.inbound?.departure_time
+    // If return info is absent when a return pref is stated, treat as unknown (0.40)
+    parts.push(retDep ? scoreDepTime(isoToMins(retDep), ctx.retTimePref) : 0.40)
+  }
+
+  if (ctx.preferDirect) {
+    parts.push(scoreStops(offer.stops))
+  }
+
+  if (parts.length === 0) return 0.5
+  return parts.reduce((a, b) => a + b, 0) / parts.length
+}
+
 /** Remove near-duplicate offers: when multiple connectors return the same physical
  *  flight (e.g. Ryanair FR1234 from both the direct connector and Kiwi/Skyscanner),
  *  keep only the cheapest. Two offers are considered identical if they share the
@@ -668,6 +696,32 @@ export function rankOffers<T extends RankOffer>(
 
   // Sort best-first
   scored.sort((a, b) => b.score - a.score)
+
+  // ── Preference-winner hero override ─────────────────────────────────────
+  // When the user has stated explicit time/stops preferences, the "ideal trip"
+  // is the flight that best satisfies those preferences — not necessarily the
+  // one with the highest weighted score (which includes premiumPenalty that
+  // can suppress an expensive but preference-perfect flight).
+  //
+  // Among flights within 0.05 of the top preference score (essentially tied),
+  // the cheaper one wins. This makes the hero the cheapest flight that well
+  // matches the user's stated preferences.
+  if (ctx.depTimePref || ctx.retTimePref) {
+    const withPref = scored.map(s => ({
+      item: s,
+      prefScore: preferenceMatchScore(s.offer, ctx),
+      ep: effectivePrice(s.offer),
+    }))
+    const maxPref = Math.max(...withPref.map(w => w.prefScore))
+    const ideal = withPref
+      .filter(w => w.prefScore >= maxPref - 0.05)
+      .sort((a, b) => a.ep - b.ep)[0]
+    const heroIdx = scored.findIndex(s => s.offer.id === ideal.item.offer.id)
+    if (heroIdx > 0) {
+      const [hero] = scored.splice(heroIdx, 1)
+      scored.unshift(hero)
+    }
+  }
 
   // Assign 1-based ranks and generate human-readable facts
   // Hero compares vs cheapest in set; runners compare vs the hero price
