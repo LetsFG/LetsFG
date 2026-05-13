@@ -28,6 +28,9 @@ interface RankRequestBody {
   phase?: 'early' | 'mid' | 'final'
   /** BCP-47 locale code (e.g. 'ja', 'de', 'en') — Gemini will respond in this language */
   locale?: string
+  /** Currency the user is viewing prices in. All prompt prices are converted to this so
+   * Gemini's copy matches the card. Falls back to each offer's native currency. */
+  displayCurrency?: string
   /** Set when /api/search had to swap a city without an airport for the
    * nearest hub (e.g. user typed Pretoria → we searched JNB). Gemini must
    * surface this honestly in its justification so the user understands. */
@@ -192,6 +195,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const phase = body.phase ?? 'final'
   const { searchId } = body
   const locale = body.locale ?? 'en'
+  const displayCurrency = (body.displayCurrency ?? '').toUpperCase()
   // Enforce max 3 offers server-side regardless of what the client sends
   const topOffers = (body.topOffers ?? []).slice(0, 3)
   if (!topOffers.length) {
@@ -237,25 +241,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // add-on lines below but never folded into TOTAL — otherwise Gemini quotes a
   // different number than what the user sees on the card.
   const hBd = offerBreakdown(h.price, h.currency, hSource, h.ancillaries as FullAncillaries, false, false)
-  const hTotal = hBd.total
-  const savingsLine = h.google_flights_price && h.google_flights_price > hTotal + 8
-    ? `\n- Saves ${Math.round(h.google_flights_price - hTotal)} ${h.currency} vs Google Flights (Google charges ~${Math.round(h.google_flights_price)} ${h.currency})`
+  // Display currency: the user may be viewing prices in a different currency than
+  // the offer's native one. Convert each line so Gemini's copy matches the card.
+  const hDispCur = displayCurrency || h.currency
+  const dispTicket = fxConvert(hBd.ticket, h.currency, hDispCur)
+  const dispFee = fxConvert(hBd.fee, h.currency, hDispCur)
+  const dispBag = fxConvert(hBd.bag, h.currency, hDispCur)
+  const dispSeat = fxConvert(hBd.seat, h.currency, hDispCur)
+  const hTotal = fxConvert(hBd.total, h.currency, hDispCur)
+  const dispGoogle = h.google_flights_price ? fxConvert(h.google_flights_price, h.currency, hDispCur) : 0
+  const savingsLine = dispGoogle && dispGoogle > hTotal + 8
+    ? `\n- Saves ${Math.round(dispGoogle - hTotal)} ${hDispCur} vs Google Flights (Google charges ~${Math.round(dispGoogle)} ${hDispCur})`
     : ''
   // Price breakdown block for prompt (only show lines that are non-zero / relevant)
-  const bdLines: string[] = [`  ✈ Ticket:      ${hBd.ticket} ${h.currency}`]
-  bdLines.push(`  ⚙ LetsFG fee:  +${hBd.fee} ${h.currency}  ← small service charge, not a concern`)
+  const bdLines: string[] = [`  ✈ Ticket:      ${dispTicket} ${hDispCur}`]
+  bdLines.push(`  ⚙ LetsFG fee:  +${dispFee} ${hDispCur}  ← small service charge, not a concern`)
   if (h.ancillaries?.checked_bag?.included === true) {
     bdLines.push(`  🧳 Bag:         included in fare`)
-  } else if (requireBag && hBd.bag > 0) {
-    bdLines.push(`  🧳 Bag:         +${hBd.bag} ${h.currency}  ← optional add-on if user checks a bag (NOT in TOTAL)`)
+  } else if (requireBag && dispBag > 0) {
+    bdLines.push(`  🧳 Bag:         +${dispBag} ${hDispCur}  ← optional add-on if user checks a bag (NOT in TOTAL)`)
   }
   if (h.ancillaries?.seat_selection?.included === true) {
     bdLines.push(`  💺 Seat:        included in fare`)
-  } else if (hBd.seat > 0) {
-    bdLines.push(`  💺 Seat:        +${hBd.seat} ${h.currency}  ← optional add-on for seat selection (NOT in TOTAL)`)
+  } else if (dispSeat > 0) {
+    bdLines.push(`  💺 Seat:        +${dispSeat} ${hDispCur}  ← optional add-on for seat selection (NOT in TOTAL)`)
   }
   bdLines.push(`  ─────────────────────────────`)
-  bdLines.push(`  TOTAL:         ${hTotal} ${h.currency}  ← use this EXACT number in your copy (matches the card)`)
+  bdLines.push(`  TOTAL:         ${hTotal} ${hDispCur}  ← use this EXACT number in your copy (matches the card)`)
   const priceBreakdownBlock = bdLines.join('\n')
   // Collect unique aircraft types from outbound segments (runtime data includes aircraft even if type doesn't)
   const heroAircraft = (h.segments as Array<{ aircraft?: string }> | undefined)
@@ -283,13 +295,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const roSource = (ro as RankOffer & { source?: string }).source
     // Match the displayed card total (ticket + fee + included ancillaries only).
     const roBd = offerBreakdown(ro.price, ro.currency, roSource, ro.ancillaries as FullAncillaries, false, false)
-    const roBagNote = ro.ancillaries?.checked_bag?.included === true ? ' (bag incl)' : (requireBag && roBd.bag > 0) ? ` (+${roBd.bag} ${ro.currency} bag add-on)` : ''
+    const roDispCur = displayCurrency || ro.currency
+    const roDispTotal = fxConvert(roBd.total, ro.currency, roDispCur)
+    const roDispBag = fxConvert(roBd.bag, ro.currency, roDispCur)
+    const roBagNote = ro.ancillaries?.checked_bag?.included === true ? ' (bag incl)' : (requireBag && roDispBag > 0) ? ` (+${roDispBag} ${roDispCur} bag add-on)` : ''
     const roSeatNote = ro.ancillaries?.seat_selection?.included === true ? ' (seat incl)' : ''
     const roRetDep = (ro.inbound as { departure_time?: string } | undefined)?.departure_time
     const roRetNote = roRetDep ? ` | return departs ${fmtMins(roRetDep)}` : ''
     return (
       `${FLIGHT_LABELS[i + 1]}: ` +
-      `${roBd.total} ${ro.currency}${roBagNote}${roSeatNote}, ` +
+      `${roDispTotal} ${roDispCur}${roBagNote}${roSeatNote}, ` +
       `${ro.stops === 0 ? 'direct' : `${ro.stops} stop(s)`}, ` +
       `${fmtDur(ro.duration_minutes)}, ` +
       `departs ${fmtMins(ro.departure_time)} → arrives ${fmtMins(ro.arrival_time)}${roRetNote} ` +
