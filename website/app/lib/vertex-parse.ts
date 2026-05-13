@@ -39,6 +39,12 @@ export interface VertexCityResult {
   ret_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
   /** Passenger group context. null if unclear. */
   passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
+  /** true = round trip, false = one-way, null = unclear. */
+  is_round_trip?: boolean | null
+  /** Outbound flight date in YYYY-MM-DD. null if not determinable. */
+  departure_date?: string | null
+  /** Return flight date in YYYY-MM-DD. null for one-way or unclear. */
+  return_date?: string | null
 }
 
 // Keep old name as alias so callers importing VertexParseResult still compile
@@ -101,7 +107,10 @@ Return ONLY valid JSON (no markdown, no explanation) with exactly these fields:
   "trip_purpose": "city_break"|"beach"|"ski"|"business"|"honeymoon"|"family_holiday"|"concert_festival"|"sports_event"|null,
   "dep_time_pref": "early_morning"|"morning"|"afternoon"|"evening"|"red_eye"|null,
   "ret_time_pref": "early_morning"|"morning"|"afternoon"|"evening"|"red_eye"|null,
-  "passenger_context": "solo"|"couple"|"family"|"group"|"business_traveler"|null
+  "passenger_context": "solo"|"couple"|"family"|"group"|"business_traveler"|null,
+  "is_round_trip": boolean|null,
+  "departure_date": "YYYY-MM-DD"|null,
+  "return_date": "YYYY-MM-DD"|null
 }
 
 CITY RULES:
@@ -133,6 +142,11 @@ INTENT RULES:
 - dep_time_pref: outbound departure time preference. "early morning/dawn/first flight/6am" -> "early_morning"; "morning flight/morning out" -> "morning"; "afternoon/midday" -> "afternoon"; "evening/evening out/evening flight/night out" -> "evening"; "red eye/overnight" -> "red_eye". null if not stated. NOTE: "Friday evening out" means outbound (dep_time_pref="evening"), "Sunday night back" means return (ret_time_pref="evening").
 - ret_time_pref: return departure time preference. Same buckets as dep_time_pref. Phrases like "Sunday night back", "evening return", "fly back in the morning" set this. null if not stated or not a round-trip.
 - passenger_context: "solo" if travelling alone; "couple" if two romantic partners (girlfriend/boyfriend/wife/husband/partner); "family" if travelling with children/kids; "group" if travelling with friends/colleagues/team (3+); "business_traveler" if explicit business trip context. null if unclear.
+
+DATE RULES (today's date is given at the start of the user message):
+- departure_date: outbound date, YYYY-MM-DD. Resolve relative expressions using today: "next month" → first day of next month; "next friday" → nearest future Friday; "in 2 weeks" → today + 14 days; "May 20th" / "the 20th" → nearest future occurrence. null if no date is mentioned at all.
+- return_date: return date, YYYY-MM-DD. Set when: an explicit return date is given; OR "round trip for N days/nights" → departure_date + N days; OR "for N days" in a round-trip context → departure_date + N days. null for clear one-way queries or when undeterminable.
+- is_round_trip: true when user says "round trip", "return flight", "return on [date]", "coming back", "there and back", or gives both outbound and return dates. false for "one way" / "one-way". null if not stated.
 
 Few-shot examples:
 Input: "London to Guatemala next week, 20th May, me and my girlfriend, round trip for 5 days, beach holiday, short flight and cheapest price"
@@ -169,7 +183,7 @@ Output: {"origin_city":"London","destination_city":"Barcelona","via_city":null,"
 
 export async function vertexParse(
   query: string,
-  _today: string,   // kept for API compatibility — not needed for city-only parsing
+  today: string,
 ): Promise<VertexCityResult | null> {
   const token = await getAccessToken()
   const geminiApiKey = process.env.GEMINI_API_KEY
@@ -192,7 +206,7 @@ export async function vertexParse(
         systemInstruction: {
           parts: [{ text: SYSTEM_PROMPT }],
         },
-        contents: [{ role: 'user', parts: [{ text: query }] }],
+        contents: [{ role: 'user', parts: [{ text: `Today is ${today}. Day of week: ${new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}.\n\n${query}` }] }],
         generationConfig: {
           temperature: 0,
           maxOutputTokens: 700,
