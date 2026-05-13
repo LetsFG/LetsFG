@@ -109,9 +109,12 @@ function fmtDur(mins: number): string {
 
 // Compute the total price Gemini should reference (matches what the card displays)
 const GOOGLE_SOURCES = new Set(['serpapi_google', 'google_flights'])
+// Keep in sync with lib/pricing.ts MIN_FEE_FLOOR
 const FEE_FLOOR: Record<string, number> = {
-  USD: 3, EUR: 3, GBP: 2.55, AUD: 4.5, CAD: 4, CHF: 3,
-  SEK: 30, NOK: 30, DKK: 20, PLN: 12, CZK: 70,
+  EUR: 3, USD: 3, GBP: 2.55, PLN: 12.75, CZK: 75, HUF: 1200, RON: 15,
+  SEK: 33, NOK: 36, DKK: 22.5, CHF: 2.85, TRY: 108, AED: 12, SAR: 12.3,
+  INR: 276, THB: 117, MYR: 15, SGD: 4.5, AUD: 5.1, NZD: 5.55, CAD: 4.5,
+  MXN: 66, BRL: 18, JPY: 486, KRW: 4500, HKD: 25.8, ZAR: 60, EGP: 165,
 }
 // Same FX table as display-price.ts — kept in sync manually
 const FX_VS_EUR: Record<string, number> = {
