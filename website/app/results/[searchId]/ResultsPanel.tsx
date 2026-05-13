@@ -654,6 +654,8 @@ interface Props {
   initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialArrTimePref?: 'morning' | 'afternoon' | 'evening'
+  /** Hard departure time floor in minutes from midnight (e.g. 600 = 10:00 am). */
+  initialDepartAfterMins?: number
   tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
   tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
   preferredAirline?: string
@@ -688,6 +690,7 @@ export default function ResultsPanel({
   initialDepTimePref,
   initialRetTimePref,
   initialArrTimePref,
+  initialDepartAfterMins,
   tripContext,
   tripPurpose,
   preferredAirline,
@@ -949,6 +952,7 @@ export default function ResultsPanel({
         depTimePref: initialDepTimePref,
         retTimePref: initialRetTimePref,
         arrivalTimePref: initialArrTimePref,
+        departAfterMins: initialDepartAfterMins,
         requireBag: requireBagPerPerson,
         preferredAirline,
         preferQuickFlight,

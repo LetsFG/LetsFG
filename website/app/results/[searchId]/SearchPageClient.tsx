@@ -1003,6 +1003,7 @@ export default function SearchPageClient({
           initialDepTimePref={nlParsed?.depart_time_pref}
           initialRetTimePref={nlParsed?.return_depart_time_pref}
           initialArrTimePref={nlParsed?.arrive_time_pref}
+          initialDepartAfterMins={nlParsed?.depart_after_mins}
           tripContext={nlParsed?.passenger_context}
           tripPurpose={nlParsed?.trip_purpose}
           preferredAirline={nlParsed?.preferred_airline}

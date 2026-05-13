@@ -52,6 +52,11 @@ export interface RankingContext {
   preferDirect?: boolean
   /** User explicitly asked for cheapest / lowest price — price dominates all other factors. */
   preferCheapest?: boolean
+  /** Hard lower bound on departure time, in minutes from midnight.
+   *  Flights departing before this time receive a heavy score penalty (effectively filtered out). */
+  departAfterMins?: number
+  /** Hard upper bound on departure time, in minutes from midnight. */
+  departBeforeMins?: number
 }
 
 export interface ScoreBreakdown {
@@ -189,6 +194,15 @@ function resolveWeights(ctx: RankingContext): Weights {
   }
 
   return w
+}
+
+/** Heavy penalty applied when a flight violates a hard departure time constraint
+ *  ("departure after 10am", "departure before 9am"). Score multiplier → 0.05,
+ *  so these flights sink to the bottom without completely vanishing from results. */
+function timeConstraintPenalty(depMins: number, afterMins: number | undefined, beforeMins: number | undefined): number {
+  if (afterMins !== undefined && depMins < afterMins) return 0.05
+  if (beforeMins !== undefined && depMins > beforeMins) return 0.05
+  return 1.0
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -586,7 +600,7 @@ export function rankOffers<T extends RankOffer>(
 
     // Apply price-premium penalty so no flight can leapfrog a much cheaper one
     // purely on arrival time / stops when the price gap is unreasonable.
-    const score = rawScore * premiumPenalty(ep, cheapestPrice)
+    const score = rawScore * premiumPenalty(ep, cheapestPrice) * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
 
     return { offer, score, rank: 0, breakdown: bd, heroFacts: [], tradeoffs: [] }
   })
