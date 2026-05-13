@@ -3046,7 +3046,7 @@ function extractPassengers(text: string): PassengerExtraction {
 
   // ── Couple / partner signals — all languages ───────────────────────────────
   const hasCoupleSignal =
-    /\b(?:as\s+a\s+couple|for\s+(?:a\s+)?couple|for\s+(?:the\s+)?(?:two|2)(?:\s+of\s+us)?|with\s+(?:my\s+)?(?:partner|wife|husband|boyfriend|girlfriend|fianc[eé]e?|spouse|other\s+half|significant\s+other)|the\s+two\s+of\s+us|just\s+(?:the\s+)?(?:two|2)\s+of\s+us|just\s+us\s+two|us\s+two|we\s+two|date\s+(?:night|trip|flight))\b/.test(t) ||   // EN
+    /\b(?:as\s+a\s+couple|for\s+(?:a\s+)?couple|for\s+(?:the\s+)?(?:two|2)(?:\s+of\s+us)?|(?:me\s+and\s+(?:my\s+)?|with\s+(?:my\s+)?)(?:partner|wife|husband|boyfriend|girlfriend|fianc[eé]e?|spouse|other\s+half|significant\s+other)|the\s+two\s+of\s+us|just\s+(?:the\s+)?(?:two|2)\s+of\s+us|just\s+us\s+two|us\s+two|we\s+two|date\s+(?:night|trip|flight))\b/.test(t) ||   // EN
     /\b(?:zu\s+zweit|als\s+paar|mit\s+(?:meiner\s+frau|meinem\s+mann|meiner\s+partnerin|meinem\s+partner|meiner\s+freundin|meinem\s+freund)|wir\s+(?:zwei|2)|als?\s+pärchen)\b/.test(t) ||   // DE
     /\b(?:en\s+pareja|con\s+mi\s+pareja|con\s+mi\s+(?:esposa|esposo|novia|novio|marido|mujer)|somos\s+dos|los\s+dos|nosotros\s+dos|para\s+dos(?:\s+personas?)?|viaje\s+(?:en\s+pareja|romantic[ao]))\b/.test(t) || // ES
     /\b(?:en\s+couple|avec\s+(?:ma\s+femme|mon\s+mari|ma\s+partenaire|mon\s+partenaire|ma\s+copine|mon\s+copain|ma\s+compagne|mon\s+compagnon)|tous\s+les\s+deux|nous\s+deux|pour\s+deux(?:\s+personnes?)?)\b/.test(t) || // FR
