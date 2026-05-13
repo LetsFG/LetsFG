@@ -1058,6 +1058,9 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'vtz': { code: 'VTZ', name: 'Visakhapatnam' },
   'macau': { code: 'MFM', name: 'Macau' },
   'taipei': { code: 'TPE', name: 'Taipei' },
+  'hong kong': { code: 'HKG', name: 'Hong Kong' },
+  'hongkong': { code: 'HKG', name: 'Hong Kong' },
+  'hong-kong': { code: 'HKG', name: 'Hong Kong' },
   'singapore': { code: 'SIN', name: 'Singapore' },
   'singapur': { code: 'SIN', name: 'Singapore' },       // DE/ES/PL/HR/SQ
   'singapour': { code: 'SIN', name: 'Singapore' },      // FR
@@ -4035,6 +4038,33 @@ function findTwoCitiesInText(
     if (airportEntry) ranges.push({ start, end, code: airportEntry.code, name: airportEntry.name })
   }
 
+  // Final pass: airport-DB lookup over 1-2 word windows for cities NOT in
+  // CITY_TO_IATA (e.g. "Paris", "Hong Kong", "Helsinki"). resolveCity already
+  // handles airport-name fuzzy/exact matching against the global airport DB.
+  // We tokenize on word boundaries and try each token + 2-word window, taking
+  // the earliest non-overlapping matches that don't collide with existing ranges.
+  const tokenRe = /[a-z][a-z'-]*/g
+  const tokens: Array<{ text: string; start: number; end: number }> = []
+  let tm: RegExpExecArray | null
+  while ((tm = tokenRe.exec(t)) !== null) {
+    tokens.push({ text: tm[0], start: tm.index, end: tm.index + tm[0].length })
+  }
+  // Try 2-word windows first (longer wins), then single words.
+  for (let winLen = 2; winLen >= 1; winLen -= 1) {
+    for (let i = 0; i + winLen <= tokens.length; i += 1) {
+      const slice = tokens.slice(i, i + winLen)
+      const phrase = slice.map(s => s.text).join(' ')
+      if (phrase.length < 3) continue
+      // Skip pure stopwords / connector tokens; they're not city names.
+      if (winLen === 1 && _COMMON_WORDS_BLOCKLIST.has(phrase)) continue
+      const start = slice[0].start
+      const end = slice[slice.length - 1].end
+      if (ranges.some(r => start < r.end && end > r.start)) continue
+      const hit = resolveCity(phrase)
+      if (hit) ranges.push({ start, end, code: hit.code, name: hit.name })
+    }
+  }
+
   if (ranges.length < 2) return null
   ranges.sort((a, b) => a.start - b.start)
   return [ranges[0], ranges[1]]
@@ -4806,7 +4836,14 @@ export function parseNLQuery(query: string): ParsedQuery {
   // Use outboundForParsing (already had passenger phrases stripped) when it differs
   // from the original query, so "Paris en couple" / "Stockholm för två" etc. fall
   // through to the single-city fallback with the connector words gone.
-  if (!result.origin && !result.destination && !result.anywhere_destination) {
+  //
+  // Also fires when ONLY ONE side resolved — covers cases like "Paris Rome" or
+  // "Hong Kong Singapore" where an upstream single-city resolver greedily matched
+  // a substring (e.g. "Rome" out of "Paris Rome") and orphaned the other city.
+  // In that case, if findTwoCitiesInText returns two distinct cities, we trust
+  // the positional pair and overwrite the partial single-city resolution.
+  const _hasOnlyOneSide = (!result.origin) !== (!result.destination)
+  if ((!result.origin && !result.destination && !result.anywhere_destination) || _hasOnlyOneSide) {
     const _baseForFallback = (outboundForParsing && outboundForParsing.length > 0 && outboundForParsing.length < ql.length)
       ? outboundForParsing.toLowerCase()
       : ql
@@ -4830,12 +4867,17 @@ export function parseNLQuery(query: string): ParsedQuery {
       .replace(/[$€£¥₹]\s*\d+|\b\d+\s*(?:dollars?|euros?|pounds?|usd|eur|gbp)\b/gi, ' ')
       .replace(/\s+/g, ' ').trim()
     const pair = findTwoCitiesInText(cleaned)
-    if (pair) {
+    if (pair && pair[0].code !== pair[1].code) {
       result.origin = pair[0].code
       result.origin_name = pair[0].name
       result.destination = pair[1].code
       result.destination_name = pair[1].name
-    } else {
+      // Clear partial-single-city failure markers if we recovered both sides.
+      delete (result as { failed_origin_raw?: string }).failed_origin_raw
+      delete (result as { failed_destination_raw?: string }).failed_destination_raw
+      delete (result as { origin_candidates?: unknown }).origin_candidates
+      delete (result as { destination_candidates?: unknown }).destination_candidates
+    } else if (!result.origin && !result.destination) {
       // Single-city fallback: "guadalajara for two" → no route pattern fires
       // (no "to"/"a" separator), and findTwoCitiesInText needs two cities.
       // Try resolving the cleaned text as a single city — store as origin so the
