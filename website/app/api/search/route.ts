@@ -142,6 +142,11 @@ export async function POST(request: NextRequest) {
         if (_ai.dep_time_pref)           _aiIntent.ai_dep_time_pref     = _ai.dep_time_pref
         if (_ai.ret_time_pref)           _aiIntent.ai_ret_time_pref     = _ai.ret_time_pref
         if (_ai.passenger_context)       _aiIntent.ai_passenger_context = _ai.passenger_context
+
+        // Date fallback — Gemini fills gaps the regex parser couldn't handle
+        // (exotic phrasings, edge cases, future language the regex doesn't cover)
+        if ((!dateFrom || parsed.date_is_default) && _ai.departure_date) dateFrom = _ai.departure_date
+        if (!returnDate && _ai.return_date) returnDate = _ai.return_date
       }
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
