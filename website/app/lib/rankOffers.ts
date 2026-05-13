@@ -205,6 +205,45 @@ function timeConstraintPenalty(depMins: number, afterMins: number | undefined, b
   return 1.0
 }
 
+/** Soft multiplier for departure time mismatch when the user explicitly stated
+ *  a time preference ("evening", "morning", etc.). Acts as a strong nudge rather
+ *  than a filter — flights at the clearly wrong time are significantly demoted
+ *  but still appear in results so the user can see what's available. */
+function depTimeMismatchMultiplier(depMins: number, depTimePref: string | undefined): number {
+  if (!depTimePref) return 1.0
+  const s = scoreDepTime(depMins, depTimePref)
+  if (s >= 0.55) return 1.0   // ok or good match — no penalty
+  if (s >= 0.30) return 0.80  // slightly off — gentle nudge
+  return 0.55                  // clearly wrong time window (e.g. 7:35am when user asked for evening)
+}
+
+/** Remove near-duplicate offers: when multiple connectors return the same physical
+ *  flight (e.g. Ryanair FR1234 from both the direct connector and Kiwi/Skyscanner),
+ *  keep only the cheapest. Two offers are considered identical if they share the
+ *  same departure 30-min bucket, arrival 30-min bucket, and stop count. */
+function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
+  const bucket = (iso: string) => Math.round(isoToMins(iso) / 30)
+  const key = (o: T) => `${bucket(o.departure_time)}_${bucket(o.arrival_time)}_${o.stops}`
+  // First pass: find the cheapest effective price in each bucket
+  const bucketMin = new Map<string, number>()
+  for (const o of offers) {
+    const k = key(o)
+    const ep = o.displayPrice ?? o.price
+    if (!bucketMin.has(k) || ep < bucketMin.get(k)!) bucketMin.set(k, ep)
+  }
+  // Second pass: keep the first occurrence of the cheapest offer in each bucket
+  const bucketSeen = new Set<string>()
+  return offers.filter(o => {
+    const k = key(o)
+    const ep = o.displayPrice ?? o.price
+    if (Math.abs(ep - bucketMin.get(k)!) < 0.01 && !bucketSeen.has(k)) {
+      bucketSeen.add(k)
+      return true
+    }
+    return false
+  })
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function isoToMins(iso: string | undefined): number {
   if (!iso) return 0
@@ -556,19 +595,23 @@ export function rankOffers<T extends RankOffer>(
 ): RankedOffer<T>[] {
   if (offers.length === 0) return []
 
+  // Remove near-identical offers (same physical flight from multiple sources).
+  // Only the cheapest copy in each (dep window × arr window × stops) bucket survives.
+  const deduped = deduplicateOffers(offers)
+
   const weights = resolveWeights(ctx)
   // Use displayPrice when available — it reflects what the user actually pays
   // (ticket + LetsFG fee + ancillaries, in their display currency).
   const effectivePrice = (o: RankOffer) => o.displayPrice ?? o.price
-  const prices = offers.map(effectivePrice)
-  const durations = offers.map(o => o.duration_minutes)
+  const prices = deduped.map(effectivePrice)
+  const durations = deduped.map(o => o.duration_minutes)
   const [pLo, pHi] = p5p95(prices)
   const [dLo, dHi] = p5p95(durations)
   const cheapestPrice = Math.min(...prices)
   const fastestMins = Math.min(...durations)
 
   // Score every offer
-  const scored: RankedOffer<T>[] = offers.map(offer => {
+  const scored: RankedOffer<T>[] = deduped.map(offer => {
     const depMins = isoToMins(offer.departure_time)
     const arrMins = isoToMins(offer.arrival_time)
     const dayOffset = daysBetween(offer.departure_time, offer.arrival_time)
@@ -600,7 +643,9 @@ export function rankOffers<T extends RankOffer>(
 
     // Apply price-premium penalty so no flight can leapfrog a much cheaper one
     // purely on arrival time / stops when the price gap is unreasonable.
-    const score = rawScore * premiumPenalty(ep, cheapestPrice) * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
+    const score = rawScore * premiumPenalty(ep, cheapestPrice)
+      * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
+      * depTimeMismatchMultiplier(depMins, ctx.depTimePref)
 
     return { offer, score, rank: 0, breakdown: bd, heroFacts: [], tradeoffs: [] }
   })
@@ -623,6 +668,45 @@ export function rankOffers<T extends RankOffer>(
   }
 
   return scored
+}
+
+/**
+ * From an already-ranked list, picks the top N offers that are genuinely
+ * different from each other — so runner-ups are real propositions, not just
+ * the same flight at +$3 from a different booking source.
+ *
+ * Two offers are considered "the same" for this purpose if both their
+ * departure time slot (3-hour window) AND their stop count are identical.
+ * Diversity requires differing in at least one of those dimensions.
+ *
+ * Falls back to next-best-ranked when the pool lacks enough diverse options.
+ */
+export function selectDiverseTop<T extends RankOffer>(
+  ranked: RankedOffer<T>[],
+  n: number,
+): RankedOffer<T>[] {
+  if (ranked.length === 0) return []
+  const result: RankedOffer<T>[] = [ranked[0]]  // hero always first
+  const depSlot = (iso: string) => Math.floor(isoToMins(iso) / 180)  // 3-hour slots
+
+  for (const candidate of ranked.slice(1)) {
+    if (result.length >= n) break
+    // Candidate is diverse if it differs from EVERY already-selected offer
+    // in departure slot OR stop count (at least one dimension must differ).
+    const isDiverse = result.every(sel =>
+      Math.abs(depSlot(candidate.offer.departure_time) - depSlot(sel.offer.departure_time)) >= 1 ||
+      Math.abs(candidate.offer.stops - sel.offer.stops) >= 1,
+    )
+    if (isDiverse) result.push(candidate)
+  }
+
+  // Not enough diverse options — fill remaining slots with next-best
+  for (const candidate of ranked.slice(1)) {
+    if (result.length >= n) break
+    if (!result.some(r => r.offer.id === candidate.offer.id)) result.push(candidate)
+  }
+
+  return result
 }
 
 /**
