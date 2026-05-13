@@ -715,6 +715,7 @@ export default function HomeSearchForm({
   const dropdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const queryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
+  const suppressDropdownRef = useRef(false)
 
   const DESTINATIONS = DESTINATION_KEYS.map((d) => ({
     ...d,
@@ -1330,6 +1331,7 @@ export default function HomeSearchForm({
   const handleDropdownSelect = (airport: Airport) => {
     const parsed = parseQuery(inputValue, locale)
     const newQuery = insertAirport(parsed, airport, dropdownSlot, locale)
+    suppressDropdownRef.current = true
     setInputValue(newQuery)
     setQuery(newQuery)
     setDropdownItems([])
@@ -1366,6 +1368,7 @@ export default function HomeSearchForm({
   useEffect(() => {
     if (dropdownTimerRef.current) clearTimeout(dropdownTimerRef.current)
     dropdownTimerRef.current = setTimeout(() => {
+      if (suppressDropdownRef.current) { suppressDropdownRef.current = false; return }
       const { airports, slot } = computeDropdown(query, locale)
       startTransition(() => {
         setDropdownItems(airports)
