@@ -84,7 +84,11 @@ export async function startWebSearch(
     const isTestSearch = Boolean(analytics?.is_test_search)
     const analyticsSearchId = getTrackingSearchId(searchId, isTestSearch) || searchId
 
-    await upsertSearchSessionServer({
+    // Fire analytics write in the background — do NOT await it.
+    // This lets /api/search return the search_id to the client immediately
+    // (after ~100-300ms for the FSW round-trip) rather than blocking on a
+    // Firestore write that the user doesn't need to wait for.
+    upsertSearchSessionServer({
       search_id: analyticsSearchId,
       query: analytics?.query,
       origin: params.origin,
@@ -110,7 +114,7 @@ export async function startWebSearch(
       status: 'searching',
       cache_hit: Boolean(data.cache_hit),
       search_started_at: startedAt,
-    })
+    }).catch(() => { /* analytics failure is non-fatal */ })
   }
 
   // Capture the Cloud Run session affinity cookie so callers can forward it

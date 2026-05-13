@@ -15,6 +15,53 @@ export interface PersistedSearchResult {
   searched_at?: string
   expires_at?: string
   stored_at: number
+  gemini_justification?: { title?: string; hero: string; runners: string[]; ts: number; locale?: string }
+}
+
+// ── Search-time metadata sidecar ─────────────────────────────────────
+// `cacheCompletedSearchResult` only stores anything once the search has
+// finished and offers are available. But the website resolves things at
+// /api/search time (e.g. "Pretoria has no airport → we'll use JNB") that
+// must survive into the polling phase so /api/results can include them in
+// the `parsed` object the client receives. This sidecar is a small
+// in-memory map keyed on searchId. It is not persisted to disk — the
+// search's lifecycle is short enough (minutes) that one Cloud Run
+// instance handling it via session affinity is the realistic path.
+export interface FallbackNote {
+  intended: string      // user-typed / Gemini-normalised city, e.g. "Pretoria"
+  used_code: string     // IATA we actually search, e.g. "JNB"
+  used_name: string     // display name for that IATA, e.g. "Johannesburg (nearest to Pretoria)"
+  hub_name: string      // human label of the hub airport, e.g. "O. R. Tambo International (JNB)"
+  reason: string        // short justification (Gemini paraphrases this for the user)
+}
+
+export interface SearchMeta {
+  fallback_notes?: { origin?: FallbackNote; destination?: FallbackNote }
+  stored_at: number
+}
+
+const SEARCH_META_TTL_MS = 60 * 60 * 1000  // 1 hour
+const searchMetaCache = new Map<string, SearchMeta>()
+
+export function setSearchMeta(searchId: string, meta: Omit<SearchMeta, 'stored_at'>): void {
+  if (!searchId) return
+  searchMetaCache.set(searchId, { ...meta, stored_at: Date.now() })
+  // Lazy prune — cheap because the map is small.
+  const now = Date.now()
+  for (const [k, v] of searchMetaCache) {
+    if (now - v.stored_at > SEARCH_META_TTL_MS) searchMetaCache.delete(k)
+  }
+}
+
+export function getSearchMeta(searchId: string): SearchMeta | null {
+  if (!searchId) return null
+  const meta = searchMetaCache.get(searchId)
+  if (!meta) return null
+  if (Date.now() - meta.stored_at > SEARCH_META_TTL_MS) {
+    searchMetaCache.delete(searchId)
+    return null
+  }
+  return meta
 }
 
 const RESULTS_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -209,4 +256,16 @@ export function getCachedSearchResult(searchId: string): PersistedSearchResult |
   }
 
   return sanitizedResult
+}
+
+export function updateGeminiJustification(
+  searchId: string,
+  gemini: { title?: string; hero: string; runners: string[] },
+  locale?: string,
+): void {
+  loadCache()
+  const existing = resultsCache.get(searchId)
+  if (!existing) return  // only attach to a cached result — don't create phantom entries
+  resultsCache.set(searchId, { ...existing, gemini_justification: { ...gemini, ts: Date.now(), locale } })
+  persistCache()
 }

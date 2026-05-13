@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 
 interface HomeMonitorNavProps {
   locale: string
@@ -35,6 +36,7 @@ function SearchIcon() {
 export default function HomeMonitorNav({ locale }: HomeMonitorNavProps) {
   const [open, setOpen] = useState(false)
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const t = useTranslations('Results')
 
   useEffect(() => {
     if (open) {
@@ -55,14 +57,14 @@ export default function HomeMonitorNav({ locale }: HomeMonitorNavProps) {
     <>
       <nav className="lp-nav" aria-label="Main navigation">
         <Link href={`/${locale}`} className="lp-nav-link">
-          Search
+          {t('navSearch')}
         </Link>
         <button
           type="button"
           className="lp-nav-link lp-nav-link-btn"
           onClick={() => setOpen(true)}
         >
-          Flight Monitoring
+          {t('navMonitor')}
         </button>
       </nav>
 

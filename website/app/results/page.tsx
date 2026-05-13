@@ -16,6 +16,8 @@ import {
 } from '../../lib/currency-preference'
 import { parseNLQuery, resolveCity, type ParsedQuery } from '../lib/searchParsing'
 import { vertexParse } from '../lib/vertex-parse'
+import { lookupNearbyAirport, resolveNearbyAirport, isUsableIata } from '../lib/nearby-airports'
+import { setSearchMeta, type FallbackNote } from '../../lib/results-cache'
 import { IATA_TO_NAME, getAirlineNameFromCode, looksLikeIataCode } from '../airlineLogos'
 import { startWebSearch, startExploreSearch } from '../../lib/fsw-search'
 import { upsertSearchSessionServer } from '../../lib/search-session-analytics-server'
@@ -298,7 +300,15 @@ async function startFSWSearch(
       return_date: returnDate,
       adults: parsed.adults || 1,
       currency,
-      ...(parsed.stops !== undefined ? { max_stops: parsed.stops } : {}),
+      // Treat parsed.stops === 0 ("direct flights only") as a soft preference,
+      // not a hard backend filter — many real routes have no direct service
+      // (e.g. GDL → EZE) and a hard filter would return zero offers, leaving
+      // the user staring at an empty polling state forever. The UI uses
+      // `parsed.stops` from the URL/search payload as a `preferDirect` ranking
+      // signal, and the "guarantee a min-stops alternative in top 3" logic in
+      // ResultsPanel surfaces the closest-to-direct option even with no directs.
+      // Stops values >= 1 remain safe to use as a hard filter.
+      ...(parsed.stops !== undefined && parsed.stops > 0 ? { max_stops: parsed.stops } : {}),
       ...(parsed.cabin ? { cabin: parsed.cabin } : {}),
     }, {
       query,
@@ -423,15 +433,18 @@ async function SearchContent({
 }) {
   const today = new Date().toISOString().slice(0, 10)
 
-  // Run regex parser and Gemini city resolver in parallel.
-  // Regex handles all structured fields (dates, passengers, stops, cabin, etc.).
-  // Gemini handles only city/location normalization and overlays the result.
-  const [parsed, _ai] = await Promise.all([
-    Promise.resolve(parseNLQuery(query)),
-    vertexParse(query, today).catch(() => null),
-  ])
+  const parsed = parseNLQuery(query)
 
-  // Overlay Gemini city results on top of regex parse
+  // Only call vertexParse when regex couldn't resolve origin or destination,
+  // OR when it resolved to a "ghost" IATA with no commercial scheduled
+  // service (e.g. PRY = Wonderboom/Pretoria). Vertex normalizes the city
+  // name AND returns approximate lat/lon for the geo-based nearby-airport
+  // fallback below.
+  const parsedOriginIsGhost = !!parsed.origin && !isUsableIata(parsed.origin)
+  const parsedDestIsGhost = !!parsed.destination && !isUsableIata(parsed.destination)
+  const needsAi = !sid && (!parsed.origin || !parsed.destination || parsedOriginIsGhost || parsedDestIsGhost)
+  const _ai = needsAi ? await vertexParse(query, today).catch(() => null) : null
+
   if (_ai) {
     if (_ai.destination_city === 'ANYWHERE') {
       parsed.anywhere_destination = true
@@ -467,6 +480,74 @@ async function SearchContent({
     if (_ai.via_city) {
       const aiVia = resolveCity(_ai.via_city)
       if (aiVia) { parsed.via_iata = aiVia.code; parsed.via_name = aiVia.name }
+    }
+  }
+
+  // ── Nearby-airport fallback ───────────────────────────────────────
+  // Two-stage: (1) curated overrides for famous airport-less cities
+  // (Pretoria → JNB, Vatican → FCO, Niagara → BUF, etc.); (2) global
+  // geo-lookup against the bundled OurAirports DB using Gemini-supplied
+  // lat/lon. Triggered when origin/destination is missing OR resolved
+  // to a "ghost" IATA with no scheduled commercial service.
+  const fallbackNotes: { origin?: FallbackNote; destination?: FallbackNote } = {}
+  const aiOriginCityFromAi = _ai?.origin_city ?? undefined
+  const aiDestCityFromAi = _ai?.destination_city && _ai.destination_city !== 'ANYWHERE'
+    ? _ai.destination_city
+    : undefined
+  const aiOriginLat = typeof _ai?.origin_lat === 'number' ? _ai.origin_lat : undefined
+  const aiOriginLon = typeof _ai?.origin_lon === 'number' ? _ai.origin_lon : undefined
+  const aiDestLat = typeof _ai?.destination_lat === 'number' ? _ai.destination_lat : undefined
+  const aiDestLon = typeof _ai?.destination_lon === 'number' ? _ai.destination_lon : undefined
+
+  // Clear ghost IATAs so the fallback runs.
+  const ghostOriginCity = (parsed.origin && !isUsableIata(parsed.origin))
+    ? (aiOriginCityFromAi || parsed.origin_name || query)
+    : undefined
+  const ghostDestCity = (parsed.destination && !isUsableIata(parsed.destination))
+    ? (aiDestCityFromAi || parsed.destination_name || query)
+    : undefined
+  if (ghostOriginCity) { delete parsed.origin; delete parsed.origin_name }
+  if (ghostDestCity) { delete parsed.destination; delete parsed.destination_name }
+
+  const tryNearby = (
+    candidates: Array<string | undefined>,
+    lat: number | undefined,
+    lon: number | undefined,
+  ) => {
+    for (const c of candidates) {
+      if (!c) continue
+      const hit = lookupNearbyAirport(c)
+      if (hit) return hit
+    }
+    const cityLabel = candidates.find((c): c is string => Boolean(c && c.trim())) || ''
+    return resolveNearbyAirport(cityLabel, lat, lon)
+  }
+  if (!parsed.origin) {
+    const hit = tryNearby([ghostOriginCity, aiOriginCityFromAi, query], aiOriginLat, aiOriginLon)
+    if (hit) {
+      parsed.origin = hit.code
+      parsed.origin_name = hit.name
+      fallbackNotes.origin = {
+        intended: aiOriginCityFromAi || ghostOriginCity || query.trim() || hit.name,
+        used_code: hit.code,
+        used_name: hit.name,
+        hub_name: hit.hub_name,
+        reason: hit.reason,
+      }
+    }
+  }
+  if (!parsed.destination && !parsed.anywhere_destination) {
+    const hit = tryNearby([ghostDestCity, aiDestCityFromAi, query], aiDestLat, aiDestLon)
+    if (hit) {
+      parsed.destination = hit.code
+      parsed.destination_name = hit.name
+      fallbackNotes.destination = {
+        intended: aiDestCityFromAi || ghostDestCity || query.trim() || hit.name,
+        used_code: hit.code,
+        used_name: hit.name,
+        hub_name: hit.hub_name,
+        reason: hit.reason,
+      }
     }
   }
 
@@ -579,6 +660,12 @@ async function SearchContent({
     searchId = fswResult.searchId ?? undefined
     cacheHit = fswResult.cache === 'hit'
     fswSession = fswResult.fswSession
+    // Persist nearby-airport fallback notes so /api/results can echo them
+    // back to the client (SearchPageClient → ResultsPanel → /api/rank), so
+    // the Gemini-generated hero copy can mention the substitution to the user.
+    if (searchId && (fallbackNotes.origin || fallbackNotes.destination)) {
+      setSearchMeta(searchId, { fallback_notes: fallbackNotes })
+    }
     if (!searchId) {
       return (
         <main className="res-page">

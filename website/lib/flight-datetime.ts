@@ -85,10 +85,10 @@ export function formatFlightTime(value: string): string {
   return value
 }
 
-export function formatFlightDateCompact(value: string): string {
+export function formatFlightDateCompact(value: string, locale = 'en-GB'): string {
   const parts = parseFlightDateTimeParts(value)
   if (parts) {
-    return new Intl.DateTimeFormat('en-GB', {
+    return new Intl.DateTimeFormat(locale, {
       day: 'numeric',
       month: 'long',
       timeZone: 'UTC',
@@ -98,7 +98,7 @@ export function formatFlightDateCompact(value: string): string {
   try {
     const date = new Date(value)
     if (!Number.isNaN(date.getTime())) {
-      return new Intl.DateTimeFormat('en-GB', {
+      return new Intl.DateTimeFormat(locale, {
         day: 'numeric',
         month: 'long',
         timeZone: 'UTC',

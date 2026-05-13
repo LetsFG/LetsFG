@@ -194,17 +194,25 @@ function getRouteViaTitle(stops: RouteStop[]) {
   return stops.map((stop) => stop.code && stop.name ? `${stop.code} · ${stop.name}` : stop.code || stop.name).join(', ')
 }
 
-function getStopsLabel(stops: number, segments: FlightSegment[] | undefined, directLabel: string) {
+function getStopsLabel(
+  stops: number,
+  segments: FlightSegment[] | undefined,
+  directLabel: string,
+  tFn: (key: string, values?: Record<string, unknown>) => string,
+) {
   if (stops === 0) return directLabel
 
   const routeStops = getRouteStops(segments)
   const viaCodes = routeStops.map((stop) => stop.code || stop.name).filter(Boolean)
 
   if (viaCodes.length === 0) {
-    return `${stops} stop${stops > 1 ? 's' : ''}`
+    return stops === 1 ? tFn('stopsSingle', { n: stops }) : tFn('stopsPlural', { n: stops })
   }
 
-  return `${stops} stop${stops > 1 ? 's' : ''} · via ${viaCodes.join(', ')}`
+  const via = viaCodes.join(', ')
+  return stops === 1
+    ? tFn('stopsVia', { n: stops, via })
+    : tFn('stopsViaPlural', { n: stops, via })
 }
 
 function getOfferCarriers(offer: FlightOffer): OfferCarrier[] {
@@ -418,21 +426,30 @@ const CHECKED_SOURCES = [
   'TAP Air', 'Jet2', 'Volotea', 'Corendon', 'SunExpress',
 ]
 
+/** Convert a single ancillary fee to display currency, handling mismatched source currency. */
+function ancillaryInDisplay(anc: OfferAncillary | undefined, offerCurrency: string, displayCurrency: string): number {
+  if (!anc || anc.included === true || typeof anc.price !== 'number' || anc.price <= 0) return 0
+  return convertCurrencyAmount(anc.price, anc.currency || offerCurrency, displayCurrency)
+}
+
 function getSortEffectivePrice(offer: FlightOffer, sortMode: string, displayCurrency: string): number {
+  const base = convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency)
   if (sortMode === 'price_with_bag') {
     const bag = offer.ancillaries?.checked_bag
-    if (hasIncludedAncillary(bag)) return convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency)
-    const total = getOfferDisplayTotalWithAncillary(offer, bag, displayCurrency)
-    return total ?? getOfferDisplayTotalPrice(offer, displayCurrency)
+    if (hasIncludedAncillary(bag)) return base
+    const bagAmt = ancillaryInDisplay(bag, offer.currency, displayCurrency)
+    return Math.round((base + bagAmt) * 100) / 100
   }
   if (sortMode === 'price_with_seat') {
     const seat = offer.ancillaries?.seat_selection
-    if (hasIncludedAncillary(seat)) return convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency)
-    const total = getOfferDisplayTotalWithAncillary(offer, seat, displayCurrency)
-    return total ?? getOfferDisplayTotalPrice(offer, displayCurrency)
+    if (hasIncludedAncillary(seat)) return base
+    const seatAmt = ancillaryInDisplay(seat, offer.currency, displayCurrency)
+    return Math.round((base + seatAmt) * 100) / 100
   }
   if (sortMode === 'price_with_all') {
-    return convertCurrencyAmount(getOfferKnownTotalPrice(offer), offer.currency, displayCurrency)
+    const bagAmt = ancillaryInDisplay(offer.ancillaries?.checked_bag, offer.currency, displayCurrency)
+    const seatAmt = ancillaryInDisplay(offer.ancillaries?.seat_selection, offer.currency, displayCurrency)
+    return Math.round((base + bagAmt + seatAmt) * 100) / 100
   }
   return getOfferDisplayTotalPrice(offer, displayCurrency)
 }
@@ -586,6 +603,7 @@ function computeWhyNot(
   hero: FlightOffer,
   currency: string,
   locale: string,
+  tFn: (key: string, values?: Record<string, unknown>) => string,
 ): string {
   const heroPrice = getOfferDisplayTotalPrice(hero, currency)
   const offerPrice = getOfferDisplayTotalPrice(offer, currency)
@@ -593,26 +611,26 @@ function computeWhyNot(
   const parts: string[] = []
 
   if (priceDiff > 5) {
-    parts.push(`it costs ${formatCurrencyAmount(priceDiff, currency, locale)} more`)
+    parts.push(tFn('whyNotMoreExpensive', { amount: formatCurrencyAmount(priceDiff, currency, locale) }))
   } else if (priceDiff < -5) {
-    parts.push(`it's ${formatCurrencyAmount(-priceDiff, currency, locale)} cheaper`)
+    parts.push(tFn('whyNotCheaper', { amount: formatCurrencyAmount(-priceDiff, currency, locale) }))
   }
 
   const stopsDiff = offer.stops - hero.stops
   if (stopsDiff > 0) {
-    parts.push(`it has ${stopsDiff === 1 ? 'a stop' : `${stopsDiff} stops`}`)
+    parts.push(stopsDiff === 1 ? tFn('whyNotMoreStop') : tFn('whyNotMoreStops', { n: stopsDiff }))
   } else if (stopsDiff < 0) {
-    parts.push('it has fewer stops')
+    parts.push(tFn('whyNotFewerStops'))
   }
 
   const durDiff = offer.duration_minutes - hero.duration_minutes
   if (durDiff > 60 && parts.length < 2) {
-    parts.push(`the journey is ${fmtDuration(durDiff)} longer`)
+    parts.push(tFn('whyNotLonger', { duration: fmtDuration(durDiff) }))
   }
 
-  if (parts.length === 0) return 'This is a very strong alternative — nearly identical to the top pick.'
-  if (parts.length === 1) return `I didn't choose this as #1 because ${parts[0]}.`
-  return `I didn't choose this as #1 because ${parts[0]} and ${parts[1]}.`
+  if (parts.length === 0) return tFn('whyNotAlternative')
+  if (parts.length === 1) return tFn('whyNot1', { reason: parts[0] })
+  return tFn('whyNot2', { reason1: parts[0], reason2: parts[1] })
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -640,7 +658,14 @@ interface Props {
   tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
   preferredAirline?: string
   preferQuickFlight?: boolean
+  preferCheapest?: boolean
   viaIata?: string
+  maxStops?: number
+  fallbackNotes?: {
+    origin?: { intended: string; used_code: string; used_name: string; hub_name: string; reason: string }
+    destination?: { intended: string; used_code: string; used_name: string; hub_name: string; reason: string }
+  }
+  initialGemini?: { title?: string; hero: string; runners: string[]; ts: number; locale?: string }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -667,7 +692,11 @@ export default function ResultsPanel({
   tripPurpose,
   preferredAirline,
   preferQuickFlight,
+  preferCheapest,
   viaIata,
+  maxStops,
+  fallbackNotes,
+  initialGemini,
 }: Props) {
   // Persona-based grouping: 0 = ideal match, higher = less preferred
   function personaGroup(o: FlightOffer): number {
@@ -729,16 +758,42 @@ export default function ResultsPanel({
     title?: string
     hero: string
     runners: string[]
-  } | 'loading' | null>(null)
+  } | 'loading' | null>(() => {
+    // 1. Server-provided (canonical) — only use if locale matches (avoids showing
+    //    English text to a Japanese user when the cache was seeded by a different locale).
+    if (initialGemini?.hero && initialGemini.hero.length > 10) {
+      const age = Date.now() - (initialGemini.ts ?? 0)
+      // Treat absent locale as 'en' (old cache entries were always English).
+      // Only use if locale matches — don't show English text to a Japanese user.
+      const cachedLocale = initialGemini.locale ?? 'en'
+      const localeMatch = cachedLocale === locale
+      if (age < 6 * 3600 * 1000 && localeMatch) {
+        return { title: initialGemini.title, hero: initialGemini.hero, runners: initialGemini.runners }
+      }
+    }
+    // 2. localStorage fallback — locale-keyed so each language gets its own cache.
+    if (typeof window === 'undefined' || !searchId) return null
+    try {
+      const raw = localStorage.getItem(`gemini_${searchId}_${locale}`)
+      if (!raw) return null
+      const d = JSON.parse(raw) as { title?: string; hero?: string; runners?: string[]; ts?: number }
+      const age = Date.now() - (d.ts ?? 0)
+      if (age < 6 * 3600 * 1000 && typeof d.hero === 'string' && d.hero.length > 10) {
+        return { title: d.title as string | undefined, hero: d.hero, runners: (d.runners as string[] | undefined) ?? [] }
+      }
+    } catch { /* ignore */ }
+    return null
+  })
   // Tracks which generation phase has fired and what hero it was based on
   const geminiStateRef = useRef<{
     phase: 'none' | 'early' | 'mid' | 'final'
     heroId: string | null
+    lastSentIds: string | null
     midFired: boolean
     finalFired: boolean
     finalSentIds: string | null
     finalRefired: boolean
-  }>({ phase: 'none', heroId: null, midFired: false, finalFired: false, finalSentIds: null, finalRefired: false })
+  }>({ phase: 'none', heroId: null, lastSentIds: null, midFired: false, finalFired: false, finalSentIds: null, finalRefired: false })
 
   // ── Sidebar stats (always based on all offers) ────────────────────────────
   const stopsStats = useMemo(() => {
@@ -897,10 +952,53 @@ export default function ResultsPanel({
         requireBag: requireBagPerPerson,
         preferredAirline,
         preferQuickFlight,
+        preferCheapest,
+        preferDirect: maxStops === 0,
       }
-      // Inject displayPrice so the engine ranks by what the user actually pays
       const listWithDisplayPrice = list.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
       list = rankOffers(listWithDisplayPrice, rctx).map(r => r.offer as typeof list[number])
+
+      // Guarantee the absolute cheapest offer is always visible in the top 3.
+      // If ranking placed it at position 3+ (e.g. because it departs at 3am), swap it to #3.
+      if (list.length >= 3) {
+        const cheapestIdx = list.reduce((minIdx, o, idx) =>
+          getOfferDisplayTotalPrice(o, currency) < getOfferDisplayTotalPrice(list[minIdx], currency) ? idx : minIdx, 0)
+        if (cheapestIdx > 2) {
+          const tmp = [...list]
+          const [cheapestOffer] = tmp.splice(cheapestIdx, 1)
+          tmp.splice(2, 0, cheapestOffer)
+          list = tmp
+        }
+      }
+
+      // When the user explicitly asked for direct flights but none of the top 3
+      // match their stops preference, surface the offer with the FEWEST stops
+      // (tiebreak: shortest duration) into position #2 so the alternates panel
+      // honours their request even if no true direct exists. Without this the
+      // top 3 can all end up as 3-stop, 30h+ itineraries that ignore the
+      // "direct" preference entirely.
+      if (rctx.preferDirect && list.length >= 3) {
+        const top3MinStops = Math.min(list[0].stops, list[1].stops, list[2].stops)
+        let bestIdx = -1
+        let bestStops = top3MinStops
+        let bestDuration = Infinity
+        for (let i = 3; i < list.length; i++) {
+          const o = list[i]
+          if (o.stops < bestStops || (o.stops === bestStops && o.duration_minutes < bestDuration)) {
+            bestStops = o.stops
+            bestDuration = o.duration_minutes
+            bestIdx = i
+          }
+        }
+        // Only swap if we found a strictly better stops profile (not just a
+        // tie — top 3 already represents the chosen tradeoff at that stop count).
+        if (bestIdx !== -1 && bestStops < top3MinStops) {
+          const tmp = [...list]
+          const [fastestOffer] = tmp.splice(bestIdx, 1)
+          tmp.splice(1, 0, fastestOffer)
+          list = tmp
+        }
+      }
     }
 
     // Soft time-pref boost and persona grouping only apply when user has
@@ -931,10 +1029,14 @@ export default function ResultsPanel({
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
-  // Top 5 from ALL offers ranked by personalized score — used for Gemini justification.
-  // Runs on allOffers (not filtered) so it represents the true best picks.
+  // Top 3 for Gemini justification — MUST match exactly what's shown in the top 3 cards.
+  // Derived from displayOffers (which already applies all active UI filters and sort order)
+  // so globalRankTopThree[0] is always the same offer rendered as the hero card.
+  // We re-run rankOffers on the full displayOffers set to get calibrated score/breakdown/
+  // heroFacts/tradeoffs metadata, then return the results in display order.
   const globalRankTopThree = useMemo((): RankedOffer<FlightOffer>[] => {
-    if (allOffers.length === 0) return []
+    const top = displayOffers.slice(0, 3)
+    if (top.length === 0) return []
     const rctx: RankingContext = {
       tripContext,
       tripPurpose,
@@ -944,26 +1046,20 @@ export default function ResultsPanel({
       requireBag: requireBagPerPerson,
       preferredAirline,
       preferQuickFlight,
+      preferCheapest,
+      preferDirect: maxStops === 0,
     }
-    // Inject displayPrice so the engine sees the true total cost per user's currency
-    const offersWithDisplayPrice = allOffers.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
-    const allRanked = rankOffers(offersWithDisplayPrice, rctx) as RankedOffer<FlightOffer>[]
-    const top3 = allRanked.slice(0, 3)
-    // If the cheapest offer isn't the hero and isn't already visible, inject it as runner #3
-    // so the user can always see what the cheapest option is and why it wasn't the top pick.
-    if (top3.length >= 3) {
-      const cheapest = offersWithDisplayPrice.reduce((a, b) =>
-        (a.displayPrice ?? a.price) <= (b.displayPrice ?? b.price) ? a : b
-      )
-      const heroIsCheapest = top3[0]?.offer.id === cheapest.id
-      const cheapestInTop3 = top3.some(r => r.offer.id === cheapest.id)
-      if (!heroIsCheapest && !cheapestInTop3) {
-        const cheapestRanked = allRanked.find(r => r.offer.id === cheapest.id)
-        if (cheapestRanked) top3[2] = { ...cheapestRanked, rank: 3 }
-      }
-    }
-    return top3
-  }, [allOffers, tripContext, tripPurpose, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline])
+    // Rank all displayOffers so scores/tradeoffs are calibrated against the full visible set.
+    const withDisplayPrice = displayOffers.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
+    const fullRanked = rankOffers(withDisplayPrice, rctx) as RankedOffer<FlightOffer>[]
+    const rankedById = new Map(fullRanked.map(r => [r.offer.id, r]))
+    // Return in display order so globalRankTopThree[0] === displayOffers[0] (the hero card).
+    return top.map((o, idx) => {
+      const ranked = rankedById.get(o.id)
+      if (ranked) return { ...ranked, rank: idx + 1 }
+      return { offer: o, rank: idx + 1, score: 0, breakdown: {} as RankedOffer<FlightOffer>['breakdown'], heroFacts: [], tradeoffs: [] }
+    })
+  }, [displayOffers, currency, tripContext, tripPurpose, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
 
   const profileLabel = useMemo(() => getProfileLabel({
     tripContext, tripPurpose, requireBag: requireBagPerPerson, preferredAirline,
@@ -986,12 +1082,14 @@ export default function ResultsPanel({
     const heroId = globalRankTopThree[0].offer.id
     geminiStateRef.current.heroId = heroId
     geminiStateRef.current.phase = phase
+    geminiStateRef.current.lastSentIds = globalRankTopThree.map(r => r.offer.id).join(',')
 
     void fetch('/api/rank', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phase,
+        searchId,
         topOffers: globalRankTopThree.map(r => ({
           offer: {
             id: r.offer.id,
@@ -1023,19 +1121,30 @@ export default function ResultsPanel({
           requireBag: requireBagPerPerson,
           preferredAirline,
           preferQuickFlight,
+          preferCheapest,
+          preferDirect: maxStops === 0,
         } satisfies RankingContext,
+        ...(fallbackNotes?.origin || fallbackNotes?.destination
+          ? { fallbackNotes }
+          : {}),
+        locale,
       }),
     })
       .then(res => (res.ok ? res.json() : null))
       .then((data: { title?: string; hero?: string; runners?: string[] } | null) => {
         if (data?.hero && data.hero.length > 10) {
-          setGeminiJustification({ title: data.title, hero: data.hero, runners: data.runners ?? [] })
+          const result = { title: data.title, hero: data.hero, runners: data.runners ?? [] }
+          setGeminiJustification(result)
+          // Persist locale-keyed so each language version is cached independently.
+          if (searchId && typeof window !== 'undefined') {
+            try { localStorage.setItem(`gemini_${searchId}_${locale}`, JSON.stringify({ ...result, ts: Date.now() })) } catch { /* ignore */ }
+          }
         } else {
           setGeminiJustification(null)
         }
       })
       .catch(() => setGeminiJustification(null))
-  }, [globalRankTopThree, rawQuery, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight])
+  }, [globalRankTopThree, rawQuery, locale, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, fallbackNotes])
 
   // Gen 1 — fires once the first wave of fast API connectors have all reported back.
   // Waiting for progress.checked >= 6 ensures we have results from multiple independent
@@ -1044,9 +1153,16 @@ export default function ResultsPanel({
   useEffect(() => {
     if (geminiStateRef.current.phase !== 'none') return  // already started
     if (globalRankTopThree.length === 0) return
-    if (!progress || progress.checked < 6) return
+    // Cache hit: search is done and we already restored a justification from localStorage.
+    // Don't re-fire — the user gets the same result they saw before.
+    if (geminiJustification !== null && geminiJustification !== 'loading' && !isSearching) return
+    // Need either (a) ≥6 connectors checked in from a live search, or
+    // (b) a finished search with ≥5 offers (page reopen / cached results).
+    const enoughConnectors = progress && progress.checked >= 6
+    const finishedWithOffers = !isSearching && allOffers.length >= 5
+    if (!enoughConnectors && !finishedWithOffers) return
     callGemini('early')
-  }, [progress, globalRankTopThree, callGemini])
+  }, [progress, globalRankTopThree, callGemini, geminiJustification, isSearching, allOffers.length])
 
   // Gen 2 (mid) — fires at ≥90% progress, only if hero changed
   useEffect(() => {
@@ -1081,13 +1197,13 @@ export default function ResultsPanel({
     geminiStateRef.current.finalSentIds = sentIds
     const currentHeroId = globalRankTopThree[0].offer.id
     if (currentHeroId === geminiStateRef.current.heroId) {
-      // Hero didn't change — just upgrade the existing justification tone silently
-      // (remove "still searching" caveat by re-fetching as final if we're still on early tone,
-      // but only if we haven't already shown a mid/final result)
-      if (geminiStateRef.current.phase === 'early') {
+      // Hero didn't change — but re-call if the runner offers changed or tone needs upgrading.
+      // Runners can shift between Gen 1/2 (mid-search) and Gen 3 (final) even when the hero is stable.
+      const lastSent = geminiStateRef.current.lastSentIds
+      if (geminiStateRef.current.phase === 'early' || (lastSent !== null && lastSent !== sentIds)) {
         callGemini('final')
       }
-      // if phase was 'mid' or 'final', already has definitive tone, do nothing
+      // if phase was 'final' with same top-3, already has definitive tone, do nothing
       return
     }
     // Hero changed — full new generation
@@ -1298,7 +1414,7 @@ export default function ResultsPanel({
           </div>
           {!isSearching && (
             <div className="rf-bar-checked" aria-label="Sources checked">
-              <span className="rf-bar-checked-label">checked:</span>
+              <span className="rf-bar-checked-label">{t('checkedSources')}</span>
               <div className="rf-bar-checked-logos">
                 {CHECKED_SOURCES.map((src) => (
                   <span key={src} className="rf-bar-checked-chip" title={src}>
@@ -1324,9 +1440,9 @@ export default function ResultsPanel({
             const inboundStops = getRouteStops(offer.inbound?.segments)
             const inboundViaBadge = getRouteViaBadge(inboundStops)
             const inboundViaTitle = getRouteViaTitle(inboundStops)
-            const outboundStopsLabel = getStopsLabel(offer.stops, offer.segments, t('direct'))
+            const outboundStopsLabel = getStopsLabel(offer.stops, offer.segments, t('direct'), t as (key: string, values?: Record<string, unknown>) => string)
             const inboundStopsLabel = offer.inbound
-              ? getStopsLabel(offer.inbound.stops, offer.inbound.segments, t('direct'))
+              ? getStopsLabel(offer.inbound.stops, offer.inbound.segments, t('direct'), t as (key: string, values?: Record<string, unknown>) => string)
               : t('direct')
             const outboundOriginName = offer.origin_name || offer.origin
             const outboundDestinationName = offer.destination_name || offer.destination
@@ -1396,15 +1512,15 @@ export default function ResultsPanel({
                     <div className="rf-pick-header">
                       <span className="rf-pick-badge">
                         <span className="rf-pick-star" aria-hidden="true">✦</span>
-                        {isSearching ? 'Top pick so far' : 'Top pick'}
-                        {profileLabel && <span className="rf-pick-label">· {profileLabel}</span>}
+                        {isSearching ? t('topPickSoFar') : t('topPick')}
+                        {profileLabel && <span className="rf-pick-label">· {t(profileLabel as Parameters<typeof t>[0])}</span>}
                       </span>
                       {isSearching && <span className="rf-pick-searching" aria-label="Searching" />}
                     </div>
                     <p className="rf-concierge-headline">
                       {typeof geminiJustification === 'object' && geminiJustification?.title
                         ? geminiJustification.title
-                        : isSearching ? 'Best match so far.' : 'Best flight for you.'}
+                        : isSearching ? t('bestMatchSoFar') : t('bestFlight')}
                     </p>
                     <div className="rf-concierge-reason">
                       {geminiJustification === 'loading' ? (
@@ -1418,26 +1534,26 @@ export default function ResultsPanel({
                         <span className="rf-reasoning-text rf-reasoning-text--gemini">{geminiJustification.hero}</span>
                       ) : isSearching ? (
                         <span className="rf-reasoning-text rf-reasoning-searching">
-                          Still scanning the last few sources — once I&apos;m done I&apos;ll have a full breakdown of why this one wins.
+                          {t('stillScanning')}
                         </span>
-                      ) : (
+                      ) : locale === 'en' ? (
                         <span className="rf-reasoning-text">{computeDealReasonParagraph(offer, allOffers, tripContext, initialDepTimePref, currency, locale)}</span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 )}
                 {index === 1 && (
                   <div className="rf-section-divider">
-                    <span className="rf-section-label">Other deals I looked at</span>
+                    <span className="rf-section-label">{t('otherDeals')}</span>
                   </div>
                 )}
                 {isRunnerUp && (
                   <div className="rf-runner-why">
-                    <span className="rf-runner-rank">Deal #{index + 1}</span>
+                    <span className="rf-runner-rank">{t('dealN', { n: index + 1 })}</span>
                     <p className="rf-runner-text">
                       {typeof geminiJustification === 'object' && geminiJustification !== null && geminiJustification.runners[index - 1]
                         ? geminiJustification.runners[index - 1]
-                        : computeWhyNot(offer, displayOffers[0], currency, locale)}
+                        : computeWhyNot(offer, displayOffers[0], currency, locale, t as (key: string, values?: Record<string, unknown>) => string)}
                     </p>
                   </div>
                 )}
@@ -1445,22 +1561,22 @@ export default function ResultsPanel({
                   <div className="rf-track-nudge">
                     <div className="rf-track-nudge-label">
                       <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M8 1.5a5 5 0 0 1 5 5v2.5l1.2 2H1.8L3 9V6.5a5 5 0 0 1 5-5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
-                      Flight Monitoring
+                      {t('flightMonitoring')}
                     </div>
                     <div className="rf-track-nudge-body">
                       <div className="rf-track-nudge-text">
-                        <span className="rf-track-nudge-heading">Want to wait for better prices?</span>
+                        <span className="rf-track-nudge-heading">{t('wantToWait')}</span>
                         {displayOffers[0] && (
                           <span className="rf-track-nudge-price">
-                            From <strong>{fmt(getOfferDisplayTotalPrice(displayOffers[0], currency))}</strong> right now
+                            {t('fromPriceNow', { price: fmt(getOfferDisplayTotalPrice(displayOffers[0], currency)) })}
                           </span>
                         )}
-                        <span className="rf-track-nudge-sub">We&apos;ve scanned {displayOffers.length} flights across {progress?.total ?? CHECKED_SOURCES.length}+ sources. Prices usually rise the longer you wait — but if you&apos;re not ready, track this route and get a daily alert the moment something drops.</span>
+                        <span className="rf-track-nudge-sub">{t('trackNudgeSub', { count: displayOffers.length, total: Math.max(progress?.total ?? 0, 200) })}</span>
                       </div>
                       {onTrackPrices && (
                         <button className="rf-track-nudge-btn" onClick={onTrackPrices} aria-haspopup="dialog">
                           <svg viewBox="0 0 16 16" width="15" height="15" fill="none" aria-hidden="true"><path d="M8 2v6l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4"/></svg>
-                          Track prices
+                          {t('trackPrices')}
                         </button>
                       )}
                     </div>
@@ -1474,7 +1590,11 @@ export default function ResultsPanel({
                 )}
                 {!isUnlocked && (
                   <div className="rf-carrier-type-header">
-                    {getAirlineCategory(offerCarriers[0]?.code || '')} · Economy
+                    {(() => {
+                      const cat = getAirlineCategory(offerCarriers[0]?.code || '')
+                      const catKey = cat === 'Low-cost carrier' ? 'airlineLcc' : cat === 'Full-service carrier' ? 'airlineFsc' : 'airlineLabel'
+                      return `${t(catKey)} · ${t('economy')}`
+                    })()}
                   </div>
                 )}
                 <div className={`rf-card-row${!isUnlocked ? ' rf-card-row--locked' : ''}`}>
@@ -1493,7 +1613,7 @@ export default function ResultsPanel({
                           {airlineLabel}
                         </div>
                         {sourceLabel && (
-                          <div className="rf-source-pill">Deal from {sourceLabel}</div>
+                          <div className="rf-source-pill">{t('dealFrom', { source: sourceLabel })}</div>
                         )}
                       </div>
                     </div>
@@ -1503,7 +1623,7 @@ export default function ResultsPanel({
                     <div className="rf-legs">
                       <div className="rf-route">
                         <div className="rf-endpoint">
-                          <span className="rf-flight-date">{formatFlightDateCompact(offer.departure_time)}</span>
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.departure_time, locale)}</span>
                           <span className="rf-time">{formatFlightTime(offer.departure_time)}</span>
                           <span className="rf-city" title={outboundOriginName}>{outboundOriginName}</span>
                           <span className="rf-iata">{offer.origin}</span>
@@ -1524,11 +1644,11 @@ export default function ResultsPanel({
                           </span>
                         </div>
                         <div className="rf-endpoint rf-endpoint--arr">
-                          <span className="rf-flight-date">{formatFlightDateCompact(offer.arrival_time)}</span>
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.arrival_time, locale)}</span>
                           <span className="rf-time">
                             {formatFlightTime(offer.arrival_time)}
                             {outboundCtx.dayOffset > 0 && (
-                              <span className="rf-day-badge" title={outboundCtx.dayOffset === 1 ? 'Arrives next day' : `Arrives +${outboundCtx.dayOffset} days`}>
+                              <span className="rf-day-badge" title={outboundCtx.dayOffset === 1 ? t('arrivesNextDay') : t('arrivesNDays', { n: outboundCtx.dayOffset })}>
                                 +{outboundCtx.dayOffset}
                               </span>
                             )}
@@ -1551,7 +1671,7 @@ export default function ResultsPanel({
 
                       <div className="rf-route">
                         <div className="rf-endpoint">
-                          <span className="rf-flight-date">{formatFlightDateCompact(offer.inbound.departure_time)}</span>
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.inbound.departure_time, locale)}</span>
                           <span className="rf-time">{formatFlightTime(offer.inbound.departure_time)}</span>
                           <span className="rf-city" title={inboundOriginName}>{inboundOriginName}</span>
                           <span className="rf-iata">{offer.inbound.origin}</span>
@@ -1572,11 +1692,11 @@ export default function ResultsPanel({
                           </span>
                         </div>
                         <div className="rf-endpoint rf-endpoint--arr">
-                          <span className="rf-flight-date">{formatFlightDateCompact(offer.inbound.arrival_time)}</span>
+                          <span className="rf-flight-date">{formatFlightDateCompact(offer.inbound.arrival_time, locale)}</span>
                           <span className="rf-time">
                             {formatFlightTime(offer.inbound.arrival_time)}
                             {inboundCtx!.dayOffset > 0 && (
-                              <span className="rf-day-badge" title={inboundCtx!.dayOffset === 1 ? 'Arrives next day' : `Arrives +${inboundCtx!.dayOffset} days`}>
+                              <span className="rf-day-badge" title={inboundCtx!.dayOffset === 1 ? t('arrivesNextDay') : t('arrivesNDays', { n: inboundCtx!.dayOffset })}>
                                 +{inboundCtx!.dayOffset}
                               </span>
                             )}
@@ -1594,7 +1714,7 @@ export default function ResultsPanel({
                   ) : (
                     <div className="rf-route">
                       <div className="rf-endpoint">
-                        <span className="rf-flight-date">{formatFlightDateCompact(offer.departure_time)}</span>
+                        <span className="rf-flight-date">{formatFlightDateCompact(offer.departure_time, locale)}</span>
                         <span className="rf-time">{formatFlightTime(offer.departure_time)}</span>
                         <span className="rf-city" title={outboundOriginName}>{outboundOriginName}</span>
                         <span className="rf-iata">{offer.origin}</span>
@@ -1615,11 +1735,11 @@ export default function ResultsPanel({
                         </span>
                       </div>
                       <div className="rf-endpoint rf-endpoint--arr">
-                        <span className="rf-flight-date">{formatFlightDateCompact(offer.arrival_time)}</span>
+                        <span className="rf-flight-date">{formatFlightDateCompact(offer.arrival_time, locale)}</span>
                         <span className="rf-time">
                           {formatFlightTime(offer.arrival_time)}
                           {outboundCtx.dayOffset > 0 && (
-                            <span className="rf-day-badge" title={outboundCtx.dayOffset === 1 ? 'Arrives next day' : `Arrives +${outboundCtx.dayOffset} days`}>
+                            <span className="rf-day-badge" title={outboundCtx.dayOffset === 1 ? t('arrivesNextDay') : t('arrivesNDays', { n: outboundCtx.dayOffset })}>
                               +{outboundCtx.dayOffset}
                             </span>
                           )}
@@ -1636,40 +1756,40 @@ export default function ResultsPanel({
                   )}
 
                   <div className="rf-price-wrap">
-                    <span className="rf-price-total-label">Total</span>
+                    <span className="rf-price-total-label">{t('priceTotal')}</span>
                     <span className="rf-price">{fmt(getSortEffectivePrice(offer, sort, currency))}</span>
                     <span className="rf-price-sub">{t('perPerson')}</span>
                     <div className="rf-price-breakdown">
                       <div className="rf-price-breakdown-row">
-                        <span className="rf-price-breakdown-label">✈ Ticket</span>
+                        <span className="rf-price-breakdown-label">✈ {t('ticket')}</span>
                         <span className="rf-price-breakdown-value">{fmt(convertCurrencyAmount(offer.price, offer.currency, currency))}</span>
                       </div>
                       {offer.source !== 'serpapi_google' && offer.source !== 'google_flights' && (
                         <div className="rf-price-breakdown-row">
-                          <span className="rf-price-breakdown-label">LetsFG fee</span>
+                          <span className="rf-price-breakdown-label">{t('letsfgFee')}</span>
                           <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
                         </div>
                       )}
                       {hasPaidAncillary(checkedBag) && (
                         <div className={`rf-price-breakdown-row${(sort === 'price_with_bag' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
-                          <span className="rf-price-breakdown-label">🧳 Bag</span>
+                          <span className="rf-price-breakdown-label">🧳 {t('bag')}</span>
                           <span className="rf-price-breakdown-value">+{fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale)}</span>
                         </div>
                       )}
                       {hasIncludedAncillary(checkedBag) && (
                         <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
-                          <span className="rf-price-breakdown-label">🧳 Bag incl.</span>
+                          <span className="rf-price-breakdown-label">🧳 {t('bagIncluded')}</span>
                         </div>
                       )}
                       {hasPaidAncillary(seatSelection) && (
                         <div className={`rf-price-breakdown-row${(sort === 'price_with_seat' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
-                          <span className="rf-price-breakdown-label">💺 Seat</span>
+                          <span className="rf-price-breakdown-label">💺 {t('seat')}</span>
                           <span className="rf-price-breakdown-value">+{fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale)}</span>
                         </div>
                       )}
                       {hasIncludedAncillary(seatSelection) && (
                         <div className="rf-price-breakdown-row rf-price-breakdown-row--incl">
-                          <span className="rf-price-breakdown-label">💺 Seat incl.</span>
+                          <span className="rf-price-breakdown-label">💺 {t('seatIncluded')}</span>
                         </div>
                       )}
                     </div>
@@ -1678,7 +1798,7 @@ export default function ResultsPanel({
                   {!isHero && (
                     isRunnerUp
                       ? <a href={bookHref} className="rf-book-btn rf-book-btn--choose" onClick={handleSelect}>
-                          Choose instead <ArrowIcon />
+                          {t('chooseInstead')} <ArrowIcon />
                         </a>
                       : <a href={bookHref} className="rf-book-btn--arrow" aria-label="Select this flight" onClick={handleSelect}>
                           <ArrowIcon />
@@ -1688,11 +1808,11 @@ export default function ResultsPanel({
                 {isHero && (
                   <div className="rf-hero-footer">
                     <button className="rf-book-for-me" disabled aria-disabled="true">
-                      Book for me
-                      <span className="rf-soon-badge">Soon</span>
+                      {t('bookForMe')}
+                      <span className="rf-soon-badge">{t('soon')}</span>
                     </button>
                     <a href={bookHref} className="rf-book-btn" onClick={handleSelect}>
-                      Get booking link <ArrowIcon />
+                      {t('getBookingLink')} <ArrowIcon />
                     </a>
                   </div>
                 )}
@@ -1732,7 +1852,7 @@ export default function ResultsPanel({
                                 <span
                                   className="rf-layover-airport-change"
                                   title={`Arrives ${segs[si - 1].destination}, departs ${seg.origin} — different airport`}
-                                >⚠ Airport change</span>
+                                >⚠ {t('airportChange')}</span>
                               )}
                             </div>
                           )}
@@ -1742,7 +1862,7 @@ export default function ResultsPanel({
                               <span className="rf-leg-flight">
                                 {isUnlocked
                                   ? `${seg.flight_number} · ${getSegmentAirlineLabel(seg, mainAirline)}${seg.aircraft ? ` · ${seg.aircraft.replace(/\s*\([^)]*\)/, '')}` : ''}`
-                                  : 'Economy class · Unlock to reveal'}
+                                  : t('economyUnlock')}
                               </span>
                             </div>
                             <div className="rf-leg-body">
@@ -1753,7 +1873,7 @@ export default function ResultsPanel({
                                   <div className="rf-leg-info">
                                     <span className="rf-leg-time">
                                       {formatFlightTime(seg.departure_time)}
-                                      <span className="rf-leg-date">{formatFlightDateCompact(seg.departure_time)}</span>
+                                      <span className="rf-leg-date">{formatFlightDateCompact(seg.departure_time, locale)}</span>
                                     </span>
                                     <span className="rf-leg-airport">{seg.origin}{seg.origin_name ? ` · ${seg.origin_name}` : ''}</span>
                                   </div>
@@ -1764,7 +1884,7 @@ export default function ResultsPanel({
                                   <div className="rf-leg-info">
                                     <span className="rf-leg-time">
                                       {formatFlightTime(seg.arrival_time)}
-                                      <span className="rf-leg-date">{formatFlightDateCompact(seg.arrival_time)}</span>
+                                      <span className="rf-leg-date">{formatFlightDateCompact(seg.arrival_time, locale)}</span>
                                     </span>
                                     <span className="rf-leg-airport">{seg.destination}{seg.destination_name ? ` · ${seg.destination_name}` : ''}</span>
                                   </div>
@@ -1779,13 +1899,13 @@ export default function ResultsPanel({
                         <div className={`rf-details${hasReturn ? ' rf-details--cols' : ''}`}>
                           {offer.segments?.length ? (
                             <div className="rf-details-col">
-                              {hasReturn && <div className="rf-details-col-label rf-details-col-label--out">Outbound</div>}
+                              {hasReturn && <div className="rf-details-col-label rf-details-col-label--out">{t('outbound')}</div>}
                               {renderSegs(offer.segments, offer.airline)}
                             </div>
                           ) : null}
                           {hasReturn ? (
                             <div className="rf-details-col">
-                              <div className="rf-details-col-label rf-details-col-label--ret">Return</div>
+                              <div className="rf-details-col-label rf-details-col-label--ret">{t('returnDetails')}</div>
                               {renderSegs(offer.inbound!.segments!, offer.inbound!.airline || offer.airline)}
                             </div>
                           ) : null}

@@ -92,6 +92,10 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'barcelona': { code: 'BCN', name: 'Barcelona' },
   'barcelony': { code: 'BCN', name: 'Barcelona' },    // PL genitive
   'barcelonie': { code: 'BCN', name: 'Barcelona' },   // PL locative
+  'barcelone': { code: 'BCN', name: 'Barcelona' },    // FR
+  'barcellona': { code: 'BCN', name: 'Barcelona' },   // IT
+  'barcelonës': { code: 'BCN', name: 'Barcelona' },   // SQ genitive
+  'barcelones': { code: 'BCN', name: 'Barcelona' },   // SQ genitive (no diacritics)
   'madrid': { code: 'MAD', name: 'Madrid' },
   'madryt': { code: 'MAD', name: 'Madrid' },           // PL
   'madrytu': { code: 'MAD', name: 'Madrid' },          // PL genitive
@@ -915,6 +919,12 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'sapporo': { code: 'CTS', name: 'Sapporo' },
   'fukuoka': { code: 'FUK', name: 'Fukuoka' },
   'seoul': { code: 'ICN', name: 'Seoul' },
+  'seul': { code: 'ICN', name: 'Seoul' },         // PL/HR/IT/ES/PT/SQ/TR
+  'seulu': { code: 'ICN', name: 'Seoul' },        // PL genitive
+  'soul': { code: 'ICN', name: 'Seoul' },         // CZ/SK/PL alt
+  'soulu': { code: 'ICN', name: 'Seoul' },        // PL/CZ genitive
+  'séoul': { code: 'ICN', name: 'Seoul' },        // FR
+  'seúl': { code: 'ICN', name: 'Seoul' },         // ES
   'busan': { code: 'PUS', name: 'Busan' },
   'beijing': { code: 'PEK', name: 'Beijing' },
   'peking': { code: 'PEK', name: 'Beijing' },
@@ -1642,7 +1652,12 @@ export const CITY_TO_IATA: Record<string, { code: string; name: string }> = {
   'brasília': { code: 'BSB', name: 'Brasília' },
   'bsb': { code: 'BSB', name: 'Brasília' },
   'fortaleza': { code: 'FOR', name: 'Fortaleza' },
-  'for': { code: 'FOR', name: 'Fortaleza' },
+  // NOTE: bare 'for' alias intentionally removed — collides with the English
+  // preposition ("guadalajara for a couple" used to resolve as Fortaleza).
+  // Users wanting Fortaleza can type 'fortaleza' or its IATA code FOR via the
+  // explicit 3-letter scan (which is itself blocked by _COMMON_WORDS for 'for'
+  // — the airport-database fallback still handles uppercase FOR).
+  // 'for': { code: 'FOR', name: 'Fortaleza' },
   'recife': { code: 'REC', name: 'Recife' },
   'rec': { code: 'REC', name: 'Recife' },
   'salvador bahia': { code: 'SSA', name: 'Salvador (Bahia)' },
@@ -2449,6 +2464,10 @@ export interface ParsedQuery {
   stops?: number                     // 0 = direct/nonstop only
   failed_origin_raw?: string         // raw text that didn't resolve to an airport
   failed_destination_raw?: string
+  origin_candidates?: Array<{ code: string; name: string }>      // top fuzzy matches when origin failed (for disambiguation chips)
+  destination_candidates?: Array<{ code: string; name: string }> // top fuzzy matches when destination failed
+  date_is_default?: boolean          // true when no date in query (parser defaulted to today+7) — used to gate the "when?" question
+  preferred_sort?: 'price' | 'duration' // user explicitly asked for cheapest/fastest — auto-applies sort on results page
   // ── Flexible search extensions ──────────────────────────────────────────────
   min_trip_days?: number             // "for 14 days", "14-18 day trip" — min trip length
   max_trip_days?: number             // upper bound of trip duration range
@@ -2566,6 +2585,94 @@ function containsLocationKey(text: string, key: string): boolean {
   return new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(needle)}(?:$|[^a-z0-9])`, 'i').test(haystack)
 }
 
+// ── Fast city candidate index (built once at module load) ─────────────────
+// Pre-computes stripped key + length for every CITY_TO_IATA entry so
+// findCityCandidates() can do a single linear scan with cheap length-window
+// pruning instead of sorting + regex-compiling the whole map per call.
+type _CityIdxEntry = { key: string; stripped: string; len: number; code: string; name: string }
+const _cityIdx: _CityIdxEntry[] = (() => {
+  const out: _CityIdxEntry[] = []
+  for (const [k, v] of Object.entries(CITY_TO_IATA)) {
+    const stripped = stripAccents(k.toLowerCase())
+    out.push({ key: k, stripped, len: stripped.length, code: v.code, name: v.name })
+  }
+  return out
+})()
+
+/**
+ * Return up to `limit` typo-tolerant city suggestions for an unresolved
+ * city phrase. Designed for the disambiguation UI ("did you mean?" chips).
+ *
+ * Performance: O(N) where N = |CITY_TO_IATA| (~5000), with a length-window
+ * filter that skips ~95% of entries. Typical cost <2ms per call. Only invoked
+ * on the rare path where resolveLocation already returned null, so it never
+ * runs on the hot 3→2→1 token-walk path that caused the 2026-05 regression.
+ */
+export function findCityCandidates(raw: string, limit = 4): Array<{ code: string; name: string }> {
+  const s = stripAccents(raw.toLowerCase().trim())
+  if (!s || s.length < 3) return []
+
+  // Try the full phrase first; if multi-word and short, also try the longest single word
+  // (helps "hethrow international" → "heathrow" without burning extra cycles).
+  const probes = [s]
+  const words = s.split(/\s+/).filter(w => w.length >= 3)
+  if (words.length > 1) {
+    const longest = words.reduce((a, b) => (b.length > a.length ? b : a))
+    if (longest !== s) probes.push(longest)
+  }
+
+  const seen = new Map<string, { code: string; name: string; dist: number }>()
+  for (const probe of probes) {
+    const probeLen = probe.length
+    // Tolerance scales with length. Cap at 2 — beyond that suggestions become noise.
+    const maxDist = probeLen <= 5 ? 1 : 2
+    for (let i = 0; i < _cityIdx.length; i++) {
+      const e = _cityIdx[i]
+      // Length-window prune: edit distance can't be smaller than |len difference|
+      if (Math.abs(e.len - probeLen) > maxDist) continue
+      // Skip very short keys to avoid junk like "la" matching "lax"
+      if (e.len < 4) continue
+      const dist = editDistance(probe, e.stripped)
+      if (dist > maxDist) continue
+      const prev = seen.get(e.code)
+      if (!prev || dist < prev.dist) seen.set(e.code, { code: e.code, name: e.name, dist })
+    }
+    // If the first probe already produced enough good hits, skip the fallback probe
+    if (seen.size >= limit && probe === s) break
+  }
+
+  return Array.from(seen.values())
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, limit)
+    .map(({ code, name }) => ({ code, name }))
+}
+
+// Module-level blocklist of 3-letter strings that collide with English / Romance
+// prepositions, articles, and common words. Used by both resolveCity() and
+// findTwoCitiesInText() to avoid e.g. "for" → FOR (Fortaleza), "the" → THE
+// (Thaba'Nchu), "sun" → SUN (Friedman Memorial), "two" → TWO, etc.
+const _COMMON_WORDS_BLOCKLIST: Set<string> = new Set([
+  // English articles / prepositions / conjunctions
+  'the', 'and', 'for', 'not', 'but', 'nor', 'yet', 'via', 'per',
+  // Spanish/Portuguese/Italian/French articles & prepositions that are also IATA codes
+  'del', 'los', 'las', 'des', 'der', 'die',
+  // "new" → NEW (New Orleans Lakefront) — always wrong in "New X" city phrases
+  'new',
+  // "san" → SAN (San Diego) — San Diego is explicit in the map; "San X" cities resolve via aliases
+  'san',
+  // "sea" → SEA (Seattle) — Seattle is explicit in the map; "sea" as English word is common
+  'sea',
+  // Common English adjectives / verbs that happen to be minor airport codes
+  'hot', 'top', 'far', 'old', 'low', 'big', 'mid', 'end', 'bay', 'air', 'sun',
+  // Common English pronouns / auxiliary verbs
+  'all', 'any', 'can', 'may', 'our', 'has', 'his', 'her', 'its', 'own',
+  'out', 'off', 'one', 'day', 'few', 'got', 'let', 'put', 'run', 'set',
+  'try', 'use', 'was', 'who', 'why', 'yes', 'ago', 'due', 'get', 'had',
+  'him', 'how', 'now', 'see', 'too', 'two', 'did', 'are', 'men', 'way',
+  // Direction verb / day-of-week abbreviations that are ambiguous 3-letter IATA-like strings
+  'fly', 'fri', 'sat', 'sun', 'mon', 'tue', 'wed', 'thu',
+])
+
 // Look up a city string → IATA:
 // 1. Exact match (accent-aware)
 // 2. Explicit 3-letter code inside a longer phrase ("new york jfk" → JFK)
@@ -2588,27 +2695,8 @@ export function resolveCity(raw: string): { code: string; name: string } | null 
   // (Lagos Nigeria), "Las Palmas" extracts "las" → LAS (Las Vegas), etc.
   // Only blocklist words that are genuinely ambiguous — real airport-code hints ("jfk", "lhr")
   // are NOT common English words and are intentionally left through.
-  const _COMMON_WORDS = new Set([
-    // English articles / prepositions / conjunctions
-    'the', 'and', 'for', 'not', 'but', 'nor', 'yet', 'via', 'per',
-    // Spanish/Portuguese/Italian/French articles & prepositions that are also IATA codes
-    'del', 'los', 'las', 'des', 'der', 'die',
-    // "new" → NEW (New Orleans Lakefront) — always wrong in "New X" city phrases
-    'new',
-    // "san" → SAN (San Diego) — San Diego is explicit in the map; "San X" cities resolve via aliases
-    'san',
-    // "sea" → SEA (Seattle) — Seattle is explicit in the map; "sea" as English word is common
-    'sea',
-    // Common English adjectives / verbs that happen to be minor airport codes
-    'hot', 'top', 'far', 'old', 'low', 'big', 'mid', 'end', 'bay', 'air', 'sun',
-    // Common English pronouns / auxiliary verbs
-    'all', 'any', 'can', 'may', 'our', 'has', 'his', 'her', 'its', 'own',
-    'out', 'off', 'one', 'day', 'few', 'got', 'let', 'put', 'run', 'set',
-    'try', 'use', 'was', 'who', 'why', 'yes', 'ago', 'due', 'get', 'had',
-    'him', 'how', 'now', 'see', 'too', 'two', 'did', 'are', 'men', 'way',
-    // Direction verb / day-of-week abbreviations that are ambiguous 3-letter IATA-like strings
-    'fly', 'fri', 'sat', 'sun', 'mon', 'tue', 'wed', 'thu',
-  ])
+  // Hoisted to module scope (see _COMMON_WORDS_BLOCKLIST below); kept aliased here for clarity.
+  const _COMMON_WORDS = _COMMON_WORDS_BLOCKLIST
   // 3-letter token scan: catches explicit IATA codes typed inline (e.g. "fly to LHR",
   // "Hawaii KOA"). Runs after phrase lookup to avoid matching sub-words of city names.
   const explicitCodeTokens = stripped.match(/\b[a-z]{3}\b/g) || []
@@ -2666,6 +2754,73 @@ export function resolveCity(raw: string): { code: string; name: string } | null 
 }
 
 function resolveLocation(raw: string): { code: string; name: string } | null {
+  // Guard: bare lowercase common words ("for", "the", "sun", etc.) that happen
+  // to be 3-letter IATA codes must NOT resolve via the airport database.
+  // Otherwise queries like "guadalajara for a couple" treat "for" as Fortaleza.
+  // We allow UPPERCASE 3-letter input (e.g. "SAN", "FOR") through so explicit
+  // IATA codes still work.
+  const _trimmed = raw.trim()
+  const _bareTok = stripAccents(_trimmed.toLowerCase())
+  const _isExplicitIata = /^[A-Z]{3}$/.test(_trimmed)
+  if (!_isExplicitIata && _COMMON_WORDS_BLOCKLIST.has(_bareTok)) return null
+
+  // Multi-word inputs may be route-pattern misfires that glued a preposition onto
+  // a city name (e.g. originStr "guadalahara for" from "guadalahara for a couple").
+  // Try resolveCity first (which handles "new york" → NYC via boundary phrase match
+  // and is the safest path), and only fall through to the airport DB / fuzzy matcher
+  // if resolveCity succeeds OR the input has no blocklist tokens (so we don't fuzzy
+  // -resolve "X for" as FOR Fortaleza).
+  const _hasMultiWord = /\s/.test(_bareTok)
+  if (_hasMultiWord) {
+    const tokens = _bareTok.split(/\s+/).filter(Boolean)
+    // Also keep the original-cased tokens so we can preserve UPPERCASE 3-letter
+    // IATA codes (e.g. "SAN" in "BDL to SAN the week of thanksgiving") that would
+    // otherwise be stripped as the blocklist word "san".
+    const rawTokens = raw.trim().split(/\s+/).filter(Boolean)
+    const isUppercaseIata = (i: number) => {
+      const t = rawTokens[i]
+      return !!t && /^[A-Z]{3}$/.test(t)
+    }
+    const hasBlocklistToken = tokens.some((t, i) => _COMMON_WORDS_BLOCKLIST.has(t) && !isUppercaseIata(i))
+    const cityFirst = resolveCity(raw)
+    if (cityFirst) return cityFirst
+    if (hasBlocklistToken) {
+      // Strip blocklist tokens (preposition glued on by route-pattern misfire,
+      // or trailing stopwords like "SAN the week of thanksgiving") and retry with
+      // the cleaned text. Preserve uppercase 3-letter tokens (likely IATA codes).
+      const cleanedTokens = rawTokens.filter((rt, i) => {
+        if (isUppercaseIata(i)) return true
+        return !_COMMON_WORDS_BLOCKLIST.has(tokens[i])
+      })
+      if (cleanedTokens.length === 0) return null
+      const cleaned = cleanedTokens.join(' ').trim()
+      if (cleaned.toLowerCase() !== _bareTok) {
+        // If a single uppercase 3-letter IATA token survived, resolve it directly.
+        // Handles "SAN the week of thanksgiving" → SAN.
+        const iataOnly = cleanedTokens.filter((t) => /^[A-Z]{3}$/.test(t))
+        if (iataOnly.length === 1) {
+          const code = iataOnly[0]
+          const exact = findExactLocationMatch(code)
+          if (exact) return { code: exact.code, name: exact.name }
+          const cityCode = CITY_TO_IATA[code.toLowerCase()]
+          if (cityCode) return cityCode
+          return { code, name: code }
+        }
+        const r = resolveCity(cleaned)
+        if (r) return r
+        const exact = findExactLocationMatch(cleaned)
+        if (exact) return { code: exact.code, name: exact.name }
+        const best = findBestLocationMatch(cleaned)
+        if (best) return { code: best.code, name: best.name }
+        if (/^[a-zA-Z]{3}$/.test(cleaned)) {
+          const code = cleaned.toUpperCase()
+          return { code, name: code }
+        }
+        return null
+      }
+    }
+  }
+
   const exactGenerated = findExactLocationMatch(raw)
   const normalized = raw.toLowerCase().trim()
   const stripped = stripAccents(normalized)
@@ -2797,6 +2952,7 @@ function extractPassengers(text: string): PassengerExtraction {
         if (/family|familie|familia|famille|famiglia|gezin|familia|família|familj|obitelj|familje/.test(t)) {
           result.adults = Math.min(2, n)
           if (n > 2) result.children = n - result.adults
+          result.context = 'family'
         } else {
           result.adults = n
         }
@@ -2832,6 +2988,40 @@ function extractPassengers(text: string): PassengerExtraction {
     if (!result.adults) result.adults = result.group_size
   }
 
+  // ── Word numerals across languages: "dla dwóch osób", "per due persone",
+  //    "pour deux personnes", "para dos personas", "für zwei Personen", etc.
+  if (!result.group_size) {
+    const WORD_NUM: Record<string, number> = {
+      // PL
+      'dwoch': 2, 'dwóch': 2, 'dwojga': 2, 'dwa': 2, 'dwie': 2, 'trzech': 3, 'trojga': 3, 'czterech': 4, 'pieciu': 5, 'pięciu': 5,
+      // ES/PT
+      'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5, 'duas': 2, 'três': 3, 'tres ': 3,
+      // FR
+      'deux': 2, 'trois': 3, 'quatre': 4, 'cinq': 5,
+      // IT
+      'due': 2, 'tre': 3, 'quattro': 4, 'cinque': 5,
+      // DE
+      'zwei': 2, 'drei': 3, 'vier': 4, 'fünf': 5, 'funf': 5,
+      // NL
+      'twee': 2, 'drie': 3, 'vier nl': 4, 'vijf': 5,
+      // SV
+      'två': 2, 'tva': 2, 'fyra': 4, 'fem': 5,
+      // HR
+      'dvije': 2, 'dvoje': 2, 'troje': 3, 'četvero': 4, 'cetvero': 4,
+      // SQ
+      'dy': 2, 'katër': 4, 'kater': 4, 'pesë': 5, 'pese': 5,
+    }
+    const wordNumRe = /\b(?:dla|para|pour|f[üu]r|per|voor|f[oö]r|za|p[ëe]r)\s+(dwoch|dwóch|dwojga|dwa|dwie|trzech|trojga|czterech|pieciu|pięciu|dos|tres|cuatro|cinco|duas|três|deux|trois|quatre|cinq|due|tre|quattro|cinque|zwei|drei|vier|fünf|funf|twee|drie|vijf|två|tva|fyra|fem|dvije|dvoje|troje|četvero|cetvero|dy|katër|kater|pesë|pese)\s+(?:os[oó]b|persona[s]?|persone|personnes?|personen?|pessoas?|leute|osoba|vetë|vete)\b/iu
+    const wm = t.match(wordNumRe)
+    if (wm) {
+      const n = WORD_NUM[wm[1].toLowerCase()] ?? 0
+      if (n > 0) {
+        result.group_size = n
+        if (!result.adults) result.adults = n
+      }
+    }
+  }
+
   // ── Solo signals — all languages ──────────────────────────────────────────
   const hasSoloSignal =
     /\b(?:solo|alone|just\s+me|only\s+me|(?:travell?ing?|flying?|going?)\s+(?:alone|solo|by\s+myself)|by\s+myself|on\s+my\s+own|for\s+one|single\s+travell?er)\b/.test(t) ||                      // EN
@@ -2848,7 +3038,7 @@ function extractPassengers(text: string): PassengerExtraction {
 
   // ── Couple / partner signals — all languages ───────────────────────────────
   const hasCoupleSignal =
-    /\b(?:as\s+a\s+couple|with\s+(?:my\s+)?(?:partner|wife|husband|boyfriend|girlfriend|fianc[eé]e?|spouse|other\s+half|significant\s+other)|the\s+two\s+of\s+us|just\s+(?:the\s+)?(?:two|2)\s+of\s+us|just\s+us\s+two|us\s+two|we\s+two|date\s+(?:night|trip|flight))\b/.test(t) ||   // EN
+    /\b(?:as\s+a\s+couple|for\s+(?:a\s+)?couple|for\s+(?:the\s+)?(?:two|2)(?:\s+of\s+us)?|with\s+(?:my\s+)?(?:partner|wife|husband|boyfriend|girlfriend|fianc[eé]e?|spouse|other\s+half|significant\s+other)|the\s+two\s+of\s+us|just\s+(?:the\s+)?(?:two|2)\s+of\s+us|just\s+us\s+two|us\s+two|we\s+two|date\s+(?:night|trip|flight))\b/.test(t) ||   // EN
     /\b(?:zu\s+zweit|als\s+paar|mit\s+(?:meiner\s+frau|meinem\s+mann|meiner\s+partnerin|meinem\s+partner|meiner\s+freundin|meinem\s+freund)|wir\s+(?:zwei|2)|als?\s+pärchen)\b/.test(t) ||   // DE
     /\b(?:en\s+pareja|con\s+mi\s+pareja|con\s+mi\s+(?:esposa|esposo|novia|novio|marido|mujer)|somos\s+dos|los\s+dos|nosotros\s+dos|para\s+dos(?:\s+personas?)?|viaje\s+(?:en\s+pareja|romantic[ao]))\b/.test(t) || // ES
     /\b(?:en\s+couple|avec\s+(?:ma\s+femme|mon\s+mari|ma\s+partenaire|mon\s+partenaire|ma\s+copine|mon\s+copain|ma\s+compagne|mon\s+compagnon)|tous\s+les\s+deux|nous\s+deux|pour\s+deux(?:\s+personnes?)?)\b/.test(t) || // FR
@@ -2857,8 +3047,11 @@ function extractPassengers(text: string): PassengerExtraction {
     /\b(?:jako\s+para|z\s+(?:[żz]on[ąa]|m[eę][żz]em|partnerk[ąa]|partnerem|dziewczyn[ąa]|chłopakiem)|we\s+dwoj(?:e|gu)|nas\s+dwoj(?:e|gu)|dla\s+dwojga)\b/.test(t) || // PL
     /\b(?:em\s+casal|com\s+(?:minha\s+esposa|meu\s+marido|minha\s+namorada|meu\s+namorado|minha\s+companheira|meu\s+companheiro)|n[oó]s\s+dois|para\s+dois(?:\s+pessoas?)?\b)\b/.test(t) || // PT
     /\b(?:som\s+par|med\s+(?:min\s+fru|min\s+man|min\s+partner|min\s+flickv[äa]n|min\s+pojkv[äa]n)|vi\s+tv[åa]|f[oö]r\s+tv[åa](?:\s+personer?)?\b)\b/.test(t) || // SV
-    /\b(?:kao\s+par|s\s+(?:mojom\s+[žz]enom|mojim\s+mu[žz]em|mojom\s+djevojkom|mojim\s+de[čc]kom|partnerom|partnericom)|nas\s+dvoje|za\s+dvoje(?:\s+osoba?)?\b)\b/.test(t) || // HR
-    /\b(?:si\s+[çc]ift|me\s+(?:gruan|burrin\s+tim|t[eë]\s+dashur[eë]n|t[eë]\s+dashurin\s+tim|partneren|partnerin)|ne\s+t[eë]\s+dy|p[eë]r\s+dy(?:\s+vetë)?\b)\b/.test(t)   // SQ
+    /\b(?:kao\s+par|s\s+(?:mojom\s+[žz]enom|mojim\s+mu[žz]em|mojom\s+djevojkom|mojim\s+de[čc]kom|partnerom|partnericom)|nas\s+dvoje|za\s+(?:dvoje|par)(?:\s+osoba?)?\b)\b/.test(t) || // HR
+    /\b(?:si\s+[çc]ift|me\s+(?:gruan|burrin\s+tim|t[eë]\s+dashur[eë]n|t[eë]\s+dashurin\s+tim|partneren|partnerin)|ne\s+t[eë]\s+dy|p[eë]r\s+dy(?:\s+vetë)?\b)\b/.test(t) ||  // SQ
+    // Generic "for a/the couple" patterns across all langs (catches "para una pareja",
+    // "voor een koppel/stel", "für ein paar", "per una coppia", "para um casal", etc.)
+    /\b(?:para\s+(?:una|la|mi)\s+pareja|para\s+(?:um|o|meu)\s+casal|pour\s+(?:un|le|notre)\s+couple|f[üu]r\s+(?:ein|das|unser)\s+(?:paar|p[äa]rchen)|per\s+(?:una|la|nostra)\s+coppia|voor\s+(?:een|het|ons)\s+(?:koppel|stel|paar)|f[oö]r\s+(?:ett|v[åa]rt|mitt)\s+par|za\s+(?:jedan|na[šs])\s+par|p[eë]r\s+nj[eë]\s+[çc]ift|dla\s+pary)\b/i.test(t)
 
   // ── Honeymoon signals ─────────────────────────────────────────────────────
   const hasHoneymoonSignal =
@@ -2886,7 +3079,10 @@ function extractPassengers(text: string): PassengerExtraction {
     /\b(?:com\s+(?:(?:as|minhas)\s+crianças?|(?:a|minha)\s+família|(?:os|meus)\s+filhos?)|em\s+família|viagem\s+(?:em\s+família|familiar)|com\s+crianças?)\b/.test(t) || // PT
     /\b(?:med\s+(?:(?:barnen?|mina\s+barn)|(?:familjen|min\s+familj)|ungarna?)|som\s+familj|familjesemester|familjeresa|med\s+barn)\b/.test(t) || // SV
     /\b(?:s\s+(?:djecom|obitelju|mojom\s+obitelju|(?:svojom\s+)?djecom)|kao\s+obitelj|obiteljski\s+odmor|obiteljsko\s+putovanje|s\s+djecom)\b/.test(t) || // HR
-    /\b(?:me\s+(?:f[eë]mij[eë]t?|familjen|familjes\s+time?)|si\s+familje|pushime\s+familjare|udh[eë]tim\s+familjar|me\s+f[eë]mij[eë])\b/.test(t) // SQ
+    /\b(?:me\s+(?:f[eë]mij[eë]t?|familjen|familjes\s+time?)|si\s+familje|pushime\s+familjare|udh[eë]tim\s+familjar|me\s+f[eë]mij[eë])\b/i.test(t) ||  // SQ
+    // Generic "for a/the family" patterns across all langs (catches "pour une famille",
+    // "para una/uma familia", "voor een gezin", "für eine Familie", "per una famiglia", etc.)
+    /\b(?:para\s+(?:una|la|mi)\s+familia|para\s+(?:uma|a|minha)\s+fam[ií]lia|pour\s+(?:une|la|notre|ma)\s+famille|f[üu]r\s+(?:eine|die|unsere|meine)\s+familie|per\s+(?:una|la|nostra|mia)\s+famiglia|voor\s+(?:een|het|ons|mijn)\s+(?:gezin|familie)|f[oö]r\s+(?:en|v[åa]r|min)\s+familj|za\s+(?:jednu|na[šs]u)\s+obitelj|p[eë]r\s+nj[eë]\s+familje|dla\s+rodziny)\b/i.test(t)
 
   // ── Group / friends signals — all languages ───────────────────────────────
   const hasGroupSignal =
@@ -3656,20 +3852,30 @@ const MONTH_MAP: [string, number][] = ([
   // NL
   ['januari',0],['februari',1],['maart',2],['april',3],['mei',4],['juni',5],
   ['juli',6],['augustus',7],['september',8],['oktober',9],['november',10],['december',11],
-  // PL
+  // PL — nominative
   ['styczeń',0],['styczen',0],['luty',1],['marzec',2],['kwiecień',3],['kwiecien',3],
   ['maj',4],['czerwiec',5],['lipiec',6],['sierpień',7],['sierpien',7],
   ['wrzesień',8],['wrzesien',8],['październik',9],['pazdziernik',9],
   ['listopad',10],['grudzień',11],['grudzien',11],
+  // PL — genitive (used in dates: "18 lipca" = 18th of July)
+  ['stycznia',0],['lutego',1],['marca',2],['kwietnia',3],['maja',4],['czerwca',5],
+  ['lipca',6],['sierpnia',7],['września',8],['wrzesnia',8],
+  ['października',9],['pazdziernika',9],['listopada',10],['grudnia',11],
   // SV
   ['januari',0],['februari',1],['mars',2],['april',3],['maj',4],['juni',5],
   ['juli',6],['augusti',7],['september',8],['oktober',9],['november',10],['december',11],
-  // HR/SQ
+  // HR — nominative
   ['siječanj',0],['sijecanj',0],['veljača',1],['veljaca',1],['oĵujak',2],['ozujak',2],
   ['travanj',3],['svibanj',4],['lipanj',5],['srpanj',6],['kolovoz',7],
   ['rujan',8],['listopad',9],['studeni',10],['prosinac',11],
-  ['janar',0],['shkurt',1],['mars',2],['prill',3],['qershor',5],
-  ['korrik',6],['gusht',7],['shtator',8],['tetor',9],['nëntor',10],['dhjetor',11],
+  // HR — genitive (used in dates: "18. srpnja" = 18th of July)
+  ['siječnja',0],['sijecnja',0],['veljače',1],['veljace',1],['ožujka',2],['ozujka',2],
+  ['travnja',3],['svibnja',4],['lipnja',5],['srpnja',6],['kolovoza',7],
+  ['rujna',8],['listopada',9],['studenog',10],['prosinca',11],
+  // SQ
+
+  ['janar',0],['shkurt',1],['prill',3],['qershor',5],
+  ['korrik',6],['gusht',7],['shtator',8],['tetor',9],['nëntor',10],['nentor',10],['dhjetor',11],
   // JA (Japanese — 1月 through 12月)
   ['1月',0],['2月',1],['3月',2],['4月',3],['5月',4],['6月',5],
   ['7月',6],['8月',7],['9月',8],['10月',9],['11月',10],['12月',11],
@@ -3738,7 +3944,7 @@ const WEEKDAY_MAP: [string, number][] = ([
 const RETURN_SPLIT_RE = new RegExp(
   '\\s+(?:' + [
     // EN
-    'returning on','returning','return on','return date','come back on','coming back on','coming back','back on','back',
+    'returning on','returning','return on','return date','return','come back on','coming back on','coming back','back on','back',
     // DE
     'rückflug am','rückflug','zurück am','zurück','ruckreise am','ruckreise',
     // ES
@@ -3817,6 +4023,9 @@ function findTwoCitiesInText(
   let iataWm: RegExpExecArray | null
   while ((iataWm = iataWordRe.exec(t)) !== null) {
     const token = iataWm[0]
+    // Skip common English/Romance words that collide with IATA codes
+    // (e.g. "for" → FOR Fortaleza, "the" → THE Thaba’Nchu, "sun" → SUN Friedman)
+    if (_COMMON_WORDS_BLOCKLIST.has(token)) continue
     const start = iataWm.index
     const end = start + 3
     if (ranges.some(r => start < r.end && end > r.start)) continue
@@ -4155,6 +4364,26 @@ export function parseNLQuery(query: string): ParsedQuery {
   }
 
   let outboundForParsing = outboundRaw
+
+  // ── Normalize CJK directional markers to Latin "X to Y" so the route regex applies ──
+  // JA: "東京からバルセロナへ" / "...まで" → "東京 to バルセロナ"
+  // ZH: "北京到巴塞罗那" / "从北京到巴塞罗那" → "北京 to 巴塞罗那"
+  // KO: "서울에서 바르셀로나로" / "...까지" → "서울 to 바르셀로나"
+  outboundForParsing = outboundForParsing
+    .replace(/^\s*(?:从|從)\s*/u, '')
+    .replace(/([\p{L}\p{N} ]+?)から([\p{L}\p{N} ]+?)(?:へ|まで)/gu, '$1 to $2')
+    .replace(/([\p{L}\p{N} ]+?)(?:到|至)([\p{L}\p{N} ]+)/gu, '$1 to $2')
+    .replace(/([\p{L}\p{N} ]+?)에서\s*([\p{L}\p{N} ]+?)(?:로|으로|까지)/gu, '$1 to $2')
+
+  // ── Strip leading multilingual filler prefixes ("Cheap flights from", "Vols pas chers de",
+  //    "Voli economici da", "Voos baratos de", "Goedkope vluchten van", "Najtańsze bilety z",
+  //    "Günstige Flüge von", "Billiga flyg från", "Jeftini letovi iz", "Fluturime të lira nga",
+  //    "Lot z" — all reduce to just the connector preposition so the route regex can fire.
+  outboundForParsing = outboundForParsing.replace(
+    /^(?:cheap(?:est)?\s+(?:flights?|tickets?|fares?)|vols?\s+(?:pas\s+chers?|bon\s+march[eé]|[ée]conomiques?)|voli\s+(?:economic[oai]|a\s+basso\s+costo)|voos\s+(?:baratos|econ[oô]micos)|goedkope\s+vluchten|najta[nń]sze\s+(?:bilety|loty|przeloty)|tanie\s+(?:bilety|loty|przeloty)|g[üu]nstig(?:e|ste)\s+fl[üu]ge|billig(?:a|aste)?\s+flyg|jeftini\s+letovi|fluturime\s+t[ëe]\s+lir[ëe]a?|vuelos\s+barat[oa]s|loty|lot)\s+(?=(?:from|von|ab|aus|desde|de|depuis|da|uit|van|vanaf|vanuit|z|ze|fr[åa]n|iz|nga)\b)/i,
+    ''
+  )
+
   if (viaCityRawMatch) {
     const viaCityRaw = (viaCityRawMatch[viaCityRawMatch.length - 1] ?? '').trim()
     // Try progressively shorter prefixes to find the best city match
@@ -4299,6 +4528,103 @@ export function parseNLQuery(query: string): ParsedQuery {
   }
 
   // ── 2. Extract cities from outbound part ─────────────────────────────────
+  // Strip trailing passenger-context phrases ("for a couple", "for two", "en pareja",
+  // "zu zweit", "in coppia", etc.) BEFORE route parsing so they can't be mistaken
+  // for a route separator. The English "X a Y" route pattern uses [àa] as a
+  // separator and would otherwise treat "buenos aires for a couple" as
+  // origin="buenos aires for", separator="a", destination="couple".
+  // extractPassengers still runs on the original cleaned query (`q`) so the
+  // passenger context is preserved.
+  // We work on a normalized (lowercase + accent-stripped) copy to find the match
+  // index, then slice the original text — stripAccents() preserves character length
+  // for all European/CJK scripts we support.
+  const _normForStrip = stripAccents(outboundForParsing.toLowerCase())
+  // Passenger suffix patterns, all 14 languages we support (EN/DE/ES/FR/IT/NL/PL/PT/SV/HR/SQ/JA/RU/KO).
+  // Anchored to end of string with optional "with N passengers" / "for a family of N" phrasing.
+  const PASSENGER_SUFFIX_RE = new RegExp(
+    '(?:^|\\s+)(?:' +
+    // EN
+    'for\\s+(?:a\\s+|the\\s+)?(?:couple|two\\s+of\\s+us|two|2|three|3|four|4|five|5|six|6|family|kids?|children|us|me\\s+and\\s+(?:my\\s+)?(?:wife|husband|partner|girlfriend|boyfriend|kids?|family|son|daughter|friends?|colleagues?|mum|mom|dad|parents?))' +
+    '|with\\s+(?:my\\s+)?(?:wife|husband|partner|girlfriend|boyfriend|family|kids?|children|fiancee?|spouse)' +
+    '|as\\s+a\\s+(?:couple|family|group)' +
+    '|just\\s+(?:the\\s+)?(?:two|2)\\s+of\\s+us' +
+    '|on\\s+(?:my|our)\\s+(?:honeymoon|anniversary)' +
+    '|date\\s+(?:night|trip|flight)' +
+    // DE
+    '|fu?r\\s+(?:eine|einen|zwei|drei|vier|2|3|4|5)\\s*(?:personen?|erwachsene?|kinder?|leute)?' +
+    '|zu\\s+zweit|zu\\s+dritt|zu\\s+viert|als\\s+paar|als\\s+familie|mit\\s+(?:meiner|meinem)\\s+(?:frau|mann|partnerin|partner|freundin|freund|familie|kinder?|tochter|sohn|eltern)' +
+    // ES
+    '|para\\s+(?:dos|tres|cuatro|cinco|seis|2|3|4|5|6)(?:\\s+personas?|\\s+adultos?)?' +
+    '|en\\s+pareja|en\\s+familia|con\\s+mi\\s+(?:pareja|esposa|esposo|novia|novio|marido|mujer|familia|hij[oa]s?|padres?)' +
+    '|somos\\s+(?:dos|tres|cuatro|2|3|4)' +
+    // FR
+    '|pour\\s+(?:deux|trois|quatre|cinq|2|3|4|5)(?:\\s+personnes?|\\s+adultes?)?' +
+    '|en\\s+couple|en\\s+famille|avec\\s+(?:ma|mon)\\s+(?:femme|mari|partenaire|copine|copain|compagne|compagnon|famille|enfants?|fille|fils|parents?|amie?s?)' +
+    '|nous\\s+sommes\\s+(?:deux|trois|quatre|2|3|4)' +
+    // IT
+    '|per\\s+(?:due|tre|quattro|cinque|2|3|4|5)(?:\\s+persone?|\\s+adulti)?' +
+    '|in\\s+coppia|in\\s+famiglia|con\\s+(?:mia|mio)\\s+(?:moglie|marito|ragazza|ragazzo|compagna|compagno|famiglia|figli[oa]?|genitori|amici?)' +
+    '|siamo\\s+in\\s+(?:due|tre|quattro|2|3|4)' +
+    // NL
+    '|voor\\s+(?:twee|drie|vier|vijf|2|3|4|5)(?:\\s+personen?|\\s+volwassenen?)?' +
+    '|met\\s+(?:zn?|z\'n|ons)\\s+(?:tweeen|drieen|vieren|tweeën|drieën)' +
+    '|als\\s+(?:koppel|stel|gezin)|met\\s+mijn\\s+(?:vrouw|man|partner|vriendin|vriend|gezin|kinderen|familie|dochter|zoon|ouders)' +
+    '|wij\\s+zijn\\s+met\\s+(?:tweeen|drieen|vieren|2|3|4)' +
+    // PL
+    '|dla\\s+(?:dwojga|trojga|czworga|2|3|4)(?:\\s+os[oó]b)?' +
+    '|we\\s+dwoje|we\\s+troje|jako\\s+para|jako\\s+rodzina|z\\s+(?:moj[aą]|moim)\\s+(?:[zż]on[aą]|m[eę][zż]em|partner[kt][aą]?|dziewczyn[aą]|chlopak(?:iem)?|chłopak(?:iem)?|rodzin[aą]|dzie[ćc]mi|c[oó]rk[aą]|synem|rodzicami)' +
+    // PT
+    '|para\\s+(?:dois|duas|tr[eê]s|quatro|cinco|2|3|4|5)(?:\\s+pessoas?|\\s+adultos?)?' +
+    '|em\\s+casal|em\\s+fam[ií]lia|com\\s+(?:minha|meu)\\s+(?:esposa|esposo|namorada|namorado|companheira|companheiro|fam[ií]lia|filh[oa]s?|pais)' +
+    '|somos\\s+(?:dois|duas|tr[eê]s|2|3|4)' +
+    // SV
+    '|fo?r\\s+(?:tva?|tre|fyra|fem|2|3|4|5)(?:\\s+personer?|\\s+vuxna?)?' +
+    '|som\\s+(?:par|familj)|med\\s+min\\s+(?:fru|man|partner|flickv[aä]n|pojkv[aä]n|familj|barn|dotter|son|f[oö]r[aä]ldrar)' +
+    '|vi\\s+a?r\\s+(?:tva?|tre|fyra|2|3|4)' +
+    // HR
+    '|za\\s+(?:dvoje|troje|cetvero|četvero|2|3|4)(?:\\s+osoba)?' +
+    '|kao\\s+par|kao\\s+obitelj|s\\s+(?:mojom|mojim)\\s+(?:zenom|ženom|muzem|mužem|partnericom|partnerom|djevojkom|deckom|dečkom|obitelji|djecom|kceri|kćeri|sinom|roditeljima)' +
+    '|nas\\s+je\\s+(?:dvoje|troje|cetvero|četvero|2|3|4)' +
+    // SQ
+    '|per\\s+(?:dy|tre|kater|katër|pese|pesë|2|3|4|5)(?:\\s+persona|\\s+te?\\s+rritur|\\s+të\\s+rritur)?' +
+    '|si\\s+(?:cift|çift|familje)|me\\s+(?:bashkeshorten|bashkëshorten|bashkeshortin|bashkëshortin|partneren|partnerin|familjen|femijet|fëmijët|vajzen|vajzën|djalin|prinderit|prindërit)' +
+    '|jemi\\s+(?:dy|tre|kater|katër|2|3|4)' +
+    // JA — "二人で", "家族で", "家族3人", "夫婦で", "カップルで"
+    '|二人で|3人で|4人で|5人で|家族で?|夫婦で|カップルで|彼女と|彼氏と' +
+    // RU — "вдвоём", "вдвоем", "с женой", "с мужем", "с семьёй", "семьёй", "парой"
+    '|вдво[её]м|втро[её]м|вчетвером|с\\s+жен(?:ой|ою)|с\\s+муж(?:ем)|с\\s+семь[её]й|сем[её]й|парой|как\\s+пара|с\\s+девушкой|с\\s+парнем|с\\s+партн[её]ром' +
+    // KO — "둘이서", "가족과", "신혼여행", "남편과", "아내와", "여자친구와"
+    '|둘이서|셋이서|가족과(?:\\s*함께)?|신혼여행|남편과|아내와|여자친구와|남자친구와|커플로' +
+    ')\\b.*$',
+    'iu',
+  )
+  const _suffixMatch = _normForStrip.match(PASSENGER_SUFFIX_RE)
+  if (_suffixMatch && _suffixMatch.index !== undefined) {
+    outboundForParsing = outboundForParsing.slice(0, _suffixMatch.index).trim()
+  }
+  // Bare passenger phrases with no city ("couple", "for couple", "two of us", "vdvoem", etc.)
+  // — strip entirely so the UI prompts for cities instead of throwing a "couldn't find airport".
+  const BARE_PASSENGER_RE = new RegExp(
+    '^(?:(?:a|an|the|just|only|un|una|une|der|die|das|ein|eine|el|la|il|lo|os|as|en|ett|jen[ao]?|nje?)\\s+)?(?:' +
+    'couple|two\\s+of\\s+us|two|2|three|3|four|4|family|kids?|children|us' +
+    '|paar|familie|zwei|drei|vier|kinder|leute|personen?' +
+    '|pareja|familia|dos|tres|cuatro|personas?|ni[ñn]os?' +
+    '|couple|famille|deux|trois|quatre|personnes?|enfants?' +
+    '|coppia|famiglia|due|tre|quattro|persone?|bambini?' +
+    '|koppel|stel|gezin|tweeen|tweeën|drieen|drieën|kinderen' +
+    '|para|rodzina|dwoje|troje|dzieci' +
+    '|casal|fam[ií]lia|dois|duas|tr[eê]s|crian[çc]as?' +
+    '|par|familj|tva?|tre|fyra|barn' +
+    '|par|obitelj|dvoje|troje|djeca' +
+    '|cift|çift|familje|dy|tre|kater|katër|f[eë]mij[eë]?' +
+    '|二人|家族|夫婦|カップル' +
+    '|пара|семья|двое|трое|вдво[её]м|втро[её]м' +
+    '|커플|가족|둘|셋' +
+    ')$',
+    'iu',
+  )
+  if (BARE_PASSENGER_RE.test(_normForStrip.trim())) outboundForParsing = ''
+
   // Try multiple route separator patterns
   const routePatterns = [
     // "ORIGIN to DESTINATION"
@@ -4401,8 +4727,14 @@ export function parseNLQuery(query: string): ParsedQuery {
       .replace(/\s+(?:(?:next|this|ten|tego|t[ęe]|ta)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|vikend|helg|wochenende|fin\s+de\s+semana|week[-\s]?end|fine\s+settimana|weekeinde)|(?:the\s+week\s+of\s+thanksgiving|thanksgiving\s+week|thanksgiving))\b.*/i, '')
       // Strip Polish departure/arrival keywords absorbed into destStr (e.g. "Barcelony wyjazd piątek")
       .replace(/[,\s]+(?:wyjazd|wylot|odlot|powrót|przylot|lot\s+powrotny)\b.*/i, '')
-      .replace(/\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na|dne|dia|den|am)\s.*/i, '')
+      .replace(/\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na|dne|dia|den|am|op|den|kl)\s.*/i, '')
       .replace(/\s+\d{1,2}(?:st|nd|rd|th)?\s.*/i, '')
+      // Strip trailing multilingual passenger-count clause ("Rzymu dla dwóch osób",
+      // "Buenos Aires para um casal", "Marrakech pour une famille", "Tokyo per due persone")
+      .replace(/[,\s]+(?:dla|para|pour|f[üu]r|voor|f[oö]r|za|p[eë]r|per|with|met|com|mit|avec|con)\s+(?:un[ae]?|uma?|une?|ein[se]?|en|ett|jed[na]u?|nj[eë]|el|la|il|los|las|le|les|de|os|as|i|gli|den|det|ten|to|tw[oa]|the)?\s*(?:\d+|dwojga|dw[oó]ch|dw[ae]|trzech|trojga|czterech|pi[ęe]ciu|dos|tres|cuatro|cinco|deux|trois|quatre|cinq|due|tre|quattro|cinque|twee|drie|vier|vijf|dois|duas|tr[eê]s|cinco|dvoje|troje|dvije|tri|dy|tre|kat[ëe]r|pes[ëe]|persona|personas?|persone|personnes?|personen?|pessoas?|os[oó]b|osoba|leute|gente|family|familia|fam[í]lia|famille|famiglia|gezin|familje|obitelj|familj|couple|coppia|pareja|casal|paar|p[äa]rchen|koppel|stel|cift|çift|par|rodzin[ya])\b.*/iu, '')
+      // Trailing dangling preposition (e.g. route regex captured "Barcelone le" because
+      // it stopped at "\\s+\\d" boundary before the date number).
+      .replace(/\s+(?:on|in|for|at|le|el|il|em|am|den|dia|na|op|po|um|på|w|do|de|di|dla|para|pour|f[üu]r|voor|f[oö]r|za|p[eë]r)\s*$/i, '')
       // Strip trailing time-position modifiers left over when the month name was consumed
       // by the route-regex lookahead (e.g. "Houston end of" ← "Grand Rapids to Houston end of May")
       .replace(/\s+(?:end|beginning|start|late|early|mid(?:dle)?)(?:\s+of)?\s*$/i, '')
@@ -4422,29 +4754,55 @@ export function parseNLQuery(query: string): ParsedQuery {
   const TRIP_TYPE_ORIGIN_RE = /^(?:(?:my\s+|the\s+|a\s+)?(?:family|business|solo|group|work|corporate|ski(?:ing)?|beach|sun|city|honeymoon|romantic|anniversary|graduation|school|stag|hen|bachelorette|hen\s+do|girls?(?:'s?)?\s+trip|guys?(?:'s?)?\s+trip|holiday|summer|winter|spring|autumn|christmas|easter|new\s+year(?:'s)?)\s+)?(?:trip|flight|flights?|holiday|vacation|getaway|break|journey|travel|routes?|booking|tickets?)$/i
   if (originStr && TRIP_TYPE_ORIGIN_RE.test(originStr)) originStr = ''
 
-  // Resolve cities
+  // Resolve cities. On failure, attach top fuzzy candidates so the UI can show
+  // "did you mean?" chips. findCityCandidates is only called on the cold path —
+  // resolveLocation already handles single-typo fuzzy matching internally.
   if (originStr) {
     const r = resolveLocation(originStr)
     if (r) { result.origin = r.code; result.origin_name = r.name }
-    else result.failed_origin_raw = originStr
+    else {
+      result.failed_origin_raw = originStr
+      const cands = findCityCandidates(originStr, 4)
+      if (cands.length > 0) result.origin_candidates = cands
+    }
   }
 
   if (destStr) {
     const r = resolveLocation(destStr)
     if (r) { result.destination = r.code; result.destination_name = r.name }
-    else result.failed_destination_raw = destStr
+    else {
+      result.failed_destination_raw = destStr
+      const cands = findCityCandidates(destStr, 4)
+      if (cands.length > 0) result.destination_candidates = cands
+    }
   }
 
   // ── 2b. Two-city fallback: no separator, no route match ─────────────────────
   // Handles bare city-pair queries: "Stuttgart Gdansk", "Berlin Rome June", etc.
+  // Use outboundForParsing (already had passenger phrases stripped) when it differs
+  // from the original query, so "Paris en couple" / "Stockholm för två" etc. fall
+  // through to the single-city fallback with the connector words gone.
   if (!result.origin && !result.destination && !result.anywhere_destination) {
-    const cleaned = ql
+    const _baseForFallback = (outboundForParsing && outboundForParsing.length > 0 && outboundForParsing.length < ql.length)
+      ? outboundForParsing.toLowerCase()
+      : ql
+    const cleaned = _baseForFallback
       .replace(/\b\d{4}\b/g, ' ')
       .replace(/\b\d{1,2}(?:st|nd|rd|th)?\b/g, ' ')
       .replace(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\b/gi, ' ')
       .replace(/\b(?:januar|februar|m(?:ae|ä)rz|mai|juni|juli|oktober|dezember|avril|mayo|junio|julio|agosto|enero|diciembre)\b/gi, ' ')
       .replace(/\b(?:next|this|in|on|for|at|around|under|below|over|above|max|budget|up|to|less|than)\b/gi, ' ')
       .replace(/\b(?:weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi, ' ')
+      // Strip passenger-context tokens + multilingual connectors left over after the
+      // suffix strip ("paris en couple" → "paris en" → "paris"; "amsterdam met zn tweeen"
+      // → "amsterdam met zn"; "stockholm för två" → "stockholm").
+      // EN: a/an/the/of/and/with + passenger words; DE: für/mit/und/zu/als + passenger;
+      // ES: en/con/para/y/de + passenger; FR: en/avec/pour/et/de + passenger;
+      // IT: in/con/per/e/di + passenger; NL: met/voor/en/van + passenger;
+      // PL: dla/we/z/i + passenger; PT: em/com/para/e/de + passenger;
+      // SV: för/med/och/som + passenger; HR: za/s/i + passenger; SQ: për/me/si/dhe + passenger.
+      .replace(/\b(?:a|an|the|of|and|with|as|just|only|en|con|para|por|y|de|in|met|voor|als|zn|z'n|ons|mit|fur|für|zu|und|dla|we|z|em|com|fo?r|för|med|som|och|za|s|si|me|per|dhe|but|or|on|to|from|nach|para|naar|do|till|na|drejt|leti|vers|pour|bis)\b/gi, ' ')
+      .replace(/\b(?:couple|two|three|four|five|six|family|kids?|children|adults?|us|me|my|our|wife|husband|partner|girlfriend|boyfriend|son|daughter|friends?|colleagues?|paar|familie|zwei|drei|vier|funf|fünf|kinder|leute|personen?|frau|mann|partnerin|freundin|freund|kind|tochter|sohn|pareja|familia|dos|tres|cuatro|cinco|personas?|ni[ñn]os?|esposa|esposo|novia|novio|marido|mujer|hij[oa]s?|padres?|famille|deux|trois|quatre|cinq|personnes?|enfants?|femme|mari|partenaire|copine|copain|compagne|compagnon|fille|fils|parents?|amie?s?|coppia|famiglia|due|tre|quattro|persone?|bambini?|moglie|marito|ragazza|ragazzo|compagna|compagno|figli[oa]?|genitori|amici?|koppel|stel|gezin|tweeen|tweeën|drieen|drieën|kinderen|volwassenen?|vrouw|man|vriendin|vriend|dochter|zoon|ouders|rodzina|dwoje|troje|dzieci|os[oó]b|[zż]ona|m[aą]ż|partner|partnerka|c[oó]rka|syn|rodzice|casal|fam[ií]lia|dois|duas|cinco|pessoas?|crian[çc]as?|namorada|namorado|companheira|companheiro|filh[oa]s?|pais|par|familj|tva?|fyra|fem|barn|fru|flickv[aä]n|pojkv[aä]n|f[oö]r[aä]ldrar|obitelj|cetvero|četvero|djeca|osoba|zena|žena|muz|muž|partnerica|djevojka|decko|dečko|kceri?|kći|sin|roditelji|cift|çift|familje|dy|kater|katër|f[eë]mij[eë]?|persona|bashkeshorten|bashkëshorten|bashkeshortin|bashkëshortin|partneren|partnerin|familjen|femijet|fëmijët|vajzen|vajzën|djalin|prinderit|prindërit|honeymoon|anniversary|spouse|fianc[eé]e?|date|night|trip|flight|二人|三人|家族|夫婦|カップル|彼女|彼氏|пара|семья|двое|трое|вдво[её]м|втро[её]м|жена|муж|партн[её]р|커플|가족|둘|셋|남편|아내|여자친구|남자친구)\b/giu, ' ')
       .replace(/[$€£¥₹]\s*\d+|\b\d+\s*(?:dollars?|euros?|pounds?|usd|eur|gbp)\b/gi, ' ')
       .replace(/\s+/g, ' ').trim()
     const pair = findTwoCitiesInText(cleaned)
@@ -4453,6 +4811,18 @@ export function parseNLQuery(query: string): ParsedQuery {
       result.origin_name = pair[0].name
       result.destination = pair[1].code
       result.destination_name = pair[1].name
+    } else {
+      // Single-city fallback: "guadalajara for two" → no route pattern fires
+      // (no "to"/"a" separator), and findTwoCitiesInText needs two cities.
+      // Try resolving the cleaned text as a single city — store as origin so the
+      // home form's implicit-single-city-as-destination logic asks "where from?".
+      if (cleaned.length >= 3) {
+        const single = resolveCity(cleaned)
+        if (single) {
+          result.origin = single.code
+          result.origin_name = single.name
+        }
+      }
     }
   }
 
@@ -4529,8 +4899,13 @@ export function parseNLQuery(query: string): ParsedQuery {
 
     // "15th May", "May 15", "15 mai", "le 15 mai", "am 15. mai", etc.
     // Build a token list and search for day+month in any order
-    // First strip common lead-in prepositions
-    const cleaned = tl.replace(/\b(?:on|le|am|el|il|em|dne|den|dia|på|na|the)\b/g, ' ').replace(/\s+/g,' ').trim()
+    // First strip common lead-in / connective prepositions in dates across languages.
+    // ES/PT "18 de julio", IT "il 18 di luglio", FR "le 18 de juillet", PL "dnia 18",
+    // HR "dne 18.", DE "am 18.", NL "op 18", SV "den 18".
+    const cleaned = tl
+      .replace(/\b(?:on|le|am|el|il|em|dne|den|dia|på|na|the|de|di|del|do|od|od\s+dnia|op|the)\b/g, ' ')
+      .replace(/(\d{1,2})\.\s/g, '$1 ')   // "18. srpnja" → "18 srpnja"
+      .replace(/\s+/g,' ').trim()
 
     // Try: <number><ordinal?> <monthname>  or  <monthname> <number><ordinal?>
     // (?!\d) after the day digits prevents matching the first 1-2 digits of a year
@@ -4815,11 +5190,14 @@ export function parseNLQuery(query: string): ParsedQuery {
   // ── 4. Extract outbound date ─────────────────────────────────────────────
   result.date = extractDate(outboundRaw)
 
-  // If no date found, default to 1 week from today
+  // If no date found, default to 1 week from today and flag it as a default —
+  // the convo flow uses this to decide whether to ask "when do you want to go?"
+  // and to gate the background search pre-fire (don't burn a search on a guess).
   if (!result.date) {
     const d = new Date(today)
     d.setDate(today.getDate() + 7)
     result.date = toLocalDateStr(d)
+    result.date_is_default = true
   }
 
   // Override with explicit "Friday evening out"-style weekday (more specific than "this weekend")
@@ -4851,7 +5229,25 @@ export function parseNLQuery(query: string): ParsedQuery {
       result.return_date = retDate
       result.date_month_only = undefined  // concrete round-trip: don't trigger best-window
     } else {
-      result.date_month_only = _depMonthOnly
+      // "Return 4 days" / "return after 5 days" / "returning in 7 days" — duration-based.
+      // When the user expresses the return as a trip-length (no calendar date),
+      // derive return_date = departure + N days. This handles the conversational
+      // pattern produced by the home questionnaire ("Return 4 days") which would
+      // otherwise be silently dropped, leaving the search as one-way.
+      const durMatch = returnRaw.match(/^\s*(?:after\s+|in\s+)?(\d{1,2})\s*(?:day|days|d)\b/i)
+      if (durMatch && result.date) {
+        const days = parseInt(durMatch[1], 10)
+        if (days > 0 && days <= 365) {
+          const dep = new Date(result.date + 'T00:00:00Z')
+          dep.setUTCDate(dep.getUTCDate() + days)
+          result.return_date = toLocalDateStr(dep)
+          result.date_month_only = undefined
+        } else {
+          result.date_month_only = _depMonthOnly
+        }
+      } else {
+        result.date_month_only = _depMonthOnly
+      }
     }
   } else {
     // No explicit return keyword — scan for two date expressions (implicit round-trip)
@@ -4895,6 +5291,15 @@ export function parseNLQuery(query: string): ParsedQuery {
   if (extractDirect(q)) result.stops = 0
   if (/\b(?:quick(?:est)?|fast(?:est)?|short(?:est)?|minimum|lowest)\s*(?:possible\s*)?(?:flight\s+)?(?:time|duration|transit)?\s*(?:flight|route)?\b|\bflight\s+(?:time|duration)\s+(?:as\s+)?(?:short|quick|fast)\b|\bget\s+there\s+(?:as\s+)?(?:fast|quick|quick\s+as\s+possible)\b/i.test(q)) {
     result.prefer_quick_flight = true
+  }
+
+  // Explicit sort preference — auto-selects the sort tab on the results page.
+  // Cheapest/fastest are the only two we surface; everything else stays default.
+  // EN + major EU langs covered cheaply with a single regex per side; no per-token loop.
+  if (/\b(?:cheap(?:est)?(?:\s+(?:option|flight|fare|deal|price))?|lowest\s+(?:price|fare|cost)|best\s+price|budget(?:\s+option)?|najtańsz[ye]?|najtaniej|tani[ae]?|tanio|le\s+(?:moins\s+cher|prix\s+le\s+plus\s+bas)|pas\s+cher[se]?|bon\s+march[eé]|m[aá]s\s+barato|el\s+m[aá]s\s+barato|barat[oa]s?|econ[oó]mic[oa]s?|mais\s+barato|barat[oa]s?|g[uü]nstig(?:e|er|en|ste(?:r|n)?)?|am\s+billigsten|billigst(?:e|er|en)?|billig(?:e|er|en)?|più\s+economic[oa]|economic[oai]|niedrigst(?:er|en)?\s+preis|laagst(?:e)?\s+prijs|goedkop(?:e|er|ste)?|billigast|jeftin[oa]?|lir[eë]|lir[eë]\s+t[eë])\b/i.test(q)) {
+    result.preferred_sort = 'price'
+  } else if (/\b(?:fast(?:est)?(?:\s+(?:option|flight))?|quickest|short(?:est)?\s+(?:flight|trip|duration|journey)|najszybsz[ye]?|le\s+plus\s+rapide|m[aá]s\s+r[aá]pido|el\s+m[aá]s\s+r[aá]pido|mais\s+r[aá]pido|schnellst(?:e|er|en)?|am\s+schnellsten|più\s+veloce|snelst(?:e)?|snabbast)\b/i.test(q)) {
+    result.preferred_sort = 'duration'
   }
 
   // ── 7. Trip duration range ("for 14 days", "14-18 day trip", "back in 2 weeks") ──
@@ -4975,6 +5380,7 @@ export function parseNLQuery(query: string): ParsedQuery {
     result.anywhere_destination = true
     // Clear the failed destination since it's intentional
     delete result.failed_destination_raw
+    delete result.destination_candidates
     // Keep destination undefined so the UI can show an "Explore" mode
   }
 

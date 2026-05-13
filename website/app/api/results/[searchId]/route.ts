@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cacheOffers } from '../../../../lib/offer-cache'
-import { cacheCompletedSearchResult, getCachedSearchResult } from '../../../../lib/results-cache'
+import { cacheCompletedSearchResult, getCachedSearchResult, getSearchMeta } from '../../../../lib/results-cache'
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
 import { getSessionUid } from '../../../../lib/session-uid'
@@ -409,6 +409,10 @@ export async function GET(
 
     const now = new Date()
     const createdAgo = data.elapsed_seconds ? data.elapsed_seconds * 1000 : 0
+    // Pick up website-side resolution context (e.g. "Pretoria has no airport,
+    // we used JNB") that was recorded at /api/search time. FSW knows nothing
+    // about it, so we merge it into `parsed` here.
+    const meta = getSearchMeta(searchId)
     const result = {
       search_id: searchId,
       status: data.status,
@@ -420,6 +424,7 @@ export async function GET(
         destination_name: data.destination_name || data.destination,
         date: data.date_from,
         return_date: data.return_date || undefined,
+        ...(meta?.fallback_notes ? { fallback_notes: meta.fallback_notes } : {}),
       },
       offers: normalized,
       total_results: normalized.length,
@@ -459,6 +464,11 @@ export async function GET(
         searched_at: result.searched_at,
         expires_at: result.expires_at,
       })
+      // Attach any previously-cached Gemini justification so shared links return it.
+      const cached = getCachedSearchResult(result.search_id)
+      if (cached?.gemini_justification) {
+        return NextResponse.json({ ...result, gemini_justification: cached.gemini_justification })
+      }
     }
 
     return NextResponse.json(result)
