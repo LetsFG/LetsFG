@@ -33,6 +33,12 @@ export interface VertexCityResult {
   bags_included?:   boolean | null
   /** Trip purpose inferred from context. null if unclear. */
   trip_purpose?:    'city_break' | 'beach' | 'ski' | 'business' | 'honeymoon' | 'family_holiday' | 'concert_festival' | 'sports_event' | null
+  /** Preferred departure time bucket for the outbound leg. null if not stated. */
+  dep_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  /** Preferred departure time bucket for the return leg. null if not a round-trip or not stated. */
+  ret_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  /** Passenger group context. null if unclear. */
+  passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
 }
 
 // Keep old name as alias so callers importing VertexParseResult still compile
@@ -92,7 +98,10 @@ Return ONLY valid JSON (no markdown, no explanation) with exactly these fields:
   "depart_after": string|null,
   "depart_before": string|null,
   "bags_included": boolean|null,
-  "trip_purpose": "city_break"|"beach"|"ski"|"business"|"honeymoon"|"family_holiday"|"concert_festival"|"sports_event"|null
+  "trip_purpose": "city_break"|"beach"|"ski"|"business"|"honeymoon"|"family_holiday"|"concert_festival"|"sports_event"|null,
+  "dep_time_pref": "early_morning"|"morning"|"afternoon"|"evening"|"red_eye"|null,
+  "ret_time_pref": "early_morning"|"morning"|"afternoon"|"evening"|"red_eye"|null,
+  "passenger_context": "solo"|"couple"|"family"|"group"|"business_traveler"|null
 }
 
 CITY RULES:
@@ -121,6 +130,9 @@ INTENT RULES:
 - depart_before: latest acceptable departure as "HH:MM" 24 h. "before noon" -> "12:00", "morning flight" -> "10:00". null if not stated.
 - bags_included: true if user mentions "with bags/luggage/baggage included". null otherwise.
 - trip_purpose: infer from context — "beach holiday/beach break/sun holiday/coast" -> "beach"; "city break/city trip/sightseeing" -> "city_break"; "ski/snowboard" -> "ski"; "business/conference/meeting" -> "business"; "honeymoon/anniversary" -> "honeymoon"; "family holiday/kids" -> "family_holiday"; "concert/festival/event" -> "concert_festival"; "match/game/race" -> "sports_event". null if unclear.
+- dep_time_pref: outbound departure time preference. "early morning/dawn/first flight/6am" -> "early_morning"; "morning flight/morning out" -> "morning"; "afternoon/midday" -> "afternoon"; "evening/evening out/evening flight/night out" -> "evening"; "red eye/overnight" -> "red_eye". null if not stated. NOTE: "Friday evening out" means outbound (dep_time_pref="evening"), "Sunday night back" means return (ret_time_pref="evening").
+- ret_time_pref: return departure time preference. Same buckets as dep_time_pref. Phrases like "Sunday night back", "evening return", "fly back in the morning" set this. null if not stated or not a round-trip.
+- passenger_context: "solo" if travelling alone; "couple" if two romantic partners (girlfriend/boyfriend/wife/husband/partner); "family" if travelling with children/kids; "group" if travelling with friends/colleagues/team (3+); "business_traveler" if explicit business trip context. null if unclear.
 
 Few-shot examples:
 Input: "London to Guatemala next week, 20th May, me and my girlfriend, round trip for 5 days, beach holiday, short flight and cheapest price"
@@ -148,7 +160,10 @@ Input: "z Krakowa do Guatemali w czerwcu"
 Output: {"origin_city":"Krakow","destination_city":"Guatemala City","via_city":null,"origin_lat":50.1,"origin_lon":19.9,"destination_lat":14.6,"destination_lon":-90.5,"passengers":null,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":null}
 
 Input: "Warsaw Paris next month, as a couple, round trip, city break, cheapest option, good departure times"
-Output: {"origin_city":"Warsaw","destination_city":"Paris","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":48.9,"destination_lon":2.3,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":"08:00","depart_before":"20:00","bags_included":null,"trip_purpose":"city_break"}`
+Output: {"origin_city":"Warsaw","destination_city":"Paris","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":48.9,"destination_lon":2.3,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":"08:00","depart_before":"20:00","bags_included":null,"trip_purpose":"city_break","dep_time_pref":"morning","ret_time_pref":null,"passenger_context":"couple"}
+
+Input: "London to Barcelona this weekend, Friday evening out, Sunday night back, 2 adults, direct, trip for two"
+Output: {"origin_city":"London","destination_city":"Barcelona","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":true,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":"city_break","dep_time_pref":"evening","ret_time_pref":"evening","passenger_context":"couple"}`
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
@@ -180,7 +195,7 @@ export async function vertexParse(
         contents: [{ role: 'user', parts: [{ text: query }] }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 600,
+          maxOutputTokens: 700,
           responseMimeType: 'application/json',
         },
       }),

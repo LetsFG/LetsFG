@@ -131,14 +131,17 @@ export async function POST(request: NextRequest) {
         if (_ai.passengers && _ai.passengers > 0) adults = _ai.passengers
 
         // Build intent payload forwarded to the client results page
-        if (_ai.passengers)            _aiIntent.ai_passengers    = _ai.passengers
-        if (_ai.depart_after)          _aiIntent.ai_depart_after  = _ai.depart_after
-        if (_ai.depart_before)         _aiIntent.ai_depart_before = _ai.depart_before
-        if (_ai.direct_only != null)   _aiIntent.ai_direct_only   = _ai.direct_only
-        if (_ai.bags_included != null) _aiIntent.ai_bags_included = _ai.bags_included
-        if (_ai.cabin_class)           _aiIntent.ai_cabin_class   = _ai.cabin_class
-        if (_ai.sort_by)               _aiIntent.ai_sort_by       = _ai.sort_by
-        if (_ai.trip_purpose)          _aiIntent.ai_trip_purpose  = _ai.trip_purpose
+        if (_ai.passengers)              _aiIntent.ai_passengers        = _ai.passengers
+        if (_ai.depart_after)            _aiIntent.ai_depart_after      = _ai.depart_after
+        if (_ai.depart_before)           _aiIntent.ai_depart_before     = _ai.depart_before
+        if (_ai.direct_only != null)     _aiIntent.ai_direct_only       = _ai.direct_only
+        if (_ai.bags_included != null)   _aiIntent.ai_bags_included     = _ai.bags_included
+        if (_ai.cabin_class)             _aiIntent.ai_cabin_class       = _ai.cabin_class
+        if (_ai.sort_by)                 _aiIntent.ai_sort_by           = _ai.sort_by
+        if (_ai.trip_purpose)            _aiIntent.ai_trip_purpose      = _ai.trip_purpose
+        if (_ai.dep_time_pref)           _aiIntent.ai_dep_time_pref     = _ai.dep_time_pref
+        if (_ai.ret_time_pref)           _aiIntent.ai_ret_time_pref     = _ai.ret_time_pref
+        if (_ai.passenger_context)       _aiIntent.ai_passenger_context = _ai.passenger_context
       }
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })

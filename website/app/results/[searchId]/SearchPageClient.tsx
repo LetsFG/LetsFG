@@ -340,6 +340,9 @@ interface ParsedQuery {
   ai_cabin_class?: string
   ai_sort_by?: 'price' | 'duration'
   ai_trip_purpose?: string
+  ai_dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  ai_ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  ai_passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
 }
 
 export interface SearchPageClientProps {
@@ -779,34 +782,6 @@ export default function SearchPageClient({
   // parsed object doesn't expose.
   const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
 
-  // Gemini-powered ranking preference extraction — fires once per query.
-  // Handles colloquial phrases like "Friday evening out" / "Sunday night back"
-  // that the regex parser above cannot reliably match.
-  type RankPrefs = {
-    depTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
-    retTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
-    tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday'
-    passengerContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
-    preferDirect?: boolean
-    preferCheapest?: boolean
-    preferQuickFlight?: boolean
-  }
-  const [geminiPrefs, setGeminiPrefs] = useState<RankPrefs | null>(null)
-  useEffect(() => {
-    if (!query) return
-    const controller = new AbortController()
-    fetch('/api/rank-prefs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
-      signal: controller.signal,
-    })
-      .then(r => r.ok ? r.json() as Promise<RankPrefs> : null)
-      .then(data => { if (data && Object.keys(data).length > 0) setGeminiPrefs(data) })
-      .catch(() => { /* ignore — regex fallback is still active */ })
-    return () => controller.abort()
-  }, [query])
-
   // Convert AI depart_after / depart_before strings to minutes-from-midnight
   // for the hard time-floor enforcement in rankOffers.
   const aiDepartAfterMins = useMemo(() => {
@@ -1050,16 +1025,16 @@ export default function SearchPageClient({
           defaultSort={defaultSort}
           requireSeatPerPerson={requireSeatPerPerson}
           requireBagPerPerson={requireBagPerPerson}
-          initialDepTimePref={geminiPrefs?.depTimePref ?? nlParsed?.depart_time_pref}
-          initialRetTimePref={geminiPrefs?.retTimePref ?? nlParsed?.return_depart_time_pref}
+          initialDepTimePref={parsed.ai_dep_time_pref ?? nlParsed?.depart_time_pref}
+          initialRetTimePref={parsed.ai_ret_time_pref ?? nlParsed?.return_depart_time_pref}
           initialArrTimePref={nlParsed?.arrive_time_pref}
           initialDepartAfterMins={aiDepartAfterMins ?? nlParsed?.depart_after_mins}
           initialDepartBeforeMins={aiDepartBeforeMins ?? nlParsed?.depart_before_mins}
-          tripContext={geminiPrefs?.passengerContext ?? nlParsed?.passenger_context}
-          tripPurpose={(parsed.ai_trip_purpose as never) ?? geminiPrefs?.tripPurpose ?? nlParsed?.trip_purpose}
+          tripContext={parsed.ai_passenger_context ?? nlParsed?.passenger_context}
+          tripPurpose={(parsed.ai_trip_purpose as never) ?? nlParsed?.trip_purpose}
           preferredAirline={nlParsed?.preferred_airline}
-          preferQuickFlight={geminiPrefs?.preferQuickFlight ?? nlParsed?.prefer_quick_flight}
-          preferCheapest={parsed.ai_sort_by === 'price' || geminiPrefs?.preferCheapest || nlParsed?.preferred_sort === 'price'}
+          preferQuickFlight={parsed.ai_sort_by === 'duration' || nlParsed?.prefer_quick_flight}
+          preferCheapest={parsed.ai_sort_by === 'price' || nlParsed?.preferred_sort === 'price'}
           viaIata={nlParsed?.via_iata}
           maxStops={parsed.ai_direct_only === true ? 0 : (typeof nlParsed?.stops === 'number' ? nlParsed.stops : undefined)}
           fallbackNotes={parsed.fallback_notes}
