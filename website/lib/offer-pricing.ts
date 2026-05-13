@@ -54,10 +54,6 @@ function getCompatibleAncillaryAmount(offer: OfferPriceLike, ancillary?: OfferPr
 }
 
 export function getOfferBaseTotal(offer: OfferPriceLike) {
-  if (isGoogleFlightsSource(offer.source)) {
-    return Math.round(offer.price * 100) / 100
-  }
-
   return withFee(offer.price, offer.currency)
 }
 

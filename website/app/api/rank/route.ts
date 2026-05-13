@@ -156,11 +156,10 @@ function offerBreakdown(
   requireBag = false, requireSeat = false,
 ) {
   const { bag, seat } = ancillaryCosts(anc, currency)
-  const isGoogle = !!(source && GOOGLE_SOURCES.has(source))
   const floor = FEE_FLOOR[currency.toUpperCase()] ?? 3
-  const fee = isGoogle ? 0 : Math.round(Math.max(price * 0.01, floor) * 100) / 100
+  const fee = Math.round(Math.max(price * 0.01, floor) * 100) / 100
   const total = Math.round((price + fee + (requireBag ? bag : 0) + (requireSeat ? seat : 0)) * 100) / 100
-  return { ticket: price, fee, bag, seat, total, isGoogle }
+  return { ticket: price, fee, bag, seat, total }
 }
 
 // ── Allowed origins ─────────────────────────────────────────────────────
@@ -244,7 +243,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     : ''
   // Price breakdown block for prompt (only show lines that are non-zero / relevant)
   const bdLines: string[] = [`  ✈ Ticket:      ${hBd.ticket} ${h.currency}`]
-  if (!hBd.isGoogle) bdLines.push(`  ⚙ LetsFG fee:  +${hBd.fee} ${h.currency}  ← small service charge, not a concern`)
+  bdLines.push(`  ⚙ LetsFG fee:  +${hBd.fee} ${h.currency}  ← small service charge, not a concern`)
   if (h.ancillaries?.checked_bag?.included === true) {
     bdLines.push(`  🧳 Bag:         included in fare`)
   } else if (requireBag && hBd.bag > 0) {

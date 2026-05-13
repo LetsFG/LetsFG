@@ -1833,12 +1833,10 @@ export default function ResultsPanel({
                         <span className="rf-price-breakdown-label">✈ {t('ticket')}</span>
                         <span className="rf-price-breakdown-value">{fmt(convertCurrencyAmount(offer.price, offer.currency, currency))}</span>
                       </div>
-                      {offer.source !== 'serpapi_google' && offer.source !== 'google_flights' && (
-                        <div className="rf-price-breakdown-row">
-                          <span className="rf-price-breakdown-label">{t('letsfgFee')}</span>
-                          <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
-                        </div>
-                      )}
+                      <div className="rf-price-breakdown-row">
+                        <span className="rf-price-breakdown-label">{t('letsfgFee')}</span>
+                        <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
+                      </div>
                       {hasPaidAncillary(checkedBag) && (
                         <div className={`rf-price-breakdown-row${(sort === 'price_with_bag' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
                           <span className="rf-price-breakdown-label">🧳 {t('bag')}</span>
