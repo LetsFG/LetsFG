@@ -331,6 +331,15 @@ interface ParsedQuery {
   passengers?: number
   cabin?: string
   fallback_notes?: { origin?: FallbackNote; destination?: FallbackNote }
+  // Gemini-extracted intent fields (set server-side when AI parse succeeds)
+  ai_passengers?: number
+  ai_depart_after?: string    // "HH:MM" 24-hour — hard departure floor
+  ai_depart_before?: string   // "HH:MM" 24-hour — hard departure ceiling
+  ai_direct_only?: boolean
+  ai_bags_included?: boolean
+  ai_cabin_class?: string
+  ai_sort_by?: 'price' | 'duration'
+  ai_trip_purpose?: string
 }
 
 export interface SearchPageClientProps {
@@ -770,12 +779,25 @@ export default function SearchPageClient({
   // parsed object doesn't expose.
   const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
 
+  // Convert AI depart_after / depart_before strings to minutes-from-midnight
+  // for the hard time-floor enforcement in rankOffers.
+  const aiDepartAfterMins = useMemo(() => {
+    if (!parsed.ai_depart_after) return undefined
+    const [h, m] = parsed.ai_depart_after.split(':').map(Number)
+    return h * 60 + (m || 0)
+  }, [parsed.ai_depart_after])
+  const aiDepartBeforeMins = useMemo(() => {
+    if (!parsed.ai_depart_before) return undefined
+    const [h, m] = parsed.ai_depart_before.split(':').map(Number)
+    return h * 60 + (m || 0)
+  }, [parsed.ai_depart_before])
+
   const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
-  const requireBagPerPerson = !!(nlParsed?.require_checked_baggage)
+  const requireBagPerPerson = !!(parsed.ai_bags_included ?? nlParsed?.require_checked_baggage)
   const defaultSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' =
     (requireSeatPerPerson || requireBagPerPerson) ? 'price_with_all' : 'price'
 
-  const adultCount = nlParsed?.adults ?? parsed.passengers ?? 1
+  const adultCount = parsed.ai_passengers ?? nlParsed?.adults ?? parsed.passengers ?? 1
   const childCount = nlParsed?.children ?? 0
   const travelerCount = adultCount + childCount + (nlParsed?.infants ?? 0)
   const travelerLabel = `${travelerCount} ${travelerCount === 1 ? t('traveler') : t('travelers')}`
@@ -1003,14 +1025,15 @@ export default function SearchPageClient({
           initialDepTimePref={nlParsed?.depart_time_pref}
           initialRetTimePref={nlParsed?.return_depart_time_pref}
           initialArrTimePref={nlParsed?.arrive_time_pref}
-          initialDepartAfterMins={nlParsed?.depart_after_mins}
+          initialDepartAfterMins={aiDepartAfterMins ?? nlParsed?.depart_after_mins}
+          initialDepartBeforeMins={aiDepartBeforeMins ?? nlParsed?.depart_before_mins}
           tripContext={nlParsed?.passenger_context}
-          tripPurpose={nlParsed?.trip_purpose}
+          tripPurpose={(parsed.ai_trip_purpose as never) ?? nlParsed?.trip_purpose}
           preferredAirline={nlParsed?.preferred_airline}
           preferQuickFlight={nlParsed?.prefer_quick_flight}
-          preferCheapest={nlParsed?.preferred_sort === 'price'}
+          preferCheapest={parsed.ai_sort_by === 'price' || nlParsed?.preferred_sort === 'price'}
           viaIata={nlParsed?.via_iata}
-          maxStops={typeof nlParsed?.stops === 'number' ? nlParsed.stops : undefined}
+          maxStops={parsed.ai_direct_only === true ? 0 : (typeof nlParsed?.stops === 'number' ? nlParsed.stops : undefined)}
           fallbackNotes={parsed.fallback_notes}
           initialGemini={initialGemini}
         />

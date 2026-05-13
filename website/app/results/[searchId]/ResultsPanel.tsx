@@ -656,6 +656,8 @@ interface Props {
   initialArrTimePref?: 'morning' | 'afternoon' | 'evening'
   /** Hard departure time floor in minutes from midnight (e.g. 600 = 10:00 am). */
   initialDepartAfterMins?: number
+  /** Hard departure time ceiling in minutes from midnight (e.g. 540 = 9:00 am). */
+  initialDepartBeforeMins?: number
   tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
   tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
   preferredAirline?: string
@@ -691,6 +693,7 @@ export default function ResultsPanel({
   initialRetTimePref,
   initialArrTimePref,
   initialDepartAfterMins,
+  initialDepartBeforeMins,
   tripContext,
   tripPurpose,
   preferredAirline,
@@ -953,6 +956,7 @@ export default function ResultsPanel({
         retTimePref: initialRetTimePref,
         arrivalTimePref: initialArrTimePref,
         departAfterMins: initialDepartAfterMins,
+        departBeforeMins: initialDepartBeforeMins,
         requireBag: requireBagPerPerson,
         preferredAirline,
         preferQuickFlight,

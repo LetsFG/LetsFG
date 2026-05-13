@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     let destinationName: string | undefined
     let dateFrom: string | undefined
     let returnDate: string | undefined
-    const adults = Math.max(1, parseInt(body.adults ?? '1', 10) || 1)
+    let adults = Math.max(1, parseInt(body.adults ?? '1', 10) || 1)
     const currency = typeof body.currency === 'string' && body.currency.trim()
       ? body.currency.toUpperCase()
       : detectPreferredCurrency(request.headers)
@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
     let aiOriginLon: number | undefined
     let aiDestinationLat: number | undefined
     let aiDestinationLon: number | undefined
+    // AI intent fields extracted by Gemini — forwarded to client in `parsed`
+    let _aiIntent: Record<string, unknown> = {}
 
     if (body.origin && body.destination && body.date_from) {
       origin = (body.origin as string).toUpperCase().trim()
@@ -59,6 +61,10 @@ export async function POST(request: NextRequest) {
       if (body.min_layover_hours !== undefined) minLayoverHours = parseFloat(body.min_layover_hours)
       if (body.max_layover_hours !== undefined) maxLayoverHours = parseFloat(body.max_layover_hours)
     } else if (body.query) {
+      // Fire Gemini immediately so it runs in parallel with synchronous parsing below.
+      const today = new Date().toISOString().slice(0, 10)
+      const _aiPromise = vertexParse(body.query as string, today).catch(() => null)
+
       const parsed = parseNLQuery(body.query)
       origin = parsed.origin
       originName = parsed.origin_name
@@ -80,30 +86,27 @@ export async function POST(request: NextRequest) {
       viaIata = parsed.via_iata
       minLayoverHours = parsed.min_layover_hours
       maxLayoverHours = parsed.max_layover_hours
+      // Apply regex-parsed passenger count (override default of 1)
+      if (parsed.adults && parsed.adults > 1) adults = parsed.adults
 
-      // ── Gemini fallback: when regex couldn't resolve origin/destination,
-      // OR when it resolved to a "ghost" IATA with no commercial service
-      // (e.g. PRY = Wonderboom/Pretoria), ask Vertex AI Gemini to normalize
-      // declined / misspelled / non-English city names (e.g. PL "Soulu" →
-      // Seoul, "Guatemali" → Guatemala City, "Tokjo" → Tokyo) AND to
-      // return approximate lat/lon so the geo-based nearby-airport
-      // fallback below can find the closest commercial hub.
-      // Captured here so the post-vertex nearby-airport pass can paraphrase
-      // the user's intended city in the fallback note.
+      // ── Gemini: city resolution + intent extraction ────────────────────────────────────────
+      // Promise was fired at top; synchronous ops above absorbed most latency.
       const originIsGhost = origin !== undefined && !isUsableIata(origin)
       const destIsGhost = destination !== undefined && !isUsableIata(destination)
-      if (!origin || !destination || originIsGhost || destIsGhost) {
-        const today = new Date().toISOString().slice(0, 10)
-        const _ai = await vertexParse(body.query as string, today).catch(() => null)
-        if (_ai) {
-          aiOriginCity = _ai.origin_city ?? undefined
-          aiDestinationCity = _ai.destination_city && _ai.destination_city !== 'ANYWHERE'
-            ? _ai.destination_city
-            : undefined
-          aiOriginLat = typeof _ai.origin_lat === 'number' ? _ai.origin_lat : undefined
-          aiOriginLon = typeof _ai.origin_lon === 'number' ? _ai.origin_lon : undefined
-          aiDestinationLat = typeof _ai.destination_lat === 'number' ? _ai.destination_lat : undefined
-          aiDestinationLon = typeof _ai.destination_lon === 'number' ? _ai.destination_lon : undefined
+      const _ai = await _aiPromise
+
+      if (_ai) {
+        aiOriginCity = _ai.origin_city ?? undefined
+        aiDestinationCity = _ai.destination_city && _ai.destination_city !== 'ANYWHERE'
+          ? _ai.destination_city
+          : undefined
+        aiOriginLat = typeof _ai.origin_lat === 'number' ? _ai.origin_lat : undefined
+        aiOriginLon = typeof _ai.origin_lon === 'number' ? _ai.origin_lon : undefined
+        aiDestinationLat = typeof _ai.destination_lat === 'number' ? _ai.destination_lat : undefined
+        aiDestinationLon = typeof _ai.destination_lon === 'number' ? _ai.destination_lon : undefined
+
+        // City fallback: only when regex couldn't resolve or found a ghost IATA
+        if (!origin || !destination || originIsGhost || destIsGhost) {
           if (!origin && _ai.origin_city) {
             const aiOrigin = resolveCity(_ai.origin_city)
             if (aiOrigin) {
@@ -123,6 +126,19 @@ export async function POST(request: NextRequest) {
             if (aiVia) viaIata = aiVia.code
           }
         }
+
+        // Intent: AI passengers override regex (AI is better at semantic phrasing)
+        if (_ai.passengers && _ai.passengers > 0) adults = _ai.passengers
+
+        // Build intent payload forwarded to the client results page
+        if (_ai.passengers)            _aiIntent.ai_passengers    = _ai.passengers
+        if (_ai.depart_after)          _aiIntent.ai_depart_after  = _ai.depart_after
+        if (_ai.depart_before)         _aiIntent.ai_depart_before = _ai.depart_before
+        if (_ai.direct_only != null)   _aiIntent.ai_direct_only   = _ai.direct_only
+        if (_ai.bags_included != null) _aiIntent.ai_bags_included = _ai.bags_included
+        if (_ai.cabin_class)           _aiIntent.ai_cabin_class   = _ai.cabin_class
+        if (_ai.sort_by)               _aiIntent.ai_sort_by       = _ai.sort_by
+        if (_ai.trip_purpose)          _aiIntent.ai_trip_purpose  = _ai.trip_purpose
       }
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
@@ -259,8 +275,8 @@ export async function POST(request: NextRequest) {
         ...(cabin ? { cabin } : {}),
         ...(fallbackNotes.origin || fallbackNotes.destination
           ? { fallback_notes: fallbackNotes }
-          : {}),
-      },
+          : {}),        // Gemini-extracted intent fields (set when AI parse succeeded)
+        ..._aiIntent,      },
     })
   } catch (error) {
     console.error('Search error:', error)

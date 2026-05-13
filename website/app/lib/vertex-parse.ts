@@ -16,6 +16,24 @@ export interface VertexCityResult {
   origin_lon?:      number | null
   destination_lat?: number | null
   destination_lon?: number | null
+
+  // ── Intent fields (extracted alongside cities — same call, zero extra latency) ──
+  /** Total traveller count (adults + children). null if not mentioned. */
+  passengers?:      number | null
+  /** Cabin class. null if not mentioned. */
+  cabin_class?:     'economy' | 'premium_economy' | 'business' | 'first' | null
+  /** true only if user explicitly wants no connections/layovers. null otherwise. */
+  direct_only?:     boolean | null
+  /** "price" = cheapest, "duration" = fastest, null = not stated. */
+  sort_by?:         'price' | 'duration' | null
+  /** Earliest acceptable departure time as "HH:MM" 24 h. null if not stated. */
+  depart_after?:    string | null
+  /** Latest acceptable departure time as "HH:MM" 24 h. null if not stated. */
+  depart_before?:   string | null
+  /** true if user wants checked bags included in the ticket price. null otherwise. */
+  bags_included?:   boolean | null
+  /** Trip purpose inferred from context. null if unclear. */
+  trip_purpose?:    'city_break' | 'beach' | 'ski' | 'business' | 'honeymoon' | 'family_holiday' | 'concert_festival' | 'sports_event' | null
 }
 
 // Keep old name as alias so callers importing VertexParseResult still compile
@@ -119,7 +137,7 @@ export async function vertexParse(
         contents: [{ role: 'user', parts: [{ text: query }] }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 250,
+          maxOutputTokens: 450,
           responseMimeType: 'application/json',
         },
       }),
