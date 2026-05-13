@@ -149,6 +149,7 @@ class OpodoConnectorClient:
         self, req: FlightSearchRequest
     ) -> list[FlightOffer] | None:
         from playwright.async_api import async_playwright
+        from .browser import inject_stealth_js, auto_block_if_proxied
 
         graphql_data: list[dict] = []
 
@@ -166,33 +167,52 @@ class OpodoConnectorClient:
             except Exception:
                 pass
 
-        pw = await async_playwright().start()
+        _CDP_PORT = 9504
+        browser_owned = False
+        ctx_owned = False
+        pw = None
+
         try:
-            from .browser import get_proxy
-            proxy = get_proxy("OPODO_PROXY") or get_proxy("ODIGEO_PROXY")
-            launch_kw: dict = {
-                "headless": False,
-                "args": [
-                    "--window-position=-2400,-2400",
-                    "--window-size=1366,768",
-                    "--disable-blink-features=AutomationControlled",
-                ],
-            }
-            if proxy:
-                launch_kw["proxy"] = proxy
-            browser = await pw.chromium.launch(**launch_kw)
-            ctx = await browser.new_context(
-                viewport={"width": 1366, "height": 768},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/135.0.0.0 Safari/537.36"
-                ),
-            )
+            pw = await async_playwright().start()
+            try:
+                # Connect to pre-warmed CDP Chrome (connector-worker pre-warms on port 9504
+                # with the opodo GCS snapshot so opodo.co.uk assets are served from disk cache)
+                browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_CDP_PORT}")
+            except Exception:
+                # Fall back: launch fresh browser (local dev / no pre-warm)
+                from .browser import get_proxy
+                proxy = get_proxy("OPODO_PROXY") or get_proxy("ODIGEO_PROXY")
+                launch_kw: dict = {
+                    "headless": False,
+                    "args": [
+                        "--window-position=-2400,-2400",
+                        "--window-size=1366,768",
+                        "--disable-blink-features=AutomationControlled",
+                    ],
+                }
+                if proxy:
+                    launch_kw["proxy"] = proxy
+                browser = await pw.chromium.launch(**launch_kw)
+                browser_owned = True
+
+            # Re-use the persistent context so Chrome's on-disk cache (GCS snapshot)
+            # is used — avoids re-downloading opodo.co.uk JS/CSS via proxy each search.
+            if browser.contexts and not browser_owned:
+                ctx = browser.contexts[0]
+            else:
+                ctx = await browser.new_context(
+                    viewport={"width": 1366, "height": 768},
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/135.0.0.0 Safari/537.36"
+                    ),
+                )
+                ctx_owned = True
+
             page = await ctx.new_page()
-            if proxy:
-                from .browser import auto_block_if_proxied
-                await auto_block_if_proxied(page)
+            await inject_stealth_js(page)
+            await auto_block_if_proxied(page)
             page.on("response", on_response)
 
             dep_date = req.date_from.isoformat()
@@ -235,16 +255,20 @@ class OpodoConnectorClient:
                     break
 
             await page.close()
-            await ctx.close()
-            await browser.close()
+            if ctx_owned:
+                await ctx.close()
+            if browser_owned:
+                await browser.close()
+
         except Exception as e:
             logger.error("OPODO browser error: %s", e)
             return None
         finally:
-            try:
-                await pw.stop()
-            except Exception:
-                pass
+            if pw:
+                try:
+                    await pw.stop()
+                except Exception:
+                    pass
 
         if not graphql_data:
             logger.warning("OPODO: no GraphQL searchItinerary captured")

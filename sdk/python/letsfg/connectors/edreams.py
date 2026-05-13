@@ -274,14 +274,22 @@ class EdreamsConnectorClient:
 
         try:
             browser = await _get_browser()
-            ctx = await browser.new_context(
-                viewport={"width": 1366, "height": 768},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/135.0.0.0 Safari/537.36"
-                ),
-            )
+            # Re-use the persistent context (which has Chrome's on-disk cache
+            # loaded from GCS by the pre-warm step) instead of an isolated
+            # context that would re-download all JS/CSS via proxy every search.
+            if browser.contexts:
+                ctx = browser.contexts[0]
+                ctx_owned = False
+            else:
+                ctx = await browser.new_context(
+                    viewport={"width": 1366, "height": 768},
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/135.0.0.0 Safari/537.36"
+                    ),
+                )
+                ctx_owned = True
             page = await ctx.new_page()
             await inject_stealth_js(page)
             await auto_block_if_proxied(page)
@@ -329,7 +337,8 @@ class EdreamsConnectorClient:
                     break
 
             await page.close()
-            await ctx.close()
+            if ctx_owned:
+                await ctx.close()
         except Exception as e:
             logger.error("EDREAMS browser error: %s", e)
             return None
