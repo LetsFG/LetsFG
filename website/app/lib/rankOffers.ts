@@ -139,10 +139,24 @@ const W: Record<string, Weights> = {
     price: 0.88, stops: 0.06, duration: 0.03, depTime: 0.01,
     arrivalTime: 0.01, baggage: 0.01, savings: 0.00, comfortHours: 0.00, layover: 0.00,
   },
+  // Cheapest direct — user asked for BOTH cheapest AND direct/nonstop.
+  // Stops must dominate enough that a direct flight wins even if it costs more;
+  // price wins within the same stop tier (all directs sorted by price, all 1-stops sorted
+  // by price below them, etc.). The scoreStops delta between 0-stop (1.00) and 1-stop (0.40)
+  // is 0.60; with stops weight 0.38 that gap is worth 0.228, which means a 1-stop would
+  // need an enormous price advantage to beat a direct — effectively "direct first".
+  cheapest_direct: {
+    price: 0.52, stops: 0.38, duration: 0.04, depTime: 0.02,
+    arrivalTime: 0.01, baggage: 0.01, savings: 0.00, comfortHours: 0.00, layover: 0.02,
+  },
 }
 
 function resolveWeights(ctx: RankingContext): Weights {
-  // preferCheapest is the highest-priority override — user explicitly asked for lowest price
+  // When the user asked for BOTH cheapest AND direct, use the combined profile so stops
+  // still dominate (direct first) while price rules within the same stop tier.
+  if (ctx.preferCheapest && ctx.preferDirect) return { ...W.cheapest_direct }
+
+  // preferCheapest alone — user just wants the lowest price, stops don't matter much
   if (ctx.preferCheapest) return { ...W.cheapest }
 
   // tripPurpose takes precedence for specific categories
