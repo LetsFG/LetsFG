@@ -11,6 +11,7 @@ import {
   type CurrencyCode,
 } from '../lib/currency-preference'
 import { parseNLQuery } from './lib/searchParsing'
+import { needsDateClarification, shouldWaitForGeminiAssistOnHomeSubmit } from './lib/home-search-assist'
 
 const DESTINATION_KEYS = [
   { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
@@ -877,7 +878,7 @@ export default function HomeSearchForm({
 
     // ── 1. Date — MUST come immediately after origin/dest (before personalization) ──
     // Essential: we can't start searching without a date.
-    if (!p?.date || p?.date_is_default) {
+    if (needsDateClarification(p)) {
       qs.push({
         q: ths('when_q'),
         chips: [
@@ -1254,12 +1255,7 @@ export default function HomeSearchForm({
     // budget and merge any fields it fills. Only fills *missing* fields — never
     // overrides a successful regex hit. Net effect: home page stops asking
     // dumb follow-up questions for queries the regex couldn't crack.
-    const needsGeminiAssist =
-      !!trimmed &&
-      trimmed.length >= 4 &&
-      ((!_nlp?.date || _nlp.date_is_default) ||
-       (!_nlp?.origin && !_nlp?.failed_origin_raw) ||
-       (!_nlp?.destination && !_nlp?.failed_destination_raw && !_nlp?.anywhere_destination))
+    const needsGeminiAssist = shouldWaitForGeminiAssistOnHomeSubmit(trimmed, _nlp)
     if (needsGeminiAssist) {
       try {
         const ctrl = new AbortController()
@@ -1358,7 +1354,7 @@ export default function HomeSearchForm({
       }
       // Pre-fire the search in the background only when origin, destination, AND date are all
       // already known from the initial query — we need all three to avoid a useless search.
-      const dateAlreadyKnown = !!((_nlp?.date) && !_nlp?.date_is_default)
+      const dateAlreadyKnown = !!(_nlp?.date) && !needsDateClarification(_nlp)
       if (!missingOrigin && !missingDestination && dateAlreadyKnown) {
         // Set sentinel immediately so mid-convo answers don't fire a second pre-fire
         prefiredSearchRef.current = { searchId: '', startedAt: Date.now() }

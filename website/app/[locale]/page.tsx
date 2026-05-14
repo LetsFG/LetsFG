@@ -40,7 +40,13 @@ const LOCALE_BANNER_SCALE: Record<string, number> = {
   hr: 1.35,
 }
 
-const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
+const API_BASE =
+  process.env.LETSFG_ANALYTICS_API_URL ||
+  process.env.LETSFG_API_URL ||
+  'https://api.letsfg.co'
+const HOMEPAGE_STATS_CACHE_BUSTER = (process.env.HOMEPAGE_STATS_CACHE_BUSTER || '').trim()
+
+export const dynamic = 'force-dynamic'
 
 interface PublicStats {
   totalSearches: number | null
@@ -50,8 +56,14 @@ interface PublicStats {
 
 async function getPublicStats(): Promise<PublicStats> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/analytics/stats/public`, {
+    const statsUrl = new URL('/api/v1/analytics/stats/public', API_BASE)
+    if (HOMEPAGE_STATS_CACHE_BUSTER) {
+      statsUrl.searchParams.set('v', HOMEPAGE_STATS_CACHE_BUSTER)
+    }
+
+    const res = await fetch(statsUrl.toString(), {
       cache: 'no-store',
+      next: { revalidate: 0 },
       signal: AbortSignal.timeout(4000),
     })
     if (res.ok) {
