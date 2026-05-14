@@ -5585,6 +5585,30 @@ export function parseNLQuery(query: string): ParsedQuery {
   const urgency = extractUrgency(q)
   if (urgency) result.urgency = urgency
 
+  const deriveTripLengthReturnDate = (departureDate: string): string | undefined => {
+    if (result.min_trip_days === undefined) return undefined
+    const mid = Math.round(((result.min_trip_days ?? 0) + (result.max_trip_days ?? result.min_trip_days ?? 0)) / 2)
+    const dep = new Date(departureDate)
+    dep.setDate(dep.getDate() + Math.max(1, mid))
+    return toLocalDateStr(dep)
+  }
+
+  const setFlexibleWindowDate = (nextDate: string) => {
+    const shouldReplaceFallbackDate = !result.date || result.date_is_default === true
+    if (!shouldReplaceFallbackDate) return
+
+    const previousDate = result.date
+    const previousDerivedReturnDate = previousDate ? deriveTripLengthReturnDate(previousDate) : undefined
+
+    result.date = nextDate
+    result.date_is_default = undefined
+
+    if (result.return_date && previousDerivedReturnDate && result.return_date === previousDerivedReturnDate) {
+      const nextDerivedReturnDate = deriveTripLengthReturnDate(nextDate)
+      if (nextDerivedReturnDate) result.return_date = nextDerivedReturnDate
+    }
+  }
+
   // ── 16. Best-window strategy ──────────────────────────────────────────────
   // Explicit: "cheapest week in June", "best time in August"
   const bw = extractExplicitBestWindow(q)
@@ -5619,13 +5643,10 @@ export function parseNLQuery(query: string): ParsedQuery {
         result.find_best_window = true
         result.date_window_month = m1 + 1
         result.date_month_only = true
-        // Set date to start of first month
-        if (!result.date) {
-          const yr = today.getFullYear()
-          const d = new Date(yr, m1, 1)
-          if (d < today) d.setFullYear(yr + 1)
-          result.date = toLocalDateStr(d)
-        }
+        const yr = today.getFullYear()
+        const d = new Date(yr, m1, 1)
+        if (d < today) d.setFullYear(yr + 1)
+        setFlexibleWindowDate(toLocalDateStr(d))
       }
     }
   }
@@ -5646,13 +5667,11 @@ export function parseNLQuery(query: string): ParsedQuery {
         result.find_best_window = true
         result.date_window_month = startMonth
         result.date_month_only = true
-        if (!result.date) {
-          const yr = today.getFullYear()
-          const d = new Date(yr, startMonth - 1, 1)
-          if (!isNext && d < today) d.setFullYear(yr + 1)
-          if (isNext) d.setFullYear(d < today ? yr + 1 : yr + 1)
-          result.date = toLocalDateStr(d)
-        }
+        const yr = today.getFullYear()
+        const d = new Date(yr, startMonth - 1, 1)
+        if (!isNext && d < today) d.setFullYear(yr + 1)
+        if (isNext) d.setFullYear(d < today ? yr + 1 : yr + 1)
+        setFlexibleWindowDate(toLocalDateStr(d))
       }
     }
   }
@@ -5667,7 +5686,7 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   // ── 16e. School holidays / holiday periods → date hints ───────────────────
   // "Easter", "Easter break/holidays", "Christmas", "school holidays", "half term", "summer holidays"
-  if (!result.date) {
+  if (!result.date || result.date_is_default === true) {
     const yr = today.getFullYear()
     const halfTermRe = /\b(?:half[\s-]?term(?:\s+(?:break|holiday|week))?|mid[\s-]?term\s+(?:break|holiday))\b/i
     const easterRe = /\b(?:easter(?:\s+(?:break|holiday|holidays|week|weekend))?)\b/i
@@ -5679,29 +5698,29 @@ export function parseNLQuery(query: string): ParsedQuery {
       // Easter typically falls in late March or April — use April 1 as approximate
       const d = new Date(yr, 3, 1)  // April 1
       if (d < today) d.setFullYear(yr + 1)
-      result.date = toLocalDateStr(d)
+      setFlexibleWindowDate(toLocalDateStr(d))
       result.find_best_window = true
       result.date_window_month = 4
     } else if (christmasRe.test(q)) {
       const d = new Date(yr, 11, 20)  // Dec 20
       if (d < today) d.setFullYear(yr + 1)
-      result.date = toLocalDateStr(d)
+      setFlexibleWindowDate(toLocalDateStr(d))
       result.date_window_month = 12
     } else if (newYearRe.test(q)) {
       const d = new Date(yr + 1, 0, 1)  // Jan 1
-      result.date = toLocalDateStr(d)
+      setFlexibleWindowDate(toLocalDateStr(d))
       result.date_window_month = 1
     } else if (summerHolRe.test(q)) {
       const d = new Date(yr, 6, 15)  // Jul 15
       if (d < today) d.setFullYear(yr + 1)
-      result.date = toLocalDateStr(d)
+      setFlexibleWindowDate(toLocalDateStr(d))
       result.find_best_window = true
       result.date_window_month = 7
     } else if (halfTermRe.test(q)) {
       // Half-term: approximately mid-Feb or late May or late Oct — use nearest upcoming
       const candidates = [new Date(yr, 1, 17), new Date(yr, 4, 26), new Date(yr, 9, 27)]
       const upcoming = candidates.find(d => d >= today) ?? new Date(yr + 1, 1, 17)
-      result.date = toLocalDateStr(upcoming)
+      setFlexibleWindowDate(toLocalDateStr(upcoming))
       result.find_best_window = true
       result.date_window_month = upcoming.getMonth() + 1
     }
