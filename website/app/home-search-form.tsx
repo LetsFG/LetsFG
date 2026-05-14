@@ -1204,7 +1204,7 @@ export default function HomeSearchForm({
     navigateSearch(newQuery)
   }
 
-  const handleSearch = (event: FormEvent) => {
+  const handleSearch = async (event: FormEvent) => {
     event.preventDefault()
     // Always clear the airport dropdown immediately — it must not overlay the convo panel
     setDropdownItems([])
@@ -1245,6 +1245,60 @@ export default function HomeSearchForm({
     setDateClarify(null)
     let _nlp: ReturnType<typeof parseNLQuery> | null = null
     try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
+
+    // ── Gemini fallback for missing slots ───────────────────────────────────
+    // The regex parser is fast and deterministic but can miss exotic phrasing
+    // ("Tokyo to Sweden in June for 4 days" once tripped on "swed**en in** june",
+    //  any unusual relative date, slang trip purpose, etc.). When critical slots
+    // are still empty, race a /api/parse-query call (Gemini) against a 1.5s
+    // budget and merge any fields it fills. Only fills *missing* fields — never
+    // overrides a successful regex hit. Net effect: home page stops asking
+    // dumb follow-up questions for queries the regex couldn't crack.
+    const needsGeminiAssist =
+      !!trimmed &&
+      trimmed.length >= 4 &&
+      ((!_nlp?.date || _nlp.date_is_default) ||
+       (!_nlp?.origin && !_nlp?.failed_origin_raw) ||
+       (!_nlp?.destination && !_nlp?.failed_destination_raw && !_nlp?.anywhere_destination))
+    if (needsGeminiAssist) {
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 1500)
+        const resp = await fetch('/api/parse-query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: trimmed }),
+          signal: ctrl.signal,
+        }).catch(() => null)
+        clearTimeout(timer)
+        if (resp && resp.ok) {
+          const ai = await resp.json().catch(() => null) as {
+            origin?: string | null; origin_name?: string | null
+            destination?: string | null; destination_name?: string | null
+            departure_date?: string | null; return_date?: string | null
+            passengers?: number | null; trip_purpose?: string | null
+            anywhere_destination?: boolean
+          } | null
+          if (ai) {
+            const base: ReturnType<typeof parseNLQuery> = _nlp ?? ({} as ReturnType<typeof parseNLQuery>)
+            // Fill ONLY missing fields (Gemini never overrides a successful regex hit)
+            if (!base.origin && ai.origin) { base.origin = ai.origin; if (ai.origin_name) base.origin_name = ai.origin_name }
+            if (!base.destination && ai.destination) { base.destination = ai.destination; if (ai.destination_name) base.destination_name = ai.destination_name }
+            if ((!base.date || base.date_is_default) && ai.departure_date) {
+              base.date = ai.departure_date
+              base.date_is_default = false
+            }
+            if (!base.return_date && ai.return_date) base.return_date = ai.return_date
+            if (!base.adults && ai.passengers && ai.passengers > 0) base.adults = ai.passengers
+            if (!base.trip_purpose && ai.trip_purpose) base.trip_purpose = ai.trip_purpose as unknown as typeof base.trip_purpose
+            if (!base.anywhere_destination && ai.anywhere_destination) base.anywhere_destination = true
+            // Final ordering sanity check
+            if (base.return_date && base.date && base.return_date <= base.date) base.return_date = undefined
+            _nlp = base
+          }
+        }
+      } catch { /* ignore — fall back to regex-only behaviour */ }
+    }
 
     // Detect whether the user explicitly said "from <city>" (true directional origin).
     // A bare city name with no direction word is treated as destination — we ask where they depart FROM.

@@ -262,11 +262,20 @@ function preferenceMatchScore(offer: RankOffer, ctx: RankingContext): number {
 
 /** Remove near-duplicate offers: when multiple connectors return the same physical
  *  flight (e.g. Ryanair FR1234 from both the direct connector and Kiwi/Skyscanner),
- *  keep only the cheapest. Two offers are considered identical if they share the
- *  same departure 30-min bucket, arrival 30-min bucket, and stop count. */
+ *  keep only the cheapest. Two offers are considered identical only when they share
+ *  the same calendar date, route, airline, departure/arrival 30-min buckets, and
+ *  stop count. The date + route + airline guards prevent collapsing genuinely
+ *  different flights (e.g. Mon 9am vs Tue 9am, or BA + Iberia codeshare on the
+ *  same minute) into a single offer. */
 function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
   const bucket = (iso: string) => Math.round(isoToMins(iso) / 30)
-  const key = (o: T) => `${bucket(o.departure_time)}_${bucket(o.arrival_time)}_${o.stops}`
+  const dayKey = (iso: string | undefined) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
+  }
+  const key = (o: T) =>
+    `${dayKey(o.departure_time)}_${(o.origin ?? '').toUpperCase()}_${(o.destination ?? '').toUpperCase()}_${(o.airline ?? '').toUpperCase()}_${bucket(o.departure_time)}_${bucket(o.arrival_time)}_${o.stops}`
   // First pass: find the cheapest effective price in each bucket
   const bucketMin = new Map<string, number>()
   for (const o of offers) {

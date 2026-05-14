@@ -5071,9 +5071,16 @@ export function parseNLQuery(query: string): ParsedQuery {
 
     // Month-only: "in May", "im Mai", "en mayo", "en juin"
     // → default to 1st of that month
-    const monthOnlyRe = /(?:in|im|en|em|i|na|vo|à|au)\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s+(\d{4}))?/
-    const moM = tl.match(monthOnlyRe)
-    if (moM) {
+    // The leading \b is critical: without it the preposition would match mid-word
+    // (e.g. "swed**en in** June" matched "en in", capturing "in" as the supposed
+    // month name and silently dropping the real "in June" further along — bug
+    // observed 2026-05-14 with "Tokyo to Sweden in June for 4 days").
+    // We also iterate with /g so that a non-month first hit (e.g. "in june" preceded
+    // by another preposition that happens to grab a non-month word) doesn't shadow
+    // a later valid month.
+    const monthOnlyRe = /\b(?:in|im|en|em|i|na|vo|à|au)\s+([a-zäöüčšžćđéèêëàâùûîïôœæñß]+)(?:\s+(\d{4}))?/g
+    let moM: RegExpExecArray | null
+    while ((moM = monthOnlyRe.exec(tl)) !== null) {
       const mIdx = matchMonth(moM[1])
       if (mIdx !== null) {
         const hasExplicitYear = Boolean(moM[2])
@@ -5460,6 +5467,20 @@ export function parseNLQuery(query: string): ParsedQuery {
     const dep = new Date(result.date)
     dep.setDate(dep.getDate() + mid)
     result.return_date = toLocalDateStr(dep)
+  }
+
+  // Sanity check: a return_date that is on/before the departure date is never
+  // valid (search would render "Jun 1 – May 25" gibberish). Drop it and re-derive
+  // from trip duration if possible. Defends against any upstream regex glitch
+  // or future caller mutating the parsed result with bad data.
+  if (result.return_date && result.date && result.return_date <= result.date) {
+    result.return_date = undefined
+    if (result.min_trip_days !== undefined) {
+      const mid = Math.round(((result.min_trip_days ?? 0) + (result.max_trip_days ?? result.min_trip_days ?? 0)) / 2)
+      const dep = new Date(result.date)
+      dep.setDate(dep.getDate() + Math.max(1, mid))
+      result.return_date = toLocalDateStr(dep)
+    }
   }
 
   // ── 8b. Budget constraint parsing ─────────────────────────────────────────
