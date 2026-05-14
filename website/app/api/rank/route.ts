@@ -205,6 +205,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const hero = topOffers[0]
   const runners = topOffers.slice(1, 3)   // top 3 total → 2 runner-ups
   const h = hero.offer
+  const heroIsDirect = h.stops === 0
 
   // Mask airline names — Gemini must not reference specific carriers in its output
   const FLIGHT_LABELS = ['Flight 1', 'Flight 2', 'Flight 3']
@@ -224,6 +225,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Only flag this on mid/final — during early phase search is still running so it's premature.
   const anyDirect = topOffers.some(o => o.offer.stops === 0)
   const noDirectsAvailable = context.preferDirect && !anyDirect && phase !== 'early'
+  // Even if another option in top-3 is direct, the hero itself might still not be.
+  // In that case Gemini must not describe the chosen hero as direct/non-stop.
+  const heroContradictsDirectRequest = context.preferDirect && !heroIsDirect
 
   // Bag is required only when the user explicitly flagged it. We keep the
   // signal so the prompt can highlight bag pricing as a relevant cost, but we
@@ -319,6 +323,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 The user asked for direct flights. Search is complete and there are no direct flights available. The user does not know this yet — they need to hear it from you. Address this honestly in your justification: acknowledge the gap between what they asked for and what exists, and make the case for why this is the best option given that reality. Use your own words — don't be robotic about it.`
     : ''
 
+  const heroDirectGuardBlock = heroContradictsDirectRequest
+    ? `
+⚠️ CRITICAL FACT CHECK:
+- The selected #1 flight is NOT direct. It has ${h.stops} stop(s).
+- You MUST NOT call this pick "direct", "non-stop", or "nonstop" anywhere.
+- If the user asked for direct flights, acknowledge that this winner is a compromise and explain why it still ranks best.`
+    : ''
+
   // ── Nearby-airport fallback context ────────────────────────────────────
   // When the user typed a city without a commercial airport (Pretoria, The
   // Hague, Bonn, Vatican, Mecca, etc.) /api/search swapped it for the
@@ -346,7 +358,7 @@ The user does NOT know this swap happened. You MUST open the hero justification 
     ? `\nLANGUAGE: You MUST write your entire response in ${languageName}. Do not use English.`
     : ''
 
-  const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${noDirectsBlock}
+  const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${noDirectsBlock}${heroDirectGuardBlock}
 
 USER'S SEARCH: "${rawQuery}"
 TRIP: ${tripDesc}${prefs ? ` | ${prefs}` : ''}
@@ -459,9 +471,18 @@ Return ONLY valid JSON, no markdown, no code blocks:
       return NextResponse.json({ error: 'invalid_response' }, { status: 502 })
     }
 
+    const scrubDirectClaims = (text: string): string => {
+      if (heroIsDirect) return text
+      // Hard safety net: if Gemini still writes direct claims for a non-direct hero,
+      // rewrite those tokens to accurate wording tied to stop count.
+      return text
+        .replace(/\bnon[-\s]?stop\b/gi, `${h.stops} stop${h.stops > 1 ? 's' : ''}`)
+        .replace(/\bdirect\b/gi, `${h.stops} stop${h.stops > 1 ? 's' : ''}`)
+    }
+
     const result = {
-      title: typeof parsed.title === 'string' && parsed.title.length > 3 ? parsed.title.trim() : undefined,
-      hero: parsed.hero.trim(),
+      title: typeof parsed.title === 'string' && parsed.title.length > 3 ? scrubDirectClaims(parsed.title.trim()) : undefined,
+      hero: scrubDirectClaims(parsed.hero.trim()),
       runners: Array.isArray(parsed.runners)
         ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => r.trim())
         : [],

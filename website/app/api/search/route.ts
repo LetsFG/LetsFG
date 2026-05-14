@@ -147,6 +147,12 @@ export async function POST(request: NextRequest) {
         // (exotic phrasings, edge cases, future language the regex doesn't cover)
         if ((!dateFrom || parsed.date_is_default) && _ai.departure_date) dateFrom = _ai.departure_date
         if (!returnDate && _ai.return_date) returnDate = _ai.return_date
+
+        // Final sanity check: never accept a return_date on/before departure.
+        // Gemini occasionally hallucinates a past return; the regex parser can
+        // also be tripped by ambiguous phrasing. Either way, displaying
+        // "Jun 1 – May 25" to the user is worse than just dropping the return.
+        if (returnDate && dateFrom && returnDate <= dateFrom) returnDate = undefined
       }
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
