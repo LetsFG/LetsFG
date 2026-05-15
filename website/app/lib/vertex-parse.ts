@@ -2,6 +2,8 @@
 // Extracts cities + passengers, cabin class, direct_only, sort_by, time constraints, bags, trip purpose.
 // Returns null on any failure.
 
+import { TRIP_PURPOSES, type TripPurpose } from './trip-purpose'
+
 export interface VertexCityResult {
   origin_city:      string | null  // English city name; include state/country if ambiguous
   destination_city: string | null  // "ANYWHERE" for open-destination searches; null if unclear
@@ -31,8 +33,10 @@ export interface VertexCityResult {
   depart_before?:   string | null
   /** true if user wants checked bags included in the ticket price. null otherwise. */
   bags_included?:   boolean | null
+  /** All applicable trip purposes, ordered strongest/most explicit first. */
+  trip_purposes?:   TripPurpose[] | null
   /** Trip purpose inferred from context. null if unclear. */
-  trip_purpose?:    'city_break' | 'beach' | 'ski' | 'business' | 'honeymoon' | 'family_holiday' | 'concert_festival' | 'sports_event' | null
+  trip_purpose?:    TripPurpose | null
   /** Preferred departure time bucket for the outbound leg. null if not stated. */
   dep_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
   /** Preferred departure time bucket for the return leg. null if not a round-trip or not stated. */
@@ -61,6 +65,8 @@ const VERTEX_URL      =
   `/publishers/google/models/${VERTEX_MODEL}:generateContent`
 const GEMINI_DIRECT_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${VERTEX_MODEL}:generateContent`
+
+const TRIP_PURPOSE_JSON_ENUM = TRIP_PURPOSES.map((purpose) => `"${purpose}"`).join('|')
 
 // ── Access-token cache (tokens are valid ~1 h on Cloud Run) ──────────────────
 
@@ -104,7 +110,8 @@ Return ONLY valid JSON (no markdown, no explanation) with exactly these fields:
   "depart_after": string|null,
   "depart_before": string|null,
   "bags_included": boolean|null,
-  "trip_purpose": "city_break"|"beach"|"ski"|"business"|"honeymoon"|"family_holiday"|"concert_festival"|"sports_event"|null,
+  "trip_purposes": (${TRIP_PURPOSE_JSON_ENUM})[]|null,
+  "trip_purpose": ${TRIP_PURPOSE_JSON_ENUM}|null,
   "dep_time_pref": "early_morning"|"morning"|"afternoon"|"evening"|"red_eye"|null,
   "ret_time_pref": "early_morning"|"morning"|"afternoon"|"evening"|"red_eye"|null,
   "passenger_context": "solo"|"couple"|"family"|"group"|"business_traveler"|null,
@@ -138,7 +145,8 @@ INTENT RULES:
 - depart_after: earliest acceptable departure as "HH:MM" 24 h. "morning" -> "06:00", "afternoon" -> "12:00", "evening" -> "18:00". null if not stated.
 - depart_before: latest acceptable departure as "HH:MM" 24 h. "before noon" -> "12:00", "morning flight" -> "10:00". null if not stated.
 - bags_included: true if user mentions "with bags/luggage/baggage included". null otherwise.
-- trip_purpose: infer from context — "beach holiday/beach break/sun holiday/coast" -> "beach"; "city break/city trip/sightseeing" -> "city_break"; "ski/snowboard" -> "ski"; "business/conference/meeting" -> "business"; "honeymoon/anniversary" -> "honeymoon"; "family holiday/kids" -> "family_holiday"; "concert/festival/event" -> "concert_festival"; "match/game/race" -> "sports_event". null if unclear.
+- trip_purposes: include ALL applicable purposes, ordered strongest/most explicit first, then by mention order. "beach holiday/beach break/sun holiday/coast" -> "beach"; "city break/city trip/sightseeing" -> "city_break"; "ski/snowboard" -> "ski"; "business/conference/meeting" -> "business"; "honeymoon/anniversary" -> "honeymoon"; "family holiday/kids" -> "family_holiday"; "graduation/commencement/graduation trip" -> "graduation"; "concert/festival/event" -> "concert_festival"; "match/game/race/tournament" -> "sports_event"; "spring break/students' trip" -> "spring_break". null if unclear.
+- trip_purpose: the single primary purpose. Must equal the first element of trip_purposes, or null if trip_purposes is null/empty.
 - dep_time_pref: outbound departure time preference. "early morning/dawn/first flight/6am" -> "early_morning"; "morning flight/morning out" -> "morning"; "afternoon/midday" -> "afternoon"; "evening/evening out/evening flight/night out" -> "evening"; "red eye/overnight" -> "red_eye". null if not stated. NOTE: "Friday evening out" means outbound (dep_time_pref="evening"), "Sunday night back" means return (ret_time_pref="evening").
 - ret_time_pref: return departure time preference. Same buckets as dep_time_pref. Phrases like "Sunday night back", "evening return", "fly back in the morning" set this. null if not stated or not a round-trip.
 - passenger_context: "solo" if travelling alone; "couple" if two romantic partners (girlfriend/boyfriend/wife/husband/partner); "family" if travelling with children/kids; "group" if travelling with friends/colleagues/team (3+); "business_traveler" if explicit business trip context. null if unclear.
@@ -150,10 +158,10 @@ DATE RULES (today's date is given at the start of the user message):
 
 Few-shot examples:
 Input: "London to Guatemala next week, 20th May, me and my girlfriend, round trip for 5 days, beach holiday, short flight and cheapest price"
-Output: {"origin_city":"London","destination_city":"Guatemala City","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":14.6,"destination_lon":-90.5,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":"beach"}
+Output: {"origin_city":"London","destination_city":"Guatemala City","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":14.6,"destination_lon":-90.5,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":["beach"],"trip_purpose":"beach"}
 
 Input: "Warsaw to Barcelona, just the two of us, honeymoon, departure before 10am"
-Output: {"origin_city":"Warsaw","destination_city":"Barcelona","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":"10:00","bags_included":null,"trip_purpose":"honeymoon"}
+Output: {"origin_city":"Warsaw","destination_city":"Barcelona","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":"10:00","bags_included":null,"trip_purposes":["honeymoon"],"trip_purpose":"honeymoon"}
 
 Input: "London Copenhagen, 3 friends, departure after 10 am"
 Output: {"origin_city":"London","destination_city":"Copenhagen","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":55.7,"destination_lon":12.6,"passengers":3,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":"10:00","depart_before":null,"bags_included":null,"trip_purpose":null}
@@ -174,10 +182,13 @@ Input: "z Krakowa do Guatemali w czerwcu"
 Output: {"origin_city":"Krakow","destination_city":"Guatemala City","via_city":null,"origin_lat":50.1,"origin_lon":19.9,"destination_lat":14.6,"destination_lon":-90.5,"passengers":null,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":null}
 
 Input: "Warsaw Paris next month, as a couple, round trip, city break, cheapest option, good departure times"
-Output: {"origin_city":"Warsaw","destination_city":"Paris","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":48.9,"destination_lon":2.3,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":"08:00","depart_before":"20:00","bags_included":null,"trip_purpose":"city_break","dep_time_pref":"morning","ret_time_pref":null,"passenger_context":"couple"}
+Output: {"origin_city":"Warsaw","destination_city":"Paris","via_city":null,"origin_lat":52.2,"origin_lon":21.0,"destination_lat":48.9,"destination_lon":2.3,"passengers":2,"cabin_class":null,"direct_only":null,"sort_by":"price","depart_after":"08:00","depart_before":"20:00","bags_included":null,"trip_purposes":["city_break"],"trip_purpose":"city_break","dep_time_pref":"morning","ret_time_pref":null,"passenger_context":"couple"}
 
 Input: "London to Barcelona this weekend, Friday evening out, Sunday night back, 2 adults, direct, trip for two"
-Output: {"origin_city":"London","destination_city":"Barcelona","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":true,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purpose":"city_break","dep_time_pref":"evening","ret_time_pref":"evening","passenger_context":"couple"}`
+Output: {"origin_city":"London","destination_city":"Barcelona","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":true,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":["city_break"],"trip_purpose":"city_break","dep_time_pref":"evening","ret_time_pref":"evening","passenger_context":"couple"}
+
+Input: "Tokyo to Berlin on May 24th, travelling solo, round trip for 7 days, beach holiday, city break, cheapest option, direct flights only"
+Output: {"origin_city":"Tokyo","destination_city":"Berlin","via_city":null,"origin_lat":35.7,"origin_lon":139.7,"destination_lat":52.5,"destination_lon":13.4,"passengers":1,"cabin_class":null,"direct_only":true,"sort_by":"price","depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":["city_break","beach"],"trip_purpose":"city_break","dep_time_pref":null,"ret_time_pref":null,"passenger_context":"solo","is_round_trip":true,"departure_date":"2026-05-24","return_date":"2026-05-31"}`
 
 // ── Main export ───────────────────────────────────────────────────────────────
 

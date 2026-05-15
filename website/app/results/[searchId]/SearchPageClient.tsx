@@ -12,12 +12,13 @@ import ResultsPanel from './ResultsPanel'
 import { SearchProgressBarFull } from './SearchProgressBar'
 import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type CurrencyCode } from '../../../lib/currency-preference'
 import { formatOfferDisplayPrice, getOfferDisplayTotalPrice } from '../../../lib/display-price'
-import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
+import { trackSearchSession, trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useRouter, useSearchParams } from 'next/navigation'
 import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
 import { parseNLQuery } from '../../lib/searchParsing'
+import { normalizeTripPurposes, type TripPurpose } from '../../lib/trip-purpose'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
@@ -328,8 +329,11 @@ interface ParsedQuery {
   destination_name?: string
   date?: string
   return_date?: string
+  min_trip_days?: number
+  max_trip_days?: number
   passengers?: number
   cabin?: string
+  require_cancellation?: boolean
   fallback_notes?: { origin?: FallbackNote; destination?: FallbackNote }
   // Gemini-extracted intent fields (set server-side when AI parse succeeds)
   ai_passengers?: number
@@ -339,7 +343,8 @@ interface ParsedQuery {
   ai_bags_included?: boolean
   ai_cabin_class?: string
   ai_sort_by?: 'price' | 'duration'
-  ai_trip_purpose?: string
+  ai_trip_purposes?: TripPurpose[]
+  ai_trip_purpose?: TripPurpose
   ai_dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   ai_ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   ai_passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
@@ -358,7 +363,7 @@ export interface SearchPageClientProps {
   searchedAt?: string
   expiresAt?: string
   fswSession?: string  // Cloud Run __session affinity token — forwarded on every poll
-  initialGemini?: { title?: string; hero: string; runners: string[]; ts: number }
+  initialGemini?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
 }
 
 function dedup(offers: FlightOffer[]): FlightOffer[] {
@@ -369,6 +374,29 @@ function formatDuration(mins: number) {
   const h = Math.floor(mins / 60)
   const m = mins % 60
   return `${h}h ${m}m`
+}
+
+function getLowestPositiveGoogleFlightsPrice(offers: FlightOffer[]): number | undefined {
+  return offers.reduce<number | undefined>((lowest, offer) => {
+    const googlePrice = offer.google_flights_price
+    if (!Number.isFinite(googlePrice) || (googlePrice as number) <= 0) {
+      return lowest
+    }
+
+    return typeof lowest !== 'number' || (googlePrice as number) < lowest
+      ? (googlePrice as number)
+      : lowest
+  }, undefined)
+}
+
+function cancelSearch(searchId: string) {
+  const cancelUrl = `/api/results/cancel/${encodeURIComponent(searchId)}`
+  if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+    navigator.sendBeacon(cancelUrl)
+    return
+  }
+
+  void fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
 }
 
 /**
@@ -435,8 +463,8 @@ export default function SearchPageClient({
     ? `/${locale}?q=${encodeURIComponent(query)}${isTestSearch ? '&probe=1' : ''}`
     : homeHref
   const searchParams = useSearchParams()
-  const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : undefined
-  const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : undefined
+  const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : parsed.min_trip_days
+  const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : parsed.max_trip_days
 
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
@@ -486,6 +514,19 @@ export default function SearchPageClient({
     setOffers(initialOffers)
     setDisplayCurrency(initialCurrency)
   }, [searchId, initialCurrency])
+
+  useEffect(() => {
+    const normalizedQuery = query.trim()
+    if (!normalizedQuery) return
+
+    trackSearchSession({
+      search_id: analyticsSearchId,
+      query: normalizedQuery,
+      source: 'website-results-client',
+      source_path: resultsSourcePath,
+      is_test_search: isTestSearch || undefined,
+    })
+  }, [analyticsSearchId, isTestSearch, query, resultsSourcePath])
 
   // Reset progressive-reveal state when search changes
   useEffect(() => {
@@ -631,6 +672,7 @@ export default function SearchPageClient({
       (best, o) => (!best || o.price < best.price ? o : best),
       null,
     )
+    const googleFlightsPrice = getLowestPositiveGoogleFlightsPrice(offers)
     trackSearchSessionEvent(analyticsSearchId, 'partial_results_available', {
       offers_count: offers.length,
     }, {
@@ -641,7 +683,7 @@ export default function SearchPageClient({
       search_duration_ms: durationMs,
       results_count: offers.length,
       cheapest_price: cheapestOffer?.price,
-      google_flights_price: cheapestOffer?.google_flights_price,
+      google_flights_price: googleFlightsPrice,
     })
   }, [analyticsSearchId, isStreaming, isTestSearch, offers, resultsSourcePath, searchedAt])
 
@@ -655,7 +697,7 @@ export default function SearchPageClient({
       null,
     )
     const cheapestPrice = cheapestOffer?.price
-    const gfPrice = cheapestOffer?.google_flights_price
+    const gfPrice = getLowestPositiveGoogleFlightsPrice(offers)
     const savings =
       cheapestPrice != null && gfPrice != null ? Math.max(0, gfPrice - cheapestPrice) : undefined
     const value =
@@ -696,6 +738,7 @@ export default function SearchPageClient({
           (best, o) => (!best || o.price < best.price ? o : best),
           null,
         )
+        const partialGoogleFlightsPrice = getLowestPositiveGoogleFlightsPrice(offers)
         const durationMsSoFar = searchedAt ? Date.now() - new Date(searchedAt).getTime() : undefined
         trackSearchSessionEvent(analyticsSearchId, 'pagehide_searching', {
           progress_checked: progress?.checked ?? null,
@@ -707,8 +750,9 @@ export default function SearchPageClient({
           results_count: offers.length || undefined,
           search_duration_ms: durationMsSoFar,
           cheapest_price: partialCheapest?.price,
-          google_flights_price: partialCheapest?.google_flights_price,
+          google_flights_price: partialGoogleFlightsPrice,
         }, { beacon: true })
+        cancelSearch(searchId)
         return
       }
 
@@ -718,7 +762,7 @@ export default function SearchPageClient({
           null,
         )
         const cheapestPrice = cheapestOffer?.price
-        const gfPrice = cheapestOffer?.google_flights_price
+        const gfPrice = getLowestPositiveGoogleFlightsPrice(offers)
         const savings =
           cheapestPrice != null && gfPrice != null ? Math.max(0, gfPrice - cheapestPrice) : undefined
         trackSearchSessionEvent(analyticsSearchId, 'pagehide_results', {
@@ -781,6 +825,10 @@ export default function SearchPageClient({
   // (passenger composition, ancillary requirements, etc.) that the API
   // parsed object doesn't expose.
   const nlParsed = useMemo(() => { try { return parseNLQuery(query) } catch { return null } }, [query])
+  const resolvedTripPurposes = useMemo(() => normalizeTripPurposes({
+    tripPurpose: parsed.ai_trip_purpose ?? nlParsed?.trip_purpose,
+    tripPurposes: parsed.ai_trip_purposes,
+  }), [parsed.ai_trip_purpose, parsed.ai_trip_purposes, nlParsed?.trip_purpose])
 
   // Convert AI depart_after / depart_before strings to minutes-from-midnight
   // for the hard time-floor enforcement in rankOffers.
@@ -797,6 +845,7 @@ export default function SearchPageClient({
 
   const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
   const requireBagPerPerson = !!(parsed.ai_bags_included ?? nlParsed?.require_checked_baggage)
+  const requireCancellation = !!(parsed.require_cancellation ?? nlParsed?.require_cancellation)
   const defaultSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' =
     (requireSeatPerPerson || requireBagPerPerson) ? 'price_with_all' : 'price'
 
@@ -852,12 +901,7 @@ export default function SearchPageClient({
     // connector fan-out for the old search ID. We use sendBeacon so the signal
     // is delivered even if the browser navigates away immediately.
     if (searchId) {
-      const cancelUrl = `/api/results/cancel/${encodeURIComponent(searchId)}`
-      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-        navigator.sendBeacon(cancelUrl)
-      } else {
-        fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
-      }
+      cancelSearch(searchId)
     }
     trackSearchSessionEvent(analyticsSearchId, 'new_search_started', {
       next_query: nextQuery,
@@ -1007,6 +1051,7 @@ export default function SearchPageClient({
         <ResultsPanel
           allOffers={allOffers}
           currency={displayCurrency}
+          travelerCount={travelerCount}
           priceMin={priceMin}
           priceMax={priceMax}
           searchId={searchId}
@@ -1025,13 +1070,15 @@ export default function SearchPageClient({
           defaultSort={defaultSort}
           requireSeatPerPerson={requireSeatPerPerson}
           requireBagPerPerson={requireBagPerPerson}
+          requireCancellation={requireCancellation}
           initialDepTimePref={parsed.ai_dep_time_pref ?? nlParsed?.depart_time_pref}
           initialRetTimePref={parsed.ai_ret_time_pref ?? nlParsed?.return_depart_time_pref}
           initialArrTimePref={nlParsed?.arrive_time_pref}
           initialDepartAfterMins={aiDepartAfterMins ?? nlParsed?.depart_after_mins}
           initialDepartBeforeMins={aiDepartBeforeMins ?? nlParsed?.depart_before_mins}
           tripContext={parsed.ai_passenger_context ?? nlParsed?.passenger_context}
-          tripPurpose={(parsed.ai_trip_purpose as never) ?? nlParsed?.trip_purpose}
+          tripPurpose={resolvedTripPurposes[0]}
+          tripPurposes={resolvedTripPurposes.length > 0 ? resolvedTripPurposes : undefined}
           preferredAirline={nlParsed?.preferred_airline}
           preferQuickFlight={parsed.ai_sort_by === 'duration' || nlParsed?.prefer_quick_flight}
           preferCheapest={parsed.ai_sort_by === 'price' || nlParsed?.preferred_sort === 'price'}

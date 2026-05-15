@@ -11,7 +11,7 @@ import {
   getOfferDisplayTotalWithAncillary,
 } from '../../../lib/display-price'
 import { computeFlightTimeContext, extractFlightClockMinutes, formatFlightDateCompact, formatFlightTime } from '../../../lib/flight-datetime'
-import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount } from '../../../lib/google-flights-savings'
+import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount, normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import {
@@ -23,7 +23,8 @@ import {
 import { calculateFee } from '../../../lib/pricing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { SearchProgressBarInline } from './SearchProgressBar'
-import { rankOffers, selectDiverseTop, getProfileLabel, type RankingContext, type RankedOffer } from '../../lib/rankOffers'
+import { rankOffers, selectDiverseTop, getOfferInstanceKey, getProfileLabel, type RankingContext, type RankedOffer } from '../../lib/rankOffers'
+import { normalizeTripPurposes, type TripPurpose } from '../../lib/trip-purpose'
 // build:2026-05-05b
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -67,6 +68,11 @@ interface OfferAncillaries {
   seat_selection?: OfferAncillary
 }
 
+interface OfferConditions {
+  refund_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+  change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+}
+
 interface FlightOffer {
   id: string
   price: number
@@ -89,6 +95,7 @@ interface FlightOffer {
   segments?: FlightSegment[]
   inbound?: InboundLeg
   ancillaries?: OfferAncillaries
+  conditions?: OfferConditions
 }
 
 interface SourceMetaResponse {
@@ -462,9 +469,10 @@ function computeDealReason(
   depTimePref: string | undefined,
   currency: string,
   locale: string,
+  travelerCount: number,
 ): string {
   const price = getOfferDisplayTotalPrice(offer, currency)
-  const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price)
+  const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price, travelerCount)
 
   const parts: string[] = []
 
@@ -528,10 +536,11 @@ function computeDealReasonParagraph(
   depTimePref: string | undefined,
   currency: string,
   locale: string,
+  travelerCount: number,
 ): string {
   const total = allOffers.length
   const price = getOfferDisplayTotalPrice(offer, currency)
-  const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price)
+  const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price, travelerCount)
   const facts: string[] = []
 
   const directOffers = allOffers.filter(o => o.stops === 0)
@@ -637,6 +646,7 @@ function computeWhyNot(
 interface Props {
   allOffers: FlightOffer[]
   currency: string
+  travelerCount?: number
   priceMin: number
   priceMax: number
   searchId?: string
@@ -651,6 +661,7 @@ interface Props {
   defaultSort?: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'
   requireSeatPerPerson?: boolean
   requireBagPerPerson?: boolean
+  requireCancellation?: boolean
   initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialArrTimePref?: 'morning' | 'afternoon' | 'evening'
@@ -659,7 +670,8 @@ interface Props {
   /** Hard departure time ceiling in minutes from midnight (e.g. 540 = 9:00 am). */
   initialDepartBeforeMins?: number
   tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
-  tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
+  tripPurpose?: TripPurpose
+  tripPurposes?: TripPurpose[]
   preferredAirline?: string
   preferQuickFlight?: boolean
   preferCheapest?: boolean
@@ -669,13 +681,20 @@ interface Props {
     origin?: { intended: string; used_code: string; used_name: string; hub_name: string; reason: string }
     destination?: { intended: string; used_code: string; used_name: string; hub_name: string; reason: string }
   }
-  initialGemini?: { title?: string; hero: string; runners: string[]; ts: number; locale?: string }
+  initialGemini?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
+}
+
+function normalizeGeminiOfferIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null
+  const offerIds = value.filter((offerId): offerId is string => typeof offerId === 'string' && offerId.length > 0)
+  return offerIds.length > 0 ? offerIds : null
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ResultsPanel({
   allOffers,
   currency,
+  travelerCount = 1,
   priceMin: _priceMin,
   priceMax: _priceMax,
   searchId,
@@ -689,6 +708,7 @@ export default function ResultsPanel({
   defaultSort,
   requireSeatPerPerson: _requireSeatPerPerson = false,
   requireBagPerPerson = false,
+  requireCancellation = false,
   initialDepTimePref,
   initialRetTimePref,
   initialArrTimePref,
@@ -696,6 +716,7 @@ export default function ResultsPanel({
   initialDepartBeforeMins,
   tripContext,
   tripPurpose,
+  tripPurposes,
   preferredAirline,
   preferQuickFlight,
   preferCheapest,
@@ -745,6 +766,9 @@ export default function ResultsPanel({
   const emailUnlockToken = searchParams.get('mt')
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(searchId ? `/results/${searchId}` : '/results', isTestSearch)
+  const resolvedTripPurposes = useMemo(() => normalizeTripPurposes({ tripPurpose, tripPurposes }), [tripPurpose, tripPurposes])
+  const rankingTripPurposes = resolvedTripPurposes.length > 0 ? resolvedTripPurposes : undefined
+  const primaryTripPurpose = rankingTripPurposes?.[0]
   // ── Filter state ──────────────────────────────────────────────────────────
   const [sort, setSort] = useState<'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'>(defaultSort ?? 'price')
   const [stopsFilter, setStopsFilter] = useState<string[]>([])          // [] = all
@@ -761,6 +785,7 @@ export default function ResultsPanel({
   const [visibleCount, setVisibleCount] = useState(20)
   const [isUnlocked, setIsUnlocked] = useState(false)
   const [revealedSources, setRevealedSources] = useState<Record<string, string>>({})
+  const restoredGeminiOfferIdsRef = useRef<string | null>(null)
   const [geminiJustification, setGeminiJustification] = useState<{
     title?: string
     hero: string
@@ -775,6 +800,8 @@ export default function ResultsPanel({
       const cachedLocale = initialGemini.locale ?? 'en'
       const localeMatch = cachedLocale === locale
       if (age < 6 * 3600 * 1000 && localeMatch) {
+        const offerIds = normalizeGeminiOfferIds(initialGemini.offer_ids)
+        restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
         return { title: initialGemini.title, hero: initialGemini.hero, runners: initialGemini.runners }
       }
     }
@@ -783,9 +810,11 @@ export default function ResultsPanel({
     try {
       const raw = localStorage.getItem(`gemini_${searchId}_${locale}_${currency}`)
       if (!raw) return null
-      const d = JSON.parse(raw) as { title?: string; hero?: string; runners?: string[]; ts?: number }
+      const d = JSON.parse(raw) as { title?: string; hero?: string; runners?: string[]; offer_ids?: string[]; ts?: number }
       const age = Date.now() - (d.ts ?? 0)
       if (age < 6 * 3600 * 1000 && typeof d.hero === 'string' && d.hero.length > 10) {
+        const offerIds = normalizeGeminiOfferIds(d.offer_ids)
+        restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
         return { title: d.title as string | undefined, hero: d.hero, runners: (d.runners as string[] | undefined) ?? [] }
       }
     } catch { /* ignore */ }
@@ -955,13 +984,16 @@ export default function ResultsPanel({
       // Default: personalized ranking based on user intent
       const rctx: RankingContext = {
         tripContext,
-        tripPurpose,
+        tripPurpose: primaryTripPurpose,
+        tripPurposes: rankingTripPurposes,
+        travelerCount,
         depTimePref: initialDepTimePref,
         retTimePref: initialRetTimePref,
         arrivalTimePref: initialArrTimePref,
         departAfterMins: initialDepartAfterMins,
         departBeforeMins: initialDepartBeforeMins,
         requireBag: requireBagPerPerson,
+        requireCancellation,
         preferredAirline,
         preferQuickFlight,
         preferCheapest,
@@ -975,8 +1007,8 @@ export default function ResultsPanel({
       // from 3 booking sources as "3 different options" — runner-ups are real
       // alternatives with different trade-offs (e.g. evening 1-stop vs morning direct).
       const diverseTop3 = selectDiverseTop(ranked, 3)
-      const diverseIds = new Set(diverseTop3.map(r => r.offer.id))
-      const rest = ranked.filter(r => !diverseIds.has(r.offer.id))
+      const diverseKeys = new Set(diverseTop3.map(r => getOfferInstanceKey(r.offer)))
+      const rest = ranked.filter(r => !diverseKeys.has(getOfferInstanceKey(r.offer)))
       list = [...diverseTop3, ...rest].map(r => r.offer as typeof list[number])
 
       // Guarantee the absolute cheapest offer is always visible in the top 3.
@@ -1046,7 +1078,7 @@ export default function ResultsPanel({
       }
     }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, tripPurpose, preferredAirline, requireBagPerPerson, viaIata])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, travelerCount, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, primaryTripPurpose, rankingTripPurposes, preferredAirline, requireBagPerPerson, viaIata])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
@@ -1054,16 +1086,17 @@ export default function ResultsPanel({
   useEffect(() => {
     const first = displayOffers[0]
     if (!first) return
+    const firstKey = getOfferInstanceKey(first)
     if (autoExpandedRef.current === null) {
       // Initial: expand the first offer
-      autoExpandedRef.current = first.id
-      setExpandedId(first.id)
-    } else if (first.id !== autoExpandedRef.current) {
+      autoExpandedRef.current = firstKey
+      setExpandedId(firstKey)
+    } else if (firstKey !== autoExpandedRef.current) {
       // #1 changed (AI rerank) — if the previously auto-expanded offer is still expanded,
       // collapse it and expand the new #1
       const prevId = autoExpandedRef.current
-      autoExpandedRef.current = first.id
-      setExpandedId(prev => prev === prevId ? first.id : prev)
+      autoExpandedRef.current = firstKey
+      setExpandedId(prev => prev === prevId ? firstKey : prev)
     }
   }, [displayOffers])
 
@@ -1077,11 +1110,14 @@ export default function ResultsPanel({
     if (top.length === 0) return []
     const rctx: RankingContext = {
       tripContext,
-      tripPurpose,
+      tripPurpose: primaryTripPurpose,
+      tripPurposes: rankingTripPurposes,
+      travelerCount,
       depTimePref: initialDepTimePref,
       retTimePref: initialRetTimePref,
       arrivalTimePref: initialArrTimePref,
       requireBag: requireBagPerPerson,
+      requireCancellation,
       preferredAirline,
       preferQuickFlight,
       preferCheapest,
@@ -1090,18 +1126,27 @@ export default function ResultsPanel({
     // Rank all displayOffers so scores/tradeoffs are calibrated against the full visible set.
     const withDisplayPrice = displayOffers.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
     const fullRanked = rankOffers(withDisplayPrice, rctx) as RankedOffer<FlightOffer>[]
-    const rankedById = new Map(fullRanked.map(r => [r.offer.id, r]))
+    const rankedById = new Map(fullRanked.map(r => [getOfferInstanceKey(r.offer), r]))
     // Return in display order so globalRankTopThree[0] === displayOffers[0] (the hero card).
     return top.map((o, idx) => {
-      const ranked = rankedById.get(o.id)
+      const ranked = rankedById.get(getOfferInstanceKey(o))
       if (ranked) return { ...ranked, rank: idx + 1 }
       return { offer: o, rank: idx + 1, score: 0, breakdown: {} as RankedOffer<FlightOffer>['breakdown'], heroFacts: [], tradeoffs: [] }
     })
-  }, [displayOffers, currency, tripContext, tripPurpose, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
+  }, [displayOffers, currency, travelerCount, tripContext, primaryTripPurpose, rankingTripPurposes, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, requireCancellation, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
+
+  const currentTopOfferIds = useMemo(
+    () => globalRankTopThree.map((rankedOffer) => rankedOffer.offer.id).join(','),
+    [globalRankTopThree],
+  )
 
   const profileLabel = useMemo(() => getProfileLabel({
-    tripContext, tripPurpose, requireBag: requireBagPerPerson, preferredAirline,
-  }), [tripContext, tripPurpose, requireBagPerPerson, preferredAirline])
+    tripContext,
+    tripPurpose: primaryTripPurpose,
+    tripPurposes: rankingTripPurposes,
+    requireBag: requireBagPerPerson,
+    preferredAirline,
+  }), [tripContext, primaryTripPurpose, rankingTripPurposes, requireBagPerPerson, preferredAirline])
 
   // ── 3-generation Gemini justification system ─────────────────────────────
   // Gen 1 (early):  fires as soon as ≥5 offers arrive, even while still searching
@@ -1117,11 +1162,13 @@ export default function ResultsPanel({
   const callGemini = useCallback((phase: 'early' | 'mid' | 'final') => {
     if (globalRankTopThree.length === 0) return
     setGeminiJustification('loading')
+    const currentOfferIds = globalRankTopThree.map((rankedOffer) => rankedOffer.offer.id)
+    const currentOfferIdsKey = currentOfferIds.join(',')
     const heroId = globalRankTopThree[0].offer.id
     geminiStateRef.current.heroId = heroId
     geminiStateRef.current.phase = phase
-    geminiStateRef.current.lastSentIds = globalRankTopThree.map(r => r.offer.id).join(',')
-    geminiStateRef.current.callCount++
+    geminiStateRef.current.lastSentIds = currentOfferIdsKey
+    const myCallId = ++geminiStateRef.current.callCount
 
     void fetch('/api/rank', {
       method: 'POST',
@@ -1155,7 +1202,9 @@ export default function ResultsPanel({
         rawQuery,
         context: {
           tripContext,
-          tripPurpose,
+          tripPurpose: primaryTripPurpose,
+          tripPurposes: rankingTripPurposes,
+          travelerCount,
           depTimePref: initialDepTimePref,
           retTimePref: initialRetTimePref,
           arrivalTimePref: initialArrTimePref,
@@ -1173,20 +1222,50 @@ export default function ResultsPanel({
       }),
     })
       .then(res => (res.ok ? res.json() : null))
-      .then((data: { title?: string; hero?: string; runners?: string[] } | null) => {
+      .then((data: { title?: string; hero?: string; runners?: string[]; offer_ids?: string[] } | null) => {
+        // Discard stale responses — a newer callGemini has already been issued
+        if (myCallId !== geminiStateRef.current.callCount) return
         if (data?.hero && data.hero.length > 10) {
+          const offerIds = normalizeGeminiOfferIds(data.offer_ids) ?? currentOfferIds
+          restoredGeminiOfferIdsRef.current = offerIds.join(',')
           const result = { title: data.title, hero: data.hero, runners: data.runners ?? [] }
           setGeminiJustification(result)
           // Persist locale-keyed so each language version is cached independently.
           if (searchId && typeof window !== 'undefined') {
-            try { localStorage.setItem(`gemini_${searchId}_${locale}_${currency}`, JSON.stringify({ ...result, ts: Date.now() })) } catch { /* ignore */ }
+            try {
+              localStorage.setItem(
+                `gemini_${searchId}_${locale}_${currency}`,
+                JSON.stringify({ ...result, offer_ids: offerIds, ts: Date.now() }),
+              )
+            } catch { /* ignore */ }
           }
         } else {
           setGeminiJustification(null)
         }
       })
-      .catch(() => setGeminiJustification(null))
-  }, [globalRankTopThree, rawQuery, locale, currency, tripContext, tripPurpose, initialDepTimePref, initialArrTimePref, requireBagPerPerson, preferredAirline, preferQuickFlight, fallbackNotes])
+      .catch(() => {
+        if (myCallId === geminiStateRef.current.callCount) setGeminiJustification(null)
+      })
+  }, [
+    globalRankTopThree,
+    rawQuery,
+    searchId,
+    locale,
+    currency,
+    travelerCount,
+    tripContext,
+    primaryTripPurpose,
+    rankingTripPurposes,
+    initialDepTimePref,
+    initialRetTimePref,
+    initialArrTimePref,
+    requireBagPerPerson,
+    preferredAirline,
+    preferQuickFlight,
+    preferCheapest,
+    maxStops,
+    fallbackNotes,
+  ])
 
   // ── 5-generation Gemini justification system ─────────────────────────────
   // Max 5 Gemini calls per search session:
@@ -1204,16 +1283,29 @@ export default function ResultsPanel({
   useEffect(() => {
     if (geminiStateRef.current.phase !== 'none') return  // already started
     if (globalRankTopThree.length === 0) return
-    // Cache hit: search is done and we already restored a justification from localStorage.
-    // Don't re-fire — the user gets the same result they saw before.
-    if (geminiJustification !== null && geminiJustification !== 'loading' && !isSearching) return
+    if (!isSearching && geminiJustification !== null && geminiJustification !== 'loading') {
+      if (restoredGeminiOfferIdsRef.current === currentTopOfferIds) {
+        geminiStateRef.current.phase = 'final'
+        geminiStateRef.current.heroId = globalRankTopThree[0].offer.id
+        geminiStateRef.current.lastSentIds = currentTopOfferIds
+        geminiStateRef.current.finalFired = true
+        geminiStateRef.current.finalSentIds = currentTopOfferIds
+        return
+      }
+    }
     // Need either (a) ≥6 connectors checked in from a live search, or
     // (b) a finished search with ≥5 offers (page reopen / cached results).
     const enoughConnectors = progress && progress.checked >= 6
     const finishedWithOffers = !isSearching && allOffers.length >= 5
     if (!enoughConnectors && !finishedWithOffers) return
+    if (finishedWithOffers && !isSearching) {
+      geminiStateRef.current.finalFired = true
+      geminiStateRef.current.finalSentIds = currentTopOfferIds
+      callGemini('final')
+      return
+    }
     callGemini('early')
-  }, [progress, globalRankTopThree, callGemini, geminiJustification, isSearching, allOffers.length])
+  }, [progress, globalRankTopThree, currentTopOfferIds, callGemini, geminiJustification, isSearching, allOffers.length])
 
   // Gen 2 — fires at 30% progress if a better offer displaced the current hero
   useEffect(() => {
@@ -1340,7 +1432,7 @@ export default function ResultsPanel({
   useEffect(() => {
     if (!searchId || !isUnlocked || visibleOffers.length === 0) return
 
-    const pendingOffers = visibleOffers.filter((offer) => !revealedSources[offer.id])
+    const pendingOffers = visibleOffers.filter((offer) => !revealedSources[getOfferInstanceKey(offer)])
     if (pendingOffers.length === 0) return
 
     let cancelled = false
@@ -1368,7 +1460,7 @@ export default function ResultsPanel({
             ? data.booking_site.trim()
             : ''
 
-        return label ? { offerId: offer.id, label } : null
+        return label ? { offerId: getOfferInstanceKey(offer), label } : null
       } catch (_) {
         return null
       }
@@ -1513,7 +1605,8 @@ export default function ResultsPanel({
           {visibleOffers.map((offer, index) => {
             const isHero = index === 0
             const isRunnerUp = index === 1 || index === 2
-            const isExpanded = expandedId === offer.id
+            const offerKey = getOfferInstanceKey(offer)
+            const isExpanded = expandedId === offerKey
             const offerCarriers = getOfferCarriers(offer)
             const airlineLabel = getOfferAirlineLabel(offer)
             const outboundStops = getRouteStops(offer.segments)
@@ -1532,7 +1625,7 @@ export default function ResultsPanel({
             const inboundDestinationName = offer.inbound?.segments?.[offer.inbound.segments.length - 1]?.destination_name || offer.origin_name || offer.inbound?.destination || ''
             const rawOfferTotal = getOfferKnownTotalPrice(offer)
             const fullOfferPrice = getOfferDisplayTotalPrice(offer, currency)
-            const googleFlightsSavings = getGoogleFlightsSavingsAmount(rawOfferTotal, offer.google_flights_price)
+            const googleFlightsSavings = getGoogleFlightsSavingsAmount(rawOfferTotal, offer.google_flights_price, travelerCount)
             const googleFlightsSavingsLabel = googleFlightsSavings === null
               ? null
               : t('cheaperThanGoogleFlights', {
@@ -1556,7 +1649,7 @@ export default function ResultsPanel({
                   ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale) })
                   : null,
             ].filter((value): value is string => Boolean(value))
-            const sourceLabel = revealedSources[offer.id]
+            const sourceLabel = revealedSources[offerKey]
             const outboundCtx = computeFlightTimeContext(offer.departure_time, offer.arrival_time, offer.duration_minutes)
             const inboundCtx = offer.inbound
               ? computeFlightTimeContext(offer.inbound.departure_time, offer.inbound.arrival_time, offer.inbound.duration_minutes)
@@ -1588,7 +1681,7 @@ export default function ResultsPanel({
               onOfferSelect?.()
             }
             return (
-              <Fragment key={offer.id}>
+              <Fragment key={offerKey}>
                 {isHero && (
                   <div className="rf-concierge-intro">
                     <div className="rf-pick-header">
@@ -1619,7 +1712,7 @@ export default function ResultsPanel({
                           {t('stillScanning')}
                         </span>
                       ) : locale === 'en' ? (
-                        <span className="rf-reasoning-text">{computeDealReasonParagraph(offer, allOffers, tripContext, initialDepTimePref, currency, locale)}</span>
+                        <span className="rf-reasoning-text">{computeDealReasonParagraph(offer, allOffers, tripContext, initialDepTimePref, currency, locale, travelerCount)}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1675,7 +1768,7 @@ export default function ResultsPanel({
                     {(() => {
                       const cat = getAirlineCategory(offerCarriers[0]?.code || '')
                       const catKey = cat === 'Low-cost carrier' ? 'airlineLcc' : cat === 'Full-service carrier' ? 'airlineFsc' : 'airlineLabel'
-                      return `${t(catKey)} · ${t('economy')}`
+                      return t(catKey)
                     })()}
                   </div>
                 )}
@@ -1902,7 +1995,7 @@ export default function ResultsPanel({
                     <button
                       className="rf-details-btn"
                       onClick={() => {
-                        setExpandedId(isExpanded ? null : offer.id)
+                        setExpandedId(isExpanded ? null : offerKey)
                         trackSearchSessionEvent(analyticsSearchId, 'details_toggled', {
                           offer_id: offer.id,
                           open: !isExpanded,

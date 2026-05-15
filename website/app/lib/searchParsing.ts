@@ -3,6 +3,7 @@
 // Also handles: filler words, typos via accent-stripping, ordinals, DD/MM/YYYY, relative dates
 
 import { findBestLocationMatch, findExactLocationMatch } from '../airports'
+import type { TripPurpose } from './trip-purpose'
 
 // ── City → IATA lookup ────────────────────────────────────────────────────────
 // Keys are lowercase, accent-free. resolveCity() normalises input before lookup.
@@ -2518,7 +2519,8 @@ export interface ParsedQuery {
   excluded_airline?: string          // "not Ryanair", "avoid easyJet"
 
   // ── Trip purpose / occasion ──────────────────────────────────────────────────
-  trip_purpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
+  trip_purpose?: TripPurpose
+  trip_purposes?: TripPurpose[]
 
   // ── Seat preference ──────────────────────────────────────────────────────────
   seat_pref?: 'window' | 'aisle' | 'extra_legroom'
@@ -5400,6 +5402,7 @@ export function parseNLQuery(query: string): ParsedQuery {
   const tripDurRe = /\bfor\s+(\d+)\s*[-–to]\s*(\d+)\s*(?:days?|nights?|nächte?|jours?|giorni?|dias?|netter|dagar|dana|ditë)\b/i
   const tripDurRe2 = /\b(\d+)\s*[-–]\s*(\d+)\s*[-\s]?(?:day|days|night|nights|nächte?|jours?|giorni?|dias?|dagar|dana)\s*(?:trip|holiday|vacation|urlaub|vacances|vacanza|vakantie|semester|ferien|viagem|viaje)?\b/i
   const tripDurSingleRe = /\bfor\s+(\d+)\s+(?:days?|nights?|nächte?|jours?|giorni?|dias?|dagar|dana|ditë)\b/i
+  const tripDurBareSingleRe = /(?:^|[\s,(])(?<!for\s)(\d+)\s+(?:days?|nights?|nächte?|jours?|giorni?|dias?|dagar|dana|ditë)\b(?!\s+(?:after|later|earlier|ago|layover|stopover|connection|transfer|stop))(?=\s*(?:[,.)]|trip\b|stay\b|holiday\b|vacation\b|break\b|business\b|refundable\b|return\b|back\b|$))/i
   const tripDurWeeksRe = /\bfor\s+(\d+)\s*[-–to]\s*(\d+)\s*weeks?\b/i
   const tripDurWeekSingleRe = /\bfor\s+(?:(\d+)|a|an|one)\s+weeks?\b/i
   const returnAfterRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(?:between\s+)?(\d+)\s*(?:and|[-–to])\s*(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
@@ -5425,7 +5428,7 @@ export function parseNLQuery(query: string): ParsedQuery {
           result.min_trip_days = parseInt(rasm[1])
           result.max_trip_days = parseInt(rasm[1])
         } else {
-          const tdsm = q.match(tripDurSingleRe)
+          const tdsm = q.match(tripDurSingleRe) || q.match(tripDurBareSingleRe)
           if (tdsm) {
             result.min_trip_days = parseInt(tdsm[1])
             result.max_trip_days = parseInt(tdsm[1])
@@ -5549,6 +5552,20 @@ export function parseNLQuery(query: string): ParsedQuery {
   const _depTod: string | undefined = (result as any).__explicitDepartureTimePref
   if (_depTod && !result.depart_time_pref) result.depart_time_pref = _mapTod(_depTod)
   delete (result as any).__explicitDepartureTimePref
+  // If RETURN_SPLIT_RE fired, also scan the outbound portion for bare time-of-day words
+  // (e.g. outboundRaw="this Friday evening" → depart_time_pref='evening').
+  if (outboundRaw && !result.depart_time_pref) {
+    const _otp = extractTimePrefs(outboundRaw)
+    if (_otp.depart_time_pref) {
+      result.depart_time_pref = _otp.depart_time_pref
+    } else {
+      const _ol = outboundRaw.toLowerCase()
+      if (/\bearly\s+morning\b/.test(_ol)) result.depart_time_pref = 'early_morning'
+      else if (/\bmorning\b/.test(_ol)) result.depart_time_pref = 'morning'
+      else if (/\b(?:afternoon|noon|lunchtime|midday)\b/.test(_ol)) result.depart_time_pref = 'afternoon'
+      else if (/\b(?:evening|night)\b/.test(_ol)) result.depart_time_pref = 'evening'
+    }
+  }
   // Apply return time-of-day from step 0c
   const _retTod11: string | undefined = (result as any).__explicitReturnTimePref
   if (_retTod11) result.return_depart_time_pref = _mapTod(_retTod11)

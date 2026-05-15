@@ -10,6 +10,7 @@
  */
 
 import type { ParsedQuery } from './searchParsing'
+import { normalizeTripPurposes } from './trip-purpose'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -180,10 +181,14 @@ export function generateFollowUpQuestions(
 ): FollowUpQuestion[] {
   const questions: FollowUpQuestion[] = []
   const p = nlParsed ?? {}
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: p.trip_purpose,
+    tripPurposes: p.trip_purposes,
+  })
 
   const totalPax = (p.adults ?? 1) + (p.children ?? 0) + (p.infants ?? 0)
   const hasKidSignal = (p.children ?? 0) > 0 || p.require_bassinet || p.require_adjacent_seats
-  const purposeKnown = !!p.trip_purpose || !!p.passenger_context
+  const purposeKnown = tripPurposes.length > 0 || !!p.passenger_context
 
   // ── Q1: Trip purpose — highest impact question ──────────────────────────────
   if (!purposeKnown) {
@@ -332,7 +337,7 @@ export function generateFollowUpQuestions(
   }
 
   // ── Q9: Arrival time (business trips) ──────────────────────────────────────
-  if (p.trip_purpose === 'business' || p.passenger_context === 'business_traveler') {
+  if (tripPurposes.includes('business') || p.passenger_context === 'business_traveler') {
     if (!p.arrive_time_pref) {
       questions.push({
         id: 'arrival_time',

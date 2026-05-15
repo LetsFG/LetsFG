@@ -10,8 +10,10 @@ import {
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
+import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec } from '../lib/home-convo-personalization'
 import { parseNLQuery } from './lib/searchParsing'
 import { needsDateClarification, shouldWaitForGeminiAssistOnHomeSubmit } from './lib/home-search-assist'
+import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './lib/trip-purpose'
 
 const DESTINATION_KEYS = [
   { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
@@ -897,16 +899,9 @@ export default function HomeSearchForm({
       || !!(p?.children) || !!(p?.infants)
       || !!(p?.passenger_context) || !!(p?.group_size)
     if (!hasPax) {
-      const purpose = p?.trip_purpose
-      const isBeach = purpose === 'beach'
-      const isBusiness = purpose === 'business'
-      const isCity = purpose === 'city_break'
-
-      let q = ths('pax_q')
-      let chips = [mkChip('chip_solo', 'Solo'), mkChip('chip_two', 'Two of us'), mkChip('chip_family', 'Family'), mkChip('chip_friends', 'Group of friends')]
-      if (isBeach) { q = ths('pax_q_beach'); chips = [mkChip('chip_just_me', 'Just me'), mkChip('chip_partner', 'Partner'), mkChip('chip_squad', 'Squad'), mkChip('chip_family', 'Family')] }
-      else if (isBusiness) { q = ths('pax_q_business'); chips = [mkChip('chip_solo', 'Solo'), mkChip('chip_colleague', 'With a colleague'), mkChip('chip_small_team', 'Small team'), mkChip('chip_with_family', 'With family')] }
-      else if (isCity) { q = ths('pax_q_city'); chips = [mkChip('chip_just_me', 'Just me'), mkChip('chip_two', 'Two of us'), mkChip('chip_small_group', 'Small group'), mkChip('chip_family', 'Family')] }
+      const questionSpec = buildPartySizeQuestionSpec(p ?? {})
+      const q = ths(questionSpec.questionKey)
+      const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
       qs.push({ q, chips, freeHint: ths('pax_hint') })
     }
 
@@ -922,7 +917,8 @@ export default function HomeSearchForm({
     }
 
     // ── 3. Trip purpose — skip if parseNLQuery detected one ──────────────
-    if (!p?.trip_purpose) {
+    const hasTripPurpose = normalizeTripPurposes({ tripPurpose: p?.trip_purpose, tripPurposes: p?.trip_purposes }).length > 0
+    if (!hasTripPurpose) {
       const isLong = !!(p?.min_trip_days && p.min_trip_days >= 14)
       let q = ths('trip_q')
       let chips = [mkChip('chip_sun_relax', 'Sun & relax'), mkChip('chip_city_explore', 'City exploring'), mkChip('chip_business', 'Business'), mkChip('chip_occasion', 'Special occasion')]
@@ -933,13 +929,9 @@ export default function HomeSearchForm({
     // ── 3. Priority — skip if parser found stops/cabin preference ─────────
     const hasPriority = p?.stops === 0 || !!(p?.cabin)
     if (!hasPriority) {
-      const isBudget = !!(p?.max_price)
-      const isCity = p?.trip_purpose === 'city_break'
-
-      let q = ths('priority_q')
-      let chips = [mkChip('chip_lowest_price', 'Lowest price'), mkChip('chip_direct', 'Direct flights'), mkChip('chip_good_times', 'Good times'), mkChip('chip_flexible', 'Flexible dates')]
-      if (isBudget) { q = ths('priority_q_budget'); chips = [mkChip('chip_cheapest', 'Cheapest possible'), mkChip('chip_comfort', 'Some comfort ok'), mkChip('chip_flex_price', 'Flexible on price'), mkChip('chip_biz_class', 'Business class')] }
-      else if (isCity) { q = ths('priority_q_speed'); chips = [mkChip('chip_direct_only', 'Direct flights only'), mkChip('chip_early_dep', 'Early departure'), mkChip('chip_cheapest_opt', 'Cheapest option'), mkChip('chip_latest_return', 'Latest return')] }
+      const questionSpec = buildPriorityQuestionSpec(p ?? {})
+      const q = ths(questionSpec.questionKey)
+      const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
       qs.push({ q, chips, freeHint: ths('priority_hint'), multiChoice: true })
     }
 
@@ -1186,12 +1178,13 @@ export default function HomeSearchForm({
 
     const pre = prefiredSearchRef.current
     prefiredSearchRef.current = null
-    if (pre?.searchId && Date.now() - pre.startedAt < 3 * 60 * 1000) {
-      if (pre.fswSession) params.set('_fss', pre.fswSession)
-      startTransition(() => { router.push(`/results/${pre.searchId}?${params.toString()}`) })
-    } else {
-      startTransition(() => { router.push(`/results?${params.toString()}`) })
-    }
+    const usePrefiredSearch = !!pre?.searchId && Date.now() - pre.startedAt < 3 * 60 * 1000
+    if (usePrefiredSearch && pre?.fswSession) params.set('_fss', pre.fswSession)
+    const target = usePrefiredSearch
+      ? `/results/${pre!.searchId}?${params.toString()}`
+      : `/results?${params.toString()}`
+    setIsLoading(true)
+    window.location.assign(target)
   }
 
   // When the user picks a date from the clarification strip, replace the ambiguous
@@ -1272,7 +1265,7 @@ export default function HomeSearchForm({
             origin?: string | null; origin_name?: string | null
             destination?: string | null; destination_name?: string | null
             departure_date?: string | null; return_date?: string | null
-            passengers?: number | null; trip_purpose?: string | null
+            passengers?: number | null; trip_purpose?: TripPurpose | null; trip_purposes?: TripPurpose[] | null
             anywhere_destination?: boolean
           } | null
           if (ai) {
@@ -1286,7 +1279,14 @@ export default function HomeSearchForm({
             }
             if (!base.return_date && ai.return_date) base.return_date = ai.return_date
             if (!base.adults && ai.passengers && ai.passengers > 0) base.adults = ai.passengers
-            if (!base.trip_purpose && ai.trip_purpose) base.trip_purpose = ai.trip_purpose as unknown as typeof base.trip_purpose
+            const mergedTripPurposes = normalizeTripPurposes({
+              tripPurpose: base.trip_purpose,
+              tripPurposes: [...(base.trip_purposes ?? []), ...(ai.trip_purposes ?? []), ai.trip_purpose],
+            })
+            if (mergedTripPurposes.length > 0) {
+              base.trip_purposes = mergedTripPurposes
+              if (!base.trip_purpose) base.trip_purpose = mergedTripPurposes[0]
+            }
             if (!base.anywhere_destination && ai.anywhere_destination) base.anywhere_destination = true
             // Final ordering sanity check
             if (base.return_date && base.date && base.return_date <= base.date) base.return_date = undefined
@@ -1318,8 +1318,9 @@ export default function HomeSearchForm({
     const needsOriginDisambig = !!(_nlp?.failed_origin_raw && _nlp?.origin_candidates?.length)
     const needsDestDisambig = !!(_nlp?.failed_destination_raw && _nlp?.destination_candidates?.length)
     const needsDisambig = needsOriginDisambig || needsDestDisambig
+    const hasTripPurpose = normalizeTripPurposes({ tripPurpose: _nlp?.trip_purpose, tripPurposes: _nlp?.trip_purposes }).length > 0
 
-    if (missingOrigin || missingDestination || needsDisambig || (!_nlp?.trip_purpose && !_nlp?.passenger_context)) {
+    if (missingOrigin || missingDestination || needsDisambig || (!hasTripPurpose && !_nlp?.passenger_context)) {
       const nextConvo = {
         pendingQuery: trimmed,
         step: 0,
