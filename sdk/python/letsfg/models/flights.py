@@ -3,10 +3,53 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _raw_duration_seconds(departure: datetime, arrival: datetime) -> int:
+    try:
+        return max(int((arrival - departure).total_seconds()), 0)
+    except Exception:
+        return 0
+
+
+def _airport_duration_seconds(
+    departure: datetime,
+    arrival: datetime,
+    origin: str,
+    destination: str,
+) -> int:
+    if departure.year <= 2000 or arrival.year <= 2000 or not origin or not destination:
+        return 0
+
+    try:
+        from letsfg.connectors.airport_tz import duration_seconds_from_local_times
+
+        return duration_seconds_from_local_times(departure, arrival, origin, destination)
+    except Exception:
+        return 0
+
+
+def _airport_local_naive(value: datetime, airport: str) -> datetime:
+    if value.tzinfo is None or not airport:
+        return value
+
+    try:
+        from letsfg.connectors.airport_tz import get_airport_tz
+
+        airport_tz = get_airport_tz(airport)
+    except Exception:
+        airport_tz = None
+
+    try:
+        if airport_tz is not None:
+            return value.astimezone(airport_tz).replace(tzinfo=None)
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception:
+        return value.replace(tzinfo=None)
 
 
 # ── Request ──────────────────────────────────────────────────────────────────
@@ -53,6 +96,10 @@ class FlightSearchRequest(BaseModel):
         description="Latest departure time HH:MM (e.g. '14:00' for flights before 2pm)",
         pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
     )
+    provider_filters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provider-specific filter payloads keyed by provider name, e.g. {'google_flights': {...}}",
+    )
 
     @field_validator("origin", "destination")
     @classmethod
@@ -88,6 +135,26 @@ class FlightSegment(BaseModel):
     cabin_class: str = "economy"
     aircraft: str = ""
 
+    @model_validator(mode="after")
+    def backfill_duration_seconds(self) -> "FlightSegment":
+        self.departure = _airport_local_naive(self.departure, self.origin)
+        self.arrival = _airport_local_naive(self.arrival, self.destination)
+
+        computed = _airport_duration_seconds(
+            self.departure,
+            self.arrival,
+            self.origin,
+            self.destination,
+        )
+        if computed <= 0:
+            return self
+
+        raw = _raw_duration_seconds(self.departure, self.arrival)
+        if self.duration_seconds <= 0 or self.duration_seconds == raw:
+            self.duration_seconds = computed
+
+        return self
+
 
 class FlightRoute(BaseModel):
     """One direction (outbound or return) composed of segments."""
@@ -95,6 +162,30 @@ class FlightRoute(BaseModel):
     segments: list[FlightSegment] = []
     total_duration_seconds: int = 0
     stopovers: int = 0
+
+    @model_validator(mode="after")
+    def backfill_total_duration_seconds(self) -> "FlightRoute":
+        if not self.segments:
+            return self
+
+        first_segment = self.segments[0]
+        last_segment = self.segments[-1]
+        computed = _airport_duration_seconds(
+            first_segment.departure,
+            last_segment.arrival,
+            first_segment.origin,
+            last_segment.destination,
+        )
+        if computed <= 0:
+            computed = sum(max(segment.duration_seconds, 0) for segment in self.segments)
+        if computed <= 0:
+            return self
+
+        raw = _raw_duration_seconds(first_segment.departure, last_segment.arrival)
+        if self.total_duration_seconds <= 0 or self.total_duration_seconds == raw:
+            self.total_duration_seconds = computed
+
+        return self
 
 
 class FlightOffer(BaseModel):
