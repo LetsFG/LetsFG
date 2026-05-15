@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
 import { parseNLQuery } from '../../lib/searchParsing'
 import { normalizeTripPurposes, type TripPurpose } from '../../lib/trip-purpose'
+import { getOfferInstanceKey } from '../../lib/rankOffers'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
@@ -367,7 +368,7 @@ export interface SearchPageClientProps {
 }
 
 function dedup(offers: FlightOffer[]): FlightOffer[] {
-  return Array.from(new Map(offers.map(o => [o.id, o])).values())
+  return Array.from(new Map(offers.map((offer) => [getOfferInstanceKey(offer), offer])).values())
 }
 
 function formatDuration(mins: number) {
@@ -438,7 +439,7 @@ export default function SearchPageClient({
   const [monitorOpen, setMonitorOpen] = useState(false)
   const [confirmedMonitorId, setConfirmedMonitorId] = useState<string | null>(null)
   const [newOfferIds, setNewOfferIds] = useState<Set<string>>(new Set())
-  const knownOfferIdsRef = useRef<Set<string>>(new Set(initialOffers.map(o => o.id)))
+  const knownOfferIdsRef = useRef<Set<string>>(new Set(initialOffers.map((offer) => getOfferInstanceKey(offer))))
   const trackedResultsViewRef = useRef(false)
   const trackedExpiredRef = useRef(false)
   const trackedStreamingRef = useRef(false)
@@ -530,7 +531,7 @@ export default function SearchPageClient({
 
   // Reset progressive-reveal state when search changes
   useEffect(() => {
-    knownOfferIdsRef.current = new Set(initialOffers.map(o => o.id))
+    knownOfferIdsRef.current = new Set(initialOffers.map((offer) => getOfferInstanceKey(offer)))
     setNewOfferIds(new Set())
   }, [searchId])
 
@@ -548,17 +549,18 @@ export default function SearchPageClient({
     return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, handleCurrencyChange)
   }, [initialCurrency])
 
-  // If the server is still searching, recover a previously completed browser
-  // snapshot so a transient network miss does not blank the page. Do not do
-  // this for expired searches, otherwise stale cached EUR results can override
-  // an expired state or a currency-triggered rerun.
+  // If the server is still searching, a browser-cached snapshot may help avoid
+  // a blank page on a transient miss. But cached storage must never mark the
+  // search as completed on its own, otherwise an older same-search snapshot can
+  // freeze the UI before fresh connector results finish streaming in.
   useEffect(() => {
     if (initialStatus !== 'searching') return
     try {
       const cached = readBrowserCachedResults<FlightOffer>(searchId)
-      if (cached?.status === 'completed' && Array.isArray(cached.offers)) {
-        setStatus('completed')
-        setOffers(dedup(cached.offers))
+      if (cached?.status === 'completed' && Array.isArray(cached.offers) && cached.offers.length > 0) {
+        const seededOffers = dedup(cached.offers)
+        knownOfferIdsRef.current = new Set(seededOffers.map((offer) => getOfferInstanceKey(offer)))
+        setOffers((prev) => (prev.length > 0 ? prev : seededOffers))
       }
     } catch (_) { /* private mode or parse error — ignore */ }
   }, [searchId, initialStatus])
@@ -599,9 +601,9 @@ export default function SearchPageClient({
         if (data.offers?.length) {
           const incoming = data.offers as FlightOffer[]
           const freshIds = incoming
-            .filter(o => !knownOfferIdsRef.current.has(o.id))
-            .map(o => o.id)
-          freshIds.forEach(id => knownOfferIdsRef.current.add(id))
+            .map((offer) => getOfferInstanceKey(offer))
+            .filter((offerKey) => !knownOfferIdsRef.current.has(offerKey))
+          freshIds.forEach((offerKey) => knownOfferIdsRef.current.add(offerKey))
 
           if (freshIds.length > 0) {
             setNewOfferIds(new Set(freshIds))

@@ -10,7 +10,7 @@ import {
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
-import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec } from '../lib/home-convo-personalization'
+import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec } from './lib/home-convo-personalization'
 import { parseNLQuery } from './lib/searchParsing'
 import { needsDateClarification, shouldWaitForGeminiAssistOnHomeSubmit } from './lib/home-search-assist'
 import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './lib/trip-purpose'

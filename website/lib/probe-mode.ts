@@ -1,14 +1,25 @@
 const TRUTHY_PROBE_VALUES = new Set(['1', 'true', 'yes', 'probe'])
 
-export function firstQueryValue(value: string | string[] | null | undefined): string | undefined {
-  if (Array.isArray(value)) {
-    return value[0]
+export type ProbeModeScalar = string | number | boolean
+export type ProbeModeValue = ProbeModeScalar | ProbeModeScalar[] | null | undefined
+
+function normalizeProbeValue(value: ProbeModeScalar | null | undefined): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined
   }
 
-  return value ?? undefined
+  return String(value)
 }
 
-export function isProbeModeValue(value: string | string[] | null | undefined): boolean {
+export function firstQueryValue(value: ProbeModeValue): string | undefined {
+  if (Array.isArray(value)) {
+    return normalizeProbeValue(value[0])
+  }
+
+  return normalizeProbeValue(value)
+}
+
+export function isProbeModeValue(value: ProbeModeValue): boolean {
   const resolved = firstQueryValue(value)
   if (!resolved) {
     return false

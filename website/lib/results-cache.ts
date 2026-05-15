@@ -15,7 +15,7 @@ export interface PersistedSearchResult {
   searched_at?: string
   expires_at?: string
   stored_at: number
-  gemini_justification?: { title?: string; hero: string; runners: string[]; ts: number; locale?: string }
+  gemini_justification?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
 }
 
 // ── Search-time metadata sidecar ─────────────────────────────────────
@@ -37,6 +37,7 @@ export interface FallbackNote {
 
 export interface SearchMeta {
   fallback_notes?: { origin?: FallbackNote; destination?: FallbackNote }
+  parsed_context?: Record<string, unknown>
   stored_at: number
 }
 
@@ -260,12 +261,23 @@ export function getCachedSearchResult(searchId: string): PersistedSearchResult |
 
 export function updateGeminiJustification(
   searchId: string,
-  gemini: { title?: string; hero: string; runners: string[] },
+  gemini: { title?: string; hero: string; runners: string[]; offer_ids?: string[] },
   locale?: string,
 ): void {
   loadCache()
   const existing = resultsCache.get(searchId)
   if (!existing) return  // only attach to a cached result — don't create phantom entries
-  resultsCache.set(searchId, { ...existing, gemini_justification: { ...gemini, ts: Date.now(), locale } })
+  const offerIds = Array.isArray(gemini.offer_ids)
+    ? gemini.offer_ids.filter((offerId) => typeof offerId === 'string' && offerId.length > 0)
+    : undefined
+  resultsCache.set(searchId, {
+    ...existing,
+    gemini_justification: {
+      ...gemini,
+      offer_ids: offerIds,
+      ts: Date.now(),
+      locale,
+    },
+  })
   persistCache()
 }

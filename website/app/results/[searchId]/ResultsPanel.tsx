@@ -1136,7 +1136,7 @@ export default function ResultsPanel({
   }, [displayOffers, currency, travelerCount, tripContext, primaryTripPurpose, rankingTripPurposes, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, requireCancellation, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
 
   const currentTopOfferIds = useMemo(
-    () => globalRankTopThree.map((rankedOffer) => rankedOffer.offer.id).join(','),
+    () => globalRankTopThree.map((rankedOffer) => getOfferInstanceKey(rankedOffer.offer)).join(','),
     [globalRankTopThree],
   )
 
@@ -1162,9 +1162,9 @@ export default function ResultsPanel({
   const callGemini = useCallback((phase: 'early' | 'mid' | 'final') => {
     if (globalRankTopThree.length === 0) return
     setGeminiJustification('loading')
-    const currentOfferIds = globalRankTopThree.map((rankedOffer) => rankedOffer.offer.id)
+    const currentOfferIds = globalRankTopThree.map((rankedOffer) => getOfferInstanceKey(rankedOffer.offer))
     const currentOfferIdsKey = currentOfferIds.join(',')
-    const heroId = globalRankTopThree[0].offer.id
+    const heroId = getOfferInstanceKey(globalRankTopThree[0].offer)
     geminiStateRef.current.heroId = heroId
     geminiStateRef.current.phase = phase
     geminiStateRef.current.lastSentIds = currentOfferIdsKey
@@ -1286,7 +1286,7 @@ export default function ResultsPanel({
     if (!isSearching && geminiJustification !== null && geminiJustification !== 'loading') {
       if (restoredGeminiOfferIdsRef.current === currentTopOfferIds) {
         geminiStateRef.current.phase = 'final'
-        geminiStateRef.current.heroId = globalRankTopThree[0].offer.id
+        geminiStateRef.current.heroId = getOfferInstanceKey(globalRankTopThree[0].offer)
         geminiStateRef.current.lastSentIds = currentTopOfferIds
         geminiStateRef.current.finalFired = true
         geminiStateRef.current.finalSentIds = currentTopOfferIds
@@ -1316,7 +1316,7 @@ export default function ResultsPanel({
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
     if (progressPct < 0.30) return
-    const currentHeroId = globalRankTopThree[0].offer.id
+    const currentHeroId = getOfferInstanceKey(globalRankTopThree[0].offer)
     if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
     geminiStateRef.current.gen20Fired = true
     callGemini('mid')
@@ -1331,7 +1331,7 @@ export default function ResultsPanel({
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
     if (progressPct < 0.55) return
-    const currentHeroId = globalRankTopThree[0].offer.id
+    const currentHeroId = getOfferInstanceKey(globalRankTopThree[0].offer)
     if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
     geminiStateRef.current.gen40Fired = true
     callGemini('mid')
@@ -1346,7 +1346,7 @@ export default function ResultsPanel({
     if (globalRankTopThree.length === 0) return
     const progressPct = progress ? progress.checked / Math.max(progress.total, 1) : 0
     if (progressPct < 0.85) return
-    const currentHeroId = globalRankTopThree[0].offer.id
+    const currentHeroId = getOfferInstanceKey(globalRankTopThree[0].offer)
     if (currentHeroId === geminiStateRef.current.heroId) return  // no better deal found, skip
     geminiStateRef.current.gen70Fired = true
     callGemini('mid')
@@ -1357,7 +1357,7 @@ export default function ResultsPanel({
     if (isSearching) return
     if (geminiStateRef.current.phase === 'none') return  // Gen 1 never ran (no offers yet)
     if (globalRankTopThree.length === 0) return
-    const sentIds = globalRankTopThree.map(r => r.offer.id).join(',')
+    const sentIds = globalRankTopThree.map((rankedOffer) => getOfferInstanceKey(rankedOffer.offer)).join(',')
     if (geminiStateRef.current.finalFired) {
       // Race condition guard: one extra re-fire if top-3 changed slightly after final
       if (geminiStateRef.current.finalRefired) return
@@ -1757,7 +1757,7 @@ export default function ResultsPanel({
                     </div>
                   </div>
                 )}
-              <div className={`rf-card${isHero ? ' rf-card--hero' : ''}${isRunnerUp ? ' rf-card--runner' : ''}${!isHero && !isRunnerUp ? ' rf-card--list' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offer.id) ? ' rf-card--new' : ''}`}>
+              <div className={`rf-card${isHero ? ' rf-card--hero' : ''}${isRunnerUp ? ' rf-card--runner' : ''}${!isHero && !isRunnerUp ? ' rf-card--list' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offerKey) ? ' rf-card--new' : ''}`}>
                 {googleFlightsSavingsLabel && (
                   <div className="rf-card-badges">
                     <span className="rf-card-badge rf-card-badge--savings">{googleFlightsSavingsLabel}</span>

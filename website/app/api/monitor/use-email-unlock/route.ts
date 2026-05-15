@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { createUnlockToken } from '../../../../lib/unlock-token'
 import { setUnlockCookie } from '../../../../lib/unlock-cookie'
+import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
-const API_BASE = (
-  process.env.LETSFG_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
-).replace(/\/$/, '')
+const API_BASE = process.env.LETSFG_API_URL?.trim() || 'https://letsfg-api-qryvus4jia-uc.a.run.app'
 
 /**
  * POST /api/monitor/use-email-unlock?token=...&offer_id=...&search_id=...
@@ -30,7 +29,10 @@ export async function POST(req: NextRequest) {
 
   const backendRes = await fetch(
     `${API_BASE}/api/v1/monitors/use-email-unlock?token=${encodeURIComponent(token)}&offer_id=${encodeURIComponent(offerId)}`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      headers: withLetsfgWebsiteApiHeaders(),
+    },
   ).catch(() => null)
 
   if (!backendRes || !backendRes.ok) {

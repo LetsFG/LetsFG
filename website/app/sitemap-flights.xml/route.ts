@@ -11,20 +11,19 @@
 
 import { NextResponse } from 'next/server'
 
+import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../lib/letsfg-api'
 import { generateFlightSitemap } from '../../lib/pfp/seo/sitemap-generator.ts'
 import type { SitemapRoute } from '../../lib/pfp/seo/sitemap-generator.ts'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 3600 // 1 hour
 
-const API_BASE = (
-  process.env.LETSFG_ANALYTICS_API_URL ||
-  'https://api.letsfg.co'
-).replace(/\/$/, '')
+const API_BASE = getLetsfgAnalyticsApiBase()
 
 async function fetchRoutes(): Promise<SitemapRoute[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/flights/pfp/routes`, {
+      headers: withLetsfgWebsiteApiHeaders(),
       next: { revalidate: 3600 },
     })
     if (!res.ok) return []

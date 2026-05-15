@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import SearchPageClient from './SearchPageClient'
 import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../../lib/currency-preference'
 import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
+import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { appendProbeParam, getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../../lib/user-currency'
@@ -47,7 +48,7 @@ interface SearchResult {
   offers?: FlightOffer[]
   searched_at?: string
   expires_at?: string
-  gemini_justification?: { title?: string; hero: string; runners: string[]; ts: number; locale?: string }
+  gemini_justification?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
 }
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
@@ -144,19 +145,20 @@ export async function generateMetadata({
     }
   }
   
-  const cheapest = offers?.reduce((best, offer) => {
+  const displayOffers = offers ? deduplicateOffers(offers) : []
+  const cheapest = displayOffers.reduce((best, offer) => {
     if (!best) return offer
     return getOfferDisplayTotalPrice(offer, displayCurrency) < getOfferDisplayTotalPrice(best, displayCurrency) ? offer : best
-  }, offers?.[0])
+  }, displayOffers[0])
   const cheapestDisplayPrice = cheapest ? getOfferDisplayTotalPrice(cheapest, displayCurrency) : null
   const cheapestFormattedPrice = cheapestDisplayPrice === null ? null : formatCurrencyAmount(cheapestDisplayPrice, displayCurrency)
   const title = cheapest 
-    ? `${offers?.length} flights ${parsed.origin_name || parsed.origin} → ${parsed.destination_name || parsed.destination} from ${cheapestFormattedPrice}`
+    ? `${displayOffers.length} flights ${parsed.origin_name || parsed.origin} → ${parsed.destination_name || parsed.destination} from ${cheapestFormattedPrice}`
     : `Flights ${parsed.origin} → ${parsed.destination}`
   
   return {
     title: `${title} — LetsFG`,
-    description: `Found ${offers?.length || 0} flights. Cheapest: ${cheapestFormattedPrice} on ${cheapest?.airline}. Zero markup, raw airline prices.`,
+    description: `Found ${displayOffers.length} flights. Cheapest: ${cheapestFormattedPrice} on ${cheapest?.airline}. Zero markup, raw airline prices.`,
   }
 }
 
@@ -175,7 +177,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
   }
 
   const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result
-  const query = resultQuery?.trim() || sp?.q?.trim() || buildFallbackSearchQuery(parsed)
+  const query = sp?.q?.trim() || resultQuery?.trim() || buildFallbackSearchQuery(parsed)
 
   const isSearching = status === 'searching'
   const routeLabel = [parsed.origin_name || parsed.origin, parsed.destination_name || parsed.destination]
@@ -183,7 +185,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
     .join(' → ')
 
   const allOffers = Array.from(
-    new Map((offers || []).map(o => [o.id, o])).values()
+    new Map((offers || []).map((offer) => [getOfferInstanceKey(offer), offer])).values()
   )
 
   // JSON-LD for SEO (server-rendered once; not updated client-side)

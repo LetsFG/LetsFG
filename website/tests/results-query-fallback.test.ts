@@ -11,7 +11,7 @@ function readSource(relativePath: string): string {
   return fs.readFileSync(path.join(WEBSITE_ROOT, relativePath), 'utf8')
 }
 
-test('results page reconstructs a rerun query when completed payload has no original query', () => {
+test('results page prefers the explicit rerun query before falling back to result or parsed data', () => {
   const source = readSource('app/results/[searchId]/page.tsx')
 
   assert.match(
@@ -21,6 +21,6 @@ test('results page reconstructs a rerun query when completed payload has no orig
 
   assert.match(
     source,
-    /const query = resultQuery\?\.trim\(\) \|\| sp\?\.q\?\.trim\(\) \|\| buildFallbackSearchQuery\(parsed\)/,
+    /const query = sp\?\.q\?\.trim\(\) \|\| resultQuery\?\.trim\(\) \|\| buildFallbackSearchQuery\(parsed\)/,
   )
 })
