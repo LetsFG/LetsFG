@@ -549,6 +549,56 @@ class VuelingConnectorClient:
     # GraphQL response parsing
     # ------------------------------------------------------------------
 
+    def _build_route(
+        self,
+        segments_data: list[dict],
+        default_origin: str,
+        default_destination: str,
+        cabin_class: str,
+        journey_duration: Any = None,
+        connection_time: Any = None,
+    ) -> tuple[FlightRoute | None, list[str]]:
+        flight_segments: list[FlightSegment] = []
+        flight_numbers: list[str] = []
+
+        for seg in segments_data:
+            ident = seg.get("identifier", {})
+            carrier = ident.get("carrierCode", "VY")
+            flight_num = ident.get("identifier", "")
+            seg_des = seg.get("designator", {})
+            departure = self._parse_dt(seg_des.get("departure", ""))
+            arrival = self._parse_dt(seg_des.get("arrival", ""))
+
+            flight_numbers.append(f"{carrier}{flight_num}")
+            flight_segments.append(FlightSegment(
+                airline=carrier,
+                airline_name="Vueling",
+                flight_no=f"{carrier}{flight_num}",
+                origin=seg_des.get("origin", default_origin),
+                destination=seg_des.get("destination", default_destination),
+                departure=departure,
+                arrival=arrival,
+                duration_seconds=self._segment_duration_seconds(seg, departure, arrival),
+                cabin_class=cabin_class or "M",
+            ))
+
+        if not flight_segments:
+            return None, []
+
+        return (
+            FlightRoute(
+                segments=flight_segments,
+                total_duration_seconds=self._route_duration_seconds(
+                    segments_data,
+                    flight_segments,
+                    journey_duration,
+                    connection_time,
+                ),
+                stopovers=max(len(segments_data) - 1, 0),
+            ),
+            flight_numbers,
+        )
+
     def _parse_graphql(
         self, data: dict, req: FlightSearchRequest,
     ) -> list[FlightOffer]:
@@ -637,37 +687,17 @@ class VuelingConnectorClient:
 
             # Build segments
             segments_data = journey.get("segments", [])
-            flight_segments: list[FlightSegment] = []
-            flight_numbers: list[str] = []
-
-            for seg in segments_data:
-                ident = seg.get("identifier", {})
-                carrier = ident.get("carrierCode", "VY")
-                flight_num = ident.get("identifier", "")
-                seg_des = seg.get("designator", {})
-
-                flight_numbers.append(f"{carrier}{flight_num}")
-                flight_segments.append(FlightSegment(
-                    airline=carrier,
-                    airline_name="Vueling",
-                    flight_no=f"{carrier}{flight_num}",
-                    origin=seg_des.get("origin", origin),
-                    destination=seg_des.get("destination", destination),
-                    departure=self._parse_dt(seg_des.get("departure", "")),
-                    arrival=self._parse_dt(seg_des.get("arrival", "")),
-                    cabin_class=best_class or "M",
-                ))
-
-            if not flight_segments:
-                continue
-
-            stopovers = max(len(segments_data) - 1, 0)
-
-            route = FlightRoute(
-                segments=flight_segments,
-                total_duration_seconds=0,
-                stopovers=stopovers,
+            route, flight_numbers = self._build_route(
+                segments_data,
+                origin,
+                destination,
+                best_class,
+                journey.get("duration"),
+                journey.get("connectionTime"),
             )
+
+            if route is None:
+                continue
 
             dep_str = des.get("departure", "")
             offer_key = "_".join(flight_numbers) + f"_{dep_str[:10]}"
@@ -760,26 +790,16 @@ class VuelingConnectorClient:
             if best_price is None:
                 continue
             segments_data = journey.get("segments", [])
-            flight_segments: list[FlightSegment] = []
-            flight_numbers: list[str] = []
-            for seg in segments_data:
-                ident = seg.get("identifier", {})
-                carrier = ident.get("carrierCode", "VY")
-                flight_num = ident.get("identifier", "")
-                seg_des = seg.get("designator", {})
-                flight_numbers.append(f"{carrier}{flight_num}")
-                flight_segments.append(FlightSegment(
-                    airline=carrier, airline_name="Vueling",
-                    flight_no=f"{carrier}{flight_num}",
-                    origin=seg_des.get("origin", req.destination),
-                    destination=seg_des.get("destination", req.origin),
-                    departure=self._parse_dt(seg_des.get("departure", "")),
-                    arrival=self._parse_dt(seg_des.get("arrival", "")),
-                    cabin_class=best_class or "M",
-                ))
-            if not flight_segments:
+            route, flight_numbers = self._build_route(
+                segments_data,
+                req.destination,
+                req.origin,
+                best_class,
+                journey.get("duration"),
+                journey.get("connectionTime"),
+            )
+            if route is None:
                 continue
-            route = FlightRoute(segments=flight_segments, total_duration_seconds=0, stopovers=max(len(segments_data) - 1, 0))
             dep_str = des.get("departure", "")
             offer_key = "_".join(flight_numbers) + f"_{dep_str[:10]}_ret"
             price = round(best_price, 2)
@@ -824,6 +844,127 @@ class VuelingConnectorClient:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _segment_duration_seconds(
+        self,
+        seg: dict,
+        departure: datetime,
+        arrival: datetime,
+    ) -> int:
+        dep_utc, arr_utc = self._segment_utc_bounds(seg)
+        if dep_utc and arr_utc:
+            seconds = int((arr_utc - dep_utc).total_seconds())
+            if seconds > 0:
+                return seconds
+
+        segment_duration = self._parse_duration_seconds(seg.get("segmentDuration"))
+        if segment_duration > 0:
+            return segment_duration
+
+        return self._fallback_local_duration_seconds(departure, arrival)
+
+    def _route_duration_seconds(
+        self,
+        segments_data: list[dict],
+        flight_segments: list[FlightSegment],
+        journey_duration: Any = None,
+        connection_time: Any = None,
+    ) -> int:
+        if segments_data:
+            first_dep_utc, _ = self._segment_utc_bounds(segments_data[0])
+            _, last_arr_utc = self._segment_utc_bounds(segments_data[-1])
+            if first_dep_utc and last_arr_utc:
+                seconds = int((last_arr_utc - first_dep_utc).total_seconds())
+                if seconds > 0:
+                    return seconds
+
+        parsed_journey_duration = self._parse_duration_seconds(journey_duration)
+        if parsed_journey_duration > 0:
+            return parsed_journey_duration
+
+        segment_total = sum(segment.duration_seconds for segment in flight_segments)
+        connection_seconds = self._parse_duration_seconds(connection_time)
+        if segment_total > 0:
+            return segment_total + connection_seconds
+
+        if not flight_segments:
+            return 0
+
+        return self._fallback_local_duration_seconds(
+            flight_segments[0].departure,
+            flight_segments[-1].arrival,
+        )
+
+    def _segment_utc_bounds(self, seg: dict) -> tuple[Optional[datetime], Optional[datetime]]:
+        dep_utc: Optional[datetime] = None
+        arr_utc: Optional[datetime] = None
+
+        for leg in seg.get("legs", []):
+            leg_info = leg.get("legInfo", {})
+            if dep_utc is None:
+                dep_utc = self._parse_utc_dt(leg_info.get("departureTimeUtc"))
+            candidate_arrival = self._parse_utc_dt(leg_info.get("arrivalTimeUtc"))
+            if candidate_arrival is not None:
+                arr_utc = candidate_arrival
+
+        return dep_utc, arr_utc
+
+    @staticmethod
+    def _parse_duration_seconds(value: Any) -> int:
+        if value is None:
+            return 0
+        if isinstance(value, (list, tuple)):
+            return sum(VuelingConnectorClient._parse_duration_seconds(item) for item in value)
+        if isinstance(value, (int, float)):
+            raw = int(value)
+            if raw <= 0:
+                return 0
+            return raw * 60 if raw <= 1440 else raw
+
+        text = str(value).strip()
+        if not text:
+            return 0
+
+        iso_match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", text, re.IGNORECASE)
+        if iso_match:
+            hours = int(iso_match.group(1) or 0)
+            minutes = int(iso_match.group(2) or 0)
+            seconds = int(iso_match.group(3) or 0)
+            return hours * 3600 + minutes * 60 + seconds
+
+        if ":" in text:
+            parts = text.split(":")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                return int(parts[0]) * 3600 + int(parts[1]) * 60
+            if len(parts) == 3 and all(part.isdigit() for part in parts):
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+
+        if text.isdigit():
+            raw = int(text)
+            if raw <= 0:
+                return 0
+            return raw * 60 if raw <= 1440 else raw
+
+        return 0
+
+    @staticmethod
+    def _parse_utc_dt(s: Any) -> Optional[datetime]:
+        if not s:
+            return None
+        s = str(s).strip()
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
+
+    @staticmethod
+    def _fallback_local_duration_seconds(departure: datetime, arrival: datetime) -> int:
+        if departure.year <= 2000 or arrival.year <= 2000:
+            return 0
+        seconds = int((arrival - departure).total_seconds())
+        if seconds < 0:
+            seconds += 24 * 3600
+        return max(seconds, 0)
+
     def _build_response(
         self, offers: list[FlightOffer], req: FlightSearchRequest, elapsed: float,
     ) -> FlightSearchResponse:
@@ -848,9 +989,12 @@ class VuelingConnectorClient:
     def _parse_dt(s: Any) -> datetime:
         if not s:
             return datetime(2000, 1, 1)
-        s = str(s)
+        # Vueling designator timestamps are local airport clock times, even when
+        # they arrive with a trailing UTC suffix. Strip offsets so we preserve
+        # the user-facing local schedule and rely on UTC leg metadata for duration.
+        s = re.sub(r"(Z|[+-]\d{2}:?\d{2})$", "", str(s).strip())
         try:
-            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return datetime.fromisoformat(s)
         except (ValueError, AttributeError):
             pass
         for fmt in (
