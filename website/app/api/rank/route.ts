@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { RankedOffer, RankOffer, RankingContext } from '../../lib/rankOffers'
+import { normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
 import { updateGeminiJustification } from '../../../lib/results-cache'
+import { normalizeTripPurposes } from '../../lib/trip-purpose'
 
 // ── Request / response types ──────────────────────────────────────────────
 interface RankedOfferPayload {
@@ -35,6 +37,13 @@ interface RankRequestBody {
    * nearest hub (e.g. user typed Pretoria → we searched JNB). Gemini must
    * surface this honestly in its justification so the user understands. */
   fallbackNotes?: { origin?: FallbackNotePayload; destination?: FallbackNotePayload }
+}
+
+interface RankResponseBody {
+  title?: string
+  hero: string
+  runners: string[]
+  offer_ids: string[]
 }
 
 interface GeminiResponse {
@@ -209,14 +218,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Mask airline names — Gemini must not reference specific carriers in its output
   const FLIGHT_LABELS = ['Flight 1', 'Flight 2', 'Flight 3']
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: context.tripPurpose,
+    tripPurposes: context.tripPurposes,
+  })
 
   // Build a human-readable trip description from context signals
-  const tripParts = [
+  const tripParts = Array.from(new Set([
     context.tripContext && context.tripContext !== 'solo' && context.tripContext !== 'group'
       ? context.tripContext.replace(/_/g, ' ')
       : '',
-    context.tripPurpose ? context.tripPurpose.replace(/_/g, ' ') : '',
-  ].filter(Boolean)
+    ...tripPurposes.map((purpose) => purpose.replace(/_/g, ' ')),
+  ].filter(Boolean)))
   const tripDesc = tripParts.length > 0 ? tripParts.join(' / ') : 'solo trip'
 
   const stopsLabel = h.stops === 0 ? 'direct' : h.stops === 1 ? '1 stop' : `${h.stops} stops`
@@ -253,7 +266,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const dispBag = fxConvert(hBd.bag, h.currency, hDispCur)
   const dispSeat = fxConvert(hBd.seat, h.currency, hDispCur)
   const hTotal = fxConvert(hBd.total, h.currency, hDispCur)
-  const dispGoogle = h.google_flights_price ? fxConvert(h.google_flights_price, h.currency, hDispCur) : 0
+  const normalizedGoogle = normalizeGoogleFlightsComparisonPrice(h.google_flights_price, context.travelerCount)
+  const dispGoogle = normalizedGoogle ? fxConvert(normalizedGoogle, h.currency, hDispCur) : 0
   const savingsLine = dispGoogle && dispGoogle > hTotal + 8
     ? `\n- Saves ${Math.round(dispGoogle - hTotal)} ${hDispCur} vs Google Flights (Google charges ~${Math.round(dispGoogle)} ${hDispCur})`
     : ''
@@ -331,6 +345,13 @@ The user asked for direct flights. Search is complete and there are no direct fl
 - If the user asked for direct flights, acknowledge that this winner is a compromise and explain why it still ranks best.`
     : ''
 
+  const fareClaimGuardBlock = `
+⚠️ CRITICAL FARE FACT CHECK:
+- Cabin class is NOT provided in this prompt data.
+- You MUST NOT mention economy, premium economy, business class, first class, coach, or any cabin label anywhere.
+- Refundability/flexibility is ONLY known when it is explicitly stated in the provided reasons or tradeoffs.
+- If refundability is not explicitly stated there, do NOT call the fare refundable, flexible, cancellable, or changeable.`
+
   // ── Nearby-airport fallback context ────────────────────────────────────
   // When the user typed a city without a commercial airport (Pretoria, The
   // Hague, Bonn, Vatican, Mecca, etc.) /api/search swapped it for the
@@ -358,7 +379,7 @@ The user does NOT know this swap happened. You MUST open the hero justification 
     ? `\nLANGUAGE: You MUST write your entire response in ${languageName}. Do not use English.`
     : ''
 
-  const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${noDirectsBlock}${heroDirectGuardBlock}
+  const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${noDirectsBlock}${heroDirectGuardBlock}${fareClaimGuardBlock}
 
 USER'S SEARCH: "${rawQuery}"
 TRIP: ${tripDesc}${prefs ? ` | ${prefs}` : ''}
@@ -480,12 +501,25 @@ Return ONLY valid JSON, no markdown, no code blocks:
         .replace(/\bdirect\b/gi, `${h.stops} stop${h.stops > 1 ? 's' : ''}`)
     }
 
-    const result = {
-      title: typeof parsed.title === 'string' && parsed.title.length > 3 ? scrubDirectClaims(parsed.title.trim()) : undefined,
-      hero: scrubDirectClaims(parsed.hero.trim()),
+    const scrubCabinClaims = (text: string): string => text
+      .replace(/\bbusiness[-\s]?class\b/gi, 'flight')
+      .replace(/\bpremium\s+economy\b/gi, 'flight')
+      .replace(/\beconomy[-\s]?class\b/gi, 'flight')
+      .replace(/\bfirst[-\s]?class\b/gi, 'flight')
+      .replace(/\bcoach\b/gi, 'flight')
+      .replace(/\bcabin\s+class\b/gi, 'fare')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+
+    const scrubClaims = (text: string): string => scrubCabinClaims(scrubDirectClaims(text))
+
+    const result: RankResponseBody = {
+      title: typeof parsed.title === 'string' && parsed.title.length > 3 ? scrubClaims(parsed.title.trim()) : undefined,
+      hero: scrubClaims(parsed.hero.trim()),
       runners: Array.isArray(parsed.runners)
-        ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => r.trim())
+        ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => scrubClaims(r.trim()))
         : [],
+      offer_ids: topOffers.map((entry) => entry.offer.id),
     }
 
     // Persist to server-side cache so any user with the shared link gets this text.

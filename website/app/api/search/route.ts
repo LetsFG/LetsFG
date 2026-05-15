@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordLocalSearch } from '../../lib/stats'
-import { parseNLQuery, resolveCity } from '../../lib/searchParsing'
+import { parseNLQuery } from '../../lib/searchParsing'
+import { applyVertexIntent } from '../../lib/vertex-intent'
 import { vertexParse } from '../../lib/vertex-parse'
 import { lookupNearbyAirport, resolveNearbyAirport, isUsableIata, type NearbyAirportFallback } from '../../lib/nearby-airports'
 import { startWebSearch } from '../../../lib/fsw-search'
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     let aiDestinationLon: number | undefined
     // AI intent fields extracted by Gemini — forwarded to client in `parsed`
     let _aiIntent: Record<string, unknown> = {}
+    let _parsedContext: Record<string, unknown> = {}
 
     if (body.origin && body.destination && body.date_from) {
       origin = (body.origin as string).toUpperCase().trim()
@@ -91,69 +93,31 @@ export async function POST(request: NextRequest) {
 
       // ── Gemini: city resolution + intent extraction ────────────────────────────────────────
       // Promise was fired at top; synchronous ops above absorbed most latency.
-      const originIsGhost = origin !== undefined && !isUsableIata(origin)
-      const destIsGhost = destination !== undefined && !isUsableIata(destination)
       const _ai = await _aiPromise
 
       if (_ai) {
-        aiOriginCity = _ai.origin_city ?? undefined
-        aiDestinationCity = _ai.destination_city && _ai.destination_city !== 'ANYWHERE'
-          ? _ai.destination_city
-          : undefined
-        aiOriginLat = typeof _ai.origin_lat === 'number' ? _ai.origin_lat : undefined
-        aiOriginLon = typeof _ai.origin_lon === 'number' ? _ai.origin_lon : undefined
-        aiDestinationLat = typeof _ai.destination_lat === 'number' ? _ai.destination_lat : undefined
-        aiDestinationLon = typeof _ai.destination_lon === 'number' ? _ai.destination_lon : undefined
-
-        // City fallback: only when regex couldn't resolve or found a ghost IATA
-        if (!origin || !destination || originIsGhost || destIsGhost) {
-          if (!origin && _ai.origin_city) {
-            const aiOrigin = resolveCity(_ai.origin_city)
-            if (aiOrigin) {
-              origin = aiOrigin.code
-              originName = aiOrigin.name
-            }
-          }
-          if (!destination && _ai.destination_city && _ai.destination_city !== 'ANYWHERE') {
-            const aiDest = resolveCity(_ai.destination_city)
-            if (aiDest) {
-              destination = aiDest.code
-              destinationName = aiDest.name
-            }
-          }
-          if (!viaIata && _ai.via_city) {
-            const aiVia = resolveCity(_ai.via_city)
-            if (aiVia) viaIata = aiVia.code
-          }
-        }
-
-        // Intent: AI passengers override regex (AI is better at semantic phrasing)
-        if (_ai.passengers && _ai.passengers > 0) adults = _ai.passengers
-
-        // Build intent payload forwarded to the client results page
-        if (_ai.passengers)              _aiIntent.ai_passengers        = _ai.passengers
-        if (_ai.depart_after)            _aiIntent.ai_depart_after      = _ai.depart_after
-        if (_ai.depart_before)           _aiIntent.ai_depart_before     = _ai.depart_before
-        if (_ai.direct_only != null)     _aiIntent.ai_direct_only       = _ai.direct_only
-        if (_ai.bags_included != null)   _aiIntent.ai_bags_included     = _ai.bags_included
-        if (_ai.cabin_class)             _aiIntent.ai_cabin_class       = _ai.cabin_class
-        if (_ai.sort_by)                 _aiIntent.ai_sort_by           = _ai.sort_by
-        if (_ai.trip_purpose)            _aiIntent.ai_trip_purpose      = _ai.trip_purpose
-        if (_ai.dep_time_pref)           _aiIntent.ai_dep_time_pref     = _ai.dep_time_pref
-        if (_ai.ret_time_pref)           _aiIntent.ai_ret_time_pref     = _ai.ret_time_pref
-        if (_ai.passenger_context)       _aiIntent.ai_passenger_context = _ai.passenger_context
-
-        // Date fallback — Gemini fills gaps the regex parser couldn't handle
-        // (exotic phrasings, edge cases, future language the regex doesn't cover)
-        if ((!dateFrom || parsed.date_is_default) && _ai.departure_date) dateFrom = _ai.departure_date
-        if (!returnDate && _ai.return_date) returnDate = _ai.return_date
-
-        // Final sanity check: never accept a return_date on/before departure.
-        // Gemini occasionally hallucinates a past return; the regex parser can
-        // also be tripped by ambiguous phrasing. Either way, displaying
-        // "Jun 1 – May 25" to the user is worse than just dropping the return.
-        if (returnDate && dateFrom && returnDate <= dateFrom) returnDate = undefined
+        const applied = applyVertexIntent(parsed, _ai, adults)
+        origin = applied.origin
+        originName = applied.originName
+        destination = applied.destination
+        destinationName = applied.destinationName
+        viaIata = applied.viaIata
+        dateFrom = applied.dateFrom
+        returnDate = applied.returnDate
+        adults = applied.adults
+        if (!cabin && applied.cabin) cabin = applied.cabin
+        aiOriginCity = applied.aiOriginCity
+        aiDestinationCity = applied.aiDestinationCity
+        aiOriginLat = applied.aiOriginLat
+        aiOriginLon = applied.aiOriginLon
+        aiDestinationLat = applied.aiDestinationLat
+        aiDestinationLon = applied.aiDestinationLon
+        Object.assign(_aiIntent, applied.aiIntent)
       }
+
+      if (parsed.min_trip_days !== undefined) _parsedContext.min_trip_days = parsed.min_trip_days
+      if (parsed.max_trip_days !== undefined) _parsedContext.max_trip_days = parsed.max_trip_days
+      if (parsed.require_cancellation) _parsedContext.require_cancellation = true
     } else {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
     }
@@ -259,10 +223,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Search service unavailable' }, { status: 502 })
     }
 
+    const parsedResponse = {
+      origin,
+      origin_name: originName,
+      destination,
+      destination_name: destinationName,
+      date: dateFrom,
+      return_date: returnDate,
+      passengers: adults,
+      ...(preferredStops !== undefined ? { stops: preferredStops } : {}),
+      ...(cabin ? { cabin } : {}),
+      ..._parsedContext,
+      ..._aiIntent,
+      ...(fallbackNotes.origin || fallbackNotes.destination
+        ? { fallback_notes: fallbackNotes }
+        : {}),
+    }
+
     // Persist any fallback notes so /api/results can merge them into the
     // poll response (FSW doesn't know about our website-side resolution).
-    if (fallbackNotes.origin || fallbackNotes.destination) {
-      setSearchMeta(searchId, { fallback_notes: fallbackNotes })
+    if (fallbackNotes.origin || fallbackNotes.destination || Object.keys(parsedResponse).length > 0) {
+      setSearchMeta(searchId, {
+        ...(fallbackNotes.origin || fallbackNotes.destination ? { fallback_notes: fallbackNotes } : {}),
+        parsed_context: parsedResponse,
+      })
     }
 
     return NextResponse.json({
@@ -274,23 +258,7 @@ export async function POST(request: NextRequest) {
       // otherwise the load balancer routes the poll to a different FSW
       // instance, which returns 404 and the UI shows "Search expired".
       ...(fswSession ? { fsw_session: fswSession } : {}),
-      parsed: {
-        origin,
-        origin_name: originName,
-        destination,
-        destination_name: destinationName,
-        date: dateFrom,
-        return_date: returnDate,
-        passengers: adults,
-        // Surface the user's stop preference (e.g. "direct flights only" → 0)
-        // so the UI can apply it as a ranking signal even when we intentionally
-        // omit it from the backend filter (see comment above on max_stops=0).
-        ...(preferredStops !== undefined ? { stops: preferredStops } : {}),
-        ...(cabin ? { cabin } : {}),
-        ...(fallbackNotes.origin || fallbackNotes.destination
-          ? { fallback_notes: fallbackNotes }
-          : {}),        // Gemini-extracted intent fields (set when AI parse succeeded)
-        ..._aiIntent,      },
+      parsed: parsedResponse,
     })
   } catch (error) {
     console.error('Search error:', error)

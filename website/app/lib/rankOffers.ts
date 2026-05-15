@@ -11,6 +11,9 @@
  *   // ranked[0].offer is the best pick, ranked[0].heroFacts explains why
  */
 
+import { normalizeGoogleFlightsComparisonPrice } from '../../lib/google-flights-savings'
+import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './trip-purpose'
+
 // ── Minimal offer shape (subset of FlightOffer in ResultsPanel) ───────────
 export interface RankOffer {
   id: string
@@ -30,21 +33,34 @@ export interface RankOffer {
   duration_minutes: number
   stops: number
   segments?: Array<{ layover_minutes?: number }>
-  inbound?: { departure_time?: string }
+  inbound?: {
+    departure_time?: string
+    arrival_time?: string
+    origin?: string
+    destination?: string
+    stops?: number
+  }
   ancillaries?: {
     checked_bag?: { included?: boolean; price?: number; currency?: string }
     seat_selection?: { included?: boolean; price?: number; currency?: string }
+  }
+  conditions?: {
+    refund_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+    change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
   }
 }
 
 export interface RankingContext {
   tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
-  tripPurpose?: 'honeymoon' | 'business' | 'ski' | 'beach' | 'city_break' | 'family_holiday' | 'graduation' | 'concert_festival' | 'sports_event' | 'spring_break'
+  tripPurpose?: TripPurpose
+  tripPurposes?: ReadonlyArray<TripPurpose>
+  travelerCount?: number
   depTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   retTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   arrivalTimePref?: 'morning' | 'afternoon' | 'evening'
   requireBag?: boolean
   requireSeat?: boolean
+  requireCancellation?: boolean
   preferredAirline?: string
   preferQuickFlight?: boolean
   /** User said "direct" or "nonstop" — strongly boost stops weight but don't filter.
@@ -78,6 +94,18 @@ export interface RankedOffer<T extends RankOffer = RankOffer> {
   breakdown: ScoreBreakdown
   heroFacts: string[] // key reasons why this offer was selected
   tradeoffs: string[] // what's not ideal (for runner-up explanations)
+}
+
+export function getOfferInstanceKey(offer: Pick<RankOffer, 'id' | 'departure_time' | 'arrival_time' | 'stops' | 'inbound'>): string {
+  return [
+    offer.id,
+    offer.departure_time,
+    offer.arrival_time,
+    offer.stops,
+    offer.inbound?.departure_time ?? '',
+    offer.inbound?.arrival_time ?? '',
+    offer.inbound?.stops ?? '',
+  ].join('|')
 }
 
 // ── Weight profiles ────────────────────────────────────────────────────────
@@ -151,6 +179,68 @@ const W: Record<string, Weights> = {
   },
 }
 
+const PURPOSE_WEIGHT_PROFILES: Record<TripPurpose, Weights> = {
+  honeymoon: W.honeymoon,
+  business: W.business_traveler,
+  ski: W.ski,
+  beach: W.beach,
+  city_break: W.city_break,
+  family_holiday: W.family,
+  graduation: W.city_break,
+  concert_festival: W.city_break,
+  sports_event: W.city_break,
+  spring_break: W.beach,
+}
+
+const EARLY_ARRIVAL_PURPOSES = new Set<TripPurpose>([
+  'city_break',
+  'beach',
+  'graduation',
+  'concert_festival',
+  'sports_event',
+  'spring_break',
+])
+
+function blendWeights(profiles: ReadonlyArray<Weights>): Weights {
+  if (profiles.length === 0) return { ...W.default }
+
+  const blended: Weights = {
+    price: 0,
+    stops: 0,
+    duration: 0,
+    depTime: 0,
+    arrivalTime: 0,
+    baggage: 0,
+    savings: 0,
+    comfortHours: 0,
+    layover: 0,
+  }
+
+  for (const profile of profiles) {
+    blended.price += profile.price
+    blended.stops += profile.stops
+    blended.duration += profile.duration
+    blended.depTime += profile.depTime
+    blended.arrivalTime += profile.arrivalTime
+    blended.baggage += profile.baggage
+    blended.savings += profile.savings
+    blended.comfortHours += profile.comfortHours
+    blended.layover += profile.layover
+  }
+
+  return {
+    price: blended.price / profiles.length,
+    stops: blended.stops / profiles.length,
+    duration: blended.duration / profiles.length,
+    depTime: blended.depTime / profiles.length,
+    arrivalTime: blended.arrivalTime / profiles.length,
+    baggage: blended.baggage / profiles.length,
+    savings: blended.savings / profiles.length,
+    comfortHours: blended.comfortHours / profiles.length,
+    layover: blended.layover / profiles.length,
+  }
+}
+
 function resolveWeights(ctx: RankingContext): Weights {
   // When the user asked for BOTH cheapest AND direct, use the combined profile so stops
   // still dominate (direct first) while price rules within the same stop tier.
@@ -159,15 +249,16 @@ function resolveWeights(ctx: RankingContext): Weights {
   // preferCheapest alone — user just wants the lowest price, stops don't matter much
   if (ctx.preferCheapest) return { ...W.cheapest }
 
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+  const purposeProfiles = tripPurposes.map((purpose) => PURPOSE_WEIGHT_PROFILES[purpose])
+
   // tripPurpose takes precedence for specific categories
   const w: Weights =
-    ctx.preferQuickFlight             ? { ...W.quick_flight }
-    : ctx.tripPurpose === 'honeymoon'     ? { ...W.honeymoon }
-    : ctx.tripPurpose === 'ski'         ? { ...W.ski }
-    : ctx.tripPurpose === 'beach'       ? { ...W.beach }
-    : ctx.tripPurpose === 'city_break'  ? { ...W.city_break }
-    : ctx.tripPurpose === 'family_holiday' ? { ...W.family }
-    : ctx.tripPurpose === 'business'    ? { ...W.business_traveler }
+    ctx.preferQuickFlight                ? { ...W.quick_flight }
+    : purposeProfiles.length > 0         ? blendWeights(purposeProfiles)
     : ctx.tripContext === 'business_traveler' ? { ...W.business_traveler }
     : ctx.tripContext === 'family'      ? { ...W.family }
     : ctx.tripContext === 'couple'      ? { ...W.couple }
@@ -246,50 +337,48 @@ function retDepTimeMismatchMultiplier(offer: RankOffer, retTimePref: string | un
   return 0.70                  // clearly wrong time window (softer than outbound 0.55)
 }
 
-/**
- * Preference match score — purely preference-based, no price.
- * Returns 0–1, higher = better match to the user's stated time/stops prefs.
- * Used to identify the "ideal trip" hero candidate, bypassing price bias.
- *
- * Only called when ctx has at least one of depTimePref / retTimePref / preferDirect.
- */
-function preferenceMatchScore(offer: RankOffer, ctx: RankingContext): number {
-  const parts: number[] = []
-
-  if (ctx.depTimePref) {
-    parts.push(scoreDepTime(isoToMins(offer.departure_time), ctx.depTimePref))
-  }
-
-  if (ctx.retTimePref) {
-    const retDep = offer.inbound?.departure_time
-    // If return info is absent when a return pref is stated, treat as unknown (0.40)
-    parts.push(retDep ? scoreDepTime(isoToMins(retDep), ctx.retTimePref) : 0.40)
-  }
-
-  if (ctx.preferDirect) {
-    parts.push(scoreStops(offer.stops))
-  }
-
-  if (parts.length === 0) return 0.5
-  return parts.reduce((a, b) => a + b, 0) / parts.length
-}
-
 /** Remove near-duplicate offers: when multiple connectors return the same physical
  *  flight (e.g. Ryanair FR1234 from both the direct connector and Kiwi/Skyscanner),
  *  keep only the cheapest. Two offers are considered identical only when they share
- *  the same calendar date, route, airline, departure/arrival 30-min buckets, and
- *  stop count. The date + route + airline guards prevent collapsing genuinely
- *  different flights (e.g. Mon 9am vs Tue 9am, or BA + Iberia codeshare on the
- *  same minute) into a single offer. */
-function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
+ *  the same calendar date, route, airline, outbound timing buckets, inbound timing
+ *  buckets (for round-trips), stop counts, and core fare conditions. Including the
+ *  inbound leg prevents collapsing distinct return options for the same outbound. */
+export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
   const bucket = (iso: string) => Math.round(isoToMins(iso) / 30)
   const dayKey = (iso: string | undefined) => {
     if (!iso) return ''
     const d = new Date(iso)
     return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
   }
-  const key = (o: T) =>
-    `${dayKey(o.departure_time)}_${(o.origin ?? '').toUpperCase()}_${(o.destination ?? '').toUpperCase()}_${(o.airline ?? '').toUpperCase()}_${bucket(o.departure_time)}_${bucket(o.arrival_time)}_${o.stops}`
+  const legKey = (
+    departureTime: string | undefined,
+    arrivalTime: string | undefined,
+    origin: string | undefined,
+    destination: string | undefined,
+    stops: number | undefined,
+  ) => [
+    dayKey(departureTime),
+    (origin ?? '').toUpperCase(),
+    (destination ?? '').toUpperCase(),
+    departureTime ? bucket(departureTime) : '',
+    arrivalTime ? bucket(arrivalTime) : '',
+    stops ?? '',
+  ].join('_')
+  const key = (o: T) => [
+    (o.airline ?? '').toUpperCase(),
+    legKey(o.departure_time, o.arrival_time, o.origin, o.destination, o.stops),
+    o.inbound
+      ? legKey(
+        o.inbound.departure_time,
+        o.inbound.arrival_time,
+        o.inbound.origin,
+        o.inbound.destination,
+        o.inbound.stops,
+      )
+      : 'oneway',
+    o.conditions?.refund_before_departure ?? 'unknown',
+    o.conditions?.change_before_departure ?? 'unknown',
+  ].join('_')
   // First pass: find the cheapest effective price in each bucket
   const bucketMin = new Map<string, number>()
   for (const o of offers) {
@@ -400,13 +489,10 @@ function scoreDepTime(depMins: number, pref: string | undefined): number {
 function scoreArrivalTime(
   arrMins: number,
   pref: string | undefined,
-  tripPurpose: string | undefined,
+  tripPurposes: ReadonlyArray<TripPurpose> | undefined,
   dayOffset: number = 0,
 ): number {
-  const isExploring = (
-    tripPurpose === 'city_break' || tripPurpose === 'beach' ||
-    tripPurpose === 'spring_break' || tripPurpose === 'concert_festival'
-  )
+  const isExploring = (tripPurposes ?? []).some((purpose) => EARLY_ARRIVAL_PURPOSES.has(purpose))
   if (!pref && !isExploring) return 0.50  // neutral when no preference & not time-sensitive
 
   let base: number
@@ -478,8 +564,8 @@ function scoreBaggage(offer: RankOffer, requireBag: boolean | undefined): number
   return 0.12
 }
 
-function scoreSavings(offer: RankOffer): number {
-  const gfp = offer.google_flights_price
+function scoreSavings(offer: RankOffer, travelerCount: number | undefined): number {
+  const gfp = normalizeGoogleFlightsComparisonPrice(offer.google_flights_price, travelerCount)
   if (!gfp || gfp <= 0) return 0.50  // neutral — no comparison available
 
   const pct = (gfp - offer.price) / gfp
@@ -517,6 +603,16 @@ function scoreLayover(offer: RankOffer): number {
   return 0.04                     // 11h+ layover: borderline unusable
 }
 
+function refundabilityMultiplier(offer: RankOffer, requireCancellation: boolean | undefined): number {
+  if (!requireCancellation) return 1.0
+
+  const refundability = offer.conditions?.refund_before_departure
+  if (refundability === 'allowed') return 1.0
+  if (refundability === 'allowed_with_fee') return 0.82
+  if (refundability === 'unknown' || refundability === undefined) return 0.58
+  return 0.08
+}
+
 // ── Fact generation ────────────────────────────────────────────────────────
 function generateFacts(
   offer: RankOffer,
@@ -524,6 +620,7 @@ function generateFacts(
   refPrice: number,
   fastestMins: number,
   ctx: RankingContext,
+  travelerCount: number | undefined,
   isHero: boolean,
 ): { heroFacts: string[]; tradeoffs: string[] } {
   const heroFacts: string[] = []
@@ -560,13 +657,14 @@ function generateFacts(
   }
 
   // ── Google Flights savings ───────────────────────────────────────────────
-  if (offer.google_flights_price && offer.google_flights_price > offer.price + 8) {
-    const saving = Math.round(offer.google_flights_price - offer.price)
+  const normalizedGooglePrice = normalizeGoogleFlightsComparisonPrice(offer.google_flights_price, travelerCount)
+  if (normalizedGooglePrice && normalizedGooglePrice > offer.price + 8) {
+    const saving = Math.round(normalizedGooglePrice - offer.price)
     heroFacts.push(
-      `${saving} ${cur} cheaper than Google Flights (Google shows ${Math.round(offer.google_flights_price)} ${cur})`
+      `${saving} ${cur} cheaper than Google Flights (Google shows ${Math.round(normalizedGooglePrice)} ${cur})`
     )
-  } else if (offer.google_flights_price && offer.price > offer.google_flights_price + 8) {
-    const extra = Math.round(offer.price - offer.google_flights_price)
+  } else if (normalizedGooglePrice && offer.price > normalizedGooglePrice + 8) {
+    const extra = Math.round(offer.price - normalizedGooglePrice)
     tradeoffs.push(`${extra} ${cur} more expensive than Google Flights shows`)
   }
 
@@ -596,7 +694,11 @@ function generateFacts(
 
   // ── Arrival time ─────────────────────────────────────────────────────────
   const arrMins = isoToMins(offer.arrival_time)
-  const isExploring = ctx.tripPurpose === 'city_break' || ctx.tripPurpose === 'beach'
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+  const isExploring = tripPurposes.some((purpose) => EARLY_ARRIVAL_PURPOSES.has(purpose))
   if (bd.arrivalTime >= 0.88) {
     heroFacts.push(
       `arrives ${formatMins(arrMins)}${isExploring ? ' — full day to explore' : ''}`
@@ -618,6 +720,18 @@ function generateFacts(
     )
   } else if (ctx.requireBag && bagFee === null && !bagIncluded) {
     tradeoffs.push('bag fee unknown — check at booking')
+  }
+
+  // ── Refundability ───────────────────────────────────────────────────────
+  const refundability = offer.conditions?.refund_before_departure
+  if (ctx.requireCancellation && refundability === 'allowed') {
+    heroFacts.push('refundable before departure')
+  } else if (ctx.requireCancellation && refundability === 'allowed_with_fee') {
+    tradeoffs.push('refunds allowed with a fee')
+  } else if (ctx.requireCancellation && refundability === 'not_allowed') {
+    tradeoffs.push('not refundable before departure')
+  } else if (ctx.requireCancellation) {
+    tradeoffs.push('refund policy not shown in the fare data')
   }
 
   // ── Preferred airline ────────────────────────────────────────────────────
@@ -683,6 +797,10 @@ export function rankOffers<T extends RankOffer>(
   const [dLo, dHi] = p5p95(durations)
   const cheapestPrice = Math.min(...prices)
   const fastestMins = Math.min(...durations)
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
 
   // Score every offer
   const scored: RankedOffer<T>[] = deduped.map(offer => {
@@ -696,9 +814,9 @@ export function rankOffers<T extends RankOffer>(
       stops:        scoreStops(offer.stops),
       duration:     scoreDuration(offer.duration_minutes, dLo, dHi),
       depTime:      scoreDepTime(depMins, ctx.depTimePref),
-      arrivalTime:  scoreArrivalTime(arrMins, ctx.arrivalTimePref, ctx.tripPurpose, dayOffset),
+      arrivalTime:  scoreArrivalTime(arrMins, ctx.arrivalTimePref, tripPurposes, dayOffset),
       baggage:      scoreBaggage(offer, ctx.requireBag),
-      savings:      scoreSavings(offer),
+      savings:      scoreSavings(offer, ctx.travelerCount),
       comfortHours: scoreComfortHours(depMins),
       layover:      scoreLayover(offer),
     }
@@ -721,38 +839,31 @@ export function rankOffers<T extends RankOffer>(
       * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
       * depTimeMismatchMultiplier(depMins, ctx.depTimePref)
       * retDepTimeMismatchMultiplier(offer, ctx.retTimePref)
+      * refundabilityMultiplier(offer, ctx.requireCancellation)
 
     return { offer, score, rank: 0, breakdown: bd, heroFacts: [], tradeoffs: [] }
   })
 
-  // Sort best-first
-  scored.sort((a, b) => b.score - a.score)
+  // Sort best-first with deterministic tie-breakers so refreshes don't reshuffle
+  // equivalent offers just because upstream sources arrived in a different order.
+  scored.sort((a, b) => {
+    const scoreDelta = b.score - a.score
+    if (Math.abs(scoreDelta) > 0.001) return scoreDelta
 
-  // ── Preference-winner hero override ─────────────────────────────────────
-  // When the user has stated explicit time/stops preferences, the "ideal trip"
-  // is the flight that best satisfies those preferences — not necessarily the
-  // one with the highest weighted score (which includes premiumPenalty that
-  // can suppress an expensive but preference-perfect flight).
-  //
-  // Among flights within 0.05 of the top preference score (essentially tied),
-  // the cheaper one wins. This makes the hero the cheapest flight that well
-  // matches the user's stated preferences.
-  if (ctx.depTimePref || ctx.retTimePref) {
-    const withPref = scored.map(s => ({
-      item: s,
-      prefScore: preferenceMatchScore(s.offer, ctx),
-      ep: effectivePrice(s.offer),
-    }))
-    const maxPref = Math.max(...withPref.map(w => w.prefScore))
-    const ideal = withPref
-      .filter(w => w.prefScore >= maxPref - 0.05)
-      .sort((a, b) => a.ep - b.ep)[0]
-    const heroIdx = scored.findIndex(s => s.offer.id === ideal.item.offer.id)
-    if (heroIdx > 0) {
-      const [hero] = scored.splice(heroIdx, 1)
-      scored.unshift(hero)
-    }
-  }
+    const priceDelta = effectivePrice(a.offer) - effectivePrice(b.offer)
+    if (Math.abs(priceDelta) > 0.001) return priceDelta
+
+    const stopsDelta = a.offer.stops - b.offer.stops
+    if (stopsDelta !== 0) return stopsDelta
+
+    const durationDelta = a.offer.duration_minutes - b.offer.duration_minutes
+    if (durationDelta !== 0) return durationDelta
+
+    const depDelta = isoToMins(a.offer.departure_time) - isoToMins(b.offer.departure_time)
+    if (depDelta !== 0) return depDelta
+
+    return a.offer.id.localeCompare(b.offer.id)
+  })
 
   // Assign 1-based ranks and generate human-readable facts
   // Hero compares vs cheapest in set; runners compare vs the hero price
@@ -762,7 +873,7 @@ export function rankOffers<T extends RankOffer>(
     const isHero = i === 0
     const refPrice = isHero ? cheapestPrice : heroPrice
     const { heroFacts, tradeoffs } = generateFacts(
-      scored[i].offer, scored[i].breakdown, refPrice, fastestMins, ctx, isHero,
+      scored[i].offer, scored[i].breakdown, refPrice, fastestMins, ctx, ctx.travelerCount, isHero,
     )
     scored[i].heroFacts = heroFacts
     scored[i].tradeoffs = tradeoffs
@@ -804,7 +915,9 @@ export function selectDiverseTop<T extends RankOffer>(
   // Not enough diverse options — fill remaining slots with next-best
   for (const candidate of ranked.slice(1)) {
     if (result.length >= n) break
-    if (!result.some(r => r.offer.id === candidate.offer.id)) result.push(candidate)
+    if (!result.some(r => getOfferInstanceKey(r.offer) === getOfferInstanceKey(candidate.offer))) {
+      result.push(candidate)
+    }
   }
 
   return result
@@ -816,16 +929,20 @@ export function selectDiverseTop<T extends RankOffer>(
  * if the default generic profile is used.
  */
 export function getProfileLabel(ctx: RankingContext): string | null {
-  if (ctx.tripPurpose === 'honeymoon')         return 'profileHoneymoon'
-  if (ctx.tripPurpose === 'business')          return 'profileBusiness'
-  if (ctx.tripPurpose === 'ski')               return 'profileSki'
-  if (ctx.tripPurpose === 'beach')             return 'profileBeach'
-  if (ctx.tripPurpose === 'city_break')        return 'profileCityBreak'
-  if (ctx.tripPurpose === 'family_holiday')    return 'profileFamilyHoliday'
-  if (ctx.tripPurpose === 'graduation')        return 'profileGraduation'
-  if (ctx.tripPurpose === 'concert_festival')  return 'profileFestival'
-  if (ctx.tripPurpose === 'sports_event')      return 'profileSports'
-  if (ctx.tripPurpose === 'spring_break')      return 'profileSpringBreak'
+  const tripPurpose = getPrimaryTripPurpose({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+  if (tripPurpose === 'honeymoon')         return 'profileHoneymoon'
+  if (tripPurpose === 'business')          return 'profileBusiness'
+  if (tripPurpose === 'ski')               return 'profileSki'
+  if (tripPurpose === 'beach')             return 'profileBeach'
+  if (tripPurpose === 'city_break')        return 'profileCityBreak'
+  if (tripPurpose === 'family_holiday')    return 'profileFamilyHoliday'
+  if (tripPurpose === 'graduation')        return 'profileGraduation'
+  if (tripPurpose === 'concert_festival')  return 'profileFestival'
+  if (tripPurpose === 'sports_event')      return 'profileSports'
+  if (tripPurpose === 'spring_break')      return 'profileSpringBreak'
   if (ctx.tripContext === 'family')            return 'profileFamily'
   if (ctx.tripContext === 'couple')            return 'profileCouple'
   if (ctx.tripContext === 'business_traveler') return 'profileBusinessLabel'

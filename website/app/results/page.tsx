@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, cache } from 'react'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -14,7 +14,8 @@ import {
   resolveSearchCurrency,
   type CurrencyCode,
 } from '../../lib/currency-preference'
-import { parseNLQuery, resolveCity, type ParsedQuery } from '../lib/searchParsing'
+import { parseNLQuery, type ParsedQuery } from '../lib/searchParsing'
+import { applyVertexIntent } from '../lib/vertex-intent'
 import { vertexParse } from '../lib/vertex-parse'
 import { lookupNearbyAirport, resolveNearbyAirport, isUsableIata } from '../lib/nearby-airports'
 import { setSearchMeta, type FallbackNote } from '../../lib/results-cache'
@@ -75,6 +76,7 @@ interface RawSegment {
   destination: string
   departure: string
   arrival: string
+  duration_seconds?: number
   flight_no?: string
   flight_number?: string
   airline?: string
@@ -104,6 +106,27 @@ interface RawOffer {
     stopovers: number
     total_duration_seconds?: number
   }
+}
+
+type StartFSWSearchParsed = Pick<
+  ParsedQuery,
+  'origin' | 'origin_name' | 'destination' | 'destination_name' | 'date' | 'return_date' | 'min_trip_days' | 'max_trip_days' | 'adults' | 'stops' | 'cabin'
+>
+
+function buildStartFSWSearchKey(parsed: StartFSWSearchParsed): string {
+  return JSON.stringify({
+    origin: parsed.origin,
+    origin_name: parsed.origin_name,
+    destination: parsed.destination,
+    destination_name: parsed.destination_name,
+    date: parsed.date,
+    return_date: parsed.return_date,
+    min_trip_days: parsed.min_trip_days,
+    max_trip_days: parsed.max_trip_days,
+    adults: parsed.adults,
+    stops: parsed.stops,
+    cabin: parsed.cabin,
+  })
 }
 
 function extractIataFromFlightNo(flightNo: string): string {
@@ -152,9 +175,9 @@ function normalizeSegments(segments: RawSegment[], fallbackAirlineName: string, 
   return segments.map((s: RawSegment, index: number) => {
     const sDep = s.departure || ''
     const sArr = s.arrival || ''
-    const sDur = sDep && sArr
-      ? Math.round((new Date(sArr).getTime() - new Date(sDep).getTime()) / 60000)
-      : 0
+    const sDur = s.duration_seconds != null && s.duration_seconds > 0
+      ? Math.round(s.duration_seconds / 60)
+      : (sDep && sArr ? Math.round((new Date(sArr).getTime() - new Date(sDep).getTime()) / 60000) : 0)
     const nextSeg = segments[index + 1]
     const nextDep = nextSeg?.departure || ''
     const layoverMins = sArr && nextDep
@@ -197,10 +220,9 @@ function normalizeOffer(raw: RawOffer, idx: number) {
   const departure = first.departure || ''
   const arrival = last.arrival || ''
 
-  let durationMins = 0
-  if (departure && arrival) {
-    durationMins = Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000)
-  }
+  let durationMins = ob.total_duration_seconds != null && ob.total_duration_seconds > 0
+    ? Math.round(ob.total_duration_seconds / 60)
+    : (departure && arrival ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000) : 0)
 
   const { airlineName, airlineCode } = resolveAirline(raw, first)
   const id = raw.id || `wo_${idx}_${Math.random().toString(36).slice(2, 8)}`
@@ -218,10 +240,9 @@ function normalizeOffer(raw: RawOffer, idx: number) {
     const ibLast = ibSegs[ibSegs.length - 1]
     const ibDep = ibFirst.departure || ''
     const ibArr = ibLast.arrival || ''
-    let ibDurMins = 0
-    if (ibDep && ibArr) {
-      ibDurMins = Math.round((new Date(ibArr).getTime() - new Date(ibDep).getTime()) / 60000)
-    }
+    const ibDurMins = ibRaw.total_duration_seconds != null && ibRaw.total_duration_seconds > 0
+      ? Math.round(ibRaw.total_duration_seconds / 60)
+      : (ibDep && ibArr ? Math.round((new Date(ibArr).getTime() - new Date(ibDep).getTime()) / 60000) : 0)
     const ibAirlineName = ibFirst.airline_name || ibFirst.carrier_name
       || (ibFirst.airline && !looksLikeIataCode(ibFirst.airline) ? ibFirst.airline : null)
       || (ibFirst.airline ? (getAirlineNameFromCode(ibFirst.airline.toUpperCase()) || ibFirst.airline) : null)
@@ -266,7 +287,7 @@ function normalizeOffer(raw: RawOffer, idx: number) {
 }
 
 async function startFSWSearch(
-  parsed: ReturnType<typeof parseNLQuery>,
+  parsed: StartFSWSearchParsed,
   query?: string,
   isProbe = false,
   currency: CurrencyCode = 'EUR',
@@ -326,6 +347,22 @@ async function startFSWSearch(
     return { searchId: null, cache: 'miss' }
   }
 }
+
+// SearchContent can be replayed while React resolves async children like the
+// topbar. Memoize the create-search call so a slow bootstrap doesn't start the
+// same FSW search multiple times in one request.
+const startFSWSearchOnce = cache(async (
+  parsedKey: string,
+  query?: string,
+  isProbe = false,
+  currency: CurrencyCode = 'EUR',
+  utmSource?: string,
+  utmMedium?: string,
+  utmCampaign?: string,
+): Promise<{ searchId: string | null; cache: 'hit' | 'miss'; fswSession?: string }> => {
+  const parsed = JSON.parse(parsedKey) as StartFSWSearchParsed
+  return startFSWSearch(parsed, query, isProbe, currency, utmSource, utmMedium, utmCampaign)
+})
 
 async function pollFSW(searchId: string, maxWaitMs: number): Promise<{ offers: RawOffer[] } | null> {
   const deadline = Date.now() + maxWaitMs
@@ -434,16 +471,8 @@ async function SearchContent({
   const today = new Date().toISOString().slice(0, 10)
 
   const parsed = parseNLQuery(query)
-
-  // Only call vertexParse when regex couldn't resolve origin or destination,
-  // OR when it resolved to a "ghost" IATA with no commercial scheduled
-  // service (e.g. PRY = Wonderboom/Pretoria). Vertex normalizes the city
-  // name AND returns approximate lat/lon for the geo-based nearby-airport
-  // fallback below.
-  const parsedOriginIsGhost = !!parsed.origin && !isUsableIata(parsed.origin)
-  const parsedDestIsGhost = !!parsed.destination && !isUsableIata(parsed.destination)
-  const needsAi = !sid && (!parsed.origin || !parsed.destination || parsedOriginIsGhost || parsedDestIsGhost)
-  const _ai = needsAi ? await vertexParse(query, today).catch(() => null) : null
+  const _ai = !sid ? await vertexParse(query, today).catch(() => null) : null
+  const aiIntent: Record<string, unknown> = {}
 
   if (_ai) {
     if (_ai.destination_city === 'ANYWHERE') {
@@ -451,37 +480,19 @@ async function SearchContent({
       delete parsed.destination
       delete parsed.destination_name
       delete parsed.failed_destination_raw
-    } else {
-      if (_ai.origin_city) {
-        const aiOrigin = resolveCity(_ai.origin_city)
-        if (aiOrigin) {
-          parsed.origin = aiOrigin.code
-          parsed.origin_name = aiOrigin.name
-          delete parsed.failed_origin_raw
-        } else {
-          parsed.failed_origin_raw = _ai.origin_city
-          delete parsed.origin
-          delete parsed.origin_name
-        }
-      }
-      if (_ai.destination_city) {
-        const aiDest = resolveCity(_ai.destination_city)
-        if (aiDest) {
-          parsed.destination = aiDest.code
-          parsed.destination_name = aiDest.name
-          delete parsed.failed_destination_raw
-        } else {
-          parsed.failed_destination_raw = _ai.destination_city
-          delete parsed.destination
-          delete parsed.destination_name
-        }
-      }
-    }
-    if (_ai.via_city) {
-      const aiVia = resolveCity(_ai.via_city)
-      if (aiVia) { parsed.via_iata = aiVia.code; parsed.via_name = aiVia.name }
     }
   }
+  const appliedAi = applyVertexIntent(parsed, _ai, parsed.adults || 1)
+  parsed.origin = appliedAi.origin
+  parsed.origin_name = appliedAi.originName
+  parsed.destination = appliedAi.destination
+  parsed.destination_name = appliedAi.destinationName
+  if (appliedAi.viaIata) parsed.via_iata = appliedAi.viaIata
+  if (appliedAi.dateFrom) parsed.date = appliedAi.dateFrom
+  parsed.return_date = appliedAi.returnDate
+  parsed.adults = appliedAi.adults
+  if (appliedAi.cabin) parsed.cabin = appliedAi.cabin
+  Object.assign(aiIntent, appliedAi.aiIntent)
 
   // ── Nearby-airport fallback ───────────────────────────────────────
   // Two-stage: (1) curated overrides for famous airport-less cities
@@ -490,14 +501,12 @@ async function SearchContent({
   // lat/lon. Triggered when origin/destination is missing OR resolved
   // to a "ghost" IATA with no scheduled commercial service.
   const fallbackNotes: { origin?: FallbackNote; destination?: FallbackNote } = {}
-  const aiOriginCityFromAi = _ai?.origin_city ?? undefined
-  const aiDestCityFromAi = _ai?.destination_city && _ai.destination_city !== 'ANYWHERE'
-    ? _ai.destination_city
-    : undefined
-  const aiOriginLat = typeof _ai?.origin_lat === 'number' ? _ai.origin_lat : undefined
-  const aiOriginLon = typeof _ai?.origin_lon === 'number' ? _ai.origin_lon : undefined
-  const aiDestLat = typeof _ai?.destination_lat === 'number' ? _ai.destination_lat : undefined
-  const aiDestLon = typeof _ai?.destination_lon === 'number' ? _ai.destination_lon : undefined
+  const aiOriginCityFromAi = appliedAi.aiOriginCity
+  const aiDestCityFromAi = appliedAi.aiDestinationCity
+  const aiOriginLat = appliedAi.aiOriginLat
+  const aiOriginLon = appliedAi.aiOriginLon
+  const aiDestLat = appliedAi.aiDestinationLat
+  const aiDestLon = appliedAi.aiDestinationLon
 
   // Clear ghost IATAs so the fallback runs.
   const ghostOriginCity = (parsed.origin && !isUsableIata(parsed.origin))
@@ -656,15 +665,42 @@ async function SearchContent({
       )
     }
 
-    const fswResult = await startFSWSearch(parsed, query, isProbe, currency, utmSource, utmMedium, utmCampaign)
+    const fswResult = await startFSWSearchOnce(
+      buildStartFSWSearchKey(parsed),
+      query,
+      isProbe,
+      currency,
+      utmSource,
+      utmMedium,
+      utmCampaign,
+    )
     searchId = fswResult.searchId ?? undefined
     cacheHit = fswResult.cache === 'hit'
     fswSession = fswResult.fswSession
     // Persist nearby-airport fallback notes so /api/results can echo them
     // back to the client (SearchPageClient → ResultsPanel → /api/rank), so
     // the Gemini-generated hero copy can mention the substitution to the user.
-    if (searchId && (fallbackNotes.origin || fallbackNotes.destination)) {
-      setSearchMeta(searchId, { fallback_notes: fallbackNotes })
+    const parsedResponse = {
+      origin: parsed.origin,
+      origin_name: parsed.origin_name,
+      destination: parsed.destination,
+      destination_name: parsed.destination_name,
+      date: parsed.date,
+      return_date: parsed.return_date,
+      passengers: parsed.adults || 1,
+      ...(parsed.stops !== undefined ? { stops: parsed.stops } : {}),
+      ...(parsed.cabin ? { cabin: parsed.cabin } : {}),
+      ...(parsed.min_trip_days !== undefined ? { min_trip_days: parsed.min_trip_days } : {}),
+      ...(parsed.max_trip_days !== undefined ? { max_trip_days: parsed.max_trip_days } : {}),
+      ...(parsed.require_cancellation ? { require_cancellation: true } : {}),
+      ...aiIntent,
+      ...(fallbackNotes.origin || fallbackNotes.destination ? { fallback_notes: fallbackNotes } : {}),
+    }
+    if (searchId && Object.keys(parsedResponse).length > 0) {
+      setSearchMeta(searchId, {
+        ...(fallbackNotes.origin || fallbackNotes.destination ? { fallback_notes: fallbackNotes } : {}),
+        parsed_context: parsedResponse,
+      })
     }
     if (!searchId) {
       return (
