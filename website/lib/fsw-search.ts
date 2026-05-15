@@ -1,6 +1,7 @@
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
 const WEBSITE_SEARCH_LIMIT = 500
+const START_WEB_SEARCH_TIMEOUT_MS = 15_000
 
 import { upsertSearchSessionServer } from './search-session-analytics-server'
 import { getTrackingSearchId } from './probe-mode'
@@ -69,7 +70,7 @@ export async function startWebSearch(
       ...(params.min_layover_hours !== undefined ? { min_layover_hours: params.min_layover_hours } : {}),
       ...(params.max_layover_hours !== undefined ? { max_layover_hours: params.max_layover_hours } : {}),
     }),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(START_WEB_SEARCH_TIMEOUT_MS),
     cache: 'no-store',
   })
 

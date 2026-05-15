@@ -83,6 +83,68 @@ test('parseNLQuery keeps the reported website examples working', () => {
   })
 })
 
+test('parseNLQuery keeps outbound and return time preferences for Friday evening / Monday morning weekend searches', () => {
+  withFixedNow('2026-05-14T12:00:00Z', () => {
+    const londonToParisWeekend = parseNLQuery('London to Paris this Friday evening, back Monday morning, 2 adults, direct, beach holiday')
+    assert.deepEqual(
+      {
+        origin: londonToParisWeekend.origin,
+        destination: londonToParisWeekend.destination,
+        date: londonToParisWeekend.date,
+        return_date: londonToParisWeekend.return_date,
+        adults: londonToParisWeekend.adults,
+        stops: londonToParisWeekend.stops,
+        depart_time_pref: londonToParisWeekend.depart_time_pref,
+        return_depart_time_pref: londonToParisWeekend.return_depart_time_pref,
+        trip_purpose: londonToParisWeekend.trip_purpose,
+      },
+      {
+        origin: 'LON',
+        destination: 'PAR',
+        date: '2026-05-15',
+        return_date: '2026-05-18',
+        adults: 2,
+        stops: 0,
+        depart_time_pref: 'evening',
+        return_depart_time_pref: 'morning',
+        trip_purpose: 'beach',
+      },
+    )
+  })
+})
+
+test('parseNLQuery derives a return date from bare trip-duration phrasing', () => {
+  withFixedNow('2026-05-14T12:00:00Z', () => {
+    const businessTrip = parseNLQuery('London to New York next month, business trip, 4 nights, business class, needs to be refundable')
+    assert.deepEqual(
+      {
+        origin: businessTrip.origin,
+        destination: businessTrip.destination,
+        date: businessTrip.date,
+        return_date: businessTrip.return_date,
+        min_trip_days: businessTrip.min_trip_days,
+        max_trip_days: businessTrip.max_trip_days,
+        cabin: businessTrip.cabin,
+        passenger_context: businessTrip.passenger_context,
+        trip_purpose: businessTrip.trip_purpose,
+        require_cancellation: businessTrip.require_cancellation,
+      },
+      {
+        origin: 'LON',
+        destination: 'NYC',
+        date: '2026-06-01',
+        return_date: '2026-06-05',
+        min_trip_days: 4,
+        max_trip_days: 4,
+        cabin: 'C',
+        passenger_context: 'business_traveler',
+        trip_purpose: 'business',
+        require_cancellation: true,
+      },
+    )
+  })
+})
+
 test('parseNLQuery falls back to generated global coverage for long-tail names', () => {
   withFixedNow('2026-05-01T12:00:00Z', () => {
     const southamptonToEdinburgh = parseNLQuery('Southampton to Edinburgh next Friday')

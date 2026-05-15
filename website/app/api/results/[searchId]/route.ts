@@ -69,11 +69,10 @@ function normalizeOffer(raw: any, idx: number): any {
   const departure = first.departure || first.departure_time || ''
   const arrival = last.arrival || last.arrival_time || ''
 
-  // Duration in minutes
-  let durationMins = 0
-  if (departure && arrival) {
-    durationMins = Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000)
-  }
+  // Duration in minutes — prefer connector-provided total_duration_seconds (timezone-safe)
+  const durationMins = ob.total_duration_seconds != null && ob.total_duration_seconds > 0
+    ? Math.round(ob.total_duration_seconds / 60)
+    : (departure && arrival ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000) : 0)
 
   const { airlineName, airlineCode } = resolveAirlineFromRaw(raw, first)
 
@@ -84,9 +83,9 @@ function normalizeOffer(raw: any, idx: number): any {
   const normSegs = segs.map((s: any) => {
     const sDep = s.departure || s.departure_time || ''
     const sArr = s.arrival || s.arrival_time || ''
-    const sDur = sDep && sArr
-      ? Math.round((new Date(sArr).getTime() - new Date(sDep).getTime()) / 60000)
-      : 0
+    const sDur = s.duration_seconds != null && s.duration_seconds > 0
+      ? Math.round(s.duration_seconds / 60)
+      : (sDep && sArr ? Math.round((new Date(sArr).getTime() - new Date(sDep).getTime()) / 60000) : 0)
     return {
       airline: s.airline || s.carrier_name || airlineName,
       airline_code: extractIataFromFlightNo(s.flight_no || '') || airlineCode,
@@ -109,10 +108,9 @@ function normalizeOffer(raw: any, idx: number): any {
     const ibLast = ibSegs[ibSegs.length - 1] || ibFirst
     const ibDep = ibFirst.departure || ibFirst.departure_time || ''
     const ibArr = ibLast.arrival || ibLast.arrival_time || ''
-    let ibDurMins = 0
-    if (ibDep && ibArr) {
-      ibDurMins = Math.round((new Date(ibArr).getTime() - new Date(ibDep).getTime()) / 60000)
-    }
+    const ibDurMins = ibRaw.total_duration_seconds != null && ibRaw.total_duration_seconds > 0
+      ? Math.round(ibRaw.total_duration_seconds / 60)
+      : (ibDep && ibArr ? Math.round((new Date(ibArr).getTime() - new Date(ibDep).getTime()) / 60000) : 0)
     const ibAirlineName = ibFirst.airline || ibFirst.carrier_name || airlineName
     const ibAirlineCode = extractIataFromFlightNo(ibFirst.flight_no || '') || airlineCode
     const ibNormSegs = ibSegs.map((s: any) => ({
@@ -413,17 +411,21 @@ export async function GET(
     // we used JNB") that was recorded at /api/search time. FSW knows nothing
     // about it, so we merge it into `parsed` here.
     const meta = getSearchMeta(searchId)
+    const parsedContext = meta?.parsed_context && typeof meta.parsed_context === 'object'
+      ? meta.parsed_context
+      : {}
     const result = {
       search_id: searchId,
       status: data.status,
       query: data.query,
       parsed: {
+        ...parsedContext,
         origin: data.origin,
         origin_name: data.origin_name || data.origin,
         destination: data.destination,
         destination_name: data.destination_name || data.destination,
         date: data.date_from,
-        return_date: data.return_date || undefined,
+        return_date: data.return_date || (typeof parsedContext.return_date === 'string' ? parsedContext.return_date : undefined),
         ...(meta?.fallback_notes ? { fallback_notes: meta.fallback_notes } : {}),
       },
       offers: normalized,
@@ -437,7 +439,12 @@ export async function GET(
       // Formula: checked = 180 * (1 - e^(-elapsed/25))  →  64% at 25s, 82% at 40s, 92% at 60s
       progress: data.status === 'searching'
         ? {
-            checked: Math.min(170, Math.round(180 * (1 - Math.exp(-(data.elapsed_seconds || 0) / 25)))),
+            // Before the first visible offers arrive, keep the synthetic progress conservative.
+            // Showing "150 websites checked" while the page is still blank reads as broken,
+            // even if the backend is still legitimately warming up connector fan-out.
+            checked: normalized.length > 0
+              ? Math.min(170, Math.round(180 * (1 - Math.exp(-(data.elapsed_seconds || 0) / 25))))
+              : Math.min(90, Math.round(180 * (1 - Math.exp(-(data.elapsed_seconds || 0) / 75)))),
             total: 180,
             found: normalized.length,
             pending_connectors: Array.isArray(data.pending_connectors) ? data.pending_connectors as string[] : undefined,

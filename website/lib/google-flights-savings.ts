@@ -1,12 +1,34 @@
-export function getGoogleFlightsSavingsAmount(
-  price: number,
+function normalizeTravelerCount(travelerCount: number | undefined): number {
+  if (!Number.isFinite(travelerCount) || (travelerCount as number) <= 1) {
+    return 1
+  }
+
+  return Math.max(1, Math.round(travelerCount as number))
+}
+
+export function normalizeGoogleFlightsComparisonPrice(
   googleFlightsPrice: number | null | undefined,
+  travelerCount = 1,
 ): number | null {
-  if (!Number.isFinite(price) || !Number.isFinite(googleFlightsPrice)) {
+  if (!Number.isFinite(googleFlightsPrice)) {
     return null
   }
 
-  const diff = Math.round(((googleFlightsPrice as number) - price) * 100) / 100
+  const normalized = Math.round((((googleFlightsPrice as number) / normalizeTravelerCount(travelerCount)) * 100)) / 100
+  return normalized > 0 ? normalized : null
+}
+
+export function getGoogleFlightsSavingsAmount(
+  price: number,
+  googleFlightsPrice: number | null | undefined,
+  travelerCount = 1,
+): number | null {
+  const normalizedGoogleFlightsPrice = normalizeGoogleFlightsComparisonPrice(googleFlightsPrice, travelerCount)
+  if (!Number.isFinite(price) || !Number.isFinite(normalizedGoogleFlightsPrice)) {
+    return null
+  }
+
+  const diff = Math.round(((normalizedGoogleFlightsPrice as number) - price) * 100) / 100
   if (diff <= 0.005) {
     return null
   }

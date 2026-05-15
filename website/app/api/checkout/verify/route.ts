@@ -3,10 +3,9 @@ import { getStripe } from '../../../../lib/stripe'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { setUnlockCookie } from '../../../../lib/unlock-cookie'
 import { createUnlockToken } from '../../../../lib/unlock-token'
+import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
-const ANALYTICS_API_BASE = (
-  process.env.LETSFG_ANALYTICS_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
-).replace(/\/$/, '')
+const ANALYTICS_API_BASE = getLetsfgAnalyticsApiBase()
 
 /**
  * POST /api/checkout/verify
@@ -72,12 +71,12 @@ export async function POST(req: NextRequest) {
     // on the Stripe webhook firing or the client-side tracking completing.
     void fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
       method: 'POST',
-      headers: {
+      headers: withLetsfgWebsiteApiHeaders({
         'Content-Type': 'application/json',
         'Origin': 'https://letsfg.co',
         'Referer': 'https://letsfg.co/',
         'User-Agent': 'LetsFG Verify/1.0',
-      },
+      }),
       body: JSON.stringify({
         search_id: searchId,
         ...(revenue != null ? { revenue, ...(revenueCurrency ? { revenue_currency: revenueCurrency } : {}) } : {}),

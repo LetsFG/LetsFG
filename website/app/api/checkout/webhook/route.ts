@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { getStripe } from '../../../../lib/stripe'
+import { getLetsfgAnalyticsApiBase, getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
 /**
  * POST /api/checkout/webhook
@@ -25,11 +26,9 @@ import { getStripe } from '../../../../lib/stripe'
 // Must run on Node.js to access the raw request body for signature verification.
 export const runtime = 'nodejs'
 
-const ANALYTICS_API_BASE = (
-  process.env.LETSFG_ANALYTICS_API_URL || 'https://letsfg-api-876385716101.us-central1.run.app'
-).replace(/\/$/, '')
+const ANALYTICS_API_BASE = getLetsfgAnalyticsApiBase()
 
-const API_BASE = (process.env.LETSFG_API_URL || 'https://api.letsfg.co').replace(/\/$/, '')
+const API_BASE = getLetsfgApiBase()
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
 
 const IS_TEST_MODE = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
@@ -78,12 +77,12 @@ async function trackPaymentVerified(session: Stripe.Checkout.Session) {
   try {
     const res = await fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
       method: 'POST',
-      headers: {
+      headers: withLetsfgWebsiteApiHeaders({
         'Content-Type': 'application/json',
         'Origin': 'https://letsfg.co',
         'Referer': 'https://letsfg.co/',
         'User-Agent': 'LetsFG Webhook/1.0',
-      },
+      }),
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(5000),
     })

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStripe } from '../../../../lib/stripe'
+import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
 function verifyAdminKey(req: NextRequest): boolean {
   const expectedKey = process.env.ANALYTICS_ADMIN_KEY
@@ -93,9 +94,7 @@ export async function POST(req: NextRequest) {
   }
 
   const createdAfter = Math.floor(Date.now() / 1000) - hours * 3600
-  const ANALYTICS_API_BASE = (
-    process.env.LETSFG_ANALYTICS_API_URL ?? 'https://boostedtravel-api-876385716101.us-central1.run.app'
-  ).replace(/\/$/, '')
+  const ANALYTICS_API_BASE = getLetsfgAnalyticsApiBase()
 
   try {
     const stripe = getStripe()
@@ -124,7 +123,10 @@ export async function POST(req: NextRequest) {
       try {
         const checkResp = await fetch(
           `${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/${encodeURIComponent(searchId)}?admin_key=${encodeURIComponent(process.env.ANALYTICS_ADMIN_KEY ?? '')}`,
-          { signal: AbortSignal.timeout(5000) }
+          {
+            headers: withLetsfgWebsiteApiHeaders(),
+            signal: AbortSignal.timeout(5000),
+          }
         )
         if (checkResp.ok) {
           const existing = await checkResp.json()
@@ -151,12 +153,12 @@ export async function POST(req: NextRequest) {
       try {
         await fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
           method: 'POST',
-          headers: {
+          headers: withLetsfgWebsiteApiHeaders({
             'Content-Type': 'application/json',
             'Origin': 'https://letsfg.co',
             'Referer': 'https://letsfg.co/',
             'User-Agent': 'LetsFG Stripe-Sync/1.0',
-          },
+          }),
           body: JSON.stringify({
             search_id: searchId,
             ...(revenue != null ? { revenue } : {}),

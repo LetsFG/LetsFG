@@ -16,11 +16,9 @@ import { normalizeSession, computeSessionStats } from './normalizer.ts'
 import type { RawSearchPayload } from './normalizer.ts'
 import { getRouteDistributionData } from '../distribution/distribution-service.ts'
 import { ContentQualityGate } from '../quality/content-quality-gate.ts'
+import { getLetsfgAnalyticsApiBase } from '../../letsfg-api'
 
-const API_BASE = (
-  process.env.LETSFG_ANALYTICS_API_URL ||
-  'https://api.letsfg.co'
-).replace(/\/$/, '')
+const API_BASE = getLetsfgAnalyticsApiBase()
 
 export interface PfpTriggerInput {
   /** FSW search ID (used as session_id). */

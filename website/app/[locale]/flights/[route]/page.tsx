@@ -15,6 +15,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
+import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 import { FlightPage } from '../../../../lib/pfp/page/FlightPage'
 import { SUPPORTED_LOCALES } from '../../../../lib/pfp/seo/FlightPageSEOHead'
 import type { RouteDistributionData } from '../../../../lib/pfp/types/route-distribution.types.ts'
@@ -25,16 +26,14 @@ export const revalidate = 86400
 
 // ─── API base ─────────────────────────────────────────────────────────────────
 
-const API_BASE = (
-  process.env.LETSFG_ANALYTICS_API_URL ||
-  'https://api.letsfg.co'
-).replace(/\/$/, '')
+const API_BASE = getLetsfgAnalyticsApiBase()
 
 // ─── Static params ────────────────────────────────────────────────────────────
 
 export async function generateStaticParams(): Promise<{ locale: string; route: string }[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/flights/pfp/routes`, {
+      headers: withLetsfgWebsiteApiHeaders(),
       cache: 'no-store',
     })
     if (!res.ok) return []
@@ -56,7 +55,10 @@ async function fetchRouteSnapshot(
   try {
     const res = await fetch(
       `${API_BASE}/api/v1/flights/pfp/${encodeURIComponent(routeSlug)}`,
-      { next: { revalidate: 86400 } },
+      {
+        headers: withLetsfgWebsiteApiHeaders(),
+        next: { revalidate: 86400 },
+      },
     )
     if (!res.ok) return null
     return res.json() as Promise<RouteDistributionData>

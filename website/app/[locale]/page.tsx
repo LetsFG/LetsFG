@@ -10,6 +10,7 @@ import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../lib/currenc
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
+import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../lib/letsfg-api'
 import HomeMonitorNav from '../home-monitor-nav'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
@@ -40,10 +41,7 @@ const LOCALE_BANNER_SCALE: Record<string, number> = {
   hr: 1.35,
 }
 
-const API_BASE =
-  process.env.LETSFG_ANALYTICS_API_URL ||
-  process.env.LETSFG_API_URL ||
-  'https://api.letsfg.co'
+const API_BASE = getLetsfgAnalyticsApiBase()
 const HOMEPAGE_STATS_CACHE_BUSTER = (process.env.HOMEPAGE_STATS_CACHE_BUSTER || '').trim()
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +60,7 @@ async function getPublicStats(): Promise<PublicStats> {
     }
 
     const res = await fetch(statsUrl.toString(), {
+      headers: withLetsfgWebsiteApiHeaders(),
       cache: 'no-store',
       next: { revalidate: 0 },
       signal: AbortSignal.timeout(4000),

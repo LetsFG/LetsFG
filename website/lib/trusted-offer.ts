@@ -70,6 +70,12 @@ export interface TrustedAncillaries {
   seat_selection?: TrustedAncillary
 }
 
+export interface TrustedOfferConditions {
+  refund_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+  change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+  [key: string]: string | undefined
+}
+
 export interface TrustedOffer {
   id: string
   price: number
@@ -94,6 +100,7 @@ export interface TrustedOffer {
   booking_options?: TrustedBookingOption[]
   trip_breakdown?: TrustedTripLeg[]
   ancillaries?: TrustedAncillaries
+  conditions?: TrustedOfferConditions
 }
 
 export interface PublicOffer extends Omit<TrustedOffer, 'booking_url' | 'booking_options'> {
@@ -302,7 +309,8 @@ function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: 
     durationMinutes = fallbackDurationMinutes
   }
 
-  if (durationMinutes <= 0 && fallbackDurationMinutes > 0) {
+  // Always prefer connector-provided duration (timezone-safe) over local-time diff
+  if (fallbackDurationMinutes > 0) {
     durationMinutes = fallbackDurationMinutes
   }
 
@@ -525,9 +533,16 @@ function getOfferSignature(offer: TrustedOffer): string | undefined {
     return undefined
   }
 
+  // Normalize flight number to digits-only so providers that emit "AI4306",
+  // "AI 4306", "4306" or " AI-4306" all collapse to the same canonical "4306".
+  // This keeps per-itinerary GF baseline matching robust across connectors
+  // (fli/google emits digits only; most direct-airline connectors prefix the code).
+  const normalizeFlightNumber = (fn?: string): string =>
+    (fn || '').replace(/[^0-9]/g, '')
+
   const serializeSegment = (segment: OfferSignatureSegment): string => [
     toUpperCode(segment.airline_code),
-    (segment.flight_number || '').trim().toUpperCase(),
+    normalizeFlightNumber(segment.flight_number),
     toUpperCode(segment.origin),
     toUpperCode(segment.destination),
     parseStringValue(segment.departure_time) || '',
@@ -817,6 +832,25 @@ function buildAncillaries(raw: any): TrustedAncillaries | undefined {
   }
 
   return Object.keys(ancillaries).length > 0 ? ancillaries : undefined
+}
+
+function buildOfferConditions(raw: any): TrustedOfferConditions | undefined {
+  if (!isRecord(raw.conditions)) {
+    return undefined
+  }
+
+  const conditions: TrustedOfferConditions = {}
+  for (const [key, value] of Object.entries(raw.conditions)) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      conditions[key] = value.trim()
+      continue
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      conditions[key] = String(value)
+    }
+  }
+
+  return Object.keys(conditions).length > 0 ? conditions : undefined
 }
 
 function getRouteSummary(route: any, fallbackAirlineName: string, fallbackAirlineCode: string): Omit<TrustedTripLeg, 'leg' | 'price' | 'currency'> {
@@ -1245,9 +1279,9 @@ function normalizeSegments(segments: any[], fallbackAirlineName: string, fallbac
   return segments.map((segment: any) => {
     const departure = extractTimestamp(segment, DEPARTURE_TIME_KEYS)
     const arrival = extractTimestamp(segment, ARRIVAL_TIME_KEYS)
-    const durationMinutes = departure && arrival
-      ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000)
-      : 0
+    const durationMinutes = (segment.duration_seconds != null && segment.duration_seconds > 0)
+      ? Math.round(segment.duration_seconds / 60)
+      : (departure && arrival ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000) : 0)
     const rawAirline = segment.airline_name || segment.carrier_name || segment.airline || fallbackAirlineName
     const airlineCode = (typeof segment.airline === 'string' && looksLikeIataCode(segment.airline)
       ? segment.airline.toUpperCase()
@@ -1355,6 +1389,7 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
     booking_options: bookingOptions,
     trip_breakdown: tripBreakdown,
     ancillaries: buildAncillaries(raw),
+    conditions: buildOfferConditions(raw),
   })
 }
 

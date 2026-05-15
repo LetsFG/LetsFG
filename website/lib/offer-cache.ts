@@ -16,7 +16,7 @@ import path from 'node:path'
 type OfferCacheEntry = { offer: Record<string, unknown>; expiresAt: number; searchId?: string }
 
 const _cache = new Map<string, OfferCacheEntry>()
-const OFFER_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const OFFER_TTL_MS = 30 * 60 * 1000
 const TTL_MS = OFFER_TTL_MS // alias kept for any existing call-sites
 const PERSISTED_CACHE_FILE = path.join(process.cwd(), '.next', 'cache', 'letsfg-offers.json')
 
