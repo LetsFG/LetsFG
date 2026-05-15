@@ -195,3 +195,14 @@ export function buildPriorityQuestionSpec(
     chips: uniqueChips(chipIds),
   }
 }
+
+export function hasTripTypeContext(
+  parsed: Pick<ParsedQuery, 'return_date' | 'min_trip_days' | 'max_trip_days' | 'return_depart_time_pref'>,
+): boolean {
+  return Boolean(
+    parsed.return_date
+    || parsed.min_trip_days !== undefined
+    || parsed.max_trip_days !== undefined
+    || parsed.return_depart_time_pref,
+  )
+}

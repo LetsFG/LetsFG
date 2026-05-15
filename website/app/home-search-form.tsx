@@ -10,7 +10,7 @@ import {
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
-import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec } from './lib/home-convo-personalization'
+import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec, hasTripTypeContext } from './lib/home-convo-personalization'
 import { parseNLQuery } from './lib/searchParsing'
 import { needsDateClarification, shouldWaitForGeminiAssistOnHomeSubmit } from './lib/home-search-assist'
 import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './lib/trip-purpose'
@@ -906,7 +906,7 @@ export default function HomeSearchForm({
     }
 
     // ── 2.5. Trip type — skip if parser found return date or trip length ──
-    const hasRtContext = !!(p?.return_date) || !!(p?.min_trip_days) || !!(p?.max_trip_days)
+    const hasRtContext = hasTripTypeContext(p ?? {})
     if (!hasRtContext) {
       qs.push({ q: ths('rt_q'), chips: [
         mkChip('chip_one_way', 'one way'),

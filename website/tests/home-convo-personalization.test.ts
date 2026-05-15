@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec } from '../app/lib/home-convo-personalization.ts'
+import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec, hasTripTypeContext } from '../app/lib/home-convo-personalization.ts'
 
 test('mixed business and city intents use blended party-size chips instead of a single-purpose prompt', () => {
   const spec = buildPartySizeQuestionSpec({
@@ -27,4 +27,9 @@ test('mixed business and city intents use blended priority chips instead of only
     spec.chips.map((chip) => chip.englishKey),
     ['Direct flights only', 'Good times', 'Latest return', 'Early departure'],
   )
+})
+
+test('return departure preference counts as enough round-trip context to skip trip-type questioning', () => {
+  assert.equal(hasTripTypeContext({ return_depart_time_pref: 'morning' }), true)
+  assert.equal(hasTripTypeContext({}), false)
 })
