@@ -2,6 +2,7 @@ import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { deduplicateOffers } from '../../lib/rankOffers'
 import type { TripPurpose } from '../../lib/trip-purpose'
+import { findBestMatch } from '../../airports'
 
 export interface FlightOffer {
   id: string
@@ -104,12 +105,42 @@ export interface SearchShareSummary {
   cheapestFormattedPrice: string | null
 }
 
+export interface BuildSearchShareSummaryOptions {
+  offersAnalyzedOverride?: number | null
+}
+
 function formatCount(value: number) {
   return new Intl.NumberFormat('en-US').format(Math.max(0, Math.round(value)))
 }
 
+function resolveCodeDisplayName(value?: string) {
+  const normalized = value?.trim().toUpperCase()
+  if (!normalized || !/^[A-Z]{3}$/.test(normalized)) {
+    return null
+  }
+
+  const match = findBestMatch(normalized, 'en')
+  const displayName = match?.names?.en?.trim()
+  if (!displayName || displayName.toUpperCase() === normalized) {
+    return null
+  }
+
+  return displayName
+}
+
 function resolvePlaceLabel(label?: string, fallback?: string) {
-  return label?.trim() || fallback?.trim() || 'Anywhere'
+  const candidates = [label?.trim(), fallback?.trim()].filter((value): value is string => Boolean(value))
+
+  for (const candidate of candidates) {
+    const displayName = resolveCodeDisplayName(candidate)
+    if (displayName) {
+      return displayName
+    }
+
+    return candidate
+  }
+
+  return 'Anywhere'
 }
 
 function compactWhitespace(value: string) {
@@ -144,10 +175,11 @@ function shortenPlaceLabel(label: string) {
   return preferred.length > 18 ? `${preferred.slice(0, 17).trimEnd()}…` : preferred
 }
 
-function resolveOffersAnalyzed(result: SearchResult, dedupedOffers: FlightOffer[]) {
+function resolveOffersAnalyzed(result: SearchResult, dedupedOffers: FlightOffer[], override?: number | null) {
   const totalResults = typeof result.total_results === 'number' ? result.total_results : 0
   const foundSoFar = typeof result.progress?.found === 'number' ? result.progress.found : 0
-  return Math.max(totalResults, dedupedOffers.length, foundSoFar)
+  const overrideCount = typeof override === 'number' && override > 0 ? Math.round(override) : 0
+  return Math.max(totalResults, dedupedOffers.length, foundSoFar, overrideCount)
 }
 
 function resolveTopPicks(result: SearchResult) {
@@ -247,7 +279,11 @@ export function buildMissingSearchShareSummary(): SearchShareSummary {
   }
 }
 
-export function buildSearchShareSummary(result: SearchResult, displayCurrency?: string): SearchShareSummary {
+export function buildSearchShareSummary(
+  result: SearchResult,
+  displayCurrency?: string,
+  options?: BuildSearchShareSummaryOptions,
+): SearchShareSummary {
   const dedupedOffers = deduplicateOffers(result.offers || [])
   const currency = displayCurrency?.trim() || dedupedOffers[0]?.currency || 'EUR'
   const cheapest = resolveCheapestOffer(dedupedOffers, currency)
@@ -259,8 +295,9 @@ export function buildSearchShareSummary(result: SearchResult, displayCurrency?: 
   const fromFull = resolvePlaceLabel(result.parsed.origin_name, result.parsed.origin)
   const toFull = resolvePlaceLabel(result.parsed.destination_name, result.parsed.destination)
   const routeLabel = `${fromFull} → ${toFull}`
-  const offersAnalyzed = resolveOffersAnalyzed(result, dedupedOffers)
+  const offersAnalyzed = resolveOffersAnalyzed(result, dedupedOffers, options?.offersAnalyzedOverride)
   const topPicks = resolveTopPicks(result)
+  const displayResultsCount = Math.max(dedupedOffers.length, offersAnalyzed)
 
   const offersMetric: SearchShareMetric = {
     label: 'OFFERS ANALYZED',
@@ -308,7 +345,7 @@ export function buildSearchShareSummary(result: SearchResult, displayCurrency?: 
   }
 
   const titleBase = cheapestFormattedPrice
-    ? `${formatCount(dedupedOffers.length)} flights ${routeLabel} from ${cheapestFormattedPrice}`
+    ? `${formatCount(displayResultsCount)} flights ${routeLabel} from ${cheapestFormattedPrice}`
     : `Flights ${routeLabel}`
 
   const descriptionParts = [`Found ${formatCount(offersAnalyzed)} flights for ${routeLabel}.`]

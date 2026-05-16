@@ -9,25 +9,35 @@ import { buildFallbackSearchQuery, buildMissingSearchShareSummary, buildSearchSh
 import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'
 import { getSearchResults, resolveRequestCurrency } from './search-share-server'
 
+function parseOffersCountOverride(value?: string) {
+  const parsed = Number.parseInt(value || '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
 // Generate metadata for SEO and social sharing
 export async function generateMetadata({
   params,
   searchParams,
 }: {
   params: Promise<{ searchId: string }>
-  searchParams: Promise<{ probe?: string; cur?: string }>
+  searchParams: Promise<{ probe?: string; cur?: string; oc?: string }>
 }): Promise<Metadata> {
   const { searchId } = await params
   const sp = await searchParams
   const isProbe = isProbeModeValue(sp?.probe)
   const displayCurrency = await resolveRequestCurrency(sp?.cur)
   const result = await getSearchResults(searchId, isProbe)
+  const offersCountOverride = parseOffersCountOverride(sp?.oc)
 
   const summary = result
-    ? buildSearchShareSummary(result, displayCurrency)
+    ? buildSearchShareSummary(result, displayCurrency, { offersAnalyzedOverride: offersCountOverride })
     : buildMissingSearchShareSummary()
-  const opengraphImageUrl = `/results/${searchId}/opengraph-image`
-  const twitterImageUrl = `/results/${searchId}/twitter-image`
+  const imageParams = new URLSearchParams()
+  if (isProbe) imageParams.set('probe', '1')
+  if (sp?.cur?.trim()) imageParams.set('cur', sp.cur.trim())
+  if (offersCountOverride) imageParams.set('oc', String(offersCountOverride))
+  const imageQuery = imageParams.toString()
+  const imageUrl = `/api/og/results/${searchId}${imageQuery ? `?${imageQuery}` : ''}`
 
   return {
     title: summary.title,
@@ -40,7 +50,7 @@ export async function generateMetadata({
       type: 'website',
       images: [
         {
-          url: opengraphImageUrl,
+          url: imageUrl,
           width: RESULTS_SHARE_IMAGE_SIZE.width,
           height: RESULTS_SHARE_IMAGE_SIZE.height,
           alt: `${summary.routeLabel} flight search summary`,
@@ -51,7 +61,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: summary.title,
       description: summary.description,
-      images: [twitterImageUrl],
+      images: [imageUrl],
     },
   }
 }
