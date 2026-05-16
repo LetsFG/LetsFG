@@ -1,115 +1,13 @@
 import { Metadata } from 'next'
-import { cookies, headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import SearchPageClient from './SearchPageClient'
-import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../../lib/currency-preference'
 import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
 import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
-import { appendProbeParam, getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
-import { detectPreferredCurrency } from '../../../lib/user-currency'
-
-// Types for our search results
-interface FlightOffer {
-  id: string
-  price: number
-  currency: string
-  airline: string
-  airline_code: string
-  origin: string
-  origin_name: string
-  destination: string
-  destination_name: string
-  departure_time: string
-  arrival_time: string
-  duration_minutes: number
-  stops: number
-}
-
-interface SearchResult {
-  search_id: string
-  status: 'searching' | 'completed' | 'expired'
-  query: string
-  parsed: {
-    origin?: string
-    origin_name?: string
-    destination?: string
-    destination_name?: string
-    date?: string
-    return_date?: string
-    passengers?: number
-    cabin?: string
-  }
-  progress?: {
-    checked: number
-    total: number
-    found: number
-  }
-  offers?: FlightOffer[]
-  searched_at?: string
-  expires_at?: string
-  gemini_justification?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
-}
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
-
-function buildFallbackSearchQuery(parsed: SearchResult['parsed']): string {
-  const origin = parsed.origin || parsed.origin_name
-  const destination = parsed.destination || parsed.destination_name
-
-  if (!origin || !destination) {
-    return ''
-  }
-
-  const parts = [`${origin} to ${destination}`]
-
-  if (parsed.date) parts.push(parsed.date)
-  if (parsed.return_date) parts.push(`return ${parsed.return_date}`)
-
-  return parts.join(' ').trim()
-}
-
-async function getApiBase(): Promise<string> {
-  const explicitBase = process.env.API_URL?.trim()
-  if (explicitBase) {
-    return explicitBase.replace(/\/$/, '')
-  }
-
-  const headerList = await headers()
-  const host = headerList.get('x-forwarded-host') || headerList.get('host')
-  if (host) {
-    const proto = headerList.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https')
-    return `${proto}://${host}`
-  }
-
-  return SITE_URL
-}
-
-// Single-shot fetch — used only for generateMetadata (fast, no blocking)
-async function getSearchResults(searchId: string, isProbe: boolean, fswSession?: string): Promise<SearchResult | null> {
-  try {
-    const apiBase = await getApiBase()
-    const url = new URL(`/api/results/${searchId}`, apiBase)
-    appendProbeParam(url.searchParams, isProbe)
-    if (fswSession) url.searchParams.set('_fss', fswSession)
-    const res = await fetch(url.toString(), { cache: 'no-store' })
-    if (!res.ok) return null
-    return res.json()
-  } catch (_) {
-    return null
-  }
-}
-
-async function resolveRequestCurrency(queryParam?: string): Promise<string> {
-  const requestHeaders = await headers()
-  const cookieStore = await cookies()
-
-  return resolveSearchCurrency({
-    queryParam: queryParam?.trim(),
-    cookieValue: cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value,
-    fallback: detectPreferredCurrency(requestHeaders),
-  })
-}
+import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
+import { buildFallbackSearchQuery, buildMissingSearchShareSummary, buildSearchShareSummary, type SearchResult } from './search-share-model'
+import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'
+import { getSearchResults, resolveRequestCurrency } from './search-share-server'
 
 // Generate metadata for SEO and social sharing
 export async function generateMetadata({
@@ -124,41 +22,37 @@ export async function generateMetadata({
   const isProbe = isProbeModeValue(sp?.probe)
   const displayCurrency = await resolveRequestCurrency(sp?.cur)
   const result = await getSearchResults(searchId, isProbe)
-  
-  if (!result) {
-    return { title: 'Search not found — LetsFG' }
-  }
-  
-  const { parsed, offers, status } = result
-  
-  if (status === 'searching') {
-    return {
-      title: `Searching flights ${parsed.origin || ''} → ${parsed.destination || ''} — LetsFG`,
-      description: `Finding the cheapest flights. Checking 180+ airlines...`,
-    }
-  }
-  
-  if (status === 'expired') {
-    return {
-      title: `Search expired — LetsFG`,
-      description: `These results have expired. Search again for current prices.`,
-    }
-  }
-  
-  const displayOffers = offers ? deduplicateOffers(offers) : []
-  const cheapest = displayOffers.reduce((best, offer) => {
-    if (!best) return offer
-    return getOfferDisplayTotalPrice(offer, displayCurrency) < getOfferDisplayTotalPrice(best, displayCurrency) ? offer : best
-  }, displayOffers[0])
-  const cheapestDisplayPrice = cheapest ? getOfferDisplayTotalPrice(cheapest, displayCurrency) : null
-  const cheapestFormattedPrice = cheapestDisplayPrice === null ? null : formatCurrencyAmount(cheapestDisplayPrice, displayCurrency)
-  const title = cheapest 
-    ? `${displayOffers.length} flights ${parsed.origin_name || parsed.origin} → ${parsed.destination_name || parsed.destination} from ${cheapestFormattedPrice}`
-    : `Flights ${parsed.origin} → ${parsed.destination}`
-  
+
+  const summary = result
+    ? buildSearchShareSummary(result, displayCurrency)
+    : buildMissingSearchShareSummary()
+  const opengraphImageUrl = `/results/${searchId}/opengraph-image`
+  const twitterImageUrl = `/results/${searchId}/twitter-image`
+
   return {
-    title: `${title} — LetsFG`,
-    description: `Found ${displayOffers.length} flights. Cheapest: ${cheapestFormattedPrice} on ${cheapest?.airline}. Zero markup, raw airline prices.`,
+    title: summary.title,
+    description: summary.description,
+    openGraph: {
+      title: summary.title,
+      description: summary.description,
+      url: `/results/${searchId}`,
+      siteName: 'LetsFG',
+      type: 'website',
+      images: [
+        {
+          url: opengraphImageUrl,
+          width: RESULTS_SHARE_IMAGE_SIZE.width,
+          height: RESULTS_SHARE_IMAGE_SIZE.height,
+          alt: `${summary.routeLabel} flight search summary`,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: summary.title,
+      description: summary.description,
+      images: [twitterImageUrl],
+    },
   }
 }
 
