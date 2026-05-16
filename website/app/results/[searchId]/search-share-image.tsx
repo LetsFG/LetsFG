@@ -4,36 +4,36 @@ import { join } from 'node:path'
 import type { SearchShareSummary } from './search-share-model'
 
 export const RESULTS_SHARE_IMAGE_SIZE = {
-  width: 1738,
-  height: 905,
+  width: 1734,
+  height: 907,
 }
 
 const backgroundImagePromise = readFile(join(process.cwd(), 'public', 'results-share-template.png'))
   .then((buffer) => `data:image/png;base64,${buffer.toString('base64')}`)
 
-const FROM_PLACE_MAX_CHARS_PER_LINE = 11
-const TO_PLACE_MAX_CHARS_PER_LINE = 13
+const FROM_PLACE_MAX_CHARS_PER_LINE = 16
+const TO_PLACE_MAX_CHARS_PER_LINE = 16
 const PLACE_MAX_LINES = 2
 
 function metricValueFontSize(value: string) {
-  if (value.length >= 12) return 54
-  if (value.length >= 9) return 62
-  if (value.length >= 7) return 70
-  if (value.length >= 6) return 74
-  if (value.length >= 5) return 78
-  return 82
+  if (value.length >= 12) return 74
+  if (value.length >= 9) return 88
+  if (value.length >= 7) return 102
+  if (value.length >= 6) return 110
+  if (value.length >= 5) return 118
+  return 126
 }
 
 function placeValueFontSize(maxLineLength: number, lineCount: number) {
   if (lineCount > 1) {
-    if (maxLineLength >= 13) return 34
-    if (maxLineLength >= 11) return 38
-    return 42
+    if (maxLineLength >= 16) return 28
+    if (maxLineLength >= 13) return 32
+    return 36
   }
 
-  if (maxLineLength >= 16) return 40
-  if (maxLineLength >= 12) return 46
-  return 50
+  if (maxLineLength >= 18) return 36
+  if (maxLineLength >= 14) return 40
+  return 48
 }
 
 function ellipsizeText(value: string, limit: number) {
@@ -143,11 +143,11 @@ function longestLineLength(lines: string[]) {
 }
 
 function placeLabelTop(lineCount: number) {
-  return lineCount > 1 ? 488 : 503
+  return lineCount > 1 ? 310 : 336
 }
 
 function placeLabelHeight(lineCount: number) {
-  return lineCount > 1 ? 88 : 58
+  return lineCount > 1 ? 82 : 58
 }
 
 function escapeSvgText(value: string) {
@@ -214,9 +214,9 @@ function renderPlaceLabel(lines: string[], fontSize: number) {
         justifyContent: lines.length > 1 ? 'flex-start' : 'center',
         overflow: 'hidden',
         fontSize,
-        fontWeight: 500,
-        lineHeight: 0.98,
-        letterSpacing: '-0.035em',
+        fontWeight: 700,
+        lineHeight: 0.96,
+        letterSpacing: '-0.04em',
         color: '#1d1d22',
       }}
     >
@@ -276,9 +276,9 @@ export async function renderSearchShareImage(summary: SearchShareSummary) {
         <div
           style={{
             position: 'absolute',
-            left: 208,
+            left: 284,
             top: placeLabelTop(fromLines.length),
-            width: 238,
+            width: 300,
             height: placeLabelHeight(fromLines.length),
             display: 'flex',
             alignItems: 'stretch',
@@ -290,9 +290,9 @@ export async function renderSearchShareImage(summary: SearchShareSummary) {
         <div
           style={{
             position: 'absolute',
-            left: 492,
+            left: 1302,
             top: placeLabelTop(toLines.length),
-            width: 286,
+            width: 300,
             height: placeLabelHeight(toLines.length),
             display: 'flex',
             alignItems: 'stretch',
@@ -304,10 +304,10 @@ export async function renderSearchShareImage(summary: SearchShareSummary) {
         <div
           style={{
             position: 'absolute',
-            left: 744,
-            top: 478,
-            width: 372,
-            height: 108,
+            left: 340,
+            top: 560,
+            width: 470,
+            height: 160,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
