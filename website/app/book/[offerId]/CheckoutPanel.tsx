@@ -18,15 +18,6 @@ const CHECKOUT_COUNTDOWN_EXPERIMENT: ExperimentConfig<'control' | 'countdown'> =
   variants: { control: 0.5, countdown: 0.5 },
 }
 
-export const CHECKOUT_UNLOCK_PATH_EXPERIMENT_ID = 'exp_checkout-unlock-path-v1'
-
-type CheckoutUnlockPathVariant = 'share_and_pay' | 'payment_only'
-
-const CHECKOUT_UNLOCK_PATH_EXPERIMENT: ExperimentConfig<CheckoutUnlockPathVariant> = {
-  id: CHECKOUT_UNLOCK_PATH_EXPERIMENT_ID,
-  variants: { share_and_pay: 0.5, payment_only: 0.5 },
-}
-
 interface Props {
   offer: Offer
   searchId: string | null
@@ -148,10 +139,6 @@ function fmtFee(fee: number, currency: string) {
 
 function fmtMoney(amount: number, currency: string) {
   return `${currency}${amount.toFixed(2).replace(/\.00$/, '')}`
-}
-
-function shouldShowShareUnlockOption(variant: CheckoutUnlockPathVariant | null) {
-  return variant === 'share_and_pay'
 }
 
 function wait(ms: number) {
@@ -404,8 +391,8 @@ export default function CheckoutPanel({
 
   // ── A/B experiments ──────────────────────────────────────────────────
   const { variant: countdownVariant } = useExperiment(CHECKOUT_COUNTDOWN_EXPERIMENT, analyticsSearchId)
-  const { variant: unlockPathVariant } = useExperiment(CHECKOUT_UNLOCK_PATH_EXPERIMENT, analyticsSearchId)
-  const showShareOption = shouldShowShareUnlockOption(unlockPathVariant)
+  // Share-to-unlock is retired; checkout stays payment-only.
+  const showShareOption = false
 
   // Start in 'checking' — we always verify unlock status on mount.
   const [step, setStep] = useState<CheckoutStep>({ type: 'checking' })
@@ -812,7 +799,7 @@ export default function CheckoutPanel({
           selected_offer_currency: offer.currency,
           selected_offer_price: offer.price,
           potential_revenue: fee,
-        })
+        }, { beacon: true })
         window.location.href = data.url
       } else {
         setStep({ type: 'locked' })

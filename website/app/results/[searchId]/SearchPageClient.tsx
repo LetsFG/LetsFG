@@ -26,6 +26,57 @@ const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
 const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
 const X_URL = 'https://x.com/LetsFG_'
 
+function slugifyResultsQuery(query: string): string {
+  const words = query
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .split('-')
+    .filter(Boolean)
+
+  const slugParts: string[] = []
+  let length = 0
+
+  for (const word of words) {
+    const nextLength = length + word.length + (slugParts.length > 0 ? 1 : 0)
+    if (slugParts.length >= 10 || nextLength > 64) break
+    slugParts.push(word)
+    length = nextLength
+  }
+
+  return slugParts.join('-')
+}
+
+function buildResultsSharePath({
+  searchId,
+  query,
+  isTestSearch,
+  offersCountOverride,
+}: {
+  searchId: string
+  query: string
+  isTestSearch: boolean
+  offersCountOverride?: number
+}) {
+  const slug = slugifyResultsQuery(query)
+  const pathname = slug
+    ? `/results/${encodeURIComponent(searchId)}/${slug}`
+    : `/results/${encodeURIComponent(searchId)}`
+  const params = new URLSearchParams()
+
+  if (isTestSearch) {
+    params.set('probe', '1')
+  }
+
+  if (typeof offersCountOverride === 'number' && offersCountOverride > 0) {
+    params.set('oc', String(Math.round(offersCountOverride)))
+  }
+
+  const queryString = params.toString()
+  return queryString ? `${pathname}?${queryString}` : pathname
+}
+
 // ── Monitor confirmed overlay ─────────────────────────────────────────────────
 
 interface TelegramUser {
@@ -258,7 +309,7 @@ function MonitorConfirmedOverlay({
     </dialog>
   )
 }
-const SESSION_RESULT_CACHE_LIMIT = 500
+const SESSION_RESULT_CACHE_LIMIT = 5000
 const SearchingTasks = dynamic(() => import('./SearchingTasks'), { ssr: false })
 const MonitorModal = dynamic(() => import('./MonitorModal'), { ssr: false })
 
@@ -464,6 +515,15 @@ export default function SearchPageClient({
     ? `/${locale}?q=${encodeURIComponent(query)}${isTestSearch ? '&probe=1' : ''}`
     : homeHref
   const searchParams = useSearchParams()
+  const canonicalSharePath = useMemo(
+    () => buildResultsSharePath({
+      searchId,
+      query,
+      isTestSearch,
+      offersCountOverride: status === 'completed' ? offers.length : undefined,
+    }),
+    [isTestSearch, offers.length, query, searchId, status],
+  )
   const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : parsed.min_trip_days
   const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : parsed.max_trip_days
 
@@ -507,6 +567,18 @@ export default function SearchPageClient({
   }, [searchParams])
 
   useEffect(() => {
+    if (!searchId) return
+    try {
+      const currentUrl = new URL(window.location.href)
+      const nextUrl = new URL(canonicalSharePath, currentUrl.origin)
+      if (currentUrl.pathname === nextUrl.pathname && currentUrl.search === nextUrl.search) return
+      window.history.replaceState(null, '', nextUrl.toString())
+    } catch (_) {
+      // Ignore browsers that reject history writes.
+    }
+  }, [canonicalSharePath, searchId])
+
+  useEffect(() => {
     trackedResultsViewRef.current = false
     trackedExpiredRef.current = false
     scrollMilestonesRef.current = new Set()
@@ -541,9 +613,6 @@ export default function SearchPageClient({
     const handleCurrencyChange = () => {
       const next = readBrowserCurrencyPreference(initialCurrency)
       setDisplayCurrency(next)
-      const url = new URL(window.location.href)
-      url.searchParams.set('cur', next)
-      window.history.replaceState(null, '', url.toString())
     }
     window.addEventListener(CURRENCY_CHANGE_EVENT, handleCurrencyChange)
     return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, handleCurrencyChange)
@@ -1052,6 +1121,8 @@ export default function SearchPageClient({
       {(status === 'completed' || (isSearching && allOffers.length > 0)) && (
         <ResultsPanel
           allOffers={allOffers}
+          query={query}
+          sharePath={canonicalSharePath}
           currency={displayCurrency}
           travelerCount={travelerCount}
           priceMin={priceMin}

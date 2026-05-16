@@ -22,6 +22,7 @@ import {
 } from '../../../lib/offer-pricing'
 import { calculateFee } from '../../../lib/pricing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
+import ResultsActions from './ResultsActions'
 import { SearchProgressBarInline } from './SearchProgressBar'
 import { rankOffers, selectDiverseTop, getOfferInstanceKey, getProfileLabel, type RankingContext, type RankedOffer } from '../../lib/rankOffers'
 import { normalizeTripPurposes, type TripPurpose } from '../../lib/trip-purpose'
@@ -645,6 +646,8 @@ function computeWhyNot(
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   allOffers: FlightOffer[]
+  query: string
+  sharePath?: string
   currency: string
   travelerCount?: number
   priceMin: number
@@ -684,6 +687,30 @@ interface Props {
   initialGemini?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
 }
 
+const EMAIL_UNLOCK_TOKEN_STORAGE_PREFIX = 'lfg_monitor_email_unlock:'
+
+function getEmailUnlockTokenStorageKey(searchId: string) {
+  return `${EMAIL_UNLOCK_TOKEN_STORAGE_PREFIX}${searchId}`
+}
+
+function readStoredEmailUnlockToken(searchId?: string) {
+  if (!searchId || typeof window === 'undefined') return null
+  try {
+    return window.sessionStorage.getItem(getEmailUnlockTokenStorageKey(searchId))
+  } catch (_) {
+    return null
+  }
+}
+
+function persistEmailUnlockToken(searchId?: string, token?: string | null) {
+  if (!searchId || !token || typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(getEmailUnlockTokenStorageKey(searchId), token)
+  } catch (_) {
+    // Ignore private-mode and quota failures.
+  }
+}
+
 function normalizeGeminiOfferIds(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null
   const offerIds = value.filter((offerId): offerId is string => typeof offerId === 'string' && offerId.length > 0)
@@ -693,6 +720,8 @@ function normalizeGeminiOfferIds(value: unknown): string[] | null {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ResultsPanel({
   allOffers,
+  query,
+  sharePath,
   currency,
   travelerCount = 1,
   priceMin: _priceMin,
@@ -763,12 +792,25 @@ export default function ResultsPanel({
   const t = useTranslations('ResultsPanel')
   const locale = useLocale()
   const searchParams = useSearchParams()
-  const emailUnlockToken = searchParams.get('mt')
+  const emailUnlockTokenFromUrl = searchParams.get('mt')
+  const [emailUnlockToken, setEmailUnlockToken] = useState<string | null>(() => {
+    if (emailUnlockTokenFromUrl) return emailUnlockTokenFromUrl
+    return readStoredEmailUnlockToken(searchId)
+  })
   const analyticsSearchId = trackingSearchId || searchId
   const resultsSourcePath = getTrackedSourcePath(searchId ? `/results/${searchId}` : '/results', isTestSearch)
   const resolvedTripPurposes = useMemo(() => normalizeTripPurposes({ tripPurpose, tripPurposes }), [tripPurpose, tripPurposes])
   const rankingTripPurposes = resolvedTripPurposes.length > 0 ? resolvedTripPurposes : undefined
   const primaryTripPurpose = rankingTripPurposes?.[0]
+
+  useEffect(() => {
+    const nextToken = emailUnlockTokenFromUrl || readStoredEmailUnlockToken(searchId)
+    setEmailUnlockToken(nextToken)
+    if (nextToken) {
+      persistEmailUnlockToken(searchId, nextToken)
+    }
+  }, [emailUnlockTokenFromUrl, searchId])
+
   // ── Filter state ──────────────────────────────────────────────────────────
   const [sort, setSort] = useState<'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'>(defaultSort ?? 'price')
   const [stopsFilter, setStopsFilter] = useState<string[]>([])          // [] = all
@@ -1155,9 +1197,7 @@ export default function ResultsPanel({
   //                 (if hero didn't change, we just clear the "still searching" tone)
   // Max 3 Gemini calls total per search session.
 
-  const rawQuery = typeof window !== 'undefined'
-    ? (new URL(window.location.href).searchParams.get('q') ?? '')
-    : ''
+  const rawQuery = query
 
   const callGemini = useCallback((phase: 'early' | 'mid' | 'final') => {
     if (globalRankTopThree.length === 0) return
@@ -1598,6 +1638,9 @@ export default function ResultsPanel({
               </div>
             </div>
           )}
+          <div className="rf-bar-share">
+            <ResultsActions sharePath={sharePath} />
+          </div>
         </div>
 
         {/* Flight list */}
@@ -1625,6 +1668,7 @@ export default function ResultsPanel({
             const inboundDestinationName = offer.inbound?.segments?.[offer.inbound.segments.length - 1]?.destination_name || offer.origin_name || offer.inbound?.destination || ''
             const rawOfferTotal = getOfferKnownTotalPrice(offer)
             const fullOfferPrice = getOfferDisplayTotalPrice(offer, currency)
+            const sortDisplayPrice = getSortEffectivePrice(offer, sort, currency)
             const googleFlightsSavings = getGoogleFlightsSavingsAmount(rawOfferTotal, offer.google_flights_price, travelerCount)
             const googleFlightsSavingsLabel = googleFlightsSavings === null
               ? null
@@ -1931,9 +1975,9 @@ export default function ResultsPanel({
                   )}
 
                   <div className="rf-price-wrap">
-                    <span className="rf-price-total-label">{t('priceTotal')}</span>
-                    <span className="rf-price">{fmt(getSortEffectivePrice(offer, sort, currency))}</span>
-                    <span className="rf-price-sub">{t('perPerson')}</span>
+                    <span className="rf-price-total-label">{t('perPerson')}</span>
+                    <span className="rf-price">{fmt(sortDisplayPrice)}</span>
+                    <span className="rf-price-sub">{`${t('ticket')} + ${t('letsfgFee')}`}</span>
                     <div className="rf-price-breakdown">
                       <div className="rf-price-breakdown-row">
                         <span className="rf-price-breakdown-label">✈ {t('ticket')}</span>
