@@ -53,6 +53,9 @@ async function copyToClipboard(text: string) {
 
 export default function ResultsActions({ sharePath }: ResultsActionsProps) {
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle')
+  const isCopied = shareState === 'copied'
+  const buttonLabel = isCopied ? 'Link copied' : 'Share results'
+  const accessibilityLabel = isCopied ? 'Search link copied' : 'Share results'
 
   async function handleShare() {
     const url = sharePath
@@ -86,15 +89,15 @@ export default function ResultsActions({ sharePath }: ResultsActionsProps) {
   return (
     <button
       type="button"
-      className={`rf-share-btn${shareState === 'copied' ? ' rf-share-btn--copied' : ''}`}
+      className={`rf-share-btn${isCopied ? ' rf-share-btn--copied' : ''}`}
       onClick={handleShare}
-      aria-label={shareState === 'copied' ? 'Search link copied' : 'Share search'}
-      title={shareState === 'copied' ? 'Search link copied' : 'Share search'}
+      aria-label={accessibilityLabel}
+      title={accessibilityLabel}
     >
       <span className="rf-share-btn-icon" aria-hidden="true">
         <ShareIcon />
       </span>
-      <span className="rf-share-btn-label">{shareState === 'copied' ? 'Copied!' : 'Share'}</span>
+      <span className="rf-share-btn-label">{buttonLabel}</span>
     </button>
   )
 }
