@@ -1,9 +1,13 @@
 const withNextIntl = require('next-intl/plugin')('./i18n/request.ts')
+const path = require('path')
 
 // build: 2026-05-05
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
   images: {
     remotePatterns: [
       {
