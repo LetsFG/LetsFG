@@ -8,6 +8,14 @@ const nextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  async rewrites() {
+    return [
+      {
+        source: '/results/:searchId/:shareSlug((?!opengraph-image|twitter-image)[^/]+)',
+        destination: '/results/:searchId',
+      },
+    ]
+  },
   images: {
     remotePatterns: [
       {

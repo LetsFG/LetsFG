@@ -2,22 +2,13 @@
 
 import { useState } from 'react'
 
-function BookmarkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
-      <path
-        d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
+interface ResultsActionsProps {
+  sharePath?: string
 }
 
 function ShareIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" width="18" height="18" aria-hidden="true">
       <path
         d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"
         stroke="currentColor"
@@ -45,60 +36,65 @@ function ShareIcon() {
   )
 }
 
-export default function ResultsActions() {
-  const [saveState, setSaveState] = useState<'idle' | 'hint'>('idle')
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch (_) {
+    const input = document.createElement('input')
+    input.value = text
+    document.body.appendChild(input)
+    input.select()
+    const copied = document.execCommand('copy')
+    document.body.removeChild(input)
+    return copied
+  }
+}
+
+export default function ResultsActions({ sharePath }: ResultsActionsProps) {
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle')
 
-  function handleSave() {
-    setSaveState('hint')
-    setTimeout(() => setSaveState('idle'), 3000)
-    // Try legacy Firefox API (no-op in Chrome)
-    const win = window as unknown as { sidebar?: { addPanel?: (t: string, u: string, e: string) => void } }
-    if (win.sidebar?.addPanel) {
-      win.sidebar.addPanel(document.title, window.location.href, '')
-    }
-  }
-
   async function handleShare() {
-    const url = window.location.href
-    try {
-      await navigator.clipboard.writeText(url)
-    } catch (_) {
-      // Fallback for browsers without clipboard API
-      const el = document.createElement('input')
-      el.value = url
-      document.body.appendChild(el)
-      el.select()
-      document.execCommand('copy')
-      document.body.removeChild(el)
+    const url = sharePath
+      ? new URL(sharePath, window.location.origin).toString()
+      : window.location.href
+    const shareData = {
+      title: document.title,
+      url,
     }
+
+    if (typeof navigator.share === 'function') {
+      try {
+        if (typeof navigator.canShare !== 'function' || navigator.canShare(shareData)) {
+          await navigator.share(shareData)
+          return
+        }
+      } catch (error) {
+        if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'NotAllowedError')) {
+          return
+        }
+      }
+    }
+
+    const copied = await copyToClipboard(url)
+    if (!copied) return
+
     setShareState('copied')
     setTimeout(() => setShareState('idle'), 2500)
   }
 
   return (
-    <aside className="rf-sidebar">
-      <button
-        className="rf-action-btn"
-        onClick={handleSave}
-        aria-label="Save this search as a bookmark"
-      >
-        <BookmarkIcon />
-        <span className="rf-action-label">
-          {saveState === 'hint' ? 'Press\nCtrl+D' : 'Save\nsearch'}
-        </span>
-      </button>
-
-      <button
-        className="rf-action-btn"
-        onClick={handleShare}
-        aria-label="Copy link to clipboard"
-      >
+    <button
+      type="button"
+      className={`rf-share-btn${shareState === 'copied' ? ' rf-share-btn--copied' : ''}`}
+      onClick={handleShare}
+      aria-label={shareState === 'copied' ? 'Search link copied' : 'Share search'}
+      title={shareState === 'copied' ? 'Search link copied' : 'Share search'}
+    >
+      <span className="rf-share-btn-icon" aria-hidden="true">
         <ShareIcon />
-        <span className="rf-action-label">
-          {shareState === 'copied' ? 'Copied!' : 'Share\nsearch'}
-        </span>
-      </button>
-    </aside>
+      </span>
+      <span className="rf-share-btn-label">{shareState === 'copied' ? 'Copied!' : 'Share'}</span>
+    </button>
   )
 }

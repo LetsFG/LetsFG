@@ -3883,6 +3883,7 @@ body:has(.res-page) {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .rf-bar-count {
@@ -5601,7 +5602,7 @@ body:has(.res-page) {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
+  flex: 1 1 0%;
   min-width: 0;
   overflow: hidden;
 }
@@ -5650,6 +5651,61 @@ body:has(.res-page) {
 .rf-bar-checked-chip:hover {
   background: rgba(20, 45, 60, 0.09);
   color: rgba(20, 45, 60, 0.75);
+}
+
+.rf-bar-share {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.rf-share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(20, 45, 60, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: #142d3e;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(20, 45, 60, 0.08);
+  transition: transform 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s, color 0.12s;
+}
+
+.rf-share-btn:hover {
+  background: rgba(20, 45, 60, 0.04);
+  border-color: rgba(20, 45, 60, 0.2);
+  box-shadow: 0 4px 10px rgba(20, 45, 60, 0.08);
+  transform: translateY(-1px);
+}
+
+.rf-share-btn:focus-visible {
+  outline: none;
+  border-color: #0a4d68;
+  box-shadow: 0 0 0 3px rgba(10, 77, 104, 0.14);
+}
+
+.rf-share-btn--copied {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.rf-share-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-share-btn-label {
+  white-space: nowrap;
 }
 
 /* Right action sidebar (save / share) - removed */
@@ -6953,6 +7009,17 @@ body:has(.res-page) {
     padding: 10px 14px;
   }
 
+  .rf-share-btn {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+  }
+
+  .rf-share-btn-label {
+    display: none;
+  }
+
   /* ── Mobile card layout ──────────────────────────────────────────────── */
   .rf-card-row {
     display: grid;
@@ -7110,6 +7177,12 @@ body:has(.res-page) {
 
   .rf-bar-count {
     font-size: 0.82rem;
+  }
+
+  .rf-share-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
   }
 }
 

@@ -256,7 +256,7 @@ export default async function BookPage({
         {offer.inbound?.airline && <p>Return airline: {offer.inbound.airline} ({offer.inbound.airline_code || ''})</p>}
 
         <h2>How to book this flight</h2>
-        <p>Booking via this website requires a payment method. Some visitors may also see a share-to-unlock option. For programmatic booking, use the LetsFG API:</p>
+        <p>Booking via this website requires a payment method. For programmatic booking, use the LetsFG API:</p>
         <p>Step 1 — Register (one-time): POST https://api.letsfg.co/api/v1/agents/register with body: agent_name, email</p>
         <p>Step 2 — Star the repo for free access: https://github.com/LetsFG/LetsFG then run: letsfg star --github YOUR_USERNAME</p>
         <p>Step 3 — Unlock offer (confirms live price, free): POST https://api.letsfg.co/api/v1/bookings/unlock with header X-API-Key and body: offer_id={offer.id}</p>
@@ -265,7 +265,7 @@ export default async function BookPage({
         <p>Full API documentation: https://docs.letsfg.co/api-guide</p>
 
         <h2>If you cannot use the API</h2>
-        <p>On this page, humans can unlock this offer by paying a small one-time fee. Some visitors may also be able to unlock by sharing the deal on social media and uploading a screenshot as proof. Once unlocked, the direct booking link stays available for this browser/user.</p>
+        <p>On this page, humans can unlock this offer by paying a small one-time fee. Once unlocked, the direct booking link stays available for this browser/user.</p>
         <p>To go back to all results for this search, navigate to: {backHref}</p>
         <p>To start a new search, navigate to: https://letsfg.co</p>
       </section>
