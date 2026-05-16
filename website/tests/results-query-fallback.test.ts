@@ -12,15 +12,16 @@ function readSource(relativePath: string): string {
 }
 
 test('results page prefers the explicit rerun query before falling back to result or parsed data', () => {
-  const source = readSource('app/results/[searchId]/page.tsx')
+  const pageSource = readSource('app/results/[searchId]/page.tsx')
+  const modelSource = readSource('app/results/[searchId]/search-share-model.ts')
 
   assert.match(
-    source,
+    modelSource,
     /function buildFallbackSearchQuery\(parsed: SearchResult\['parsed'\]\): string \{[\s\S]*const origin = parsed\.origin \|\| parsed\.origin_name[\s\S]*const destination = parsed\.destination \|\| parsed\.destination_name[\s\S]*const parts = \[`\$\{origin\} to \$\{destination\}`\][\s\S]*if \(parsed\.date\) parts\.push\(parsed\.date\)[\s\S]*if \(parsed\.return_date\) parts\.push\(`return \$\{parsed\.return_date\}`\)[\s\S]*return parts\.join\(' '\)\.trim\(\)[\s\S]*\}/,
   )
 
   assert.match(
-    source,
+    pageSource,
     /const query = sp\?\.q\?\.trim\(\) \|\| resultQuery\?\.trim\(\) \|\| buildFallbackSearchQuery\(parsed\)/,
   )
 })
