@@ -6,7 +6,9 @@ import {
 } from './offer-pricing'
 import { formatCurrencyAmount } from './user-currency'
 
-const FX_VS_EUR: Record<string, number> = {
+export type FxRateTable = Record<string, number>
+
+export const DEFAULT_FX_VS_EUR: FxRateTable = {
   AED: 4.33,
   ARS: 1350.0,
   AUD: 1.64,
@@ -46,24 +48,34 @@ const FX_VS_EUR: Record<string, number> = {
   ZAR: 19.3,
 }
 
-function normalizeCurrencyCode(currency: string | null | undefined) {
+export function normalizeCurrencyCode(currency: string | null | undefined) {
   return currency?.trim().toUpperCase() || 'EUR'
 }
 
-export function convertCurrencyAmount(amount: number, fromCurrency: string, toCurrency: string) {
+function resolveFxRateTable(rates?: FxRateTable) {
+  return rates && Object.keys(rates).length > 0 ? rates : DEFAULT_FX_VS_EUR
+}
+
+export function convertCurrencyAmount(
+  amount: number,
+  fromCurrency: string,
+  toCurrency: string,
+  rates?: FxRateTable,
+) {
   if (!Number.isFinite(amount)) {
     return amount
   }
 
   const from = normalizeCurrencyCode(fromCurrency)
   const to = normalizeCurrencyCode(toCurrency)
+  const rateTable = resolveFxRateTable(rates)
 
   if (from === to) {
     return Math.round(amount * 100) / 100
   }
 
-  const fromRate = FX_VS_EUR[from]
-  const toRate = FX_VS_EUR[to]
+  const fromRate = rateTable[from]
+  const toRate = rateTable[to]
 
   if (!fromRate || !toRate) {
     return Math.round(amount * 100) / 100
@@ -73,21 +85,26 @@ export function convertCurrencyAmount(amount: number, fromCurrency: string, toCu
   return Math.round(eurAmount * toRate * 100) / 100
 }
 
-export function getOfferDisplayTotalPrice(offer: OfferPriceLike, displayCurrency: string) {
-  return convertCurrencyAmount(getOfferKnownTotalPrice(offer), offer.currency, displayCurrency)
+export function getOfferDisplayTotalPrice(
+  offer: OfferPriceLike,
+  displayCurrency: string,
+  rates?: FxRateTable,
+) {
+  return convertCurrencyAmount(getOfferKnownTotalPrice(offer), offer.currency, displayCurrency, rates)
 }
 
 export function getOfferDisplayTotalWithAncillary(
   offer: OfferPriceLike,
   ancillary: OfferPriceAncillary | undefined,
   displayCurrency: string,
+  rates?: FxRateTable,
 ) {
   const total = getOfferTotalWithAncillary(offer, ancillary)
   if (total === null) {
     return null
   }
 
-  return convertCurrencyAmount(total, offer.currency, displayCurrency)
+  return convertCurrencyAmount(total, offer.currency, displayCurrency, rates)
 }
 
 export function formatOfferDisplayPrice(
@@ -95,9 +112,10 @@ export function formatOfferDisplayPrice(
   sourceCurrency: string,
   displayCurrency: string,
   locale?: string,
+  rates?: FxRateTable,
 ) {
   return formatCurrencyAmount(
-    convertCurrencyAmount(amount, sourceCurrency, displayCurrency),
+    convertCurrencyAmount(amount, sourceCurrency, displayCurrency, rates),
     displayCurrency,
     locale,
   )

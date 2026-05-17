@@ -1,4 +1,4 @@
-import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
+import { getOfferDisplayTotalPrice, type FxRateTable } from '../../../lib/display-price'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { deduplicateOffers } from '../../lib/rankOffers'
 import type { TripPurpose } from '../../lib/trip-purpose'
@@ -107,6 +107,7 @@ export interface SearchShareSummary {
 
 export interface BuildSearchShareSummaryOptions {
   offersAnalyzedOverride?: number | null
+  fxRates?: FxRateTable
 }
 
 function formatCount(value: number) {
@@ -201,7 +202,7 @@ function resolveTopPicks(result: SearchResult) {
   return null
 }
 
-function resolveCheapestOffer(offers: FlightOffer[], displayCurrency: string) {
+function resolveCheapestOffer(offers: FlightOffer[], displayCurrency: string, fxRates?: FxRateTable) {
   if (offers.length === 0) {
     return null
   }
@@ -211,7 +212,7 @@ function resolveCheapestOffer(offers: FlightOffer[], displayCurrency: string) {
       return offer
     }
 
-    return getOfferDisplayTotalPrice(offer, displayCurrency) < getOfferDisplayTotalPrice(best, displayCurrency)
+    return getOfferDisplayTotalPrice(offer, displayCurrency, fxRates) < getOfferDisplayTotalPrice(best, displayCurrency, fxRates)
       ? offer
       : best
   }, offers[0])
@@ -286,8 +287,8 @@ export function buildSearchShareSummary(
 ): SearchShareSummary {
   const dedupedOffers = deduplicateOffers(result.offers || [])
   const currency = displayCurrency?.trim() || dedupedOffers[0]?.currency || 'EUR'
-  const cheapest = resolveCheapestOffer(dedupedOffers, currency)
-  const cheapestDisplayPrice = cheapest ? getOfferDisplayTotalPrice(cheapest, currency) : null
+  const cheapest = resolveCheapestOffer(dedupedOffers, currency, options?.fxRates)
+  const cheapestDisplayPrice = cheapest ? getOfferDisplayTotalPrice(cheapest, currency, options?.fxRates) : null
   const cheapestFormattedPrice = cheapestDisplayPrice === null
     ? null
     : formatCurrencyAmount(cheapestDisplayPrice, currency)

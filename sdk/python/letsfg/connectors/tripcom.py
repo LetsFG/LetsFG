@@ -34,30 +34,6 @@ logger = logging.getLogger(__name__)
 
 _ancillary_cache: dict[str, tuple[float, dict]] = {}
 _ANCILLARY_CACHE_TTL = 1800  # 30 min
-# CNY exchange rates (approximate) — updated periodically
-_CNY_RATES = {
-    "EUR": 0.127, "USD": 0.138, "GBP": 0.109,
-    "INR": 11.58, "AUD": 0.214, "CAD": 0.192,
-    "JPY": 20.4, "KRW": 189.0, "SGD": 0.184,
-    "THB": 4.66, "MYR": 0.606, "CNY": 1.0,
-    # European currencies missing from original table
-    "PLN": 0.541, "CZK": 3.175, "HUF": 50.3, "RON": 0.632,
-    "SEK": 1.385, "NOK": 1.373, "DKK": 0.946, "CHF": 0.124,
-    "HRK": 0.957, "BGN": 0.248, "ISK": 18.9,
-    # Other major currencies
-    "TRY": 4.35, "BRL": 0.782, "MXN": 2.82, "ZAR": 2.52,
-    "ILS": 0.493, "AED": 0.507, "SAR": 0.517,
-    "NZD": 0.234, "HKD": 1.075, "TWD": 4.43,
-    "PHP": 7.69, "IDR": 2140.0, "VND": 3520.0,
-    "PKR": 38.6, "BDT": 15.1, "LKR": 41.8,
-    "EGP": 6.74, "NGN": 220.0, "KES": 17.8,
-    "MAD": 1.395, "DZD": 18.6, "TND": 0.425,
-    "QAR": 0.503, "KWD": 0.0423, "BHD": 0.0520,
-    "OMR": 0.0531, "JOD": 0.0978,
-    "CLP": 130.0, "COP": 594.0, "ARS": 138.0, "PEN": 0.516,
-    "CRC": 70.9, "UYU": 5.74, "PYG": 1058.0,
-    "UAH": 5.65, "KZT": 67.6, "GEL": 0.379, "AMD": 53.6,
-}
 
 
 def _parse_dt(s: Any) -> datetime:
@@ -68,15 +44,6 @@ def _parse_dt(s: Any) -> datetime:
         return datetime.fromisoformat(s.replace(" ", "T"))
     except (ValueError, AttributeError):
         return datetime(2000, 1, 1)
-
-
-def _cny_to(amount: float, currency: str) -> float:
-    """Convert CNY amount to target currency."""
-    rate = _CNY_RATES.get(currency.upper())
-    if rate:
-        return round(amount * rate, 2)
-    return round(amount * _CNY_RATES["EUR"], 2)
-
 
 class TripcomConnectorClient:
     """Trip.com / Ctrip — Playwright + batchSearch API interception."""
@@ -341,9 +308,9 @@ def _parse_ctrip(
 ) -> list[FlightOffer]:
     """Parse Ctrip batchSearch flightItineraryList into FlightOffer list.
 
-    Prices from Ctrip are in CNY. We convert to req.currency.
+    Preserve the source currency returned by Trip.com. The shared engine
+    normalizes all offers to the search currency using live FX rates.
     """
-    target_cur = req.currency or "EUR"
     offers: list[FlightOffer] = []
 
     for itin in itins:
@@ -360,20 +327,15 @@ def _parse_ctrip(
             if total_raw <= 0:
                 continue
 
-            # Trip.com international site may return prices in the site's display
-            # currency (often USD or EUR), not CNY. Check for a currency field first.
-            source_currency = (
+            # Trip.com international responses may be in CNY, USD, EUR, etc.
+            # Keep the raw amount/currency pair intact and let the engine apply
+            # live normalization once for every connector.
+            source_currency = str(
                 p0.get("currency") or p0.get("priceCurrency") or "CNY"
-            ).upper()
-            if source_currency and source_currency != "CNY" and source_currency in _CNY_RATES:
-                # Prices are already in source_currency — convert directly to target
-                rate_to_eur = _CNY_RATES.get(source_currency, 1.0)  # source→CNY inverse
-                total_cny = total_raw / rate_to_eur
-                price = _cny_to(total_cny, target_cur)
-            else:
-                # Assume CNY (Ctrip domestic API or no currency field)
-                total_cny = total_raw
-                price = _cny_to(total_cny, target_cur)
+            ).strip().upper()
+            if len(source_currency) != 3:
+                source_currency = "CNY"
+            price = round(total_raw, 2)
 
             segments_data = itin.get("flightSegments") or []
             if not segments_data:
@@ -446,7 +408,7 @@ def _parse_ctrip(
 
             itin_id = itin.get("itineraryId", "")
             h = hashlib.md5(
-                f"tc_{itin_id}_{total_cny}".encode()
+                f"tc_{itin_id}_{price}_{source_currency}".encode()
             ).hexdigest()[:10]
 
             # Build Trip.com deep link — showfarefirst format
@@ -472,14 +434,14 @@ def _parse_ctrip(
                 f"&searchboxarg=t"
                 f"&nonstoponly={nonstop}"
                 f"&locale=en-XX"
-                f"&curr=CNY"
+                f"&curr={source_currency}"
             )
 
             _tc_offer = FlightOffer(
                 id=f"tc_{h}",
                 price=price,
-                currency=target_cur,
-                price_formatted=f"{target_cur} {price:.2f}",
+                currency=source_currency,
+                price_formatted=f"{source_currency} {price:.2f}",
                 outbound=outbound,
                 inbound=inbound,
                 airlines=all_airlines,

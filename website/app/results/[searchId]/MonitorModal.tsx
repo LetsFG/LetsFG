@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
-import { convertCurrencyAmount } from '../../../lib/display-price'
+import { convertCurrencyAmount, type FxRateTable } from '../../../lib/display-price'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
@@ -23,6 +23,7 @@ interface MonitorModalProps {
   adults?: number
   cabinClass?: string
   currency?: string
+  fxRates?: FxRateTable
   onClose: () => void
 }
 
@@ -79,6 +80,7 @@ export default function MonitorModal({
   adults = 1,
   cabinClass,
   currency = 'USD',
+  fxRates,
   onClose,
 }: MonitorModalProps) {
   const [email, setEmail] = useState('')
@@ -197,7 +199,7 @@ export default function MonitorModal({
     }
   }
 
-  const pricePerWeek = convertCurrencyAmount(5, 'USD', currency)
+  const pricePerWeek = convertCurrencyAmount(5, 'USD', currency, fxRates)
   const totalPrice = weeks * pricePerWeek
   const formattedPerWeek = formatCurrencyAmount(pricePerWeek, currency)
   const formattedTotal = formatCurrencyAmount(totalPrice, currency)

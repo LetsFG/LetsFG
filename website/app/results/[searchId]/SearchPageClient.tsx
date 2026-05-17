@@ -11,7 +11,7 @@ import ResultsSearchForm from '../ResultsSearchForm'
 import ResultsPanel from './ResultsPanel'
 import { SearchProgressBarFull } from './SearchProgressBar'
 import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type CurrencyCode } from '../../../lib/currency-preference'
-import { formatOfferDisplayPrice, getOfferDisplayTotalPrice } from '../../../lib/display-price'
+import { formatOfferDisplayPrice, getOfferDisplayTotalPrice, type FxRateTable } from '../../../lib/display-price'
 import { trackSearchSession, trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
@@ -407,6 +407,7 @@ export interface SearchPageClientProps {
   trackingSearchId?: string | null
   isTestSearch?: boolean
   initialCurrency?: CurrencyCode
+  fxRates?: FxRateTable
   query: string
   parsed: ParsedQuery
   initialStatus: 'searching' | 'completed' | 'expired'
@@ -469,6 +470,7 @@ export default function SearchPageClient({
   trackingSearchId,
   isTestSearch = false,
   initialCurrency = 'EUR',
+  fxRates,
   query,
   parsed,
   initialStatus,
@@ -952,11 +954,11 @@ export default function SearchPageClient({
   // Offer data for ResultsPanel
   const allOffers = offers
   const displaySortedOffers = allOffers.length
-    ? [...allOffers].sort((a, b) => getOfferDisplayTotalPrice(a, displayCurrency) - getOfferDisplayTotalPrice(b, displayCurrency))
+    ? [...allOffers].sort((a, b) => getOfferDisplayTotalPrice(a, displayCurrency, fxRates) - getOfferDisplayTotalPrice(b, displayCurrency, fxRates))
     : allOffers
-  const priceMin = displaySortedOffers.length ? getOfferDisplayTotalPrice(displaySortedOffers[0], displayCurrency) : 0
+  const priceMin = displaySortedOffers.length ? getOfferDisplayTotalPrice(displaySortedOffers[0], displayCurrency, fxRates) : 0
   const priceMax = displaySortedOffers.length
-    ? Math.max(...displaySortedOffers.map((offer) => getOfferDisplayTotalPrice(offer, displayCurrency)))
+    ? Math.max(...displaySortedOffers.map((offer) => getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)))
     : 1000
 
   const handleNavigateHome = () => {
@@ -1124,6 +1126,7 @@ export default function SearchPageClient({
           query={query}
           sharePath={canonicalSharePath}
           currency={displayCurrency}
+          fxRates={fxRates}
           travelerCount={travelerCount}
           priceMin={priceMin}
           priceMax={priceMax}
@@ -1174,6 +1177,7 @@ export default function SearchPageClient({
           adults={parsed.passengers || 1}
           cabinClass={parsed.cabin || undefined}
           currency={displayCurrency}
+          fxRates={fxRates}
           onClose={() => setMonitorOpen(false)}
         />
       )}
@@ -1240,7 +1244,7 @@ export default function SearchPageClient({
             <p>Status: COMPLETED — {allOffers.length} results found.</p>
             <p>Searched at: {searchedAt}</p>
             <p>Results valid until: {expiresAt} (approximately 15 minutes)</p>
-            <p>Cheapest: {formatOfferDisplayPrice(getOfferDisplayTotalPrice(displaySortedOffers[0], displayCurrency), displayCurrency, displayCurrency)} on {displaySortedOffers[0]?.airline} ({displaySortedOffers[0]?.stops === 0 ? 'direct' : `${displaySortedOffers[0]?.stops} stop(s)`}, {formatDuration(displaySortedOffers[0]?.duration_minutes || 0)})</p>
+            <p>Cheapest: {formatOfferDisplayPrice(getOfferDisplayTotalPrice(displaySortedOffers[0], displayCurrency, fxRates), displayCurrency, displayCurrency, locale, fxRates)} on {displaySortedOffers[0]?.airline} ({displaySortedOffers[0]?.stops === 0 ? 'direct' : `${displaySortedOffers[0]?.stops} stop(s)`}, {formatDuration(displaySortedOffers[0]?.duration_minutes || 0)})</p>
             <table>
               <thead>
                 <tr>
@@ -1250,10 +1254,10 @@ export default function SearchPageClient({
               </thead>
               <tbody>
                 {displaySortedOffers.map((offer, i) => (
-                  <tr key={offer.id}>
+                  <tr key={`${getOfferInstanceKey(offer)}|${i}`}>
                     <td>{i + 1}</td>
                     <td>{offer.airline}</td>
-                    <td>{formatOfferDisplayPrice(getOfferDisplayTotalPrice(offer, displayCurrency), displayCurrency, displayCurrency)}</td>
+                    <td>{formatOfferDisplayPrice(getOfferDisplayTotalPrice(offer, displayCurrency, fxRates), displayCurrency, displayCurrency, locale, fxRates)}</td>
                     <td>{offer.origin}→{offer.destination}</td>
                     <td>{offer.departure_time}</td>
                     <td>{offer.arrival_time}</td>

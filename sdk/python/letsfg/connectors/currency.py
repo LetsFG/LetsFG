@@ -8,6 +8,7 @@ Fallback to hardcoded rates if the API is unreachable.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 import httpx
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 _cache: dict[str, dict[str, float]] = {}
 _cache_ts: float = 0.0
 _CACHE_TTL = 3600  # 1 hour
+_FX_API_BASE = os.getenv("LETSFG_FX_API_BASE", "https://api.frankfurter.dev/v2").rstrip("/")
 
 # Hardcoded fallback rates (vs EUR) — updated April 2026
 _FALLBACK_VS_EUR: dict[str, float] = {
@@ -61,9 +63,48 @@ _FALLBACK_VS_EUR: dict[str, float] = {
 }
 
 
+def _normalize_currency_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().upper()
+    if len(normalized) != 3 or not normalized.isalpha():
+        return None
+    return normalized
+
+
+def _build_frankfurter_url(base: str) -> str:
+    quotes = ",".join(sorted(code for code in _FALLBACK_VS_EUR if code != base))
+    return f"{_FX_API_BASE}/rates?base={base}&quotes={quotes}"
+
+
+def _parse_frankfurter_payload(payload: object, base: str) -> dict[str, float]:
+    parsed: dict[str, float] = {}
+    normalized_base = _normalize_currency_code(base) or "EUR"
+
+    if not isinstance(payload, list):
+        return parsed
+
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        row_base = _normalize_currency_code(str(row.get("base")) if row.get("base") is not None else None)
+        quote = _normalize_currency_code(str(row.get("quote")) if row.get("quote") is not None else None)
+        try:
+            rate = float(row.get("rate"))
+        except (TypeError, ValueError):
+            continue
+        if row_base != normalized_base or quote is None or quote == normalized_base or rate <= 0:
+            continue
+        parsed[quote] = rate
+
+    return parsed
+
+
 async def fetch_rates(base: str = "EUR") -> dict[str, float]:
     """Fetch live exchange rates. Returns {currency: rate_vs_base}."""
     global _cache, _cache_ts
+
+    base = _normalize_currency_code(base) or "EUR"
 
     now = time.monotonic()
     if base in _cache and (now - _cache_ts) < _CACHE_TTL:
@@ -71,7 +112,7 @@ async def fetch_rates(base: str = "EUR") -> dict[str, float]:
 
     # Try multiple free APIs in priority order
     apis = [
-        f"https://api.frankfurter.dev/v1/latest?base={base}",
+        _build_frankfurter_url(base),
         f"https://open.er-api.com/v6/latest/{base}",
     ]
     for api_url in apis:
@@ -80,9 +121,13 @@ async def fetch_rates(base: str = "EUR") -> dict[str, float]:
                 resp = await client.get(api_url)
                 resp.raise_for_status()
                 data = resp.json()
-                rates = data.get("rates", {})
+                if api_url.startswith(_FX_API_BASE):
+                    rates = _parse_frankfurter_payload(data, base)
+                else:
+                    raw_rates = data.get("rates", {}) if isinstance(data, dict) else {}
+                    rates = {k: float(v) for k, v in raw_rates.items()}
                 if rates:
-                    _cache[base] = {k: float(v) for k, v in rates.items()}
+                    _cache[base] = rates
                     _cache_ts = now
                     return _cache[base]
         except Exception as e:

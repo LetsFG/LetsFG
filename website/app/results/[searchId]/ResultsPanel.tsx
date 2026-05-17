@@ -9,6 +9,7 @@ import {
   formatOfferDisplayPrice,
   getOfferDisplayTotalPrice,
   getOfferDisplayTotalWithAncillary,
+  type FxRateTable,
 } from '../../../lib/display-price'
 import { computeFlightTimeContext, extractFlightClockMinutes, formatFlightDateCompact, formatFlightTime } from '../../../lib/flight-datetime'
 import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount, normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
@@ -272,18 +273,24 @@ function getSegmentAirlineLabel(segment: FlightSegment, fallbackAirline: string)
   return fallbackCarrier?.name || fallbackAirline
 }
 
-function fmtOfferPrice(amount: number, sourceCurrency: string, displayCurrency: string, locale?: string) {
-  return formatOfferDisplayPrice(amount, sourceCurrency, displayCurrency, locale)
+function fmtOfferPrice(
+  amount: number,
+  sourceCurrency: string,
+  displayCurrency: string,
+  locale?: string,
+  fxRates?: FxRateTable,
+) {
+  return formatOfferDisplayPrice(amount, sourceCurrency, displayCurrency, locale, fxRates)
 }
 
-function findCheapestOffer(offers: FlightOffer[], displayCurrency: string): FlightOffer | null {
+function findCheapestOffer(offers: FlightOffer[], displayCurrency: string, fxRates?: FxRateTable): FlightOffer | null {
   if (offers.length === 0) return null
 
   let cheapestOffer = offers[0]
-  let cheapestPrice = getOfferDisplayTotalPrice(cheapestOffer, displayCurrency)
+  let cheapestPrice = getOfferDisplayTotalPrice(cheapestOffer, displayCurrency, fxRates)
 
   for (const offer of offers.slice(1)) {
-    const offerPrice = getOfferDisplayTotalPrice(offer, displayCurrency)
+    const offerPrice = getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
     if (offerPrice < cheapestPrice) {
       cheapestOffer = offer
       cheapestPrice = offerPrice
@@ -435,31 +442,41 @@ const CHECKED_SOURCES = [
 ]
 
 /** Convert a single ancillary fee to display currency, handling mismatched source currency. */
-function ancillaryInDisplay(anc: OfferAncillary | undefined, offerCurrency: string, displayCurrency: string): number {
+function ancillaryInDisplay(
+  anc: OfferAncillary | undefined,
+  offerCurrency: string,
+  displayCurrency: string,
+  fxRates?: FxRateTable,
+): number {
   if (!anc || anc.included === true || typeof anc.price !== 'number' || anc.price <= 0) return 0
-  return convertCurrencyAmount(anc.price, anc.currency || offerCurrency, displayCurrency)
+  return convertCurrencyAmount(anc.price, anc.currency || offerCurrency, displayCurrency, fxRates)
 }
 
-function getSortEffectivePrice(offer: FlightOffer, sortMode: string, displayCurrency: string): number {
-  const base = convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency)
+function getSortEffectivePrice(
+  offer: FlightOffer,
+  sortMode: string,
+  displayCurrency: string,
+  fxRates?: FxRateTable,
+): number {
+  const base = convertCurrencyAmount(getOfferBaseTotal(offer), offer.currency, displayCurrency, fxRates)
   if (sortMode === 'price_with_bag') {
     const bag = offer.ancillaries?.checked_bag
     if (hasIncludedAncillary(bag)) return base
-    const bagAmt = ancillaryInDisplay(bag, offer.currency, displayCurrency)
+    const bagAmt = ancillaryInDisplay(bag, offer.currency, displayCurrency, fxRates)
     return Math.round((base + bagAmt) * 100) / 100
   }
   if (sortMode === 'price_with_seat') {
     const seat = offer.ancillaries?.seat_selection
     if (hasIncludedAncillary(seat)) return base
-    const seatAmt = ancillaryInDisplay(seat, offer.currency, displayCurrency)
+    const seatAmt = ancillaryInDisplay(seat, offer.currency, displayCurrency, fxRates)
     return Math.round((base + seatAmt) * 100) / 100
   }
   if (sortMode === 'price_with_all') {
-    const bagAmt = ancillaryInDisplay(offer.ancillaries?.checked_bag, offer.currency, displayCurrency)
-    const seatAmt = ancillaryInDisplay(offer.ancillaries?.seat_selection, offer.currency, displayCurrency)
+    const bagAmt = ancillaryInDisplay(offer.ancillaries?.checked_bag, offer.currency, displayCurrency, fxRates)
+    const seatAmt = ancillaryInDisplay(offer.ancillaries?.seat_selection, offer.currency, displayCurrency, fxRates)
     return Math.round((base + bagAmt + seatAmt) * 100) / 100
   }
-  return getOfferDisplayTotalPrice(offer, displayCurrency)
+  return getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
 }
 
 // ── Deal reasoning helpers ────────────────────────────────────────────────────
@@ -471,15 +488,16 @@ function computeDealReason(
   currency: string,
   locale: string,
   travelerCount: number,
+  fxRates?: FxRateTable,
 ): string {
-  const price = getOfferDisplayTotalPrice(offer, currency)
+  const price = getOfferDisplayTotalPrice(offer, currency, fxRates)
   const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price, travelerCount)
 
   const parts: string[] = []
 
   if (googleSavings !== null && googleSavings > 20) {
     const label = formatGoogleFlightsSavings(
-      convertCurrencyAmount(googleSavings, offer.currency, currency),
+      convertCurrencyAmount(googleSavings, offer.currency, currency, fxRates),
       currency,
       locale,
     )
@@ -487,8 +505,8 @@ function computeDealReason(
   }
 
   const isCheapestDirect = offer.stops === 0 &&
-    allOffers.filter(o => o.stops === 0).every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
-  const isOverallCheapest = allOffers.every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
+    allOffers.filter(o => o.stops === 0).every(o => getOfferDisplayTotalPrice(o, currency, fxRates) >= price - 0.01)
+  const isOverallCheapest = allOffers.every(o => getOfferDisplayTotalPrice(o, currency, fxRates) >= price - 0.01)
 
   if (isCheapestDirect) {
     parts.push('cheapest direct flight')
@@ -538,19 +556,20 @@ function computeDealReasonParagraph(
   currency: string,
   locale: string,
   travelerCount: number,
+  fxRates?: FxRateTable,
 ): string {
   const total = allOffers.length
-  const price = getOfferDisplayTotalPrice(offer, currency)
+  const price = getOfferDisplayTotalPrice(offer, currency, fxRates)
   const googleSavings = getGoogleFlightsSavingsAmount(getOfferKnownTotalPrice(offer), offer.google_flights_price, travelerCount)
   const facts: string[] = []
 
   const directOffers = allOffers.filter(o => o.stops === 0)
-  const isCheapestDirect = offer.stops === 0 && directOffers.every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
-  const isOverallCheapest = allOffers.every(o => getOfferDisplayTotalPrice(o, currency) >= price - 0.01)
+  const isCheapestDirect = offer.stops === 0 && directOffers.every(o => getOfferDisplayTotalPrice(o, currency, fxRates) >= price - 0.01)
+  const isOverallCheapest = allOffers.every(o => getOfferDisplayTotalPrice(o, currency, fxRates) >= price - 0.01)
 
   if (googleSavings !== null && googleSavings > 15) {
     const label = formatGoogleFlightsSavings(
-      convertCurrencyAmount(googleSavings, offer.currency, currency),
+      convertCurrencyAmount(googleSavings, offer.currency, currency, fxRates),
       currency,
       locale,
     )
@@ -614,9 +633,10 @@ function computeWhyNot(
   currency: string,
   locale: string,
   tFn: (key: string, values?: Record<string, unknown>) => string,
+  fxRates?: FxRateTable,
 ): string {
-  const heroPrice = getOfferDisplayTotalPrice(hero, currency)
-  const offerPrice = getOfferDisplayTotalPrice(offer, currency)
+  const heroPrice = getOfferDisplayTotalPrice(hero, currency, fxRates)
+  const offerPrice = getOfferDisplayTotalPrice(offer, currency, fxRates)
   const priceDiff = Math.round(offerPrice - heroPrice)
   const parts: string[] = []
 
@@ -649,6 +669,7 @@ interface Props {
   query: string
   sharePath?: string
   currency: string
+  fxRates?: FxRateTable
   travelerCount?: number
   priceMin: number
   priceMax: number
@@ -723,6 +744,7 @@ export default function ResultsPanel({
   query,
   sharePath,
   currency,
+  fxRates,
   travelerCount = 1,
   priceMin: _priceMin,
   priceMax: _priceMax,
@@ -833,33 +855,17 @@ export default function ResultsPanel({
     hero: string
     runners: string[]
   } | 'loading' | null>(() => {
-    // 1. Server-provided (canonical) — only use if locale matches (avoids showing
-    //    English text to a Japanese user when the cache was seeded by a different locale).
+    // Keep the initial render deterministic across server and client.
+    // Browser cache restoration happens after mount to avoid hydration mismatches.
     if (initialGemini?.hero && initialGemini.hero.length > 10) {
       const age = Date.now() - (initialGemini.ts ?? 0)
-      // Treat absent locale as 'en' (old cache entries were always English).
-      // Only use if locale matches — don't show English text to a Japanese user.
       const cachedLocale = initialGemini.locale ?? 'en'
-      const localeMatch = cachedLocale === locale
-      if (age < 6 * 3600 * 1000 && localeMatch) {
+      if (age < 6 * 3600 * 1000 && cachedLocale === locale) {
         const offerIds = normalizeGeminiOfferIds(initialGemini.offer_ids)
         restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
         return { title: initialGemini.title, hero: initialGemini.hero, runners: initialGemini.runners }
       }
     }
-    // 2. localStorage fallback — locale+currency-keyed so each language/currency gets its own cache.
-    if (typeof window === 'undefined' || !searchId) return null
-    try {
-      const raw = localStorage.getItem(`gemini_${searchId}_${locale}_${currency}`)
-      if (!raw) return null
-      const d = JSON.parse(raw) as { title?: string; hero?: string; runners?: string[]; offer_ids?: string[]; ts?: number }
-      const age = Date.now() - (d.ts ?? 0)
-      if (age < 6 * 3600 * 1000 && typeof d.hero === 'string' && d.hero.length > 10) {
-        const offerIds = normalizeGeminiOfferIds(d.offer_ids)
-        restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
-        return { title: d.title as string | undefined, hero: d.hero, runners: (d.runners as string[] | undefined) ?? [] }
-      }
-    } catch { /* ignore */ }
     return null
   })
   // Tracks which generation phase has fired and what hero it was based on
@@ -876,6 +882,34 @@ export default function ResultsPanel({
     finalRefired: boolean
   }>({ phase: 'none', heroId: null, lastSentIds: null, callCount: 0, gen20Fired: false, gen40Fired: false, gen70Fired: false, finalFired: false, finalSentIds: null, finalRefired: false })
 
+  useEffect(() => {
+    if (geminiJustification !== null || !searchId) return
+    try {
+      const raw = localStorage.getItem(`gemini_${searchId}_${locale}_${currency}`)
+      if (!raw) return
+      const cached = JSON.parse(raw) as {
+        title?: string
+        hero?: string
+        runners?: string[]
+        offer_ids?: string[]
+        ts?: number
+      }
+      const age = Date.now() - (cached.ts ?? 0)
+      if (age >= 6 * 3600 * 1000 || typeof cached.hero !== 'string' || cached.hero.length <= 10) {
+        return
+      }
+      const offerIds = normalizeGeminiOfferIds(cached.offer_ids)
+      restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
+      setGeminiJustification({
+        title: cached.title,
+        hero: cached.hero,
+        runners: cached.runners ?? [],
+      })
+    } catch {
+      // Ignore cache parse failures and fall back to live ranking.
+    }
+  }, [currency, geminiJustification, locale, searchId])
+
   // ── Sidebar stats (always based on all offers) ────────────────────────────
   const stopsStats = useMemo(() => {
     const groups: Record<string, { count: number; min: number; currency?: string }> = {}
@@ -883,20 +917,20 @@ export default function ResultsPanel({
       const arr = allOffers.filter(o =>
         key === '0' ? o.stops === 0 : key === '1' ? o.stops === 1 : o.stops >= 2
       )
-      const cheapestOffer = findCheapestOffer(arr, currency)
+      const cheapestOffer = findCheapestOffer(arr, currency, fxRates)
       groups[key] = {
         count: arr.length,
-        min: cheapestOffer ? getOfferDisplayTotalPrice(cheapestOffer, currency) : Infinity,
+        min: cheapestOffer ? getOfferDisplayTotalPrice(cheapestOffer, currency, fxRates) : Infinity,
         currency,
       }
     }
     return groups
-  }, [allOffers, currency])
+  }, [allOffers, currency, fxRates])
 
   const airlineOptions = useMemo(() => {
     const map = new Map<string, { minPrice: number; currency: string }>()
     for (const o of allOffers) {
-      const offerPrice = getOfferDisplayTotalPrice(o, currency)
+      const offerPrice = getOfferDisplayTotalPrice(o, currency, fxRates)
       for (const carrier of getOfferCarriers(o)) {
         const category = getAirlineCategory(carrier.code)
         const current = map.get(category)
@@ -910,7 +944,7 @@ export default function ResultsPanel({
     return [...map.entries()]
       .sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]))
       .map(([airline, value]) => ({ airline, minPrice: value.minPrice, currency: value.currency }))
-  }, [allOffers, currency])
+  }, [allOffers, currency, fxRates])
 
   const amenityStats = useMemo(() => {
     const stats = {
@@ -947,7 +981,7 @@ export default function ResultsPanel({
   // ── Filtered + sorted offers ──────────────────────────────────────────────
   const displayOffers = useMemo(() => {
     let list = allOffers.filter(o => {
-      const offerPrice = getOfferDisplayTotalPrice(o, currency)
+      const offerPrice = getOfferDisplayTotalPrice(o, currency, fxRates)
       // Stops
       if (stopsFilter.length > 0) {
         const key = o.stops === 0 ? '0' : o.stops === 1 ? '1' : '2plus'
@@ -1021,7 +1055,7 @@ export default function ResultsPanel({
       list = [...list].sort((a, b) => a.duration_minutes - b.duration_minutes)
     } else if (sort !== 'price') {
       // Explicit ancillary sort chosen by user — respect it
-      list = [...list].sort((a, b) => getSortEffectivePrice(a, sort, currency) - getSortEffectivePrice(b, sort, currency))
+      list = [...list].sort((a, b) => getSortEffectivePrice(a, sort, currency, fxRates) - getSortEffectivePrice(b, sort, currency, fxRates))
     } else {
       // Default: personalized ranking based on user intent
       const rctx: RankingContext = {
@@ -1041,7 +1075,7 @@ export default function ResultsPanel({
         preferCheapest,
         preferDirect: maxStops === 0,
       }
-      const listWithDisplayPrice = list.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
+      const listWithDisplayPrice = list.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency, fxRates) }))
       const ranked = rankOffers(listWithDisplayPrice, rctx)
 
       // Pick top-3 that are genuinely different propositions (different departure
@@ -1057,7 +1091,7 @@ export default function ResultsPanel({
       // If ranking placed it at position 3+ (e.g. because it departs at 3am), swap it to #3.
       if (list.length >= 3) {
         const cheapestIdx = list.reduce((minIdx, o, idx) =>
-          getOfferDisplayTotalPrice(o, currency) < getOfferDisplayTotalPrice(list[minIdx], currency) ? idx : minIdx, 0)
+          getOfferDisplayTotalPrice(o, currency, fxRates) < getOfferDisplayTotalPrice(list[minIdx], currency, fxRates) ? idx : minIdx, 0)
         if (cheapestIdx > 2) {
           const tmp = [...list]
           const [cheapestOffer] = tmp.splice(cheapestIdx, 1)
@@ -1120,7 +1154,7 @@ export default function ResultsPanel({
       }
     }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, travelerCount, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, primaryTripPurpose, rankingTripPurposes, preferredAirline, requireBagPerPerson, viaIata])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, fxRates, travelerCount, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, primaryTripPurpose, rankingTripPurposes, preferredAirline, requireBagPerPerson, viaIata])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
@@ -1166,7 +1200,7 @@ export default function ResultsPanel({
       preferDirect: maxStops === 0,
     }
     // Rank all displayOffers so scores/tradeoffs are calibrated against the full visible set.
-    const withDisplayPrice = displayOffers.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency) }))
+    const withDisplayPrice = displayOffers.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency, fxRates) }))
     const fullRanked = rankOffers(withDisplayPrice, rctx) as RankedOffer<FlightOffer>[]
     const rankedById = new Map(fullRanked.map(r => [getOfferInstanceKey(r.offer), r]))
     // Return in display order so globalRankTopThree[0] === displayOffers[0] (the hero card).
@@ -1175,7 +1209,7 @@ export default function ResultsPanel({
       if (ranked) return { ...ranked, rank: idx + 1 }
       return { offer: o, rank: idx + 1, score: 0, breakdown: {} as RankedOffer<FlightOffer>['breakdown'], heroFacts: [], tradeoffs: [] }
     })
-  }, [displayOffers, currency, travelerCount, tripContext, primaryTripPurpose, rankingTripPurposes, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, requireCancellation, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
+  }, [displayOffers, currency, fxRates, travelerCount, tripContext, primaryTripPurpose, rankingTripPurposes, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, requireCancellation, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
 
   const currentTopOfferIds = useMemo(
     () => globalRankTopThree.map((rankedOffer) => getOfferInstanceKey(rankedOffer.offer)).join(','),
@@ -1617,7 +1651,7 @@ export default function ResultsPanel({
               displayOffers[0] && (
                 <span className="rf-bar-from">
                   {t('fromPrice', {
-                    price: fmt(getSortEffectivePrice(displayOffers[0], sort, currency)),
+                    price: fmt(getSortEffectivePrice(displayOffers[0], sort, currency, fxRates)),
                   })}
                 </span>
               )
@@ -1667,14 +1701,14 @@ export default function ResultsPanel({
             const inboundOriginName = offer.inbound?.segments?.[0]?.origin_name || offer.destination_name || offer.inbound?.origin || ''
             const inboundDestinationName = offer.inbound?.segments?.[offer.inbound.segments.length - 1]?.destination_name || offer.origin_name || offer.inbound?.destination || ''
             const rawOfferTotal = getOfferKnownTotalPrice(offer)
-            const fullOfferPrice = getOfferDisplayTotalPrice(offer, currency)
-            const sortDisplayPrice = getSortEffectivePrice(offer, sort, currency)
+            const fullOfferPrice = getOfferDisplayTotalPrice(offer, currency, fxRates)
+            const sortDisplayPrice = getSortEffectivePrice(offer, sort, currency, fxRates)
             const googleFlightsSavings = getGoogleFlightsSavingsAmount(rawOfferTotal, offer.google_flights_price, travelerCount)
             const googleFlightsSavingsLabel = googleFlightsSavings === null
               ? null
               : t('cheaperThanGoogleFlights', {
                   amount: formatGoogleFlightsSavings(
-                    convertCurrencyAmount(googleFlightsSavings, offer.currency, currency),
+                    convertCurrencyAmount(googleFlightsSavings, offer.currency, currency, fxRates),
                     currency,
                     locale,
                   ),
@@ -1685,12 +1719,12 @@ export default function ResultsPanel({
               hasIncludedAncillary(checkedBag)
                 ? t('checkedBagIncluded')
                 : hasPaidAncillary(checkedBag)
-                  ? t('checkedBagFee', { price: fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale) })
+                  ? t('checkedBagFee', { price: fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale, fxRates) })
                   : null,
               hasIncludedAncillary(seatSelection)
                 ? t('seatSelectionIncluded')
                 : hasPaidAncillary(seatSelection)
-                  ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale) })
+                  ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale, fxRates) })
                   : null,
             ].filter((value): value is string => Boolean(value))
             const sourceLabel = revealedSources[offerKey]
@@ -1725,7 +1759,7 @@ export default function ResultsPanel({
               onOfferSelect?.()
             }
             return (
-              <Fragment key={offerKey}>
+              <Fragment key={`${offerKey}|${index}`}>
                 {isHero && (
                   <div className="rf-concierge-intro">
                     <div className="rf-pick-header">
@@ -1756,7 +1790,7 @@ export default function ResultsPanel({
                           {t('stillScanning')}
                         </span>
                       ) : locale === 'en' ? (
-                        <span className="rf-reasoning-text">{computeDealReasonParagraph(offer, allOffers, tripContext, initialDepTimePref, currency, locale, travelerCount)}</span>
+                        <span className="rf-reasoning-text">{computeDealReasonParagraph(offer, allOffers, tripContext, initialDepTimePref, currency, locale, travelerCount, fxRates)}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1772,7 +1806,7 @@ export default function ResultsPanel({
                     <p className="rf-runner-text">
                       {typeof geminiJustification === 'object' && geminiJustification !== null && geminiJustification.runners[index - 1]
                         ? geminiJustification.runners[index - 1]
-                        : computeWhyNot(offer, displayOffers[0], currency, locale, t as (key: string, values?: Record<string, unknown>) => string)}
+                        : computeWhyNot(offer, displayOffers[0], currency, locale, t as (key: string, values?: Record<string, unknown>) => string, fxRates)}
                     </p>
                   </div>
                 )}
@@ -1787,7 +1821,7 @@ export default function ResultsPanel({
                         <span className="rf-track-nudge-heading">{t('wantToWait')}</span>
                         {displayOffers[0] && (
                           <span className="rf-track-nudge-price">
-                            {t('fromPriceNow', { price: fmt(getOfferDisplayTotalPrice(displayOffers[0], currency)) })}
+                            {t('fromPriceNow', { price: fmt(getOfferDisplayTotalPrice(displayOffers[0], currency, fxRates)) })}
                           </span>
                         )}
                         <span className="rf-track-nudge-sub">{t('trackNudgeSub', { count: displayOffers.length, total: Math.max(progress?.total ?? 0, 200) })}</span>
@@ -1981,16 +2015,16 @@ export default function ResultsPanel({
                     <div className="rf-price-breakdown">
                       <div className="rf-price-breakdown-row">
                         <span className="rf-price-breakdown-label">✈ {t('ticket')}</span>
-                        <span className="rf-price-breakdown-value">{fmt(convertCurrencyAmount(offer.price, offer.currency, currency))}</span>
+                        <span className="rf-price-breakdown-value">{fmt(convertCurrencyAmount(offer.price, offer.currency, currency, fxRates))}</span>
                       </div>
                       <div className="rf-price-breakdown-row">
                         <span className="rf-price-breakdown-label">{t('letsfgFee')}</span>
-                        <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency))}</span>
+                        <span className="rf-price-breakdown-value">+{fmt(convertCurrencyAmount(calculateFee(offer.price, offer.currency), offer.currency, currency, fxRates))}</span>
                       </div>
                       {hasPaidAncillary(checkedBag) && (
                         <div className={`rf-price-breakdown-row${(sort === 'price_with_bag' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
                           <span className="rf-price-breakdown-label">🧳 {t('bag')}</span>
-                          <span className="rf-price-breakdown-value">+{fmtOfferPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale)}</span>
+                          <span className="rf-price-breakdown-value">+{formatOfferDisplayPrice(checkedBag!.price!, checkedBag!.currency || offer.currency, currency, locale, fxRates)}</span>
                         </div>
                       )}
                       {hasIncludedAncillary(checkedBag) && (
@@ -2001,7 +2035,7 @@ export default function ResultsPanel({
                       {hasPaidAncillary(seatSelection) && (
                         <div className={`rf-price-breakdown-row${(sort === 'price_with_seat' || sort === 'price_with_all') ? ' rf-price-breakdown-row--on' : ''}`}>
                           <span className="rf-price-breakdown-label">💺 {t('seat')}</span>
-                          <span className="rf-price-breakdown-value">+{fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale)}</span>
+                          <span className="rf-price-breakdown-value">+{formatOfferDisplayPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale, fxRates)}</span>
                         </div>
                       )}
                       {hasIncludedAncillary(seatSelection) && (

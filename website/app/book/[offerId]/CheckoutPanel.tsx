@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { getAirlineLogoUrl } from '../../airlineLogos'
 import { computeFlightTimeContext, formatFlightTime } from '../../../lib/flight-datetime'
 import { calculateFee, withFee } from '../../../lib/pricing'
-import { convertCurrencyAmount } from '../../../lib/display-price'
+import { convertCurrencyAmount, type FxRateTable } from '../../../lib/display-price'
 import type { Offer } from './page'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
@@ -25,6 +25,7 @@ interface Props {
   isTestSearch: boolean
   offerRef: string | null
   displayCurrency?: string
+  fxRates?: FxRateTable
 }
 
 type CheckoutStep =
@@ -286,6 +287,7 @@ export default function CheckoutPanel({
   isTestSearch,
   offerRef,
   displayCurrency: displayCurrencyProp,
+  fxRates,
 }: Props) {
   const t = useTranslations('Checkout')
   const analyticsSearchId = trackingSearchId || searchId
@@ -293,7 +295,7 @@ export default function CheckoutPanel({
   const homeHref = isTestSearch ? 'https://letsfg.co/en?probe=1' : 'https://letsfg.co'
   // Use the user's preferred display currency; fall back to the offer's native currency
   const displayCurrency = displayCurrencyProp || offer.currency
-  const displayPrice = convertCurrencyAmount(offer.price, offer.currency, displayCurrency)
+  const displayPrice = convertCurrencyAmount(offer.price, offer.currency, displayCurrency, fxRates)
   const platforms = useMemo<Platform[]>(() => [
     {
       id: 'instagram',
@@ -322,7 +324,7 @@ export default function CheckoutPanel({
     },
   ], [t])
   const fee = calculateFee(offer.price, offer.currency)
-  const displayFee = convertCurrencyAmount(fee, offer.currency, displayCurrency)
+  const displayFee = convertCurrencyAmount(fee, offer.currency, displayCurrency, fxRates)
   const tripBreakdown = useMemo<TripBreakdownLeg[]>(() => {
     if (offer.trip_breakdown?.length) {
       return offer.trip_breakdown
@@ -929,7 +931,7 @@ export default function CheckoutPanel({
               <span className="ck-airline-cabin">Economy class</span>
             </div>
             <div className="ck-flight-price-badge">
-              <span className="ck-flight-price">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}</span>
+              <span className="ck-flight-price">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))}</span>
               <span className="ck-flight-price-label">{t('perPerson')}</span>
             </div>
           </div>
@@ -1069,7 +1071,7 @@ export default function CheckoutPanel({
               </div>
               <div className="ck-price-row ck-price-row--total">
                 <span className="ck-price-label">{t('total')}</span>
-                <span className="ck-price-value">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}</span>
+                <span className="ck-price-value">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))}</span>
               </div>
             </div>
 
@@ -1085,7 +1087,7 @@ export default function CheckoutPanel({
                   <div className="ck-elsewhere-row" key={label}>
                     <span className="ck-elsewhere-site">{label}</span>
                     <span className="ck-elsewhere-price">
-                      {displayCurrency}{Math.round(convertCurrencyAmount(offer.price * factor, offer.currency, displayCurrency))}
+                      {displayCurrency}{Math.round(convertCurrencyAmount(offer.price * factor, offer.currency, displayCurrency, fxRates))}
                     </span>
                   </div>
                 ))}
@@ -1097,7 +1099,7 @@ export default function CheckoutPanel({
                     LetsFG total
                   </span>
                   <span className="ck-elsewhere-price ck-elsewhere-price--ours">
-                    {displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency))}
+                    {displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))}
                   </span>
                 </div>
               </div>
@@ -1141,7 +1143,7 @@ export default function CheckoutPanel({
                             )}
                           </div>
                           <span className={`ck-book-action-price${legPrice !== null ? '' : ' ck-leg-price--muted'}`}>
-                            {legPrice !== null ? fmtMoney(convertCurrencyAmount(legPrice, leg.currency || offer.currency, displayCurrency), displayCurrency) : 'Included in total'}
+                            {legPrice !== null ? fmtMoney(convertCurrencyAmount(legPrice, leg.currency || offer.currency, displayCurrency, fxRates), displayCurrency) : 'Included in total'}
                           </span>
                         </div>
                         {!isLoading && isUnlocked && (
@@ -1190,7 +1192,7 @@ export default function CheckoutPanel({
                         <div className="ck-leg-price-wrap">
                           <span className={`ck-leg-price${typeof leg.price === 'number' ? '' : ' ck-leg-price--muted'}`}>
                             {typeof leg.price === 'number'
-                              ? fmtMoney(convertCurrencyAmount(leg.price, leg.currency || offer.currency, displayCurrency), displayCurrency)
+                              ? fmtMoney(convertCurrencyAmount(leg.price, leg.currency || offer.currency, displayCurrency, fxRates), displayCurrency)
                               : 'Included in total'}
                           </span>
                         </div>
@@ -1219,7 +1221,7 @@ export default function CheckoutPanel({
                                 )}
                               </div>
                               {typeof option.price === 'number' && (
-                                <span className="ck-book-action-price">{fmtMoney(convertCurrencyAmount(option.price, option.currency || offer.currency, displayCurrency), displayCurrency)}</span>
+                                <span className="ck-book-action-price">{fmtMoney(convertCurrencyAmount(option.price, option.currency || offer.currency, displayCurrency, fxRates), displayCurrency)}</span>
                               )}
                             </div>
                           )}

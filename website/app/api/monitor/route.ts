@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMonitorStripe, toStripeAmount } from '../../../lib/stripe'
 import { convertCurrencyAmount } from '../../../lib/display-price'
+import { getLiveFxRates } from '../../../lib/live-fx'
 
 // Currencies Stripe supports for checkout. Falls back to USD for anything else.
 const STRIPE_CURRENCIES = new Set([
@@ -119,7 +120,8 @@ export async function POST(req: NextRequest) {
       const monitorId = backendData.monitor_id as string
       const route = `${originStr} → ${destStr}`
       // Convert $5 USD base price to the billing currency
-      const unitAmount = toStripeAmount(convertCurrencyAmount(5, 'USD', billingCurrency), billingCurrency)
+      const fxRates = await getLiveFxRates()
+      const unitAmount = toStripeAmount(convertCurrencyAmount(5, 'USD', billingCurrency, fxRates), billingCurrency)
       const stripe = getMonitorStripe()
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
