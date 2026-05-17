@@ -25,3 +25,11 @@ test('results page prefers the explicit rerun query before falling back to resul
     /const query = sp\?\.q\?\.trim\(\) \|\| resultQuery\?\.trim\(\) \|\| buildFallbackSearchQuery\(parsed\)/,
   )
 })
+
+test('results search form reuses the compact home form so clarification still runs on the results surface', () => {
+  const source = readSource('app/results/ResultsSearchForm.tsx')
+
+  assert.match(source, /import HomeSearchForm from '\.\.\/home-search-form'/)
+  assert.match(source, /onSearchStart=\{handleSearchStart\}/)
+  assert.match(source, /compact autoFocus=\{false\} probeMode=\{probeMode\}/)
+})

@@ -17,14 +17,14 @@ import {
 import { parseNLQuery, type ParsedQuery } from '../lib/searchParsing'
 import { applyVertexIntent } from '../lib/vertex-intent'
 import { vertexParse } from '../lib/vertex-parse'
-import { lookupNearbyAirport, resolveNearbyAirport, isUsableIata } from '../lib/nearby-airports'
-import { setSearchMeta, type FallbackNote } from '../../lib/results-cache'
+import { setSearchMeta } from '../../lib/results-cache'
 import { IATA_TO_NAME, getAirlineNameFromCode, looksLikeIataCode } from '../airlineLogos'
 import { startWebSearch, startExploreSearch } from '../../lib/fsw-search'
 import { upsertSearchSessionServer } from '../../lib/search-session-analytics-server'
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
+import { resolveSearchLaunchRoute } from '../../lib/search-launch-route'
 
 const FSW_SECRET = process.env.FSW_SECRET || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
@@ -494,71 +494,26 @@ async function SearchContent({
   if (appliedAi.cabin) parsed.cabin = appliedAi.cabin
   Object.assign(aiIntent, appliedAi.aiIntent)
 
-  // ── Nearby-airport fallback ───────────────────────────────────────
-  // Two-stage: (1) curated overrides for famous airport-less cities
-  // (Pretoria → JNB, Vatican → FCO, Niagara → BUF, etc.); (2) global
-  // geo-lookup against the bundled OurAirports DB using Gemini-supplied
-  // lat/lon. Triggered when origin/destination is missing OR resolved
-  // to a "ghost" IATA with no scheduled commercial service.
-  const fallbackNotes: { origin?: FallbackNote; destination?: FallbackNote } = {}
-  const aiOriginCityFromAi = appliedAi.aiOriginCity
-  const aiDestCityFromAi = appliedAi.aiDestinationCity
-  const aiOriginLat = appliedAi.aiOriginLat
-  const aiOriginLon = appliedAi.aiOriginLon
-  const aiDestLat = appliedAi.aiDestinationLat
-  const aiDestLon = appliedAi.aiDestinationLon
-
-  // Clear ghost IATAs so the fallback runs.
-  const ghostOriginCity = (parsed.origin && !isUsableIata(parsed.origin))
-    ? (aiOriginCityFromAi || parsed.origin_name || query)
-    : undefined
-  const ghostDestCity = (parsed.destination && !isUsableIata(parsed.destination))
-    ? (aiDestCityFromAi || parsed.destination_name || query)
-    : undefined
-  if (ghostOriginCity) { delete parsed.origin; delete parsed.origin_name }
-  if (ghostDestCity) { delete parsed.destination; delete parsed.destination_name }
-
-  const tryNearby = (
-    candidates: Array<string | undefined>,
-    lat: number | undefined,
-    lon: number | undefined,
-  ) => {
-    for (const c of candidates) {
-      if (!c) continue
-      const hit = lookupNearbyAirport(c)
-      if (hit) return hit
-    }
-    const cityLabel = candidates.find((c): c is string => Boolean(c && c.trim())) || ''
-    return resolveNearbyAirport(cityLabel, lat, lon)
-  }
-  if (!parsed.origin) {
-    const hit = tryNearby([ghostOriginCity, aiOriginCityFromAi, query], aiOriginLat, aiOriginLon)
-    if (hit) {
-      parsed.origin = hit.code
-      parsed.origin_name = hit.name
-      fallbackNotes.origin = {
-        intended: aiOriginCityFromAi || ghostOriginCity || query.trim() || hit.name,
-        used_code: hit.code,
-        used_name: hit.name,
-        hub_name: hit.hub_name,
-        reason: hit.reason,
-      }
-    }
-  }
-  if (!parsed.destination && !parsed.anywhere_destination) {
-    const hit = tryNearby([ghostDestCity, aiDestCityFromAi, query], aiDestLat, aiDestLon)
-    if (hit) {
-      parsed.destination = hit.code
-      parsed.destination_name = hit.name
-      fallbackNotes.destination = {
-        intended: aiDestCityFromAi || ghostDestCity || query.trim() || hit.name,
-        used_code: hit.code,
-        used_name: hit.name,
-        hub_name: hit.hub_name,
-        reason: hit.reason,
-      }
-    }
-  }
+  const resolvedRoute = resolveSearchLaunchRoute({
+    origin: parsed.origin,
+    originName: parsed.origin_name,
+    failedOriginRaw: parsed.failed_origin_raw,
+    destination: parsed.destination,
+    destinationName: parsed.destination_name,
+    failedDestinationRaw: parsed.failed_destination_raw,
+    anywhereDestination: parsed.anywhere_destination,
+    aiOriginCity: appliedAi.aiOriginCity,
+    aiDestinationCity: appliedAi.aiDestinationCity,
+    aiOriginLat: appliedAi.aiOriginLat,
+    aiOriginLon: appliedAi.aiOriginLon,
+    aiDestinationLat: appliedAi.aiDestinationLat,
+    aiDestinationLon: appliedAi.aiDestinationLon,
+  })
+  parsed.origin = resolvedRoute.origin
+  parsed.origin_name = resolvedRoute.originName
+  parsed.destination = resolvedRoute.destination
+  parsed.destination_name = resolvedRoute.destinationName
+  const fallbackNotes = resolvedRoute.fallbackNotes
 
   // Build route label — include flexible date/duration context when relevant
   const destLabel = parsed.anywhere_destination
