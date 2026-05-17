@@ -13,10 +13,11 @@ import { SearchProgressBarFull } from './SearchProgressBar'
 import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type CurrencyCode } from '../../../lib/currency-preference'
 import { formatOfferDisplayPrice, getOfferDisplayTotalPrice, type FxRateTable } from '../../../lib/display-price'
 import { trackSearchSession, trackSearchSessionEvent } from '../../../lib/search-session-analytics'
+import { useExperiment } from '../../../lib/ab-testing'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useRouter, useSearchParams } from 'next/navigation'
-import BookingFrictionSurvey, { SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
+import BookingFrictionSurvey, { BOOKING_FRICTION_EXPERIMENT_ID, BOOKING_FRICTION_RESULTS_EXPERIMENT, SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
 import { parseNLQuery } from '../../lib/searchParsing'
 import { normalizeTripPurposes, type TripPurpose } from '../../lib/trip-purpose'
 import { getOfferInstanceKey } from '../../lib/rankOffers'
@@ -511,6 +512,7 @@ export default function SearchPageClient({
 
   const scrollMilestonesRef = useRef<Set<number>>(new Set())
   const analyticsSearchId = trackingSearchId || searchId
+  const { variant: bookingFrictionVariant } = useExperiment(BOOKING_FRICTION_RESULTS_EXPERIMENT, analyticsSearchId)
   const resultsSourcePath = getTrackedSourcePath(`/results/${searchId}`, isTestSearch)
   const homeHref = isTestSearch ? `/${locale}?probe=1` : `/${locale}`
   const searchAgainHref = status === 'expired' && query
@@ -1281,9 +1283,20 @@ export default function SearchPageClient({
         <BookingFrictionSurvey
           searchId={analyticsSearchId}
           isTestSearch={isTestSearch}
+          variant={bookingFrictionVariant}
           context="results"
           resultsCompletedAt={resultsCompletedAt}
           showImmediately={cameFromCheckout}
+          onMonitorUpsellClick={parsed.origin && parsed.destination && parsed.date ? () => {
+            trackSearchSessionEvent(analyticsSearchId, 'monitor_strip_clicked', {
+              origin: parsed.origin,
+              destination: parsed.destination,
+              placement: 'booking_friction_upsell',
+              experiment_id: BOOKING_FRICTION_EXPERIMENT_ID,
+              variant: bookingFrictionVariant || 'monitoring',
+            })
+            setMonitorOpen(true)
+          } : undefined}
         />
       )}
     </main>
