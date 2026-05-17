@@ -3,14 +3,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
 import { trackSearchSessionEvent } from '../lib/search-session-analytics'
-import { useExperiment } from '../lib/ab-testing'
 import type { ExperimentConfig } from '../lib/ab-testing'
 
 export const BOOKING_FRICTION_EXPERIMENT_ID = 'exp_booking-friction-survey-v1'
 
-const BOOKING_FRICTION_EXPERIMENT: ExperimentConfig<'survey'> = {
+export type BookingFrictionVariant = 'survey' | 'monitoring'
+
+export const BOOKING_FRICTION_RESULTS_EXPERIMENT: ExperimentConfig<BookingFrictionVariant> = {
   id: BOOKING_FRICTION_EXPERIMENT_ID,
-  variants: { survey: 1.0 },
+  variants: { survey: 0.5, monitoring: 0.5 },
 }
 
 // Results page: show 3.5 minutes after search fully completes
@@ -54,6 +55,8 @@ interface Props {
   /** Pass for analytics when rendered on the checkout page */
   offerId?: string
   isTestSearch?: boolean
+  /** Results context only: assigned experiment variant */
+  variant?: BookingFrictionVariant | null
   /** Which page this is rendered on — affects timer duration */
   context: 'results' | 'checkout'
   /**
@@ -66,18 +69,22 @@ interface Props {
    * without booking). Skips the 3.5-minute timer.
    */
   showImmediately?: boolean
+  /** Results context only: opens the existing monitoring modal */
+  onMonitorUpsellClick?: () => void
 }
 
 export default function BookingFrictionSurvey({
   searchId,
   offerId,
   isTestSearch,
+  variant,
   context,
   resultsCompletedAt,
   showImmediately,
+  onMonitorUpsellClick,
 }: Props) {
   const t = useTranslations('BookingFrictionSurvey')
-  useExperiment(BOOKING_FRICTION_EXPERIMENT, searchId) // fires experiment_assigned for analytics
+  const tResults = useTranslations('Results')
 
   // SSR-safe suppression: hydrate from storage on client only
   const [suppressed, setSuppressed] = useState(false)
@@ -129,6 +136,14 @@ export default function BookingFrictionSurvey({
     try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch (_) { /* ignore */ }
   }, [])
 
+  const handleMonitorUpsellClick = useCallback(() => {
+    if (!onMonitorUpsellClick) return
+    onMonitorUpsellClick()
+    setVisible(false)
+    setDismissed(true)
+    try { sessionStorage.setItem(SS_KEY_DISMISSED, '1') } catch (_) { /* ignore */ }
+  }, [onMonitorUpsellClick])
+
   const handleSubmit = useCallback((key: OptionKey, text?: string) => {
     if (submitted) return
     trackSearchSessionEvent(searchId, 'booking_friction_survey_response', {
@@ -147,7 +162,7 @@ export default function BookingFrictionSurvey({
   }, [submitted, searchId, offerId, context, isTestSearch])
 
   // All hooks must be above any conditional returns
-  if (suppressed || dismissed) return null
+  if (suppressed || dismissed || (context === 'results' && variant === null)) return null
 
   if (submitted) {
     return (
@@ -159,6 +174,39 @@ export default function BookingFrictionSurvey({
   }
 
   if (!visible) return null
+
+  const showMonitoringUpsell = context === 'results' && variant === 'monitoring'
+
+  if (showMonitoringUpsell) {
+    return (
+      <div className="bfs-bar bfs-bar--monitor" role="complementary" aria-label="Flight monitoring">
+        <div className="bfs-inner">
+          <div className="bfs-monitor">
+            <div className="bfs-monitor-copy">
+              <span className="bfs-monitor-kicker">{tResults('flightMonitoring')}</span>
+              <span className="bfs-question">{tResults('wantToWait')}</span>
+              <p className="bfs-monitor-body">Not ready to buy? Monitor those offers with notifications or on Telegram.</p>
+              <div className="bfs-monitor-channels" aria-hidden="true">
+                <span className="bfs-monitor-chip">Notifications</span>
+                <span className="bfs-monitor-chip">Telegram</span>
+              </div>
+            </div>
+            <div className="bfs-monitor-actions">
+              {onMonitorUpsellClick && (
+                <button className="bfs-monitor-cta" type="button" onClick={handleMonitorUpsellClick}>{tResults('trackPrices')}</button>
+              )}
+              <button
+                className="bfs-close"
+                onClick={handleDismiss}
+                aria-label="Dismiss prompt"
+                type="button"
+              >✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const hasFollowup = pendingKey !== null && KEYS_WITH_FOLLOWUP.has(pendingKey)
   const selectedLabel = pendingKey ? t(`opt_${pendingKey}`) : null
@@ -173,7 +221,7 @@ export default function BookingFrictionSurvey({
           <button
             className="bfs-close"
             onClick={handleDismiss}
-            aria-label="Dismiss survey"
+            aria-label="Dismiss prompt"
             type="button"
           >✕</button>
         </div>

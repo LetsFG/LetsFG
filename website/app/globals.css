@@ -3189,10 +3189,12 @@ body:has(.res-page) {
 /* ── Completed results: full-page sky background, fades to white at bottom ── */
 .res-page--completed {
   background-color: #c3dce8; /* sky-blue fallback while image loads — prevents black flash */
-  background-image: linear-gradient(180deg, #d9edf5 0%, #eef8fb 72%, #ffffff 100%);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(180deg, rgba(11, 71, 107, 0.18) 0%, rgba(11, 71, 107, 0.05) 20%, rgba(238, 248, 251, 0.56) 66%, #ffffff 100%),
+    url('/chatgpt-sky-bg.jpg');
+  background-size: cover, cover;
+  background-position: center, center 44%;
+  background-repeat: no-repeat, no-repeat;
 }
 
 /* Compact hero for completed: topbar + meta line only */
@@ -3371,7 +3373,7 @@ body:has(.res-page) {
   .res-page--completed {
     background-image:
       linear-gradient(to bottom, transparent 72%, #ffffff 100%),
-      url('/chatgpt-sky-bg.png');
+      url('/chatgpt-sky-bg.jpg');
     background-size: cover, cover;
     background-position: center, center 44%;
     background-attachment: fixed, fixed;
@@ -3381,14 +3383,14 @@ body:has(.res-page) {
   .res-hero-backdrop {
     background:
       linear-gradient(180deg, rgba(11, 71, 107, 0.2) 0%, rgba(11, 71, 107, 0.06) 18%, rgba(255, 255, 255, 0) 34%),
-      url('/chatgpt-sky-bg.png') center 44% / cover,
+      url('/chatgpt-sky-bg.jpg') center 44% / cover,
       #acd8f0;
   }
 
   .res-hero--searching .res-hero-backdrop {
     background:
       linear-gradient(180deg, rgba(11, 71, 107, 0.22) 0%, rgba(11, 71, 107, 0.1) 24%, rgba(11, 71, 107, 0.06) 100%),
-      url('/chatgpt-sky-bg.png') center 46% / cover,
+      url('/chatgpt-sky-bg.jpg') center 46% / cover,
       #acd8f0;
   }
 }
@@ -6462,6 +6464,61 @@ body:has(.res-page) {
 }
 
 @media (max-width: 640px) {
+  .res-page--completed {
+    background-color: #ffffff;
+    background-image: linear-gradient(180deg, #d9edf5 0%, #eef8fb 26%, #ffffff 54%);
+    background-size: 100% 100%;
+    background-position: center top;
+    background-repeat: no-repeat;
+  }
+
+  .res-hero--results .res-hero-backdrop {
+    display: block;
+    background:
+      linear-gradient(180deg, rgba(11, 71, 107, 0.16) 0%, rgba(11, 71, 107, 0.05) 18%, rgba(255, 255, 255, 0) 52%),
+      url('/chatgpt-sky-bg.jpg') center 42% / auto 122% no-repeat,
+      #acd8f0;
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0, 0, 0, 0.82) 74%, rgba(0, 0, 0, 0.32) 90%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0, 0, 0, 0.82) 74%, rgba(0, 0, 0, 0.32) 90%, transparent 100%);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+
+  .res-meta-label {
+    color: rgba(20, 45, 60, 0.64);
+  }
+
+  .res-meta-sep {
+    color: rgba(20, 45, 60, 0.34);
+  }
+
+  .res-meta-route {
+    color: #163042;
+    text-shadow: none;
+  }
+
+  .res-meta-detail {
+    color: rgba(20, 45, 60, 0.8);
+  }
+
+  .res-topbar-actions .lp-currency-btn,
+  .res-topbar-actions .lp-globe-btn,
+  .res-icon-btn {
+    border-color: rgba(20, 45, 60, 0.14);
+    background: rgba(255, 255, 255, 0.88);
+    color: #163042;
+    box-shadow: 0 8px 18px rgba(20, 53, 76, 0.08);
+  }
+
+  .res-topbar-actions .lp-currency-btn.lp-globe-btn--open,
+  .res-topbar-actions .lp-globe-btn--open {
+    border-color: rgba(20, 45, 60, 0.2);
+    background: #ffffff;
+    color: #163042;
+  }
+
   .res-page--searching {
     height: auto;
     min-height: 100dvh;
@@ -6493,10 +6550,7 @@ body:has(.res-page) {
   }
 
   .res-topbar-nav {
-    grid-column: 1 / -1;
-    order: 3;
-    justify-content: flex-start;
-    gap: 24px;
+    display: none;
   }
 
   .res-topbar-logo-link {
@@ -7021,7 +7075,35 @@ body:has(.res-page) {
   }
 
   .rf-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px 10px;
     padding: 10px 14px;
+  }
+
+  .rf-bar-meta {
+    grid-row: 1;
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .rf-bar-checked {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .rf-bar-checked-logos {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .rf-bar-share {
+    grid-row: 1;
+    grid-column: 2;
+    margin-left: 0;
+    justify-self: end;
   }
 
   .rf-share-btn {
@@ -7070,6 +7152,86 @@ body:has(.res-page) {
     gap: 6px;
   }
 
+  .rf-legs {
+    grid-area: route;
+    gap: 10px;
+  }
+
+  .rf-card--hero .rf-card-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "airline"
+      "route"
+      "price";
+    gap: 12px;
+  }
+
+  .rf-card--hero .rf-card-row--locked {
+    grid-template-areas:
+      "route"
+      "price";
+  }
+
+  .rf-card--runner .rf-card-row--locked,
+  .rf-card--list .rf-card-row--locked {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "route"
+      "price"
+      "book";
+    gap: 12px;
+  }
+
+  .rf-card--list .rf-card-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "route"
+      "price"
+      "book";
+    gap: 12px;
+    padding: 14px 14px 12px;
+  }
+
+  .rf-card--hero .rf-price-wrap {
+    width: 100%;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .rf-card--hero .rf-price-sub {
+    white-space: normal;
+  }
+
+  .rf-card--hero .rf-price-breakdown {
+    margin-top: 8px;
+  }
+
+  .rf-card--hero .rf-hero-footer {
+    padding: 0 14px 14px;
+  }
+
+  .rf-card--hero .rf-book-for-me,
+  .rf-card--hero .rf-hero-footer .rf-book-btn {
+    min-width: 0;
+  }
+
+  .rf-card--runner .rf-price-wrap,
+  .rf-card--list .rf-price-wrap {
+    width: 100%;
+    align-items: flex-start;
+    text-align: left;
+    border-top: 1px solid rgba(20, 45, 60, 0.12);
+    padding-top: 10px;
+  }
+
+  .rf-card--list .rf-price-wrap {
+    border-right: none;
+    padding-right: 0;
+  }
+
   .rf-price-wrap {
     grid-area: price;
     text-align: right;
@@ -7090,6 +7252,18 @@ body:has(.res-page) {
     padding: 0 12px;
     height: 34px;
     font-size: 0.8rem;
+  }
+
+  .rf-card--runner .rf-book-btn--choose {
+    justify-self: end;
+    width: auto;
+    max-width: 100%;
+  }
+
+  .rf-card--list .rf-book-btn--arrow {
+    grid-area: book;
+    justify-self: end;
+    align-self: end;
   }
 
   /* Route: times + path + stops in one flex row */
@@ -7126,6 +7300,42 @@ body:has(.res-page) {
   /* Flight details panel */
   .rf-details {
     padding: 14px 14px;
+  }
+
+  .rf-leg-header {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .rf-leg-body {
+    gap: 10px;
+  }
+
+  .rf-leg-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .rf-leg-time {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .rf-leg-airport {
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .rf-layover {
+    align-items: flex-start;
+  }
+
+  .rf-layover-text {
+    min-width: 0;
   }
 
   .rf-details-btn {
@@ -10144,6 +10354,11 @@ body:has(.res-page) {
   animation: bfs-slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.bfs-bar--monitor {
+  background: linear-gradient(180deg, #ffffff 0%, #f5fbf7 100%);
+  border-top-color: rgba(34, 197, 94, 0.24);
+}
+
 @keyframes bfs-slide-up {
   from { transform: translateY(100%); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
@@ -10168,6 +10383,87 @@ body:has(.res-page) {
 .bfs-inner {
   max-width: 780px;
   margin: 0 auto;
+}
+
+.bfs-monitor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.bfs-monitor-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.bfs-monitor-kicker {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bfs-monitor-body {
+  margin: 0;
+  max-width: 560px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: #375a67;
+}
+
+.bfs-monitor-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bfs-monitor-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(10, 77, 104, 0.07);
+  color: #0a4d68;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.bfs-monitor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.bfs-monitor-cta {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #166534 0%, #16a34a 100%);
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.18);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+
+.bfs-monitor-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(22, 163, 74, 0.24);
+}
+
+.bfs-monitor-cta:active {
+  transform: translateY(0);
 }
 
 .bfs-header {
@@ -10327,6 +10623,20 @@ body:has(.res-page) {
 @media (max-width: 600px) {
   .bfs-bar {
     padding: 16px 16px 18px;
+  }
+
+  .bfs-monitor {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .bfs-monitor-actions {
+    justify-content: space-between;
+  }
+
+  .bfs-monitor-cta {
+    flex: 1 1 auto;
   }
 
   .bfs-options {
