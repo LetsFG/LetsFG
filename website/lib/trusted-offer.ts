@@ -108,8 +108,8 @@ export interface PublicOffer extends Omit<TrustedOffer, 'booking_url' | 'booking
 }
 
 const IATA_TO_NAME: Record<string, string> = {
-  FR: 'Ryanair', U2: 'easyJet', W6: 'Wizz Air', W9: 'Wizz Air Malta',
-  DY: 'Norwegian', VY: 'Vueling', BA: 'British Airways', LH: 'Lufthansa',
+  FR: 'Ryanair', U2: 'easyJet', W4: 'Wizz Air Malta', W6: 'Wizz Air', W9: 'Wizz Air Malta',
+  DY: 'Norwegian', N0: 'Norse Atlantic Airways', VY: 'Vueling', BA: 'British Airways', LH: 'Lufthansa',
   AF: 'Air France', KL: 'KLM', IB: 'Iberia', I2: 'Iberia Express',
   TP: 'TAP Air Portugal', EK: 'Emirates', QR: 'Qatar Airways',
   TK: 'Turkish Airlines', AA: 'American Airlines', UA: 'United Airlines',

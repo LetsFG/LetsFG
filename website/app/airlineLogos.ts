@@ -265,7 +265,7 @@ export const IATA_TO_NAME: Record<string, string> = {
   LA: 'LATAM Airlines', VU: 'Level', FC: 'Link Airways', JT: 'Lion Air',
   LO: 'LOT Polish Airlines', '8L': 'Lucky Air', LH: 'Lufthansa',
   MH: 'Malaysia Airlines', ME: 'Middle East Airlines', NH: 'ANA',
-  DD: 'Nok Air', DY: 'Norwegian', OA: 'Olympic Air', WY: 'Oman Air',
+  DD: 'Nok Air', DY: 'Norwegian', N0: 'Norse Atlantic Airways', OA: 'Olympic Air', WY: 'Oman Air',
   MM: 'Peach Aviation', PC: 'Pegasus Airlines', PR: 'Philippine Airlines',
   PK: 'PIA', PD: 'Porter Airlines', QF: 'Qantas', QR: 'Qatar Airways',
   ZL: 'Rex Airlines', AT: 'Royal Air Maroc', RJ: 'Royal Jordanian',
@@ -280,7 +280,7 @@ export const IATA_TO_NAME: Record<string, string> = {
   UA: 'United Airlines', VJ: 'VietJet Air', VN: 'Vietnam Airlines',
   VS: 'Virgin Atlantic', VA: 'Virgin Australia', VB: 'VivaAerobus',
   Y4: 'Volaris', V7: 'Volotea', VY: 'Vueling', WS: 'WestJet',
-  P5: 'Wingo', W6: 'Wizz Air', W9: 'Wizz Air UK', ZG: 'Zipair',
+  P5: 'Wingo', W4: 'Wizz Air Malta', W6: 'Wizz Air', W9: 'Wizz Air UK', ZG: 'Zipair',
   // Common numeric-prefixed codes
   '2W': 'World2Fly', '4U': 'Germanwings', '5O': 'ASL Airlines France',
 }
@@ -293,7 +293,7 @@ const NAME_TO_IATA: Record<string, string> = Object.entries(IATA_TO_NAME).reduce
   map[normalizeAirlineLookupValue(name)] = code
   return map
 }, {
-  wizzairmalta: 'W6',
+  wizzairmalta: 'W4',
   wizzairuk: 'W9',
 })
 
@@ -322,7 +322,8 @@ export function getLogoByIata(iata: string): string {
 const IATA_LOGO_OVERRIDES: Record<string, string> = {
   // avs.io does not consistently serve an easyJet logo, so use a known airline asset.
   U2: 'https://images.kiwi.com/airlines/64/U2.png',
-  // Wizz Air UK should reuse the main Wizz brand mark when W9-specific art is missing.
+  // Wizz sub-brands should reuse the main Wizz brand mark when code-specific art is missing.
+  W4: getLogoByIata('W6'),
   W9: getLogoByIata('W6'),
 }
 
