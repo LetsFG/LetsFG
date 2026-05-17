@@ -688,6 +688,7 @@ const DEMO_LOADING = false
 
 interface HomeSearchFormProps {
   initialQuery?: string
+  initialDetectedOrigin?: string
   initialCurrency?: CurrencyCode
   compact?: boolean
   autoFocus?: boolean
@@ -695,8 +696,29 @@ interface HomeSearchFormProps {
   onSearchStart?: (query: string) => void
 }
 
+const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
+  en: ' to Tokyo next month, cheapest option, direct flights only, business trip, need to land by 3pm…',
+  pl: ' do Tokio w przyszłym miesiącu, najtańsza opcja, tylko bezpośrednie, wyjazd służbowy, muszę dolecieć do 15:00…',
+}
+
+function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): string {
+  const cleaned = placeholder.replace(/^try:\s*/i, '').trim()
+  const toWords = TO_KEYWORDS[locale] || TO_KEYWORDS.en
+  const lower = cleaned.toLowerCase()
+
+  for (const toWord of toWords) {
+    const idx = lower.indexOf(` ${toWord.toLowerCase()} `)
+    if (idx >= 0) {
+      return cleaned.slice(idx)
+    }
+  }
+
+  return AUTO_PREFILL_FALLBACK_SUFFIXES[locale] || AUTO_PREFILL_FALLBACK_SUFFIXES.en
+}
+
 export default function HomeSearchForm({
   initialQuery = '',
+  initialDetectedOrigin = '',
   initialCurrency = 'EUR',
   compact = false,
   autoFocus = true,
@@ -710,8 +732,10 @@ export default function HomeSearchForm({
   const th = useTranslations('hero')
   const tc = useTranslations('Clarify')
   const ths = useTranslations('HomeSearch')
-  const [inputValue, setInputValue] = useState(initialQuery)
-  const [query, setQuery] = useState(initialQuery)
+  const normalizedInitialQuery = initialQuery.trim()
+  const normalizedDetectedOrigin = normalizedInitialQuery ? '' : initialDetectedOrigin.trim()
+  const [inputValue, setInputValue] = useState(normalizedInitialQuery || normalizedDetectedOrigin)
+  const [query, setQuery] = useState(normalizedInitialQuery || normalizedDetectedOrigin)
   const [prefCurrency, setPrefCurrency] = useState<CurrencyCode>(initialCurrency)
   const [suggestion, setSuggestion] = useState('')
   const [inputScrollLeft, setInputScrollLeft] = useState(0)
@@ -721,12 +745,14 @@ export default function HomeSearchForm({
   const [dropdownActiveIdx, setDropdownActiveIdx] = useState(-1)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [autoPrefillOrigin, setAutoPrefillOrigin] = useState(normalizedDetectedOrigin)
   const inputRef = useRef<HTMLInputElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const dropdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const queryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   const suppressDropdownRef = useRef(false)
+  const userEditedAutoPrefillRef = useRef(false)
 
   const DESTINATIONS = DESTINATION_KEYS.map((d) => ({
     ...d,
@@ -782,9 +808,13 @@ export default function HomeSearchForm({
   }, [])
 
   useEffect(() => {
-    setInputValue(initialQuery)
-    setQuery(initialQuery)
-  }, [initialQuery])
+    const nextInitialQuery = initialQuery.trim()
+    const nextDetectedOrigin = nextInitialQuery ? '' : initialDetectedOrigin.trim()
+    userEditedAutoPrefillRef.current = false
+    setAutoPrefillOrigin(nextDetectedOrigin)
+    setInputValue(nextInitialQuery || nextDetectedOrigin)
+    setQuery(nextInitialQuery || nextDetectedOrigin)
+  }, [initialDetectedOrigin, initialQuery])
 
   useEffect(() => {
     setPrefCurrency(readBrowserSearchCurrency(initialCurrency))
@@ -1162,6 +1192,15 @@ export default function HomeSearchForm({
   }, [convo?.step])
 
   const _MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const heroPlaceholder = th('placeholder')
+  const autoPrefillPristine = !!autoPrefillOrigin && !userEditedAutoPrefillRef.current && query.trim() === autoPrefillOrigin
+
+  const handleInputChange = (nextValue: string) => {
+    if (autoPrefillOrigin && nextValue !== autoPrefillOrigin) {
+      userEditedAutoPrefillRef.current = true
+    }
+    setInputValue(nextValue)
+  }
 
   // Navigate to results with the given query string.
   // If the pre-fire already resolved to a search_id, jump straight to that
@@ -1427,13 +1466,26 @@ export default function HomeSearchForm({
 
   // Suggestion updates when query settles
   useEffect(() => {
+    if (autoPrefillPristine) {
+      setSuggestion(buildAutoPrefillGhostSuffix(locale, heroPlaceholder))
+      return
+    }
+
     setSuggestion(getSuggestion(query, locale))
-  }, [query, locale])
+  }, [autoPrefillPristine, heroPlaceholder, locale, query])
 
   // Dropdown updates debounced + deferred via startTransition so typing is never blocked
   useEffect(() => {
     if (dropdownTimerRef.current) clearTimeout(dropdownTimerRef.current)
     dropdownTimerRef.current = setTimeout(() => {
+      if (autoPrefillPristine) {
+        startTransition(() => {
+          setDropdownItems([])
+          setDropdownActiveIdx(-1)
+          setDropdownPos(null)
+        })
+        return
+      }
       if (suppressDropdownRef.current) { suppressDropdownRef.current = false; return }
       const { airports, slot } = computeDropdown(query, locale)
       startTransition(() => {
@@ -1449,7 +1501,7 @@ export default function HomeSearchForm({
       })
     }, 120)
     return () => { if (dropdownTimerRef.current) clearTimeout(dropdownTimerRef.current) }
-  }, [query, locale])
+  }, [autoPrefillPristine, query, locale])
 
   // Recompute dropdown position on scroll/resize while it's open
   useEffect(() => {
@@ -1555,7 +1607,7 @@ export default function HomeSearchForm({
               className="lp-sf-input"
               placeholder={th('placeholder')}
               value={inputValue}
-              onChange={(event) => setInputValue(event.target.value)}
+              onChange={(event) => handleInputChange(event.target.value)}
               onKeyDown={handleKeyDown}
               onBlur={() => setTimeout(() => { setDropdownItems([]); setDropdownActiveIdx(-1); setDropdownPos(null) }, 150)}
               disabled={DEMO_LOADING && isLoading}
