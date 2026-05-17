@@ -1,7 +1,10 @@
+import 'server-only'
+
 // Server-only: resolve city/location names AND extract travel intent from NL flight queries via Vertex AI Gemini.
 // Extracts cities + passengers, cabin class, direct_only, sort_by, time constraints, bags, trip purpose.
 // Returns null on any failure.
 
+import { HOME_CONVO_FOLLOW_UP_TOPICS, type HomeConvoFollowUpTopic } from './home-search-assist'
 import { TRIP_PURPOSES, type TripPurpose } from './trip-purpose'
 
 export interface VertexCityResult {
@@ -49,6 +52,8 @@ export interface VertexCityResult {
   departure_date?: string | null
   /** Return flight date in YYYY-MM-DD. null for one-way or unclear. */
   return_date?: string | null
+  /** Ordered list of clarification topics the homepage convo should ask next. */
+  follow_up_topics?: HomeConvoFollowUpTopic[] | null
 }
 
 // Keep old name as alias so callers importing VertexParseResult still compile
@@ -67,6 +72,7 @@ const GEMINI_DIRECT_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${VERTEX_MODEL}:generateContent`
 
 const TRIP_PURPOSE_JSON_ENUM = TRIP_PURPOSES.map((purpose) => `"${purpose}"`).join('|')
+const FOLLOW_UP_TOPIC_JSON_ENUM = HOME_CONVO_FOLLOW_UP_TOPICS.map((topic) => `"${topic}"`).join('|')
 
 // ── Access-token cache (tokens are valid ~1 h on Cloud Run) ──────────────────
 
@@ -117,7 +123,8 @@ Return ONLY valid JSON (no markdown, no explanation) with exactly these fields:
   "passenger_context": "solo"|"couple"|"family"|"group"|"business_traveler"|null,
   "is_round_trip": boolean|null,
   "departure_date": "YYYY-MM-DD"|null,
-  "return_date": "YYYY-MM-DD"|null
+  "return_date": "YYYY-MM-DD"|null,
+  "follow_up_topics": (${FOLLOW_UP_TOPIC_JSON_ENUM})[]|null
 }
 
 CITY RULES:
@@ -155,6 +162,17 @@ DATE RULES (today's date is given at the start of the user message):
 - departure_date: outbound date, YYYY-MM-DD. Resolve relative expressions using today: "next month" → first day of next month; "next friday" → nearest future Friday; "in 2 weeks" → today + 14 days; "May 20th" / "the 20th" → nearest future occurrence. null if no date is mentioned at all.
 - return_date: return date, YYYY-MM-DD. Set when: an explicit return date is given; OR "round trip for N days/nights" → departure_date + N days; OR "for N days" in a round-trip context → departure_date + N days. null for clear one-way queries or when undeterminable.
 - is_round_trip: true when user says "round trip", "return flight", "return on [date]", "coming back", "there and back", or gives both outbound and return dates. false for "one way" / "one-way". null if not stated.
+- follow_up_topics: ordered list of the next clarification topics the homepage should ask, using only: "origin", "destination", "date", "party_size", "trip_type", "trip_purpose", "priority".
+- Include only topics that are still unclear after your own extraction. Use null if the query is already complete enough to search without follow-up questions.
+- Put essential blockers first: origin, destination, date.
+- If only one city/airport is mentioned and there is no explicit origin marker such as "from", treat it as the destination and include "origin".
+- Include "destination" when the origin is explicit but the destination is still missing.
+- Include "date" when departure_date is null or only coarse/flexible context is known (month, season, month-end, next summer, etc.).
+- Include "party_size" when neither a traveller count nor a passenger_context is clear.
+- Include "trip_type" when one-way vs return is still unclear and there is no return_date or stay length.
+- Include "trip_purpose" when no clear trip purpose was stated or strongly implied.
+- Include "priority" when price/speed/directness/cabin/timing preference is still missing and a preference question would meaningfully improve ranking.
+- Limit follow_up_topics to at most 4 items.
 
 Few-shot examples:
 Input: "London to Guatemala next week, 20th May, me and my girlfriend, round trip for 5 days, beach holiday, short flight and cheapest price"
@@ -188,7 +206,10 @@ Input: "London to Barcelona this weekend, Friday evening out, Sunday night back,
 Output: {"origin_city":"London","destination_city":"Barcelona","via_city":null,"origin_lat":51.5,"origin_lon":-0.1,"destination_lat":41.4,"destination_lon":2.2,"passengers":2,"cabin_class":null,"direct_only":true,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":["city_break"],"trip_purpose":"city_break","dep_time_pref":"evening","ret_time_pref":"evening","passenger_context":"couple"}
 
 Input: "Tokyo to Berlin on May 24th, travelling solo, round trip for 7 days, beach holiday, city break, cheapest option, direct flights only"
-Output: {"origin_city":"Tokyo","destination_city":"Berlin","via_city":null,"origin_lat":35.7,"origin_lon":139.7,"destination_lat":52.5,"destination_lon":13.4,"passengers":1,"cabin_class":null,"direct_only":true,"sort_by":"price","depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":["city_break","beach"],"trip_purpose":"city_break","dep_time_pref":null,"ret_time_pref":null,"passenger_context":"solo","is_round_trip":true,"departure_date":"2026-05-24","return_date":"2026-05-31"}`
+Output: {"origin_city":"Tokyo","destination_city":"Berlin","via_city":null,"origin_lat":35.7,"origin_lon":139.7,"destination_lat":52.5,"destination_lon":13.4,"passengers":1,"cabin_class":null,"direct_only":true,"sort_by":"price","depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":["city_break","beach"],"trip_purpose":"city_break","dep_time_pref":null,"ret_time_pref":null,"passenger_context":"solo","is_round_trip":true,"departure_date":"2026-05-24","return_date":"2026-05-31"}
+
+Input: "Tokyo"
+Output: {"origin_city":null,"destination_city":"Tokyo","via_city":null,"origin_lat":null,"origin_lon":null,"destination_lat":35.7,"destination_lon":139.7,"passengers":null,"cabin_class":null,"direct_only":null,"sort_by":null,"depart_after":null,"depart_before":null,"bags_included":null,"trip_purposes":null,"trip_purpose":null,"dep_time_pref":null,"ret_time_pref":null,"passenger_context":null,"is_round_trip":null,"departure_date":null,"return_date":null,"follow_up_topics":["origin","date","party_size","trip_purpose"]}`
 
 // ── Main export ───────────────────────────────────────────────────────────────
 

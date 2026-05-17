@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { vertexParse } from '../../lib/vertex-parse'
 import { resolveCity } from '../../lib/searchParsing'
 
+const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
+
 // POST /api/parse-query
 // Body: { query: string }
 // Returns: VertexParseResult enriched with resolved IATA codes.
 export async function POST(request: NextRequest) {
   try {
+    const origin = request.headers.get('origin') ?? ''
+    if (!ALLOWED_ORIGIN_RE.test(origin)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
     const body = await request.json() as { query?: string }
     const query = body?.query?.trim() ?? ''
     if (!query) {

@@ -114,6 +114,35 @@ test('parseNLQuery keeps outbound and return time preferences for Friday evening
   })
 })
 
+test('parseNLQuery handles Japanese route phrasing without a destination particle before the date', () => {
+  withFixedNow('2026-05-17T12:00:00Z', () => {
+    const japaneseFamilyTrip = parseNLQuery('大阪から東京6月末、家族旅行、大人2名子供1名、2週間、窓側座席を並んで')
+
+    assert.deepEqual(
+      {
+        origin: japaneseFamilyTrip.origin,
+        destination: japaneseFamilyTrip.destination,
+        date: japaneseFamilyTrip.date,
+        adults: japaneseFamilyTrip.adults,
+        children: japaneseFamilyTrip.children,
+        passenger_context: japaneseFamilyTrip.passenger_context,
+        require_adjacent_seats: japaneseFamilyTrip.require_adjacent_seats,
+        seat_pref: japaneseFamilyTrip.seat_pref,
+      },
+      {
+        origin: 'KIX',
+        destination: 'TYO',
+        date: '2026-06-26',
+        adults: 2,
+        children: 1,
+        passenger_context: 'family',
+        require_adjacent_seats: true,
+        seat_pref: 'window',
+      },
+    )
+  })
+})
+
 test('parseNLQuery derives a return date from bare trip-duration phrasing', () => {
   withFixedNow('2026-05-14T12:00:00Z', () => {
     const businessTrip = parseNLQuery('London to New York next month, business trip, 4 nights, business class, needs to be refundable')

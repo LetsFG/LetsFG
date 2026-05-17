@@ -2910,7 +2910,7 @@ function extractPassengers(text: string): PassengerExtraction {
   if (adultM) result.adults = parseInt(adultM[1])
   // JA/RU/KO adult fallback
   if (!result.adults) {
-    const jaA = text.match(/(\d+)\s*(?:大人|おとな)/); if (jaA) result.adults = parseInt(jaA[1])
+    const jaA = text.match(/(\d+)\s*(?:大人|おとな)|(?:大人|おとな)\s*(\d+)/); if (jaA) result.adults = parseInt(jaA[1] || jaA[2])
     const ruA = text.match(/(\d+)\s*(?:взрослых|человека)/); if (ruA) result.adults = parseInt(ruA[1])
     const koA = text.match(/(\d+)\s*명\s*(?:어른)/); if (koA) result.adults = parseInt(koA[1])
   }
@@ -2920,7 +2920,7 @@ function extractPassengers(text: string): PassengerExtraction {
   if (childM) result.children = parseInt(childM[1])
   // JA/RU/KO child fallback
   if (!result.children) {
-    const jaC = text.match(/(\d+)\s*(?:子供|コドモ|子ども)/); if (jaC) result.children = parseInt(jaC[1])
+    const jaC = text.match(/(\d+)\s*(?:子供|コドモ|子ども)|(?:子供|コドモ|子ども)\s*(\d+)/); if (jaC) result.children = parseInt(jaC[1] || jaC[2])
     const ruC = text.match(/(\d+)\s*(?:детей|ребёнка)/); if (ruC) result.children = parseInt(ruC[1])
     const koC = text.match(/(\d+)\s*명\s*(?:어린이|소아)/); if (koC) result.children = parseInt(koC[1])
   }
@@ -3090,6 +3090,7 @@ function extractPassengers(text: string): PassengerExtraction {
     /\b(?:med\s+(?:(?:barnen?|mina\s+barn)|(?:familjen|min\s+familj)|ungarna?)|som\s+familj|familjesemester|familjeresa|med\s+barn)\b/.test(t) || // SV
     /\b(?:s\s+(?:djecom|obitelju|mojom\s+obitelju|(?:svojom\s+)?djecom)|kao\s+obitelj|obiteljski\s+odmor|obiteljsko\s+putovanje|s\s+djecom)\b/.test(t) || // HR
     /\b(?:me\s+(?:f[eë]mij[eë]t?|familjen|familjes\s+time?)|si\s+familje|pushime\s+familjare|udh[eë]tim\s+familjar|me\s+f[eë]mij[eë])\b/i.test(t) ||  // SQ
+    /家族(?:旅行)?|家族で/.test(text) || // JA
     // Generic "for a/the family" patterns across all langs (catches "pour une famille",
     // "para una/uma familia", "voor een gezin", "für eine Familie", "per una famiglia", etc.)
     /\b(?:para\s+(?:una|la|mi)\s+familia|para\s+(?:uma|a|minha)\s+fam[ií]lia|pour\s+(?:une|la|notre|ma)\s+famille|f[üu]r\s+(?:eine|die|unsere|meine)\s+familie|per\s+(?:una|la|nostra|mia)\s+famiglia|voor\s+(?:een|het|ons|mijn)\s+(?:gezin|familie)|f[oö]r\s+(?:en|v[åa]r|min)\s+familj|za\s+(?:jednu|na[šs]u)\s+obitelj|p[eë]r\s+nj[eë]\s+familje|dla\s+rodziny)\b/i.test(t)
@@ -3149,7 +3150,7 @@ function extractPassengers(text: string): PassengerExtraction {
   }
 
   // "sit together" signals in all languages
-  if (/\b(?:sit\s+(?:together|next\s+to\s+each\s+other|beside\s+each\s+other|side\s+by\s+side)|adjacent\s+seats?|seats?\s+together|together\s+on\s+the\s+(?:plane|flight)|nebeneinander\s+sitzen|zusammen\s+sitzen|sentarse\s+juntos?|assentos?\s+juntos?|assis\s+ensemble|côte\s+à\s+côte|sedere\s+insieme|posti\s+vicini|naast\s+elkaar\s+zitten|samen\s+zitten|siedź(?:my|cie)?\s+razem|siedzieć\s+razem|sentar\s+juntos?|sitta\s+bredvid\s+varandra|sjediti\s+zajedno|rri(?:ni)?\s+bashkë)\b/.test(t)) {
+  if (/\b(?:sit\s+(?:together|next\s+to\s+each\s+other|beside\s+each\s+other|side\s+by\s+side)|adjacent\s+seats?|seats?\s+together|together\s+on\s+the\s+(?:plane|flight)|nebeneinander\s+sitzen|zusammen\s+sitzen|sentarse\s+juntos?|assentos?\s+juntos?|assis\s+ensemble|côte\s+à\s+côte|sedere\s+insieme|posti\s+vicini|naast\s+elkaar\s+zitten|samen\s+zitten|siedź(?:my|cie)?\s+razem|siedzieć\s+razem|sentar\s+juntos?|sitta\s+bredvid\s+varandra|sjediti\s+zajedno|rri(?:ni)?\s+bashkë)\b/.test(t) || /並んで|隣同士|横並び/.test(text)) {
     result.require_adjacent_seats = true
     result.require_seat_selection = true
   }
@@ -3614,7 +3615,8 @@ function extractSeatPref(text: string): ParsedQuery['seat_pref'] {
     /\b(?:posto\s+(?:al\s+)?finestrino|sedile\s+(?:al\s+)?finestrino|lato\s+finestrino)\b/.test(t) ||     // IT
     /\b(?:raamstoel|stoel\s+(?:bij\s+(?:het\s+)?raam|aan\s+(?:het\s+)?raam)|raamkant)\b/.test(t) ||       // NL
     /\b(?:miejsce\s+przy\s+oknie|siedzenie\s+przy\s+oknie)\b/.test(t) ||                                   // PL
-    /\b(?:assento\s+(?:da\s+)?janela|lugar\s+(?:na\s+)?janela)\b/.test(t)                                  // PT
+    /\b(?:assento\s+(?:da\s+)?janela|lugar\s+(?:na\s+)?janela)\b/.test(t) ||                               // PT
+    /窓側|窓際/.test(text)                                                                                       // JA
   ) return 'window'
 
   // Aisle seat — all languages
@@ -4679,6 +4681,8 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   // Try multiple route separator patterns
   const routePatterns = [
+    // JA: "大阪から東京6月末", "東京からバルセロナへ 7月18日"
+    /^(.+?)から(.+?)(?:へ|に|まで)?(?:(?=(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*月(?:\d{1,2}\s*日?|末|初旬|上旬|中旬|下旬)?)|(?=\s)|(?=[、,])|$)/,
     // "ORIGIN to DESTINATION"
     /^(.+?)\s+(?:to(?:\s+the)?|→|->|–)\s+(.+?)(?:\s+(?:on|in|for|at|around|circa|um|am|le|el|il|em|på|na)\s|\s+\d|\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|januar|février|fevrier|mars|abril|mayo|junio|julio|agosto|septembre|outubro|novembre)|$)/i,
     // "ORIGIN - DESTINATION" (dash as separator, not range)
@@ -5067,6 +5071,26 @@ export function parseNLQuery(query: string): ParsedQuery {
         const d = new Date(year, mIdx, 1)
         if (d < today) d.setFullYear(today.getFullYear() + 1)
         result.date_month_only = true
+        return toLocalDateStr(d)
+      }
+    }
+
+    // Japanese month modifiers: "6月末", "7月上旬", "8月中旬"
+    const jaMonthModifierM = text.match(/(?<!\d)(\d{1,2}|[一二三四五六七八九十]{1,3})\s*月\s*(末|初旬|上旬|中旬|下旬)/)
+    if (jaMonthModifierM) {
+      const numericMonthMap: Record<string, number> = {
+        '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6,
+        '七': 7, '八': 8, '九': 9, '十': 10, '十一': 11, '十二': 12,
+      }
+      const rawMonth = jaMonthModifierM[1]
+      const month = /^\d+$/.test(rawMonth) ? parseInt(rawMonth, 10) : numericMonthMap[rawMonth]
+      if (month >= 1 && month <= 12) {
+        const modifier = jaMonthModifierM[2]
+        const day = (modifier === '末' || modifier === '下旬') ? 26
+          : modifier === '中旬' ? 15
+          : 5
+        const d = new Date(today.getFullYear(), month - 1, day)
+        if (d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
     }

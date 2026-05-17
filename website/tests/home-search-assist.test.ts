@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { shouldWaitForGeminiAssistOnHomeSubmit } from '../app/lib/home-search-assist.ts'
+import {
+  buildHomeConvoTopicOrder,
+  normalizeHomeConvoFollowUpTopics,
+  shouldWaitForGeminiAssistOnHomeSubmit,
+} from '../app/lib/home-search-assist.ts'
 import { parseNLQuery } from '../app/lib/searchParsing.ts'
 
 const RealDate = Date
@@ -63,4 +67,28 @@ test('home submit still waits for AI date help when the convo would otherwise as
     assert.equal(parsed.date_month_only, true)
     assert.equal(shouldWaitForGeminiAssistOnHomeSubmit(query, parsed), true)
   })
+})
+
+test('home submit now waits for AI when the home convo needs personalization help', () => {
+  withFixedNow('2026-05-14T12:00:00Z', () => {
+    const query = 'London to Paris next Friday'
+    const parsed = parseNLQuery(query)
+
+    assert.equal(parsed.origin, 'LON')
+    assert.equal(parsed.destination, 'PAR')
+    assert.equal(parsed.date, '2026-05-15')
+    assert.equal(shouldWaitForGeminiAssistOnHomeSubmit(query, parsed), true)
+  })
+})
+
+test('home convo topic helpers preserve essential question order while honoring Gemini topic priorities', () => {
+  assert.deepEqual(
+    normalizeHomeConvoFollowUpTopics(['priority', 'priority', 'date', 'unknown', 'trip_purpose']),
+    ['priority', 'date', 'trip_purpose'],
+  )
+
+  assert.deepEqual(
+    buildHomeConvoTopicOrder(['priority', 'trip_purpose']),
+    ['origin', 'destination', 'date', 'priority', 'trip_purpose', 'party_size', 'trip_type'],
+  )
 })

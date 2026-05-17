@@ -1,5 +1,48 @@
 import type { ParsedQuery } from './searchParsing'
 
+export const HOME_CONVO_FOLLOW_UP_TOPICS = [
+  'origin',
+  'destination',
+  'date',
+  'party_size',
+  'trip_type',
+  'trip_purpose',
+  'priority',
+] as const
+
+export type HomeConvoFollowUpTopic = typeof HOME_CONVO_FOLLOW_UP_TOPICS[number]
+
+const HOME_CONVO_ESSENTIAL_TOPICS: readonly HomeConvoFollowUpTopic[] = ['origin', 'destination', 'date']
+const HOME_CONVO_PERSONALIZATION_TOPICS: readonly HomeConvoFollowUpTopic[] = ['party_size', 'trip_type', 'trip_purpose', 'priority']
+const HOME_CONVO_FOLLOW_UP_TOPIC_SET = new Set<HomeConvoFollowUpTopic>(HOME_CONVO_FOLLOW_UP_TOPICS)
+
+export function normalizeHomeConvoFollowUpTopics(
+  topics: readonly string[] | null | undefined,
+): HomeConvoFollowUpTopic[] {
+  if (!topics || topics.length === 0) return []
+
+  const normalized: HomeConvoFollowUpTopic[] = []
+  for (const topic of topics) {
+    if (!HOME_CONVO_FOLLOW_UP_TOPIC_SET.has(topic as HomeConvoFollowUpTopic)) continue
+    const typedTopic = topic as HomeConvoFollowUpTopic
+    if (!normalized.includes(typedTopic)) normalized.push(typedTopic)
+  }
+  return normalized
+}
+
+export function buildHomeConvoTopicOrder(
+  aiTopics: readonly string[] | null | undefined,
+): HomeConvoFollowUpTopic[] {
+  const normalizedAiTopics = normalizeHomeConvoFollowUpTopics(aiTopics)
+  const preferredPersonalizationTopics = normalizedAiTopics.filter((topic) => !HOME_CONVO_ESSENTIAL_TOPICS.includes(topic))
+
+  return [
+    ...HOME_CONVO_ESSENTIAL_TOPICS,
+    ...preferredPersonalizationTopics,
+    ...HOME_CONVO_PERSONALIZATION_TOPICS.filter((topic) => !preferredPersonalizationTopics.includes(topic)),
+  ]
+}
+
 export function needsDateClarification(parsed: ParsedQuery | null | undefined): boolean {
   if (!parsed?.date || parsed.date_is_default === true) {
     return true
@@ -37,5 +80,5 @@ export function shouldWaitForGeminiAssistOnHomeSubmit(
     return true
   }
 
-  return needsConvo && needsDateClarification(parsed)
+  return needsConvo || needsDateClarification(parsed)
 }
