@@ -31,6 +31,7 @@ export interface SearchSessionPayload {
   source?: string
   source_path?: string
   referrer_path?: string
+  referrer_host?: string
   source_search_id?: string
   session_uid?: string
   status?: string
@@ -60,6 +61,7 @@ export interface SearchSessionPayload {
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
+  utm_term?: string
 }
 
 interface TrackOptions {

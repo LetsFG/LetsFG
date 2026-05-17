@@ -8,11 +8,32 @@ import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
 import { buildFallbackSearchQuery, buildMissingSearchShareSummary, buildSearchShareSummary, type SearchResult } from './search-share-model'
 import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'
-import { getSearchResults, resolveRequestCurrency } from './search-share-server'
+import { getInitialSearchResults, resolveRequestCurrency } from './search-share-server'
 
 function parseOffersCountOverride(value?: string) {
   const parsed = Number.parseInt(value || '', 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function toIsoFromStartedParam(value?: string) {
+  const parsed = Number.parseInt(value || '', 10)
+  if (!Number.isFinite(parsed)) {
+    return undefined
+  }
+  return new Date(parsed).toISOString()
+}
+
+function buildSearchingShell(searchId: string, started?: string, query = ''): SearchResult {
+  return {
+    search_id: searchId,
+    status: 'searching',
+    query,
+    parsed: {},
+    progress: { checked: 0, total: 180, found: 0 },
+    offers: [],
+    total_results: 0,
+    searched_at: toIsoFromStartedParam(started),
+  }
 }
 
 // Generate metadata for SEO and social sharing
@@ -27,7 +48,7 @@ export async function generateMetadata({
   const sp = await searchParams
   const isProbe = isProbeModeValue(sp?.probe)
   const displayCurrency = await resolveRequestCurrency(sp?.cur)
-  const result = await getSearchResults(searchId, isProbe)
+  const result = await getInitialSearchResults(searchId, isProbe)
   const fxRates = await getLiveFxRates()
   const offersCountOverride = parseOffersCountOverride(sp?.oc)
 
@@ -70,18 +91,19 @@ export async function generateMetadata({
 
 export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string; started?: string; probe?: string; cur?: string; q?: string; _fss?: string }> }) {
   const { searchId } = await params
+  if (!searchId.startsWith('ws_') && !searchId.startsWith('we_')) {
+    notFound()
+  }
   const sp = await searchParams
   const isProbe = isProbeModeValue(sp?.probe)
   const initialCurrency = await resolveRequestCurrency(sp?.cur)
   const trackingSearchId = getTrackingSearchId(searchId, isProbe)
   const fxRates = await getLiveFxRates()
   // Render immediately with the current snapshot and let SearchPageClient poll.
-  // Blocking here traps users on loading.tsx while the server waits.
-  const result = await getSearchResults(searchId, isProbe, sp?._fss)
-
-  if (!result) {
-    notFound()
-  }
+  // If the live snapshot fetch is slow, fall back to a searching shell so the
+  // client can mount and start polling without sitting on loading.tsx.
+  const result = await getInitialSearchResults(searchId, isProbe, sp?._fss)
+    ?? buildSearchingShell(searchId, sp?.started, sp?.q?.trim() || '')
 
   const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result
   const query = sp?.q?.trim() || resultQuery?.trim() || buildFallbackSearchQuery(parsed)

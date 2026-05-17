@@ -15,7 +15,7 @@ export async function upsertSearchSessionServer(payload: SearchSessionPayload) {
       }),
       body: JSON.stringify(payload),
       cache: 'no-store',
-      signal: AbortSignal.timeout(2500),
+      signal: AbortSignal.timeout(5000),
     })
 
     return res.ok

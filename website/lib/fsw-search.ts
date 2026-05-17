@@ -1,6 +1,6 @@
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
-const WEBSITE_SEARCH_LIMIT = 500
+const WEBSITE_SEARCH_LIMIT = 5000
 const START_WEB_SEARCH_TIMEOUT_MS = 15_000
 
 import { upsertSearchSessionServer } from './search-session-analytics-server'
@@ -27,12 +27,14 @@ export interface WebSearchAnalyticsContext {
   source?: string
   source_path?: string
   referrer_path?: string
+  referrer_host?: string
   source_search_id?: string
   session_uid?: string
   is_test_search?: boolean
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
+  utm_term?: string
 }
 
 export interface StartWebSearchResult {
@@ -85,11 +87,9 @@ export async function startWebSearch(
     const isTestSearch = Boolean(analytics?.is_test_search)
     const analyticsSearchId = getTrackingSearchId(searchId, isTestSearch) || searchId
 
-    // Fire analytics write in the background — do NOT await it.
-    // This lets /api/search return the search_id to the client immediately
-    // (after ~100-300ms for the FSW round-trip) rather than blocking on a
-    // Firestore write that the user doesn't need to wait for.
-    upsertSearchSessionServer({
+    // Persist the initial search row before returning so later results/payment
+    // events enrich the existing session instead of creating a blank shell.
+    await upsertSearchSessionServer({
       search_id: analyticsSearchId,
       query: analytics?.query,
       origin: params.origin,
@@ -106,16 +106,18 @@ export async function startWebSearch(
       source: analytics?.utm_source || analytics?.source || 'website',
       source_path: analytics?.source_path,
       referrer_path: analytics?.referrer_path,
+      referrer_host: analytics?.referrer_host,
       source_search_id: analytics?.source_search_id || (isTestSearch ? searchId : undefined),
       session_uid: analytics?.session_uid,
       is_test_search: isTestSearch || undefined,
       utm_source: analytics?.utm_source,
       utm_medium: analytics?.utm_medium,
       utm_campaign: analytics?.utm_campaign,
+      utm_term: analytics?.utm_term,
       status: 'searching',
       cache_hit: Boolean(data.cache_hit),
       search_started_at: startedAt,
-    }).catch(() => { /* analytics failure is non-fatal */ })
+    })
   }
 
   // Capture the Cloud Run session affinity cookie so callers can forward it

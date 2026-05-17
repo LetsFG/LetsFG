@@ -11,6 +11,15 @@ function debugHeaders(extra?: Record<string, string>) {
   }
 }
 
+function acceptedAnalyticsResponse(extra?: Record<string, string>) {
+  // Browser analytics is best-effort. Upstream failures should not surface as
+  // hard console errors on the results page when the user flow can continue.
+  return new NextResponse(null, {
+    status: 204,
+    headers: debugHeaders(extra),
+  })
+}
+
 export async function POST(request: NextRequest) {
   let bodyText = ''
 
@@ -45,16 +54,11 @@ export async function POST(request: NextRequest) {
     })
 
     if (!response.ok) {
-      return NextResponse.json(
-        { error: 'Analytics upstream failed' },
-        {
-          status: 502,
-          headers: debugHeaders({
-            'X-Letsfg-Analytics-Upstream-Status': String(response.status),
-            'X-Letsfg-Analytics-Upstream-Url': response.url,
-          }),
-        },
-      )
+      return acceptedAnalyticsResponse({
+        'X-Letsfg-Analytics-Upstream-Status': String(response.status),
+        'X-Letsfg-Analytics-Upstream-Url': response.url,
+        'X-Letsfg-Analytics-Dropped': '1',
+      })
     }
 
     const data = await response.json()
@@ -65,9 +69,6 @@ export async function POST(request: NextRequest) {
       }),
     })
   } catch (_) {
-    return NextResponse.json(
-      { error: 'Analytics proxy failed' },
-      { status: 502, headers: debugHeaders() },
-    )
+    return acceptedAnalyticsResponse({ 'X-Letsfg-Analytics-Dropped': '1' })
   }
 }
