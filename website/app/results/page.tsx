@@ -762,16 +762,29 @@ function SearchFallback({
 // ── Page entry point ──────────────────────────────────────────────────────────
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const locale = await getLocale()
   const { q } = await searchParams
-  if (!q?.trim()) return { title: 'Flight Search — LetsFG' }
+  if (!q?.trim()) {
+    return { title: locale === 'ja' ? 'フライト検索 — LetsFG' : 'Flight Search — LetsFG' }
+  }
   const parsed = parseNLQuery(q)
-  const destLabel = parsed.anywhere_destination ? 'Anywhere' : (parsed.destination_name || parsed.destination)
+  const destLabel = parsed.anywhere_destination
+    ? (locale === 'ja' ? 'どこでも' : 'Anywhere')
+    : (parsed.destination_name || parsed.destination)
   const route = [parsed.origin_name || parsed.origin, destLabel].filter(Boolean).join(' → ')
   const durationSuffix = parsed.min_trip_days !== undefined
     ? parsed.min_trip_days === parsed.max_trip_days
       ? ` · ${parsed.min_trip_days} days`
       : ` · ${parsed.min_trip_days}–${parsed.max_trip_days} days`
     : ''
+
+  if (locale === 'ja') {
+    return {
+      title: route ? `${route} のフライトを検索中 — LetsFG` : `「${q}」を検索中 — LetsFG`,
+      description: `${route || q} を対象に180以上の航空会社を検索します。手数料なし、航空会社の生運賃。`,
+    }
+  }
+
   return {
     title: route ? `Flights ${route}${durationSuffix} — LetsFG` : `"${q}" — LetsFG`,
     description: `Search 180+ airlines for ${route || q}. Zero markup, raw airline prices.`,

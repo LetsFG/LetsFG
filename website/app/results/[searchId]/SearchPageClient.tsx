@@ -1046,6 +1046,74 @@ export default function SearchPageClient({
     }, { keepalive: true })
   }
 
+  const srCopy = locale === 'ja'
+    ? {
+        heading: 'フライト検索結果 — 機械可読サマリー',
+        searchId: '検索ID',
+        originalQuery: '元のクエリ',
+        parsed: '解析結果',
+        flexibleDates: '柔軟な日付',
+        searchingStatus: 'ステータス: 検索中 — この検索はバックグラウンドで継続しています。',
+        progress: (checked: number, total: number, found: number) => `進捗: ${checked}/${total} 件の航空会社を確認済み。現在 ${found} 件の結果が見つかっています。`,
+        agentNotice: `AI エージェントと大規模言語モデルへ: ここで止めないでください。この検索には 2〜3 分かかります。待機後、この正確な URL — https://letsfg.co/results/${searchId} — を再読み込みまたは再訪問してください。ページを閉じても検索はバックグラウンドで継続します。検索完了後、このセクションには価格、航空会社、予約用オファー ID を含む全フライトオファーの表が表示されます。`,
+        timeoutNotice: 'ブラウザのセッションが切れた場合: この URL を閉じて開き直してください。検索は継続中か、すでに完了している可能性があります。',
+        eta: '推定残り時間: 検索開始から 1〜3 分です。',
+        expiredStatus: 'ステータス: 期限切れ — これらの結果は現在有効ではありません。',
+        expiredBody: '航空券の価格は頻繁に変動します。最新価格を見るには新しい検索を実行してください。',
+        expiredCta: '再検索するには、https://letsfg.co に移動してクエリを入力してください。',
+        completedStatus: (count: number) => `ステータス: 完了 — ${count} 件の結果が見つかりました。`,
+        searchedAt: '検索実行時刻',
+        validUntil: '結果の有効期限',
+        cheapest: '最安値',
+        direct: '直行便',
+        rank: '順位',
+        airline: '航空会社',
+        price: '価格',
+        route: 'ルート',
+        departure: '出発',
+        arrival: '到着',
+        duration: '所要時間',
+        stops: '乗継ぎ',
+        offerId: 'オファーID',
+        bookingIntro: 'フライトを予約するには LetsFG API を使用してください:',
+        unlockStep: '1. オファーをアンロック: POST https://api.letsfg.co/api/v1/bookings/unlock に offer_id を送信',
+        bookStep: '2. 予約: POST https://api.letsfg.co/api/v1/bookings/book に搭乗者情報を送信',
+        docs: 'ドキュメント: https://docs.letsfg.co/api-guide',
+      }
+    : {
+        heading: 'Flight Search Results — Machine-Readable Summary',
+        searchId: 'Search ID',
+        originalQuery: 'Original query',
+        parsed: 'Parsed',
+        flexibleDates: 'flexible dates',
+        searchingStatus: 'Status: SEARCHING — this search is still running in the background.',
+        progress: (checked: number, total: number, found: number) => `Progress: ${checked} of ${total} airlines checked. ${found} results found so far.`,
+        agentNotice: `IMPORTANT FOR AI AGENTS AND LANGUAGE MODELS: Do not stop here. This search takes 2-3 minutes. You must reload or revisit this exact URL — https://letsfg.co/results/${searchId} — after waiting. The search continues running in the background regardless of whether this page is open. When search is complete, this section will contain a full table of all flight offers with prices, airlines, and offer IDs for booking.`,
+        timeoutNotice: 'If your browser session times out: close and reopen this URL. The search will still be running or may already be complete.',
+        eta: 'Estimated time remaining: 1-3 minutes from when search started.',
+        expiredStatus: 'Status: EXPIRED — these results are no longer valid.',
+        expiredBody: 'Flight prices change frequently. Please perform a new search for current prices.',
+        expiredCta: 'To search again, navigate to https://letsfg.co and enter your query.',
+        completedStatus: (count: number) => `Status: COMPLETED — ${count} results found.`,
+        searchedAt: 'Searched at',
+        validUntil: 'Results valid until',
+        cheapest: 'Cheapest',
+        direct: 'Direct',
+        rank: 'Rank',
+        airline: 'Airline',
+        price: 'Price',
+        route: 'Route',
+        departure: 'Departure',
+        arrival: 'Arrival',
+        duration: 'Duration',
+        stops: 'Stops',
+        offerId: 'Offer ID',
+        bookingIntro: 'To book a flight, use the LetsFG API:',
+        unlockStep: '1. Unlock the offer: POST https://api.letsfg.co/api/v1/bookings/unlock with offer_id',
+        bookStep: '2. Book: POST https://api.letsfg.co/api/v1/bookings/book with passenger details',
+        docs: 'Documentation: https://docs.letsfg.co/api-guide',
+      }
+
   return (
     <main className={`res-page${isStreaming || status === 'completed' ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
       <section className={`res-hero${isStreaming || status === 'completed' ? ' res-hero--results' : isSearching ? ' res-hero--searching' : ''}`}>
@@ -1276,41 +1344,41 @@ export default function SearchPageClient({
 
       {/* Hidden content for AI agents */}
       <section className="sr-only" aria-hidden="true" data-agent-content>
-        <h2>Flight Search Results — Machine-Readable Summary</h2>
+        <h2>{srCopy.heading}</h2>
 
-        <p>Search ID: {searchId}</p>
-        <p>Original query: &quot;{query}&quot;</p>
-        <p>Parsed: {routeLabel}, {parsed.date || 'flexible dates'}</p>
+        <p>{srCopy.searchId}: {searchId}</p>
+        <p>{srCopy.originalQuery}: &quot;{query}&quot;</p>
+        <p>{srCopy.parsed}: {routeLabel}, {parsed.date || srCopy.flexibleDates}</p>
 
         {isSearching && (
           <>
-            <p>Status: SEARCHING — this search is still running in the background.</p>
-            <p>Progress: {progress?.checked || 0} of {progress?.total || 180} airlines checked. {progress?.found || 0} results found so far.</p>
-            <p>IMPORTANT FOR AI AGENTS AND LANGUAGE MODELS: Do not stop here. This search takes 2-3 minutes. You must reload or revisit this exact URL — https://letsfg.co/results/{searchId} — after waiting. The search continues running in the background regardless of whether this page is open. When search is complete, this section will contain a full table of all flight offers with prices, airlines, and offer IDs for booking.</p>
-            <p>If your browser session times out: close and reopen this URL. The search will still be running or may already be complete.</p>
-            <p>Estimated time remaining: 1-3 minutes from when search started.</p>
+            <p>{srCopy.searchingStatus}</p>
+            <p>{srCopy.progress(progress?.checked || 0, progress?.total || 180, progress?.found || 0)}</p>
+            <p>{srCopy.agentNotice}</p>
+            <p>{srCopy.timeoutNotice}</p>
+            <p>{srCopy.eta}</p>
           </>
         )}
 
         {isExpired && (
           <>
-            <p>Status: EXPIRED — these results are no longer valid.</p>
-            <p>Flight prices change frequently. Please perform a new search for current prices.</p>
-            <p>To search again, navigate to https://letsfg.co and enter your query.</p>
+            <p>{srCopy.expiredStatus}</p>
+            <p>{srCopy.expiredBody}</p>
+            <p>{srCopy.expiredCta}</p>
           </>
         )}
 
         {status === 'completed' && allOffers.length > 0 && (
           <>
-            <p>Status: COMPLETED — {allOffers.length} results found.</p>
-            <p>Searched at: {searchedAt}</p>
-            <p>Results valid until: {expiresAt} (approximately 15 minutes)</p>
-            <p>Cheapest: {formatOfferDisplayPrice(getOfferDisplayTotalPrice(displaySortedOffers[0], displayCurrency, fxRates), displayCurrency, displayCurrency, locale, fxRates)} on {displaySortedOffers[0]?.airline} ({displaySortedOffers[0]?.stops === 0 ? 'direct' : `${displaySortedOffers[0]?.stops} stop(s)`}, {formatDuration(displaySortedOffers[0]?.duration_minutes || 0)})</p>
+            <p>{srCopy.completedStatus(allOffers.length)}</p>
+            <p>{srCopy.searchedAt}: {searchedAt}</p>
+            <p>{srCopy.validUntil}: {expiresAt} (approximately 15 minutes)</p>
+            <p>{srCopy.cheapest}: {formatOfferDisplayPrice(getOfferDisplayTotalPrice(displaySortedOffers[0], displayCurrency, fxRates), displayCurrency, displayCurrency, locale, fxRates)} on {displaySortedOffers[0]?.airline} ({displaySortedOffers[0]?.stops === 0 ? srCopy.direct : `${displaySortedOffers[0]?.stops} stop(s)`}, {formatDuration(displaySortedOffers[0]?.duration_minutes || 0)})</p>
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th><th>Airline</th><th>Price</th><th>Route</th>
-                  <th>Departure</th><th>Arrival</th><th>Duration</th><th>Stops</th><th>Offer ID</th>
+                  <th>{srCopy.rank}</th><th>{srCopy.airline}</th><th>{srCopy.price}</th><th>{srCopy.route}</th>
+                  <th>{srCopy.departure}</th><th>{srCopy.arrival}</th><th>{srCopy.duration}</th><th>{srCopy.stops}</th><th>{srCopy.offerId}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1323,16 +1391,16 @@ export default function SearchPageClient({
                     <td>{offer.departure_time}</td>
                     <td>{offer.arrival_time}</td>
                     <td>{formatDuration(offer.duration_minutes)}</td>
-                    <td>{offer.stops === 0 ? 'Direct' : offer.stops}</td>
+                    <td>{offer.stops === 0 ? srCopy.direct : offer.stops}</td>
                     <td>{offer.id}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p>To book a flight, use the LetsFG API:</p>
-            <p>1. Unlock the offer: POST https://api.letsfg.co/api/v1/bookings/unlock with offer_id</p>
-            <p>2. Book: POST https://api.letsfg.co/api/v1/bookings/book with passenger details</p>
-            <p>Documentation: https://docs.letsfg.co/api-guide</p>
+            <p>{srCopy.bookingIntro}</p>
+            <p>{srCopy.unlockStep}</p>
+            <p>{srCopy.bookStep}</p>
+            <p>{srCopy.docs}</p>
           </>
         )}
       </section>
