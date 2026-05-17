@@ -8,6 +8,7 @@ import GlobeButton from '../../globe-button'
 import CurrencyButton from '../../currency-button'
 import BookPageClient from './BookPageClient'
 import { formatFlightTime } from '../../../lib/flight-datetime'
+import { getLiveFxRates } from '../../../lib/live-fx'
 import { appendProbeParam, getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
 import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../../lib/currency-preference'
 import { detectPreferredCurrency } from '../../../lib/user-currency'
@@ -143,6 +144,7 @@ export default async function BookPage({
   const isProbe = isProbeModeValue(firstQueryValue(probe))
   const trackingSearchId = getTrackingSearchId(resolvedFrom, isProbe)
   const offer = await getOffer(offerId, resolvedFrom, resolvedRef, isProbe)
+  const fxRates = await getLiveFxRates()
   const requestHeaders = await headers()
   const cookieStore = await cookies()
   const displayCurrency = resolveSearchCurrency({
@@ -236,6 +238,7 @@ export default async function BookPage({
         offerRef={resolvedRef ?? null}
         backHref={backHref}
         displayCurrency={displayCurrency}
+        fxRates={fxRates}
       />
 
       {/* Hidden section for AI agents and language models */}

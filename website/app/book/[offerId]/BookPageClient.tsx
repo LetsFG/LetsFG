@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import CheckoutPanel from './CheckoutPanel'
 import { findOfferInBrowserCache } from '../../../lib/browser-offer-cache'
+import type { FxRateTable } from '../../../lib/display-price'
 import type { Offer } from './page'
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   offerRef: string | null
   backHref: string
   displayCurrency?: string
+  fxRates?: FxRateTable
 }
 
 export default function BookPageClient({
@@ -26,6 +28,7 @@ export default function BookPageClient({
   offerRef,
   backHref,
   displayCurrency,
+  fxRates,
 }: Props) {
   const [offer, setOffer] = useState<Offer | null>(initialOffer)
   const [checkedRecovery, setCheckedRecovery] = useState(Boolean(initialOffer) || !searchId)
@@ -58,6 +61,7 @@ export default function BookPageClient({
         isTestSearch={isTestSearch}
         offerRef={offerRef}
         displayCurrency={displayCurrency}
+        fxRates={fxRates}
       />
     )
   }

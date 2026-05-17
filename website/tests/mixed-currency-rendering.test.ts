@@ -24,12 +24,12 @@ test('results panel formats visible prices in the selected currency', () => {
 
   assert.match(
     resultsPanel,
-    /getOfferDisplayTotalPrice\(offer, currency\)/,
+    /getOfferDisplayTotalPrice\(offer, currency, fxRates\)/,
   )
 
   assert.match(
     resultsPanel,
-    /getSortEffectivePrice\(displayOffers\[0\], sort, currency\)/,
+    /getSortEffectivePrice\(displayOffers\[0\], sort, currency, fxRates\)/,
   )
 
   assert.match(
@@ -38,8 +38,13 @@ test('results panel formats visible prices in the selected currency', () => {
   )
 
   assert.match(
+    searchPageClient,
+    /fxRates=\{fxRates\}/,
+  )
+
+  assert.match(
     resultsPage,
-    /getOfferDisplayTotalPrice\(offer, initialCurrency\)/,
+    /getOfferDisplayTotalPrice\(offer, initialCurrency, fxRates\)/,
   )
 
   assert.match(

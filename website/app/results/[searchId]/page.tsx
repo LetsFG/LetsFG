@@ -2,6 +2,7 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import SearchPageClient from './SearchPageClient'
 import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
+import { getLiveFxRates } from '../../../lib/live-fx'
 import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
@@ -27,10 +28,11 @@ export async function generateMetadata({
   const isProbe = isProbeModeValue(sp?.probe)
   const displayCurrency = await resolveRequestCurrency(sp?.cur)
   const result = await getSearchResults(searchId, isProbe)
+  const fxRates = await getLiveFxRates()
   const offersCountOverride = parseOffersCountOverride(sp?.oc)
 
   const summary = result
-    ? buildSearchShareSummary(result, displayCurrency, { offersAnalyzedOverride: offersCountOverride })
+    ? buildSearchShareSummary(result, displayCurrency, { offersAnalyzedOverride: offersCountOverride, fxRates })
     : buildMissingSearchShareSummary()
   const imageParams = new URLSearchParams()
   if (isProbe) imageParams.set('probe', '1')
@@ -72,6 +74,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
   const isProbe = isProbeModeValue(sp?.probe)
   const initialCurrency = await resolveRequestCurrency(sp?.cur)
   const trackingSearchId = getTrackingSearchId(searchId, isProbe)
+  const fxRates = await getLiveFxRates()
   // Render immediately with the current snapshot and let SearchPageClient poll.
   // Blocking here traps users on loading.tsx while the server waits.
   const result = await getSearchResults(searchId, isProbe, sp?._fss)
@@ -115,7 +118,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
             name: `${offer.airline} ${offer.origin}→${offer.destination}`,
             offers: {
               '@type': 'Offer',
-              price: String(Math.round(getOfferDisplayTotalPrice(offer, initialCurrency))),
+              price: String(Math.round(getOfferDisplayTotalPrice(offer, initialCurrency, fxRates))),
               priceCurrency: initialCurrency,
               availability: 'https://schema.org/InStock',
             },
@@ -141,6 +144,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         trackingSearchId={trackingSearchId}
         isTestSearch={isProbe}
         initialCurrency={initialCurrency}
+        fxRates={fxRates}
         query={query}
         parsed={parsed}
         initialStatus={status}
