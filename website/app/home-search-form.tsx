@@ -2,14 +2,15 @@
 
 import { FormEvent, useState, useRef, useEffect, useCallback, KeyboardEvent, startTransition } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter, useParams } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useRouter } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport, searchAirports } from './airports'
 import {
   CURRENCY_CHANGE_EVENT,
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
+import { setResultsLocaleSearchParam } from '../lib/locale-routing'
 import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec, hasTripTypeContext } from './lib/home-convo-personalization'
 import { parseNLQuery } from './lib/searchParsing'
 import {
@@ -726,8 +727,7 @@ export default function HomeSearchForm({
   onSearchStart,
 }: HomeSearchFormProps = {}) {
   const router = useRouter()
-  const params = useParams()
-  const locale = (params?.locale as string) || 'en'
+  const locale = useLocale()
   const td = useTranslations('destinations')
   const th = useTranslations('hero')
   const tc = useTranslations('Clarify')
@@ -1218,6 +1218,7 @@ export default function HomeSearchForm({
     const params = new URLSearchParams()
     params.set('q', q)
     if (prefCurrency) params.set('cur', prefCurrency)
+    setResultsLocaleSearchParam(params, locale)
     if (probeMode) params.set('probe', '1')
     for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
       const val = sp.get(key)

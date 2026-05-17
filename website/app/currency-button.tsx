@@ -12,6 +12,7 @@ import {
   type CurrencyCode,
   type DisplayCurrencyCode,
 } from '../lib/currency-preference'
+import { RESULTS_LOCALE_QUERY_PARAM, setResultsLocaleSearchParam } from '../lib/locale-routing'
 import { getTrackedSourcePath } from '../lib/probe-mode'
 
 function persistCurrencyPreference(code: string) {
@@ -46,7 +47,12 @@ function buildCurrencyNavigationTarget(
   const activeSearchQuery = resolveActiveSearchQuery(searchQuery)
 
   if (behavior === 'rerun-search' && activeSearchQuery) {
-    const path = `/results?q=${encodeURIComponent(activeSearchQuery)}&cur=${encodeURIComponent(code)}`
+    const currentParams = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams()
+    params.set('q', activeSearchQuery)
+    params.set('cur', code)
+    setResultsLocaleSearchParam(params, currentParams.get(RESULTS_LOCALE_QUERY_PARAM))
+    const path = `/results?${params.toString()}`
     return getTrackedSourcePath(path, probeMode)
   }
 

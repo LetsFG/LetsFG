@@ -15,6 +15,7 @@ import { formatOfferDisplayPrice, getOfferDisplayTotalPrice, type FxRateTable } 
 import { trackSearchSession, trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { useExperiment } from '../../../lib/ab-testing'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
+import { setResultsLocaleSearchParam } from '../../../lib/locale-routing'
 import { appendProbeParam, getTrackedSourcePath } from '../../../lib/probe-mode'
 import { useRouter, useSearchParams } from 'next/navigation'
 import BookingFrictionSurvey, { BOOKING_FRICTION_EXPERIMENT_ID, BOOKING_FRICTION_RESULTS_EXPERIMENT, SS_KEY_CHECKOUT_VISITED } from '../../BookingFrictionSurvey'
@@ -52,6 +53,7 @@ function slugifyResultsQuery(query: string): string {
 function buildResultsSharePath({
   searchId,
   query,
+  locale,
   isTestSearch,
   offersCountOverride,
   fswSession,
@@ -60,6 +62,7 @@ function buildResultsSharePath({
 }: {
   searchId: string
   query: string
+  locale: string
   isTestSearch: boolean
   offersCountOverride?: number
   fswSession?: string
@@ -91,6 +94,8 @@ function buildResultsSharePath({
   if (preserveQuery) {
     params.set('q', query)
   }
+
+  setResultsLocaleSearchParam(params, locale)
 
   const queryString = params.toString()
   return queryString ? `${pathname}?${queryString}` : pathname
@@ -555,15 +560,17 @@ export default function SearchPageClient({
     () => buildResultsSharePath({
       searchId,
       query,
+      locale,
       isTestSearch,
       offersCountOverride: status === 'completed' ? offers.length : undefined,
     }),
-    [isTestSearch, offers.length, query, searchId, status],
+    [isTestSearch, locale, offers.length, query, searchId, status],
   )
   const activeResultsPath = useMemo(
     () => buildResultsSharePath({
       searchId,
       query,
+      locale,
       isTestSearch,
       offersCountOverride: status === 'completed' ? offers.length : undefined,
       // Keep Cloud Run affinity in the address bar while the search is still
@@ -575,7 +582,7 @@ export default function SearchPageClient({
       startedAt: status === 'searching' ? normalizeStartedAtParam(searchedAt) : undefined,
       preserveQuery: status === 'searching',
     }),
-    [fswSession, isTestSearch, offers.length, query, searchId, searchedAt, status],
+    [fswSession, isTestSearch, locale, offers.length, query, searchId, searchedAt, status],
   )
   const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : parsed.min_trip_days
   const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : parsed.max_trip_days
