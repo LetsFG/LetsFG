@@ -11,6 +11,7 @@ import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
 import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../lib/letsfg-api'
+import { resolveHomeOriginPrefill } from '../../lib/home-origin-prefill'
 import HomeMonitorNav from '../home-monitor-nav'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
@@ -114,6 +115,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
     cookieValue: cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value,
     fallback: detectPreferredCurrency(requestHeaders),
   })
+  const initialDetectedOrigin = resolveHomeOriginPrefill(requestHeaders, locale)?.label || ''
 
   // ?q= support: agents (and humans) can navigate directly to /?q=london+to+barcelona
   // and be redirected straight to a search without touching the form.
@@ -226,7 +228,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
           />
           <p className="lp-hero-sub">{th('tagline')}</p>
           <div className="lp-hero-search-shell" id="destinations">
-            <HomeSearchForm probeMode={isProbe} initialCurrency={initialCurrency} />
+            <HomeSearchForm probeMode={isProbe} initialCurrency={initialCurrency} initialDetectedOrigin={initialDetectedOrigin} />
           </div>
         </div>
       </section>

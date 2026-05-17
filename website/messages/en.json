@@ -9,7 +9,7 @@
   },
   "hero": {
     "tagline": "Finding a flight shouldn't mean checking 47 websites. So we built this. No markup. No tracking. No prices jumping because you looked twice.",
-    "placeholder": "Try: London to Tokyo, May 17, back May 19, need to land by 3pm…",
+    "placeholder": "Try: London to Tokyo next month, cheapest option, direct flights only, business trip, need to land by 3pm…",
     "searchLabel": "Search flights"
   },
   "stats": {

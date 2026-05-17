@@ -7,7 +7,7 @@
     "build": "npm run test && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npm run test:locations && npm run test:city-pair-matrix && npm run test:round-trip-detection && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:checkout-unlock-experiment && npm run test:user-currency && npm run test:mixed-currency-rendering && npm run test:results-rerun-state && npm run test:results-query-fallback && npm run test:results-expired-cache-state && npm run test:results-expired-response-state && npm run test:google-comparison && npm run test:pfp-quality-gate && npm run test:pfp-normalizer && npm run test:pfp-ingest && npm run test:pfp-distribution-service && npm run test:pfp-flight-page && npm run test:pfp-json-ld && npm run test:pfp-seo-head && npm run test:pfp-sitemap && npm run test:pfp-tracker && npm run test:pfp-experiment-context && npm run test:pfp-cron-cleanup && npm run test:pfp-integration",
+    "test": "npm run test:locations && npm run test:city-pair-matrix && npm run test:round-trip-detection && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:checkout-unlock-experiment && npm run test:user-currency && npm run test:mixed-currency-rendering && npm run test:results-rerun-state && npm run test:results-query-fallback && npm run test:results-expired-cache-state && npm run test:results-expired-response-state && npm run test:google-comparison && npm run test:booking-url-repair && npm run test:pfp-quality-gate && npm run test:pfp-normalizer && npm run test:pfp-ingest && npm run test:pfp-distribution-service && npm run test:pfp-flight-page && npm run test:pfp-json-ld && npm run test:pfp-seo-head && npm run test:pfp-sitemap && npm run test:pfp-tracker && npm run test:pfp-experiment-context && npm run test:pfp-cron-cleanup && npm run test:pfp-integration",
     "test:locations": "tsx --test tests/location-resolution.test.ts",
     "test:city-pair-matrix": "tsx --test tests/city-pair-matrix.test.ts",
     "test:round-trip-detection": "tsx --test tests/round-trip-detection.test.ts",
@@ -22,6 +22,7 @@
     "test:results-expired-cache-state": "tsx --test tests/results-expired-cache-state.test.ts",
     "test:results-expired-response-state": "tsx --test tests/results-expired-response-state.test.ts",
     "test:google-comparison": "tsx --test tests/google-comparison.test.ts",
+    "test:booking-url-repair": "tsx --test tests/booking-url-repair.test.ts",
     "test:pfp-quality-gate": "tsx --test tests/pfp/content-quality-gate.test.ts",
     "test:pfp-normalizer": "tsx --test tests/pfp/normalizer.test.ts",
     "test:pfp-ingest": "tsx --test tests/pfp/offer-ingest.test.ts",
@@ -40,6 +41,8 @@
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/react-fontawesome": "^3.3.0",
     "@swc/helpers": "^0.5.21",
+    "@types/geoip-lite": "^1.4.4",
+    "geoip-lite": "^1.4.10",
     "lucide-react": "^1.8.0",
     "next": "^16.2.4",
     "next-intl": "^4.9.1",
@@ -52,6 +55,6 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "tsx": "^4.20.6",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }
