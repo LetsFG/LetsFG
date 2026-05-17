@@ -680,14 +680,14 @@ function _isLcc(carrier: string): boolean {
 // ─── Carrier IATA code → display name ────────────────────────────────────────
 
 const _CARRIER_NAMES: Record<string, string> = {
-  FR: 'Ryanair', W6: 'Wizz Air', U2: 'easyJet', LO: 'LOT Polish Airlines',
+  FR: 'Ryanair', W4: 'Wizz Air Malta', W6: 'Wizz Air', U2: 'easyJet', LO: 'LOT Polish Airlines',
   LH: 'Lufthansa', BA: 'British Airways', AA: 'American Airlines',
   DL: 'Delta Air Lines', UA: 'United Airlines', AF: 'Air France',
   KL: 'KLM', LX: 'Swiss International', OS: 'Austrian Airlines',
   TK: 'Turkish Airlines', EK: 'Emirates', QR: 'Qatar Airways',
   EY: 'Etihad Airways', SQ: 'Singapore Airlines', QF: 'Qantas',
   VS: 'Virgin Atlantic', AY: 'Finnair', IB: 'Iberia', VY: 'Vueling',
-  TP: 'TAP Air Portugal', SK: 'SAS', DY: 'Norwegian',
+  TP: 'TAP Air Portugal', SK: 'SAS', DY: 'Norwegian', N0: 'Norse Atlantic Airways',
   EW: 'Eurowings', G4: 'Allegiant Air', F9: 'Frontier Airlines',
   NK: 'Spirit Airlines', WN: 'Southwest Airlines', B6: 'JetBlue',
   AS: 'Alaska Airlines', AC: 'Air Canada', WS: 'WestJet',
