@@ -2,7 +2,7 @@ import createMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { NextResponse, type NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
-import { resolveLocaleCookieValue } from './lib/locale-routing'
+import { resolveLocaleCookieValue, resolveLocaleSearchParamValue, setResultsLocaleSearchParam } from './lib/locale-routing'
 import { getSessionUid, HOSTING_SESSION_COOKIE_NAME, LEGACY_UID_COOKIE_NAME, SESSION_UID_HEADER_NAME } from './lib/session-uid'
 import {
   buildRateLimitClientKey,
@@ -77,11 +77,12 @@ export default function proxy(req: NextRequest) {
 
   // If someone hits a locale-prefixed path to results/book (e.g. /en/results?q=...),
   // strip the locale prefix and redirect to the canonical non-prefixed URL.
-  const localePrefix = /^\/(?:en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)(\/(?:results|book)(?:\/.*)?)?$/
+  const localePrefix = /^\/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)(\/(?:results|book|probe)(?:\/.*)?)?$/
   const localePrefixMatch = pathname.match(localePrefix)
-  if (localePrefixMatch && localePrefixMatch[1]) {
+  if (localePrefixMatch && localePrefixMatch[2]) {
     const target = req.nextUrl.clone()
-    target.pathname = localePrefixMatch[1]
+    target.pathname = localePrefixMatch[2]
+    setResultsLocaleSearchParam(target.searchParams, localePrefixMatch[1])
     return NextResponse.redirect(target)
   }
 
@@ -101,10 +102,13 @@ export default function proxy(req: NextRequest) {
 
   // For non-locale paths (results/book/api), skip intlMiddleware entirely.
   // intlMiddleware would redirect /results → /en/results, causing a loop.
-  // Detect locale from either locale cookie so getLocale()/getMessages() still work.
+  // Hosting only forwards the special __session cookie to the backend, so
+  // locale cookies are not reliable on live non-prefixed routes. Prefer an
+  // explicit locale query param when present, then fall back locally.
   let res: NextResponse
   if (isNonLocalePath(pathname)) {
-    const detectedLocale = resolveLocaleCookieValue((cookieName) => req.cookies.get(cookieName)?.value)
+    const detectedLocale = resolveLocaleSearchParamValue(req.nextUrl.searchParams.get('hl'))
+      || resolveLocaleCookieValue((cookieName) => req.cookies.get(cookieName)?.value)
       || routing.defaultLocale
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-next-intl-locale', detectedLocale)

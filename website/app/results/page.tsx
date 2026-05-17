@@ -25,7 +25,7 @@ import { upsertSearchSessionServer } from '../../lib/search-session-analytics-se
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
-import { buildLocaleHomePath } from '../../lib/locale-routing'
+import { buildLocaleHomePath, setResultsLocaleSearchParam } from '../../lib/locale-routing'
 import { resolveSearchLaunchRoute } from '../../lib/search-launch-route'
 
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -695,7 +695,17 @@ async function SearchContent({
     : (parsed.min_trip_days !== undefined ? `&trip_min=${parsed.min_trip_days}` : '')
   const monthCtx = parsed.date_month_only ? '&month_only=1' : ''
   const fssCtx = fswSession ? `&_fss=${encodeURIComponent(fswSession)}` : ''
-  redirect(getTrackedSourcePath(`/results/${searchId}?started=${startedTs}&cur=${encodeURIComponent(currency)}&q=${encodeURIComponent(query)}${mt ? `&mt=${encodeURIComponent(mt)}` : ''}${tripCtx}${monthCtx}${fssCtx}`, isProbe))
+  const params = new URLSearchParams()
+  params.set('started', startedTs)
+  params.set('cur', currency)
+  params.set('q', query)
+  if (mt) params.set('mt', mt)
+  if (parsed.min_trip_days !== undefined) params.set('trip_min', String(parsed.min_trip_days))
+  if (parsed.max_trip_days !== undefined) params.set('trip_max', String(parsed.max_trip_days))
+  if (parsed.date_month_only) params.set('month_only', '1')
+  if (fswSession) params.set('_fss', fswSession)
+  setResultsLocaleSearchParam(params, locale)
+  redirect(getTrackedSourcePath(`/results/${searchId}?${params.toString()}`, isProbe))
 }
 
 // ── Suspense fallback (shown instantly while SearchContent runs) ───────────────

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter, useParams, usePathname } from 'next/navigation'
 import { useLocale } from 'next-intl'
+import { setResultsLocaleSearchParam } from '../lib/locale-routing'
 
 const LANGUAGES = [
   { code: 'en', label: 'English',    flag: 'EN' },
@@ -163,7 +164,9 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
                   pathname.startsWith('/book') ||
                   pathname.startsWith('/probe')
                 ) {
-                  window.location.reload()
+                  const nextUrl = new URL(window.location.href)
+                  setResultsLocaleSearchParam(nextUrl.searchParams, lang.code)
+                  window.location.assign(nextUrl.toString())
                   return
                 }
 

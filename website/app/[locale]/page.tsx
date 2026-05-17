@@ -12,6 +12,7 @@ import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
 import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../lib/letsfg-api'
 import { resolveHomeOriginPrefill } from '../../lib/home-origin-prefill'
+import { setResultsLocaleSearchParam } from '../../lib/locale-routing'
 import HomeMonitorNav from '../home-monitor-nav'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
@@ -120,14 +121,16 @@ export default async function Home({ params, searchParams }: { params: Promise<{
   // ?q= support: agents (and humans) can navigate directly to /?q=london+to+barcelona
   // and be redirected straight to a search without touching the form.
   if (q?.trim()) {
-      const utmParts = [
-        utm_source && `utm_source=${encodeURIComponent(utm_source)}`,
-        utm_medium && `utm_medium=${encodeURIComponent(utm_medium)}`,
-        utm_campaign && `utm_campaign=${encodeURIComponent(utm_campaign)}`,
-        utm_content && `utm_content=${encodeURIComponent(utm_content)}`,
-        utm_term && `utm_term=${encodeURIComponent(utm_term)}`,
-      ].filter(Boolean).join('&')
-      redirect(getTrackedSourcePath(`/results?q=${encodeURIComponent(q.trim())}&cur=${encodeURIComponent(initialCurrency)}${utmParts ? `&${utmParts}` : ''}`, isProbe))
+      const params = new URLSearchParams()
+      params.set('q', q.trim())
+      params.set('cur', initialCurrency)
+      setResultsLocaleSearchParam(params, locale)
+      if (utm_source) params.set('utm_source', utm_source)
+      if (utm_medium) params.set('utm_medium', utm_medium)
+      if (utm_campaign) params.set('utm_campaign', utm_campaign)
+      if (utm_content) params.set('utm_content', utm_content)
+      if (utm_term) params.set('utm_term', utm_term)
+      redirect(getTrackedSourcePath(`/results?${params.toString()}`, isProbe))
   }
 
   const [stats, t, githubStars] = await Promise.all([
