@@ -5,6 +5,7 @@ import { detectPreferredCurrency } from '../../../lib/user-currency'
 import type { SearchResult } from './search-share-model'
 
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
+export const INITIAL_SEARCH_RESULTS_TIMEOUT_MS = 1200
 
 export async function getApiBase(): Promise<string> {
   const explicitBase = process.env.API_URL?.trim()
@@ -23,12 +24,28 @@ export async function getApiBase(): Promise<string> {
 }
 
 export async function getSearchResults(searchId: string, isProbe: boolean, fswSession?: string): Promise<SearchResult | null> {
+  return getSearchResultsWithTimeout(searchId, isProbe, fswSession)
+}
+
+export async function getInitialSearchResults(searchId: string, isProbe: boolean, fswSession?: string): Promise<SearchResult | null> {
+  return getSearchResultsWithTimeout(searchId, isProbe, fswSession, INITIAL_SEARCH_RESULTS_TIMEOUT_MS)
+}
+
+async function getSearchResultsWithTimeout(
+  searchId: string,
+  isProbe: boolean,
+  fswSession?: string,
+  timeoutMs?: number,
+): Promise<SearchResult | null> {
   try {
     const apiBase = await getApiBase()
     const url = new URL(`/api/results/${searchId}`, apiBase)
     appendProbeParam(url.searchParams, isProbe)
     if (fswSession) url.searchParams.set('_fss', fswSession)
-    const res = await fetch(url.toString(), { cache: 'no-store' })
+    const res = await fetch(url.toString(), {
+      cache: 'no-store',
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+    })
     if (!res.ok) return null
     return res.json()
   } catch {

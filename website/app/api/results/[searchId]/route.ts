@@ -18,8 +18,8 @@ const FSW_SECRET = process.env.FSW_SECRET || ''
 // ── Airline resolution helpers ────────────────────────────────────────────────
 // IATA_TO_NAME: subset for the most common airlines (avoids importing full map)
 const IATA_TO_NAME: Record<string, string> = {
-  FR: 'Ryanair', U2: 'easyJet', W6: 'Wizz Air', W9: 'Wizz Air Malta',
-  DY: 'Norwegian', VY: 'Vueling', BA: 'British Airways', LH: 'Lufthansa',
+  FR: 'Ryanair', U2: 'easyJet', W4: 'Wizz Air Malta', W6: 'Wizz Air', W9: 'Wizz Air Malta',
+  DY: 'Norwegian', N0: 'Norse Atlantic Airways', VY: 'Vueling', BA: 'British Airways', LH: 'Lufthansa',
   AF: 'Air France', KL: 'KLM', IB: 'Iberia', I2: 'Iberia Express',
   TP: 'TAP Air Portugal', EK: 'Emirates', QR: 'Qatar Airways',
   TK: 'Turkish Airlines', AA: 'American Airlines', UA: 'United Airlines',
@@ -354,6 +354,10 @@ export async function GET(
     const nonNegativeDiff = typeof diff === 'number'
       ? (Math.abs(diff) < 0.005 ? 0 : Math.max(0, diff))
       : undefined
+    const meta = getSearchMeta(searchId)
+    const parsedContext = meta?.parsed_context && typeof meta.parsed_context === 'object'
+      ? meta.parsed_context
+      : {}
 
     // Cache completed offers so /api/offer/[offerId] can find them without
     // needing to hit FSW again (which may route to a different instance).
@@ -362,6 +366,15 @@ export async function GET(
 
       await upsertSearchSessionServer({
         search_id: analyticsSearchId,
+        query: typeof data.query === 'string' ? data.query : undefined,
+        origin: data.origin,
+        origin_name: data.origin_name || data.origin || (typeof parsedContext.origin_name === 'string' ? parsedContext.origin_name : undefined),
+        destination: data.destination,
+        destination_name: data.destination_name || data.destination || (typeof parsedContext.destination_name === 'string' ? parsedContext.destination_name : undefined),
+        route: data.origin && data.destination ? `${data.origin}-${data.destination}` : undefined,
+        date_from: data.date_from || (typeof parsedContext.date === 'string' ? parsedContext.date : undefined),
+        return_date: data.return_date || (typeof parsedContext.return_date === 'string' ? parsedContext.return_date : undefined),
+        currency: rawOffers[0]?.currency || data.currency,
         session_uid: getSessionUid(request) || undefined,
         source_search_id: isProbeSearch ? searchId : undefined,
         is_test_search: isProbeSearch || undefined,
@@ -410,10 +423,6 @@ export async function GET(
     // Pick up website-side resolution context (e.g. "Pretoria has no airport,
     // we used JNB") that was recorded at /api/search time. FSW knows nothing
     // about it, so we merge it into `parsed` here.
-    const meta = getSearchMeta(searchId)
-    const parsedContext = meta?.parsed_context && typeof meta.parsed_context === 'object'
-      ? meta.parsed_context
-      : {}
     const result = {
       search_id: searchId,
       status: data.status,

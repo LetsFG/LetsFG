@@ -1,7 +1,16 @@
-import geoip from 'geoip-lite'
+import { createRequire } from 'node:module'
 
 import { findBestMatch, getAirportName } from '../app/airports'
 import { findNearestAirport } from '../app/lib/nearby-airports'
+
+const require = createRequire(import.meta.url)
+
+type GeoIpLookup = {
+  ll?: readonly [number, number] | readonly number[]
+  country?: string
+} | null
+
+let geoIpLookup: ((clientIp: string) => GeoIpLookup) | null | undefined
 
 export interface HomeOriginPrefill {
   code: string
@@ -103,6 +112,27 @@ function toHomeOriginLabel(code: string, locale: string, name: string | undefine
   return normalizedName || code
 }
 
+function lookupGeoIp(clientIp: string): GeoIpLookup {
+  if (geoIpLookup === undefined) {
+    try {
+      const geoip = require('geoip-lite') as { lookup?: (ip: string) => GeoIpLookup }
+      geoIpLookup = typeof geoip.lookup === 'function' ? geoip.lookup.bind(geoip) : null
+    } catch {
+      geoIpLookup = null
+    }
+  }
+
+  if (!geoIpLookup) {
+    return null
+  }
+
+  try {
+    return geoIpLookup(clientIp)
+  } catch {
+    return null
+  }
+}
+
 export function resolveHomeOriginFromCoordinates(lat: number, lon: number, locale = 'en'): HomeOriginPrefill | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
 
@@ -139,9 +169,11 @@ export function resolveHomeOriginPrefill(headers: HeaderLike, locale = 'en'): Ho
   const clientIp = readClientIp(headers)
   if (!clientIp) return null
 
-  const lookup = geoip.lookup(clientIp)
-  const [lat, lon] = lookup?.ll ?? []
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  const lookup = lookupGeoIp(clientIp)
+  const lat = lookup?.ll?.[0]
+  const lon = lookup?.ll?.[1]
+  if (typeof lat !== 'number' || !Number.isFinite(lat)) return null
+  if (typeof lon !== 'number' || !Number.isFinite(lon)) return null
 
   const resolved = resolveHomeOriginFromCoordinates(lat, lon, locale)
   if (!resolved) return null

@@ -1,20 +1,14 @@
-function normalizeTravelerCount(travelerCount: number | undefined): number {
-  if (!Number.isFinite(travelerCount) || (travelerCount as number) <= 1) {
-    return 1
-  }
-
-  return Math.max(1, Math.round(travelerCount as number))
-}
-
 export function normalizeGoogleFlightsComparisonPrice(
   googleFlightsPrice: number | null | undefined,
-  travelerCount = 1,
+  _travelerCount = 1,
 ): number | null {
   if (!Number.isFinite(googleFlightsPrice)) {
     return null
   }
 
-  const normalized = Math.round((((googleFlightsPrice as number) / normalizeTravelerCount(travelerCount)) * 100)) / 100
+  // google_flights_price is sourced from a like-for-like Google itinerary match,
+  // so it is already on the same per-traveler basis as offer.price.
+  const normalized = Math.round((googleFlightsPrice as number) * 100) / 100
   return normalized > 0 ? normalized : null
 }
 

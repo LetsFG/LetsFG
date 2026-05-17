@@ -923,6 +923,53 @@ function repairKnownBookingUrl(
     return url
   }
 
+  if (/trip\.com/i.test(url)) {
+    try {
+      const parsed = new URL(url)
+      const outboundDate = formatDateForBookingPath(leg.departure_time)
+      const returnLeg = options?.returnLeg
+      const inboundDate = formatDateForBookingPath(returnLeg?.departure_time)
+      const isReturn = Boolean(inboundDate) && isSimpleReturnTrip(leg, returnLeg)
+
+      if (!outboundDate) {
+        return url
+      }
+
+      parsed.pathname = '/flights/showfarefirst'
+      parsed.searchParams.set('dcity', leg.origin.toLowerCase())
+      parsed.searchParams.set('acity', leg.destination.toLowerCase())
+      parsed.searchParams.set('ddate', outboundDate)
+      parsed.searchParams.set('dairport', leg.origin.toLowerCase())
+      parsed.searchParams.set('triptype', isReturn ? 'rt' : 'ow')
+
+      if (isReturn && inboundDate) {
+        parsed.searchParams.set('rdate', inboundDate)
+      } else {
+        parsed.searchParams.delete('rdate')
+      }
+
+      if (!parsed.searchParams.has('class')) {
+        parsed.searchParams.set('class', 'y')
+      }
+      if (!parsed.searchParams.has('quantity')) {
+        parsed.searchParams.set('quantity', '1')
+      }
+      if (!parsed.searchParams.has('searchboxarg')) {
+        parsed.searchParams.set('searchboxarg', 't')
+      }
+      if (!parsed.searchParams.has('lowpricesource')) {
+        parsed.searchParams.set('lowpricesource', 'searchform')
+      }
+      if (!parsed.searchParams.has('locale')) {
+        parsed.searchParams.set('locale', 'en-XX')
+      }
+
+      return parsed.toString()
+    } catch {
+      return url
+    }
+  }
+
   if (/wizzair\.com/i.test(url)) {
     try {
       const parsed = new URL(url)
@@ -990,20 +1037,26 @@ function repairKnownBookingUrl(
       const outboundDate = formatDateForBookingPath(leg.departure_time)
       const returnLeg = options?.returnLeg
       const inboundDate = formatDateForBookingPath(returnLeg?.departure_time)
+      const hasSimpleReturn = Boolean(inboundDate) && isSimpleReturnTrip(leg, returnLeg)
 
-      if (!outboundDate || !inboundDate || !isSimpleReturnTrip(leg, returnLeg)) {
+      if (!outboundDate) {
         return url
       }
 
       if (/kayak\./i.test(parsed.hostname)) {
-        parsed.pathname = `/flights/${leg.origin}-${leg.destination}/${outboundDate}/${inboundDate}`
+        parsed.pathname = hasSimpleReturn
+          ? `/flights/${leg.origin}-${leg.destination}/${outboundDate}/${inboundDate}`
+          : `/flights/${leg.origin}-${leg.destination}/${outboundDate}`
         return parsed.toString()
       }
 
       if (/momondo\./i.test(parsed.hostname) || /cheapflights\./i.test(parsed.hostname)) {
         const pathParts = parsed.pathname.split('/').filter(Boolean)
-        const passengerPart = pathParts[3]
-        const nextPath = ['flight-search', `${leg.origin}-${leg.destination}`, outboundDate, inboundDate]
+        const passengerPart = pathParts.find((part, index) => index >= 2 && /(adult|child|infant)/i.test(part))
+        const nextPath = ['flight-search', `${leg.origin}-${leg.destination}`, outboundDate]
+        if (hasSimpleReturn && inboundDate) {
+          nextPath.push(inboundDate)
+        }
         if (passengerPart) {
           nextPath.push(passengerPart)
         }
