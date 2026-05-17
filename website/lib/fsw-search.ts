@@ -43,6 +43,22 @@ export interface StartWebSearchResult {
   fswSession?: string  // Cloud Run __session affinity cookie — must be forwarded on all /web-status calls
 }
 
+export function extractFswSession(headers: Headers): string | undefined {
+  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie
+  const setCookieHeaders = typeof getSetCookie === 'function'
+    ? getSetCookie.call(headers)
+    : [headers.get('set-cookie') || '']
+
+  for (const headerValue of setCookieHeaders) {
+    const sessionMatch = headerValue.match(/(?:^|,)\s*__session=([^;,\s]+)/)
+    if (sessionMatch) {
+      return sessionMatch[1]
+    }
+  }
+
+  return undefined
+}
+
 export async function startWebSearch(
   params: WebSearchParams,
   analytics?: WebSearchAnalyticsContext,
@@ -122,9 +138,7 @@ export async function startWebSearch(
 
   // Capture the Cloud Run session affinity cookie so callers can forward it
   // on subsequent /web-status requests to guarantee the same FSW instance.
-  const setCookieHeader = res.headers.get('set-cookie') || ''
-  const sessionMatch = setCookieHeader.match(/(?:^|,)\s*__session=([^;,\s]+)/)
-  const fswSession = sessionMatch ? sessionMatch[1] : undefined
+  const fswSession = extractFswSession(res.headers)
 
   return {
     searchId,

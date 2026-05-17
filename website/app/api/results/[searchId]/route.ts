@@ -10,6 +10,7 @@ import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
+const ACTIVE_SEARCH_RECOVERY_WINDOW_MS = 15 * 60 * 1000
 
 // ── FSW offer → website offer normalizer ─────────────────────────────────────
 // FSW offers use the SDK format: { price, currency, airlines[], outbound: { segments[], stopovers }, inbound?, source }
@@ -218,6 +219,59 @@ function buildExpiredResult(
   }
 }
 
+function parseStartedAtMs(value?: string | null): number | null {
+  if (!value) return null
+
+  if (/^\d+$/.test(value)) {
+    const numeric = Number.parseInt(value, 10)
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric
+    }
+  }
+
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function isRecoverableActiveSearch(
+  started: string | null,
+  meta?: ReturnType<typeof getSearchMeta> | null,
+): boolean {
+  const startedAtMs = parseStartedAtMs(started)
+  if (startedAtMs !== null) {
+    return Date.now() - startedAtMs < ACTIVE_SEARCH_RECOVERY_WINDOW_MS
+  }
+
+  return Boolean(meta && Date.now() - meta.stored_at < ACTIVE_SEARCH_RECOVERY_WINDOW_MS)
+}
+
+function buildRecoveringSearchResult(
+  searchId: string,
+  query?: string,
+  started?: string | null,
+  meta?: ReturnType<typeof getSearchMeta> | null,
+) {
+  const parsedContext = meta?.parsed_context && typeof meta.parsed_context === 'object'
+    ? meta.parsed_context
+    : {}
+  const startedAtMs = parseStartedAtMs(started) ?? meta?.stored_at ?? Date.now()
+
+  return {
+    search_id: searchId,
+    status: 'searching' as const,
+    query: query || '',
+    parsed: {
+      ...parsedContext,
+      ...(meta?.fallback_notes ? { fallback_notes: meta.fallback_notes } : {}),
+    },
+    progress: { checked: 0, total: 180, found: 0 },
+    offers: [],
+    total_results: 0,
+    searched_at: new Date(startedAtMs).toISOString(),
+    expires_at: new Date(Date.now() + ACTIVE_SEARCH_RECOVERY_WINDOW_MS).toISOString(),
+  }
+}
+
 // ── GET /api/results/[searchId] ───────────────────────────────────────────────
 
 export async function GET(
@@ -300,6 +354,13 @@ export async function GET(
       const cachedResult = getCachedSearchResult(searchId)
       if (cachedResult) {
         return NextResponse.json(buildExpiredResult(searchId, cachedResult))
+      }
+
+      const meta = getSearchMeta(searchId)
+      const started = request.nextUrl.searchParams.get('started')
+      const query = request.nextUrl.searchParams.get('q') || undefined
+      if (isRecoverableActiveSearch(started, meta)) {
+        return NextResponse.json(buildRecoveringSearchResult(searchId, query, started, meta))
       }
 
       return NextResponse.json(buildExpiredResult(searchId))

@@ -54,11 +54,17 @@ function buildResultsSharePath({
   query,
   isTestSearch,
   offersCountOverride,
+  fswSession,
+  startedAt,
+  preserveQuery,
 }: {
   searchId: string
   query: string
   isTestSearch: boolean
   offersCountOverride?: number
+  fswSession?: string
+  startedAt?: string
+  preserveQuery?: boolean
 }) {
   const slug = slugifyResultsQuery(query)
   const pathname = slug
@@ -74,8 +80,34 @@ function buildResultsSharePath({
     params.set('oc', String(Math.round(offersCountOverride)))
   }
 
+  if (fswSession) {
+    params.set('_fss', fswSession)
+  }
+
+  if (startedAt) {
+    params.set('started', startedAt)
+  }
+
+  if (preserveQuery) {
+    params.set('q', query)
+  }
+
   const queryString = params.toString()
   return queryString ? `${pathname}?${queryString}` : pathname
+}
+
+function normalizeStartedAtParam(value?: string) {
+  if (!value) return undefined
+
+  if (/^\d+$/.test(value)) {
+    const numeric = Number.parseInt(value, 10)
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return String(numeric)
+    }
+  }
+
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : undefined
 }
 
 // ── Monitor confirmed overlay ─────────────────────────────────────────────────
@@ -528,6 +560,23 @@ export default function SearchPageClient({
     }),
     [isTestSearch, offers.length, query, searchId, status],
   )
+  const activeResultsPath = useMemo(
+    () => buildResultsSharePath({
+      searchId,
+      query,
+      isTestSearch,
+      offersCountOverride: status === 'completed' ? offers.length : undefined,
+      // Keep Cloud Run affinity in the address bar while the search is still
+      // live so discarded/restored tabs can resume polling the owning FSW
+      // instance instead of falsely rendering as expired.
+      fswSession: status === 'searching' ? fswSession : undefined,
+      // Keep just enough live-search context in the URL so a discarded tab can
+      // rebuild the searching shell instead of landing on a false expired state.
+      startedAt: status === 'searching' ? normalizeStartedAtParam(searchedAt) : undefined,
+      preserveQuery: status === 'searching',
+    }),
+    [fswSession, isTestSearch, offers.length, query, searchId, searchedAt, status],
+  )
   const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : parsed.min_trip_days
   const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : parsed.max_trip_days
 
@@ -574,13 +623,13 @@ export default function SearchPageClient({
     if (!searchId) return
     try {
       const currentUrl = new URL(window.location.href)
-      const nextUrl = new URL(canonicalSharePath, currentUrl.origin)
+      const nextUrl = new URL(activeResultsPath, currentUrl.origin)
       if (currentUrl.pathname === nextUrl.pathname && currentUrl.search === nextUrl.search) return
       window.history.replaceState(null, '', nextUrl.toString())
     } catch (_) {
       // Ignore browsers that reject history writes.
     }
-  }, [canonicalSharePath, searchId])
+  }, [activeResultsPath, searchId])
 
   useEffect(() => {
     trackedResultsViewRef.current = false
@@ -664,8 +713,11 @@ export default function SearchPageClient({
         const params = new URLSearchParams()
         appendProbeParam(params, isTestSearch)
         if (fswSession) params.set('_fss', fswSession)
-        const query = params.toString()
-        const res = await fetch(`/api/results/${searchId}${query ? `?${query}` : ''}`, { cache: 'no-store' })
+        const startedParam = normalizeStartedAtParam(searchedAt)
+        if (startedParam) params.set('started', startedParam)
+        if (query) params.set('q', query)
+        const queryString = params.toString()
+        const res = await fetch(`/api/results/${searchId}${queryString ? `?${queryString}` : ''}`, { cache: 'no-store' })
         if (!res.ok) return
         const data = await res.json()
         if (data.progress) setProgress(data.progress)
