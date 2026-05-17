@@ -3,12 +3,40 @@ import { recordLocalSearch } from '../../lib/stats'
 import { parseNLQuery } from '../../lib/searchParsing'
 import { applyVertexIntent } from '../../lib/vertex-intent'
 import { vertexParse } from '../../lib/vertex-parse'
-import { lookupNearbyAirport, resolveNearbyAirport, isUsableIata, type NearbyAirportFallback } from '../../lib/nearby-airports'
 import { startWebSearch } from '../../../lib/fsw-search'
-import { setSearchMeta, type FallbackNote } from '../../../lib/results-cache'
+import { setSearchMeta } from '../../../lib/results-cache'
 import { getTrackedSourcePath, isProbeModeValue } from '../../../lib/probe-mode'
 import { getSessionUid } from '../../../lib/session-uid'
 import { detectPreferredCurrency } from '../../../lib/user-currency'
+import { resolveSearchLaunchRoute } from '../../../lib/search-launch-route'
+
+function getReferrerContext(request: NextRequest): {
+  referrer_path?: string
+  referrer_host?: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
+  utm_term?: string
+} {
+  const referer = request.headers.get('referer')
+  if (!referer) {
+    return {}
+  }
+
+  try {
+    const url = new URL(referer)
+    return {
+      referrer_path: url.pathname || undefined,
+      referrer_host: url.host || undefined,
+      utm_source: url.searchParams.get('utm_source') || undefined,
+      utm_medium: url.searchParams.get('utm_medium') || undefined,
+      utm_campaign: url.searchParams.get('utm_campaign') || undefined,
+      utm_term: url.searchParams.get('utm_term') || undefined,
+    }
+  } catch {
+    return {}
+  }
+}
 
 // ── POST /api/search ─────────────────────────────────────────────────────────
 
@@ -43,6 +71,8 @@ export async function POST(request: NextRequest) {
     let aiOriginLon: number | undefined
     let aiDestinationLat: number | undefined
     let aiDestinationLon: number | undefined
+    let failedOriginRaw: string | undefined
+    let failedDestinationRaw: string | undefined
     // AI intent fields extracted by Gemini — forwarded to client in `parsed`
     let _aiIntent: Record<string, unknown> = {}
     let _parsedContext: Record<string, unknown> = {}
@@ -72,6 +102,8 @@ export async function POST(request: NextRequest) {
       originName = parsed.origin_name
       destination = parsed.destination
       destinationName = parsed.destination_name
+      failedOriginRaw = parsed.failed_origin_raw
+      failedDestinationRaw = parsed.failed_destination_raw
       dateFrom = parsed.date
       returnDate = parsed.return_date || undefined
       // NL queries like "direct flights only" set parsed.stops = 0. We do NOT
@@ -122,72 +154,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Provide either query or origin/destination/date_from' }, { status: 400 })
     }
 
-    // ── Nearby-airport fallback ───────────────────────────────────────
-    // Two-stage: (1) curated overrides for famous airport-less cities
-    // (Pretoria → JNB, Vatican → FCO, Niagara Falls → BUF, etc.) which
-    // encode "human practical answer", then (2) a global geo-lookup using
-    // Gemini-supplied lat/lon against the bundled OurAirports DB (~3,300
-    // large/medium airports with IATA + scheduled service). Together
-    // these cover ANY named city worldwide — no more 5-minute zero-result
-    // waits because the user typed a city we'd never heard of.
-    const fallbackNotes: { origin?: FallbackNote; destination?: FallbackNote } = {}
-    const tryFallback = (
-      candidates: Array<string | undefined>,
-      lat: number | undefined,
-      lon: number | undefined,
-    ): NearbyAirportFallback | null => {
-      for (const c of candidates) {
-        if (!c) continue
-        const hit = lookupNearbyAirport(c)
-        if (hit) return hit
-      }
-      // Geo-based fallback. Pass the first non-empty candidate as the
-      // human label so the resulting note reads naturally.
-      const cityLabel = candidates.find((c): c is string => Boolean(c && c.trim())) || ''
-      return resolveNearbyAirport(cityLabel, lat, lon)
-    }
-    const queryStr = typeof body.query === 'string' ? body.query : ''
-
-    // "Ghost" IATAs: codes that exist in our city alias map but have no
-    // scheduled commercial service (PRY = Wonderboom/Pretoria, etc.). The
-    // parser/Gemini path may resolve to them — we clear them so the
-    // fallback runs and swaps in a real hub. Track the original city
-    // label (preferring the Gemini-normalized name, then the parser's
-    // friendly name, then the raw query) so the fallback note still
-    // names what the user typed.
-    const ghostOriginCity = (!isUsableIata(origin)) ? (aiOriginCity || originName || queryStr) : undefined
-    const ghostDestinationCity = (!isUsableIata(destination)) ? (aiDestinationCity || destinationName || queryStr) : undefined
-    if (ghostOriginCity) { origin = undefined; originName = undefined }
-    if (ghostDestinationCity) { destination = undefined; destinationName = undefined }
-
-    if (!origin) {
-      const hit = tryFallback([ghostOriginCity, aiOriginCity, queryStr], aiOriginLat, aiOriginLon)
-      if (hit) {
-        origin = hit.code
-        originName = hit.name
-        fallbackNotes.origin = {
-          intended: aiOriginCity || queryStr.trim() || hit.name,
-          used_code: hit.code,
-          used_name: hit.name,
-          hub_name: hit.hub_name,
-          reason: hit.reason,
-        }
-      }
-    }
-    if (!destination) {
-      const hit = tryFallback([ghostDestinationCity, aiDestinationCity, queryStr], aiDestinationLat, aiDestinationLon)
-      if (hit) {
-        destination = hit.code
-        destinationName = hit.name
-        fallbackNotes.destination = {
-          intended: aiDestinationCity || queryStr.trim() || hit.name,
-          used_code: hit.code,
-          used_name: hit.name,
-          hub_name: hit.hub_name,
-          reason: hit.reason,
-        }
-      }
-    }
+    const resolvedRoute = resolveSearchLaunchRoute({
+      origin,
+      originName,
+      failedOriginRaw,
+      destination,
+      destinationName,
+      failedDestinationRaw,
+      aiOriginCity,
+      aiDestinationCity,
+      aiOriginLat,
+      aiOriginLon,
+      aiDestinationLat,
+      aiDestinationLon,
+    })
+    origin = resolvedRoute.origin
+    originName = resolvedRoute.originName
+    destination = resolvedRoute.destination
+    destinationName = resolvedRoute.destinationName
+    const fallbackNotes = resolvedRoute.fallbackNotes
 
     if (!origin || !destination) {
       return NextResponse.json({ error: 'Could not determine origin or destination.' }, { status: 400 })
@@ -196,6 +181,7 @@ export async function POST(request: NextRequest) {
     recordLocalSearch()
 
     const userIp = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || undefined
+    const referrer = getReferrerContext(request)
 
     const { searchId, cache, fswSession } = await startWebSearch({
       origin,
@@ -215,8 +201,14 @@ export async function POST(request: NextRequest) {
       destination_name: destinationName,
       source: 'website-api-search',
       source_path: getTrackedSourcePath('/api/search', isProbeSearch),
+      referrer_path: referrer.referrer_path,
+      referrer_host: referrer.referrer_host,
       session_uid: getSessionUid(request) ?? undefined,
       is_test_search: isProbeSearch,
+      utm_source: referrer.utm_source,
+      utm_medium: referrer.utm_medium,
+      utm_campaign: referrer.utm_campaign,
+      utm_term: referrer.utm_term,
     }, userIp)
 
     if (!searchId) {

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { findBestLocationMatch, findBestMatch, searchAirports } from '../app/airports.ts'
 import { parseNLQuery } from '../app/lib/searchParsing.ts'
+import { resolveSearchLaunchRoute } from '../lib/search-launch-route.ts'
 
 const RealDate = Date
 
@@ -310,4 +311,30 @@ test('Hawaii airports resolve correctly and do not produce false positives via s
     assert.equal(findBestLocationMatch('kona')?.code, 'KOA')
     assert.equal(findBestLocationMatch('maui')?.code, 'OGG')
   })
+})
+
+test('launch route fallback does not invent a self-route for a missing side', () => {
+  const resolved = resolveSearchLaunchRoute({
+    origin: 'PMI',
+    originName: 'Palma de Mallorca',
+    failedDestinationRaw: 'Mallorca',
+  })
+
+  assert.equal(resolved.origin, 'PMI')
+  assert.equal(resolved.destination, undefined)
+  assert.deepEqual(resolved.fallbackNotes, {})
+})
+
+test('launch route fallback still swaps ghost IATAs to a nearby commercial hub', () => {
+  const resolved = resolveSearchLaunchRoute({
+    origin: 'PRY',
+    originName: 'Pretoria',
+    destination: 'FCO',
+    destinationName: 'Rome',
+  })
+
+  assert.equal(resolved.origin, 'JNB')
+  assert.equal(resolved.originName, 'Johannesburg (nearest to Pretoria)')
+  assert.equal(resolved.destination, 'FCO')
+  assert.equal(resolved.fallbackNotes.origin?.used_code, 'JNB')
 })

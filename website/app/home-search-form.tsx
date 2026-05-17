@@ -686,6 +686,7 @@ interface HomeSearchFormProps {
   compact?: boolean
   autoFocus?: boolean
   probeMode?: boolean
+  onSearchStart?: (query: string) => void
 }
 
 export default function HomeSearchForm({
@@ -694,6 +695,7 @@ export default function HomeSearchForm({
   compact = false,
   autoFocus = true,
   probeMode = false,
+  onSearchStart,
 }: HomeSearchFormProps = {}) {
   const router = useRouter()
   const params = useParams()
@@ -1206,6 +1208,7 @@ export default function HomeSearchForm({
     setDropdownPos(null)
     const trimmed = inputValue.trim()
     if (!trimmed) return
+    onSearchStart?.(trimmed)
 
     // Detect ambiguous date fragment like "10/12" or "3.11" where both parts ≤ 12.
     // Do this before navigating so we can ask the user which interpretation they meant.
