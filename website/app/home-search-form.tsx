@@ -12,7 +12,13 @@ import {
 } from '../lib/currency-preference'
 import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec, hasTripTypeContext } from './lib/home-convo-personalization'
 import { parseNLQuery } from './lib/searchParsing'
-import { needsDateClarification, shouldWaitForGeminiAssistOnHomeSubmit } from './lib/home-search-assist'
+import {
+  buildHomeConvoTopicOrder,
+  needsDateClarification,
+  normalizeHomeConvoFollowUpTopics,
+  shouldWaitForGeminiAssistOnHomeSubmit,
+  type HomeConvoFollowUpTopic,
+} from './lib/home-search-assist'
 import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './lib/trip-purpose'
 
 const DESTINATION_KEYS = [
@@ -807,6 +813,7 @@ export default function HomeSearchForm({
     parsed?: ReturnType<typeof parseNLQuery>  // already-computed NLP result
     disambigOriginRaw?: string  // failed origin text to replace when disambig resolves
     disambigDestRaw?: string    // failed dest text to replace when disambig resolves
+    aiFollowUpTopics?: HomeConvoFollowUpTopic[]
   }
   const [convo, setConvo] = useState<ConvoState | null>(null)
   const convoBottomRef = useRef<HTMLDivElement>(null)
@@ -829,6 +836,7 @@ export default function HomeSearchForm({
   function buildConvoQuestions(_raw: string): ConvoQuestion[] {
     const p = convo?.parsed   // structured NLP result
     const qs: ConvoQuestion[] = []
+    const preferredTopicOrder = buildHomeConvoTopicOrder(convo?.aiFollowUpTopics)
 
     // ── 0a. City disambiguation — when we couldn’t resolve a city, show candidates ──
     // These are blocking questions: fix the city first, then the rest of the convo.
@@ -857,84 +865,83 @@ export default function HomeSearchForm({
     // If we have disambig questions, they’re the only ones we need right now
     if (qs.length > 0) return qs
 
-    // ── 0b. Origin — ask FIRST when no departure city given ──────────────
-    if (convo?.missingOrigin) {
-      qs.push({
-        q: ths('where_from_q'),
-        chips: [],
-        freeHint: ths('where_from_hint'),
-        isOriginQuestion: true,
-        isEssential: true,
-      })
-      // Don't return — continue building date + personalization questions below
-    }
-
-    // ── 0c. Destination — ask FIRST when user gave only the departure city ──
-    if (convo?.missingDestination) {
-      qs.push({
-        q: ths('where_to_q'),
-        chips: [],
-        freeHint: ths('where_to_hint'),
-        isEssential: true,
-      })
-      // Don't return — continue building date + personalization questions below
-    }
-
-    // ── 1. Date — MUST come immediately after origin/dest (before personalization) ──
-    // Essential: we can't start searching without a date.
-    if (needsDateClarification(p)) {
-      qs.push({
-        q: ths('when_q'),
-        chips: [
-          { label: ths('chip_this_weekend'), key: 'this weekend' },
-          { label: ths('chip_next_weekend'), key: 'next weekend' },
-          { label: ths('chip_in_2_weeks'), key: 'in 2 weeks' },
-          { label: ths('chip_next_month'), key: 'next month' },
-        ],
-        freeHint: ths('when_hint'),
-        isEssential: true,
-      })
-    }
-
-    // ── 2. Party size — skip if parseNLQuery found pax info ──────────────
     const hasPax = (p?.adults !== undefined && p.adults > 1)
       || !!(p?.children) || !!(p?.infants)
       || !!(p?.passenger_context) || !!(p?.group_size)
-    if (!hasPax) {
-      const questionSpec = buildPartySizeQuestionSpec(p ?? {})
-      const q = ths(questionSpec.questionKey)
-      const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
-      qs.push({ q, chips, freeHint: ths('pax_hint') })
-    }
-
-    // ── 2.5. Trip type — skip if parser found return date or trip length ──
     const hasRtContext = hasTripTypeContext(p ?? {})
-    if (!hasRtContext) {
-      qs.push({ q: ths('rt_q'), chips: [
-        mkChip('chip_one_way', 'one way'),
-        mkChip('chip_rt_weekend', 'return weekend'),
-        mkChip('chip_rt_1week', 'return 1 week'),
-        mkChip('chip_rt_2weeks', 'return 2 weeks'),
-      ], freeHint: ths('or_describe_trip') })
-    }
-
-    // ── 3. Trip purpose — skip if parseNLQuery detected one ──────────────
     const hasTripPurpose = normalizeTripPurposes({ tripPurpose: p?.trip_purpose, tripPurposes: p?.trip_purposes }).length > 0
-    if (!hasTripPurpose) {
-      const isLong = !!(p?.min_trip_days && p.min_trip_days >= 14)
-      let q = ths('trip_q')
-      let chips = [mkChip('chip_sun_relax', 'Sun & relax'), mkChip('chip_city_explore', 'City exploring'), mkChip('chip_business', 'Business'), mkChip('chip_occasion', 'Special occasion')]
-      if (isLong) { q = ths('trip_q_long'); chips = [mkChip('chip_adventure', 'Adventure'), mkChip('chip_backpacking', 'Backpacking'), mkChip('chip_luxury', 'Luxury'), mkChip('chip_remote_work', 'Remote work')] }
-      qs.push({ q, chips, freeHint: ths('trip_hint'), multiChoice: true })
-    }
-
-    // ── 3. Priority — skip if parser found stops/cabin preference ─────────
     const hasPriority = p?.stops === 0 || !!(p?.cabin)
-    if (!hasPriority) {
-      const questionSpec = buildPriorityQuestionSpec(p ?? {})
-      const q = ths(questionSpec.questionKey)
-      const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
-      qs.push({ q, chips, freeHint: ths('priority_hint'), multiChoice: true })
+
+    for (const topic of preferredTopicOrder) {
+      if (topic === 'origin' && convo?.missingOrigin) {
+        qs.push({
+          q: ths('where_from_q'),
+          chips: [],
+          freeHint: ths('where_from_hint'),
+          isOriginQuestion: true,
+          isEssential: true,
+        })
+        continue
+      }
+
+      if (topic === 'destination' && convo?.missingDestination) {
+        qs.push({
+          q: ths('where_to_q'),
+          chips: [],
+          freeHint: ths('where_to_hint'),
+          isEssential: true,
+        })
+        continue
+      }
+
+      if (topic === 'date' && (needsDateClarification(p) || convo?.aiFollowUpTopics?.includes('date'))) {
+        qs.push({
+          q: ths('when_q'),
+          chips: [
+            { label: ths('chip_this_weekend'), key: 'this weekend' },
+            { label: ths('chip_next_weekend'), key: 'next weekend' },
+            { label: ths('chip_in_2_weeks'), key: 'in 2 weeks' },
+            { label: ths('chip_next_month'), key: 'next month' },
+          ],
+          freeHint: ths('when_hint'),
+          isEssential: true,
+        })
+        continue
+      }
+
+      if (topic === 'party_size' && !hasPax) {
+        const questionSpec = buildPartySizeQuestionSpec(p ?? {})
+        const q = ths(questionSpec.questionKey)
+        const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
+        qs.push({ q, chips, freeHint: ths('pax_hint') })
+        continue
+      }
+
+      if (topic === 'trip_type' && !hasRtContext) {
+        qs.push({ q: ths('rt_q'), chips: [
+          mkChip('chip_one_way', 'one way'),
+          mkChip('chip_rt_weekend', 'return weekend'),
+          mkChip('chip_rt_1week', 'return 1 week'),
+          mkChip('chip_rt_2weeks', 'return 2 weeks'),
+        ], freeHint: ths('or_describe_trip') })
+        continue
+      }
+
+      if (topic === 'trip_purpose' && !hasTripPurpose) {
+        const isLong = !!(p?.min_trip_days && p.min_trip_days >= 14)
+        let q = ths('trip_q')
+        let chips = [mkChip('chip_sun_relax', 'Sun & relax'), mkChip('chip_city_explore', 'City exploring'), mkChip('chip_business', 'Business'), mkChip('chip_occasion', 'Special occasion')]
+        if (isLong) { q = ths('trip_q_long'); chips = [mkChip('chip_adventure', 'Adventure'), mkChip('chip_backpacking', 'Backpacking'), mkChip('chip_luxury', 'Luxury'), mkChip('chip_remote_work', 'Remote work')] }
+        qs.push({ q, chips, freeHint: ths('trip_hint'), multiChoice: true })
+        continue
+      }
+
+      if (topic === 'priority' && !hasPriority) {
+        const questionSpec = buildPriorityQuestionSpec(p ?? {})
+        const q = ths(questionSpec.questionKey)
+        const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
+        qs.push({ q, chips, freeHint: ths('priority_hint'), multiChoice: true })
+      }
     }
 
     // Always return at least 2 personalization questions (only if essential slots are filled)
@@ -1241,6 +1248,7 @@ export default function HomeSearchForm({
     // No ambiguity — launch personalization conversation
     setDateClarify(null)
     let _nlp: ReturnType<typeof parseNLQuery> | null = null
+    let aiFollowUpTopics: HomeConvoFollowUpTopic[] = []
     try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
 
     // ── Gemini fallback for missing slots ───────────────────────────────────
@@ -1270,8 +1278,10 @@ export default function HomeSearchForm({
             departure_date?: string | null; return_date?: string | null
             passengers?: number | null; trip_purpose?: TripPurpose | null; trip_purposes?: TripPurpose[] | null
             anywhere_destination?: boolean
+            follow_up_topics?: string[] | null
           } | null
           if (ai) {
+            aiFollowUpTopics = normalizeHomeConvoFollowUpTopics(ai.follow_up_topics)
             const base: ReturnType<typeof parseNLQuery> = _nlp ?? ({} as ReturnType<typeof parseNLQuery>)
             // Fill ONLY missing fields (Gemini never overrides a successful regex hit)
             if (!base.origin && ai.origin) { base.origin = ai.origin; if (ai.origin_name) base.origin_name = ai.origin_name }
@@ -1322,8 +1332,9 @@ export default function HomeSearchForm({
     const needsDestDisambig = !!(_nlp?.failed_destination_raw && _nlp?.destination_candidates?.length)
     const needsDisambig = needsOriginDisambig || needsDestDisambig
     const hasTripPurpose = normalizeTripPurposes({ tripPurpose: _nlp?.trip_purpose, tripPurposes: _nlp?.trip_purposes }).length > 0
+    const hasAiFollowUpPlan = aiFollowUpTopics.length > 0
 
-    if (missingOrigin || missingDestination || needsDisambig || (!hasTripPurpose && !_nlp?.passenger_context)) {
+    if (missingOrigin || missingDestination || needsDisambig || needsDateClarification(_nlp) || (!hasTripPurpose && !_nlp?.passenger_context) || hasAiFollowUpPlan) {
       const nextConvo = {
         pendingQuery: trimmed,
         step: 0,
@@ -1334,6 +1345,7 @@ export default function HomeSearchForm({
         parsed: _nlp ?? undefined,
         disambigOriginRaw: needsOriginDisambig ? _nlp!.failed_origin_raw : undefined,
         disambigDestRaw: needsDestDisambig ? _nlp!.failed_destination_raw : undefined,
+        aiFollowUpTopics,
       }
       if (convo && convo.pendingQuery !== trimmed) {
         // Different query while convo is open — close it instantly then reopen so the
