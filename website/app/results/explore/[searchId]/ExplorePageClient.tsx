@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useLocale } from 'next-intl'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import Image from 'next/image'
 import { getAirlineCodeFromName, getAirlineLogoUrl } from '../../../airlineLogos'
 import { formatFlightTime } from '../../../../lib/flight-datetime'
+import { buildLocaleHomePath } from '../../../../lib/locale-routing'
 
 const SearchingTasks = dynamic(() => import('../../[searchId]/SearchingTasks'), { ssr: false })
 
@@ -154,9 +156,11 @@ export default function ExplorePageClient({
   query: string
   currency: string
 }) {
+  const locale = useLocale()
   const [exploreStatus, setExploreStatus] = useState<ExploreStatus | null>(null)
   const [failed, setFailed] = useState(false)
   const doneRef = useRef(false)
+  const homeHref = buildLocaleHomePath(locale)
 
   const poll = useCallback(async () => {
     try {
@@ -194,7 +198,7 @@ export default function ExplorePageClient({
           <div className="res-hero-backdrop" aria-hidden="true" />
           <div className="res-hero-inner">
             <div className="res-topbar res-topbar--searching">
-              <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home">
+              <Link href={homeHref} className="res-topbar-logo-link" aria-label="LetsFG home">
                 <Image src="/lfg_ban.png" alt="LetsFG" width={4990} height={1560} className="res-topbar-logo" priority />
               </Link>
             </div>
@@ -223,7 +227,7 @@ export default function ExplorePageClient({
         <div className="res-hero-backdrop" aria-hidden="true" />
         <div className="res-hero-inner">
           <div className="res-topbar res-topbar--results">
-            <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home">
+            <Link href={homeHref} className="res-topbar-logo-link" aria-label="LetsFG home">
               <Image src="/lfg_ban.png" alt="LetsFG" width={4990} height={1560} className="res-topbar-logo" priority />
             </Link>
           </div>

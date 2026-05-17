@@ -2,6 +2,7 @@ import createMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { NextResponse, type NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
+import { resolveLocaleCookieValue } from './lib/locale-routing'
 import { getSessionUid, HOSTING_SESSION_COOKIE_NAME, LEGACY_UID_COOKIE_NAME, SESSION_UID_HEADER_NAME } from './lib/session-uid'
 import {
   buildRateLimitClientKey,
@@ -100,14 +101,11 @@ export default function proxy(req: NextRequest) {
 
   // For non-locale paths (results/book/api), skip intlMiddleware entirely.
   // intlMiddleware would redirect /results → /en/results, causing a loop.
-  // Detect locale from the NEXT_LOCALE cookie so getLocale()/getMessages() still work.
+  // Detect locale from either locale cookie so getLocale()/getMessages() still work.
   let res: NextResponse
   if (isNonLocalePath(pathname)) {
-    const cookieLocale = req.cookies.get('NEXT_LOCALE')?.value
-    const detectedLocale =
-      cookieLocale && (routing.locales as readonly string[]).includes(cookieLocale)
-        ? cookieLocale
-        : routing.defaultLocale
+    const detectedLocale = resolveLocaleCookieValue((cookieName) => req.cookies.get(cookieName)?.value)
+      || routing.defaultLocale
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-next-intl-locale', detectedLocale)
     requestHeaders.set(SESSION_UID_HEADER_NAME, sessionUid)

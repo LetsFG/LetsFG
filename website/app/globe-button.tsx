@@ -3,6 +3,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter, useParams, usePathname } from 'next/navigation'
+import { useLocale } from 'next-intl'
 
 const LANGUAGES = [
   { code: 'en', label: 'English',    flag: 'EN' },
@@ -32,7 +33,8 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
   const router = useRouter()
   const params = useParams()
   const pathname = usePathname()
-  const currentLocale = (params?.locale as string) || 'en'
+  const locale = useLocale()
+  const currentLocale = locale || (params?.locale as string) || 'en'
 
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
