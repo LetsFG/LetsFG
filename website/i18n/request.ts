@@ -2,6 +2,7 @@ import { getRequestConfig } from 'next-intl/server'
 import { hasLocale } from 'next-intl'
 import { routing } from './routing'
 import { cookies } from 'next/headers'
+import { resolveLocaleCookieValue } from '../lib/locale-routing'
 
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale
@@ -10,12 +11,13 @@ export default getRequestConfig(async ({ requestLocale }) => {
   if (!locale) {
     // For pages outside [locale] routing (results, book), fall back to cookie
     const cookieStore = await cookies()
-    const cookieLocale = cookieStore.get('LETSFG_LOCALE')?.value
-    locale = (cookieLocale && hasLocale(routing.locales, cookieLocale)) ? cookieLocale : routing.defaultLocale
+    locale = resolveLocaleCookieValue((cookieName) => cookieStore.get(cookieName)?.value) || routing.defaultLocale
   }
 
+  const resolvedLocale = locale || routing.defaultLocale
+
   return {
-    locale,
-    messages: (await import(`../messages/${locale}.json`)).default,
+    locale: resolvedLocale,
+    messages: (await import(`../messages/${resolvedLocale}.json`)).default,
   }
 })

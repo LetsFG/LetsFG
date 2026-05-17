@@ -3,6 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { getLocale } from 'next-intl/server'
 import CurrencyButton from '../currency-button'
 import GlobeButton from '../globe-button'
 import ResultsSearchForm from './ResultsSearchForm'
@@ -24,6 +25,7 @@ import { upsertSearchSessionServer } from '../../lib/search-session-analytics-se
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
+import { buildLocaleHomePath } from '../../lib/locale-routing'
 import { resolveSearchLaunchRoute } from '../../lib/search-launch-route'
 
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -392,7 +394,7 @@ async function pollFSW(searchId: string, maxWaitMs: number): Promise<{ offers: R
 // ── Page components ───────────────────────────────────────────────────────────
 
 async function PageTopbar({
-  homeHref = '/en',
+  homeHref = buildLocaleHomePath('en'),
   initialCurrency,
   searchQuery,
   probeMode = false,
@@ -469,6 +471,7 @@ async function SearchContent({
   utmCampaign?: string
 }) {
   const today = new Date().toISOString().slice(0, 10)
+  const locale = await getLocale()
 
   const parsed = parseNLQuery(query)
   const _ai = !sid ? await vertexParse(query, today).catch(() => null) : null
@@ -524,7 +527,7 @@ async function SearchContent({
     destLabel,
   ].filter(Boolean).join(' → ')
 
-  const homeHref = isProbe ? '/en?probe=1' : '/en'
+  const homeHref = buildLocaleHomePath(locale, isProbe)
 
   let searchId = sid
   let cacheHit = false
@@ -697,14 +700,23 @@ async function SearchContent({
 
 // ── Suspense fallback (shown instantly while SearchContent runs) ───────────────
 
-function SearchFallback({ query, isProbe, initialCurrency }: { query: string; isProbe: boolean; initialCurrency: CurrencyCode }) {
+function SearchFallback({
+  query,
+  isProbe,
+  initialCurrency,
+  homeHref,
+}: {
+  query: string
+  isProbe: boolean
+  initialCurrency: CurrencyCode
+  homeHref: string
+}) {
   const parsed = parseNLQuery(query)
   const destLabel = parsed.anywhere_destination ? 'Anywhere' : (parsed.destination_name || parsed.destination)
   const routeLabel = [
     parsed.origin_name || parsed.origin,
     destLabel,
   ].filter(Boolean).join(' → ')
-  const homeHref = isProbe ? '/en?probe=1' : '/en'
 
   return (
     <main className="res-page res-page--searching">
@@ -765,20 +777,22 @@ export default async function ResultsQueryPage({
   const isProbe = isProbeModeValue(probe)
   const requestHeaders = await headers()
   const cookieStore = await cookies()
+  const locale = await getLocale()
   const resolvedCurrency = resolveSearchCurrency({
     queryParam: cur?.trim(),
     cookieValue: cookieStore.get(LETSFG_CURRENCY_COOKIE)?.value,
     fallback: detectPreferredCurrency(requestHeaders),
   })
+  const homeHref = buildLocaleHomePath(locale, isProbe)
 
   if (!q?.trim()) {
-    redirect(isProbe ? '/en?probe=1' : '/')
+    redirect(homeHref)
   }
 
   const query = q.trim()
 
   return (
-    <Suspense fallback={<SearchFallback query={query} isProbe={isProbe} initialCurrency={resolvedCurrency} />}>
+    <Suspense fallback={<SearchFallback query={query} isProbe={isProbe} initialCurrency={resolvedCurrency} homeHref={homeHref} />}>
       <SearchContent query={query} sid={sid?.trim()} started={started?.trim()} isProbe={isProbe} currency={resolvedCurrency} mt={mt?.trim()} utmSource={utm_source?.trim()} utmMedium={utm_medium?.trim()} utmCampaign={utm_campaign?.trim()} />
     </Suspense>
   )

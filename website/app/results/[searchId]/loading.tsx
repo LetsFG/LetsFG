@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import { useLocale } from 'next-intl'
 import Link from 'next/link'
 import Image from 'next/image'
 import CurrencyButton from '../../currency-button'
@@ -9,6 +10,7 @@ import GlobeButton from '../../globe-button'
 import ResultsSearchForm from '../ResultsSearchForm'
 import SearchingTasks from './SearchingTasks'
 import { normalizeCurrencyCode } from '../../../lib/currency-preference'
+import { buildLocaleHomePath } from '../../../lib/locale-routing'
 
 // Shown immediately while [searchId]/page.tsx runs its server-side poll.
 // Polls /api/results/{searchId} on the client for live progress so the
@@ -26,10 +28,13 @@ interface SearchInfo {
 function LoadingInner() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const locale = useLocale()
   const searchId = params.searchId as string
   const started = searchParams.get('started')
+  const probeMode = searchParams.get('probe') === '1'
   const initialCurrency = normalizeCurrencyCode(searchParams.get('cur')) || 'EUR'
   const query = searchParams.get('q')?.trim() || ''
+  const homeHref = buildLocaleHomePath(locale, probeMode)
 
   const [info, setInfo] = useState<SearchInfo>({})
 
@@ -75,7 +80,7 @@ function LoadingInner() {
         <div className="res-hero-backdrop" aria-hidden="true" />
         <div className="res-hero-inner">
           <div className="res-topbar res-topbar--searching">
-            <Link href="/en" className="res-topbar-logo-link" aria-label="LetsFG home">
+            <Link href={homeHref} className="res-topbar-logo-link" aria-label="LetsFG home">
               <Image
                 src="/lfg_ban.png"
                 alt="LetsFG"
@@ -92,11 +97,12 @@ function LoadingInner() {
                 behavior={query ? 'rerun-search' : 'persist'}
                 initialCurrency={initialCurrency}
                 searchQuery={query}
+                probeMode={probeMode}
               />
             </div>
           </div>
           <div className="res-search-shell">
-            <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} />
+            <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} probeMode={probeMode} />
           </div>
           <div className="res-searching-stage">
             <SearchingTasks
