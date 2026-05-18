@@ -95,6 +95,16 @@ function readClientIp(headers: HeaderLike): string | null {
     .find(Boolean) || null
 }
 
+function readClientIpCandidates(headers: HeaderLike): string[] {
+  const forwardedFor = firstHeader(headers, CLIENT_IP_HEADERS)
+  if (!forwardedFor) return []
+
+  return forwardedFor
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
 function toHomeOriginLabel(code: string, locale: string, name: string | undefined, city: string | undefined): string {
   const airportMatch = findBestMatch(code, locale)
   if (airportMatch) {
@@ -166,21 +176,25 @@ export function resolveHomeOriginPrefill(headers: HeaderLike, locale = 'en'): Ho
     }
   }
 
-  const clientIp = readClientIp(headers)
-  if (!clientIp) return null
+  const clientIps = readClientIpCandidates(headers)
+  if (clientIps.length === 0) return null
 
-  const lookup = lookupGeoIp(clientIp)
-  const lat = lookup?.ll?.[0]
-  const lon = lookup?.ll?.[1]
-  if (typeof lat !== 'number' || !Number.isFinite(lat)) return null
-  if (typeof lon !== 'number' || !Number.isFinite(lon)) return null
+  for (const clientIp of clientIps) {
+    const lookup = lookupGeoIp(clientIp)
+    const lat = lookup?.ll?.[0]
+    const lon = lookup?.ll?.[1]
+    if (typeof lat !== 'number' || !Number.isFinite(lat)) continue
+    if (typeof lon !== 'number' || !Number.isFinite(lon)) continue
 
-  const resolved = resolveHomeOriginFromCoordinates(lat, lon, locale)
-  if (!resolved) return null
+    const resolved = resolveHomeOriginFromCoordinates(lat, lon, locale)
+    if (!resolved) continue
 
-  return {
-    ...resolved,
-    country: lookup?.country || resolved.country,
-    source: 'geoip',
+    return {
+      ...resolved,
+      country: lookup?.country || resolved.country,
+      source: 'geoip',
+    }
   }
+
+  return null
 }
