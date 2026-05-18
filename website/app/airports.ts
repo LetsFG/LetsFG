@@ -745,3 +745,24 @@ export function findBestMatch(query: string, locale: string): Airport | null {
   
   return null
 }
+
+export function resolveShareLocationName(
+  query: string,
+  options?: { preferCity?: boolean },
+): string | null {
+  if (!query || query.length < 2) return null
+
+  const match = findBestMatch(query, 'en')
+  if (!match) return null
+
+  if (options?.preferCity) {
+    const generatedEntry = GENERATED_LOCATION_BY_CODE.get(match.code)
+    const city = generatedEntry?.city?.trim()
+    if (city) {
+      return city
+    }
+  }
+
+  const displayName = match.names.en?.trim()
+  return displayName || null
+}

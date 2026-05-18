@@ -1,13 +1,21 @@
 import { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getLocale } from 'next-intl/server'
 import SearchPageClient from './SearchPageClient'
 import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
 import { getLiveFxRates } from '../../../lib/live-fx'
+import { extractShareLabelsFromResultsPathname } from '../../../lib/share-preview'
 import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
-import { buildFallbackSearchQuery, buildSearchShareSummary, type SearchResult } from './search-share-model'
+import {
+  buildFallbackSearchQuery,
+  buildFallbackSearchShareSummaryFromLabels,
+  extractShareLabelsFromQuery,
+  buildSearchShareSummary,
+  type SearchResult,
+} from './search-share-model'
 import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'
 import { getInitialSearchResults, resolveRequestCurrency } from './search-share-server'
 
@@ -50,13 +58,23 @@ export async function generateMetadata({
   const sp = await searchParams
   const isProbe = isProbeModeValue(sp?.probe)
   const displayCurrency = await resolveRequestCurrency(sp?.cur)
-  const result = await getInitialSearchResults(searchId, isProbe)
-  const fxRates = await getLiveFxRates()
   const offersCountOverride = parseOffersCountOverride(sp?.oc)
+  const requestHeaders = await headers()
+  const fallbackLabels = extractShareLabelsFromResultsPathname(requestHeaders.get('x-letsfg-pathname'), searchId)
+    || extractShareLabelsFromQuery(sp?.q)
+  const fallbackSummary = fallbackLabels
+    ? buildFallbackSearchShareSummaryFromLabels(
+        fallbackLabels.fromLabel,
+        fallbackLabels.toLabel,
+        offersCountOverride,
+      )
+    : null
+  const result = fallbackSummary ? null : await getInitialSearchResults(searchId, isProbe)
+  const fxRates = await getLiveFxRates()
 
   const summary = result
     ? buildSearchShareSummary(result, displayCurrency, { offersAnalyzedOverride: offersCountOverride, fxRates })
-    : null
+    : fallbackSummary
 
   const fallbackQuery = sp?.q?.trim() || ''
   const fallbackTitle = locale === 'ja'
@@ -88,6 +106,10 @@ export async function generateMetadata({
   if (isProbe) imageParams.set('probe', '1')
   if (sp?.cur?.trim()) imageParams.set('cur', sp.cur.trim())
   if (offersCountOverride) imageParams.set('oc', String(offersCountOverride))
+  if (fallbackLabels) {
+    imageParams.set('from', fallbackLabels.fromLabel)
+    imageParams.set('to', fallbackLabels.toLabel)
+  }
   const imageQuery = imageParams.toString()
   const imageUrl = `/api/og/results/${searchId}${imageQuery ? `?${imageQuery}` : ''}`
 

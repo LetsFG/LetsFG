@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server'
-import { buildMissingSearchShareSummary, buildSearchShareSummary } from '../../../../results/[searchId]/search-share-model'
+import {
+  buildFallbackSearchShareSummaryFromLabels,
+  buildMissingSearchShareSummary,
+  buildSearchShareSummary,
+} from '../../../../results/[searchId]/search-share-model'
 import { renderSearchShareImage } from '../../../../results/[searchId]/search-share-image'
 import { getSearchResults, resolveRequestCurrency } from '../../../../results/[searchId]/search-share-server'
 import { isProbeModeValue } from '../../../../../lib/probe-mode'
+import { normalizeShareLabelParam } from '../../../../../lib/share-preview'
 
 function parseOffersCountOverride(value?: string | null) {
   const parsed = Number.parseInt(value || '', 10)
@@ -19,6 +24,15 @@ export async function GET(
   const isProbe = isProbeModeValue(request.nextUrl.searchParams.get('probe'))
   const displayCurrency = await resolveRequestCurrency(request.nextUrl.searchParams.get('cur') || undefined)
   const offersCountOverride = parseOffersCountOverride(request.nextUrl.searchParams.get('oc'))
+  const fromLabel = normalizeShareLabelParam(request.nextUrl.searchParams.get('from'))
+  const toLabel = normalizeShareLabelParam(request.nextUrl.searchParams.get('to'))
+
+  if (fromLabel && toLabel) {
+    return renderSearchShareImage(
+      buildFallbackSearchShareSummaryFromLabels(fromLabel, toLabel, offersCountOverride),
+    )
+  }
+
   const result = await getSearchResults(searchId, isProbe)
 
   const summary = result

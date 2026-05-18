@@ -157,49 +157,25 @@ function escapeSvgText(value: string) {
     .replaceAll('>', '&gt;')
 }
 
-function buildGradientNumberDataUrl(value: string, fontSize: number) {
-  const safeValue = escapeSvgText(value)
-  const width = Math.max(240, Math.ceil(value.length * fontSize * 0.62 + fontSize * 0.9))
-  const height = Math.ceil(fontSize * 1.08)
-  const baseline = Math.round(height * 0.82)
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <defs>
-        <linearGradient id="offersGradient" x1="0%" y1="50%" x2="100%" y2="50%">
-          <stop offset="0%" stop-color="#ff5a00" />
-          <stop offset="48%" stop-color="#ff9300" />
-          <stop offset="100%" stop-color="#ffd11a" />
-        </linearGradient>
-      </defs>
-      <text
-        x="50%"
-        y="${baseline}"
-        text-anchor="middle"
-        font-family="Arial Black, Arial, Helvetica, sans-serif"
-        font-size="${fontSize}"
-        font-weight="900"
-        letter-spacing="-0.055em"
-        fill="url(#offersGradient)"
-      >${safeValue}</text>
-    </svg>
-  `.trim()
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-}
-
 function renderGradientNumber(value: string, fontSize: number) {
-  const src = buildGradientNumberDataUrl(value, fontSize)
-
   return (
-    <img
-      src={src}
-      alt=""
+    <div
       style={{
         width: '100%',
         height: '100%',
         objectFit: 'contain',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize,
+        fontWeight: 900,
+        lineHeight: 1,
+        letterSpacing: '-0.055em',
+        color: '#ff8400',
       }}
-    />
+    >
+      {escapeSvgText(value)}
+    </div>
   )
 }
 
@@ -328,6 +304,11 @@ export async function renderSearchShareImage(summary: SearchShareSummary) {
         </div>
       </div>
     ),
-    RESULTS_SHARE_IMAGE_SIZE,
+    {
+      ...RESULTS_SHARE_IMAGE_SIZE,
+      headers: {
+        'Cache-Control': 'public, max-age=0, s-maxage=86400, stale-while-revalidate=604800',
+      },
+    },
   )
 }
