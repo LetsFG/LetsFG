@@ -26,6 +26,7 @@ interface RankRequestBody {
   rawQuery: string
   context: RankingContext
   searchId?: string
+  scannedDealsCount?: number
   /** 'early' = still searching (first gen), 'mid' = ~90% done, 'final' = search complete */
   phase?: 'early' | 'mid' | 'final'
   /** BCP-47 locale code (e.g. 'ja', 'de', 'en') — Gemini will respond in this language */
@@ -210,6 +211,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!topOffers.length) {
     return NextResponse.json({ error: 'no_offers' }, { status: 400 })
   }
+  const scannedDealsCount = typeof body.scannedDealsCount === 'number' && Number.isFinite(body.scannedDealsCount)
+    ? Math.max(Math.floor(body.scannedDealsCount), topOffers.length)
+    : topOffers.length
+  const formattedScannedDealsCount = scannedDealsCount.toLocaleString('en-US')
 
   const hero = topOffers[0]
   const runners = topOffers.slice(1, 3)   // top 3 total → 2 runner-ups
@@ -379,10 +384,20 @@ The user does NOT know this swap happened. You MUST open the hero justification 
     ? `\nLANGUAGE: You MUST write your entire response in ${languageName}. Do not use English.`
     : ''
 
+  const searchBreadthBlock = `
+SEARCH BREADTH:
+- ${phase === 'final' ? `We scanned ${formattedScannedDealsCount} matching deals for this search.` : `We have scanned ${formattedScannedDealsCount} matching deals so far, and more may still arrive.`}
+- You MAY mention this once if it makes the recommendation feel more earned.
+- ${phase === 'final' ? 'On final copy, prefer weaving in one short breadth signal when the field was meaningfully large; it helps the recommendation feel curated rather than generic.' : 'On early or mid copy, keep breadth mentions lighter and more provisional.'}
+- If you mention it, vary the wording naturally. Do NOT sound like you're repeating a canned line.
+- In early or mid phases, frame the count as "so far" or "already checked," never as a final total.
+- You can use the breadth to signal that these picks are the shortlist worth focusing on, but do NOT rely on one stock tagline such as "worth your time".`
+
   const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${noDirectsBlock}${heroDirectGuardBlock}${fareClaimGuardBlock}
 
 USER'S SEARCH: "${rawQuery}"
 TRIP: ${tripDesc}${prefs ? ` | ${prefs}` : ''}
+${searchBreadthBlock}
 
 #1 RANKED FLIGHT (YOUR PICK):
 - ${FLIGHT_LABELS[0]} | ${h.origin} → ${h.destination}
