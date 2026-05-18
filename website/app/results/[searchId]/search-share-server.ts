@@ -23,12 +23,12 @@ export async function getApiBase(): Promise<string> {
   return SITE_URL
 }
 
-export async function getSearchResults(searchId: string, isProbe: boolean, fswSession?: string): Promise<SearchResult | null> {
-  return getSearchResultsWithTimeout(searchId, isProbe, fswSession)
+export async function getSearchResults(searchId: string, isProbe: boolean, fswSession?: string, displayCurrency?: string): Promise<SearchResult | null> {
+  return getSearchResultsWithTimeout(searchId, isProbe, fswSession, undefined, displayCurrency)
 }
 
-export async function getInitialSearchResults(searchId: string, isProbe: boolean, fswSession?: string): Promise<SearchResult | null> {
-  return getSearchResultsWithTimeout(searchId, isProbe, fswSession, INITIAL_SEARCH_RESULTS_TIMEOUT_MS)
+export async function getInitialSearchResults(searchId: string, isProbe: boolean, fswSession?: string, displayCurrency?: string): Promise<SearchResult | null> {
+  return getSearchResultsWithTimeout(searchId, isProbe, fswSession, INITIAL_SEARCH_RESULTS_TIMEOUT_MS, displayCurrency)
 }
 
 async function getSearchResultsWithTimeout(
@@ -36,12 +36,14 @@ async function getSearchResultsWithTimeout(
   isProbe: boolean,
   fswSession?: string,
   timeoutMs?: number,
+  displayCurrency?: string,
 ): Promise<SearchResult | null> {
   try {
     const apiBase = await getApiBase()
     const url = new URL(`/api/results/${searchId}`, apiBase)
     appendProbeParam(url.searchParams, isProbe)
     if (fswSession) url.searchParams.set('_fss', fswSession)
+    if (displayCurrency) url.searchParams.set('cur', displayCurrency)
     const res = await fetch(url.toString(), {
       cache: 'no-store',
       ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),

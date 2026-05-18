@@ -191,20 +191,45 @@ function mockOffer(i: number, origin: string, dest: string, date: string) {
   }
 }
 
+function normalizeDisplayCurrency(value?: string | null) {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  return normalized.length > 0 ? normalized : null
+}
+
+function selectCachedGeminiForCurrency(
+  cachedResult?: ReturnType<typeof getCachedSearchResult> | null,
+  requestedDisplayCurrency?: string | null,
+) {
+  const gemini = cachedResult?.gemini_justification
+  if (!gemini) return undefined
+
+  const requested = normalizeDisplayCurrency(requestedDisplayCurrency)
+  const cached = normalizeDisplayCurrency(gemini.display_currency)
+  if (!requested || !cached || cached !== requested) {
+    return undefined
+  }
+
+  return gemini
+}
+
 function buildExpiredResult(
   searchId: string,
   cachedResult?: ReturnType<typeof getCachedSearchResult> | null,
+  requestedDisplayCurrency?: string | null,
 ) {
   // If we have cached offers, serve them as completed — the user should keep
   // their results even after the FSW drops its in-memory state (~10 min).
   // Only truly expire when we have nothing at all.
   if (cachedResult && Array.isArray(cachedResult.offers) && cachedResult.offers.length > 0) {
+    const cachedGemini = selectCachedGeminiForCurrency(cachedResult, requestedDisplayCurrency)
     return {
       ...cachedResult,
       search_id: searchId,
       status: 'completed' as const,
       // Extend expires_at 30 min from now so the UI timer doesn't immediately show expired
       expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      ...(cachedGemini ? { gemini_justification: cachedGemini } : {}),
     }
   }
   return {
@@ -280,6 +305,7 @@ export async function GET(
 ) {
   const { searchId } = await params
   const isProbeSearch = isProbeModeValue(request.nextUrl.searchParams.get('probe'))
+  const requestedDisplayCurrency = request.nextUrl.searchParams.get('cur')
   const analyticsSearchId = getTrackingSearchId(searchId, isProbeSearch) || searchId
   const analyticsSourcePath = getTrackedSourcePath(`/api/results/${searchId}`, isProbeSearch)
 
@@ -353,7 +379,7 @@ export async function GET(
     if (res.status === 404) {
       const cachedResult = getCachedSearchResult(searchId)
       if (cachedResult) {
-        return NextResponse.json(buildExpiredResult(searchId, cachedResult))
+        return NextResponse.json(buildExpiredResult(searchId, cachedResult, requestedDisplayCurrency))
       }
 
       const meta = getSearchMeta(searchId)
@@ -363,7 +389,7 @@ export async function GET(
         return NextResponse.json(buildRecoveringSearchResult(searchId, query, started, meta))
       }
 
-      return NextResponse.json(buildExpiredResult(searchId))
+      return NextResponse.json(buildExpiredResult(searchId, undefined, requestedDisplayCurrency))
     }
 
     if (!res.ok) {
@@ -543,8 +569,9 @@ export async function GET(
       })
       // Attach any previously-cached Gemini justification so shared links return it.
       const cached = getCachedSearchResult(result.search_id)
-      if (cached?.gemini_justification) {
-        return NextResponse.json({ ...result, gemini_justification: cached.gemini_justification })
+      const cachedGemini = selectCachedGeminiForCurrency(cached, requestedDisplayCurrency)
+      if (cachedGemini) {
+        return NextResponse.json({ ...result, gemini_justification: cachedGemini })
       }
     }
 

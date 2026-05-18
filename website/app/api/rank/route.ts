@@ -540,7 +540,7 @@ Return ONLY valid JSON, no markdown, no code blocks:
     // Persist to server-side cache so any user with the shared link gets this text.
     // Only persist 'final' (or 'mid') — 'early' text explicitly says "still scanning".
     if (searchId && phase !== 'early') {
-      updateGeminiJustification(searchId, result, locale)
+      updateGeminiJustification(searchId, result, locale, displayCurrency)
     }
 
     return NextResponse.json(result)

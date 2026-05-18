@@ -84,6 +84,7 @@ export interface SearchResult {
     offer_ids?: string[]
     ts: number
     locale?: string
+    display_currency?: string
   }
 }
 

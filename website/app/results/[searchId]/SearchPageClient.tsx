@@ -446,6 +446,34 @@ interface ParsedQuery {
   ai_passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
 }
 
+function buildFallbackResultsQuery(parsed: ParsedQuery) {
+  const origin = parsed.origin || parsed.origin_name
+  const destination = parsed.destination || parsed.destination_name
+
+  if (!origin || !destination) {
+    return ''
+  }
+
+  const parts = [`${origin} to ${destination}`]
+
+  if (parsed.date) parts.push(parsed.date)
+  if (parsed.return_date) parts.push(`return ${parsed.return_date}`)
+
+  return parts.join(' ').trim()
+}
+
+function mergeParsedQuery(current: ParsedQuery, next?: Partial<ParsedQuery> | null): ParsedQuery {
+  if (!next || typeof next !== 'object') {
+    return current
+  }
+
+  return {
+    ...current,
+    ...next,
+    fallback_notes: next.fallback_notes || current.fallback_notes,
+  }
+}
+
 export interface SearchPageClientProps {
   searchId: string
   trackingSearchId?: string | null
@@ -460,7 +488,7 @@ export interface SearchPageClientProps {
   searchedAt?: string
   expiresAt?: string
   fswSession?: string  // Cloud Run __session affinity token — forwarded on every poll
-  initialGemini?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
+  initialGemini?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string; display_currency?: string }
 }
 
 function dedup(offers: FlightOffer[]): FlightOffer[] {
@@ -515,23 +543,28 @@ export default function SearchPageClient({
   isTestSearch = false,
   initialCurrency = 'EUR',
   fxRates,
-  query,
-  parsed,
+  query: initialQuery,
+  parsed: initialParsed,
   initialStatus,
   initialProgress,
   initialOffers,
-  searchedAt,
-  expiresAt,
+  searchedAt: initialSearchedAt,
+  expiresAt: initialExpiresAt,
   fswSession,
-  initialGemini,
+  initialGemini: initialGeminiProp,
 }: SearchPageClientProps) {
   const t = useTranslations('Results')
   const locale = useLocale()
   const router = useRouter()
 
+  const [query, setQuery] = useState(initialQuery)
+  const [parsed, setParsed] = useState<ParsedQuery>(initialParsed)
   const [status, setStatus] = useState(initialStatus)
   const [progress, setProgress] = useState(initialProgress)
   const [offers, setOffers] = useState(initialOffers)
+  const [searchedAt, setSearchedAt] = useState(initialSearchedAt)
+  const [expiresAt, setExpiresAt] = useState(initialExpiresAt)
+  const [cachedGemini, setCachedGemini] = useState(initialGeminiProp)
   const [displayCurrency, setDisplayCurrency] = useState(initialCurrency)
   const [monitorOpen, setMonitorOpen] = useState(false)
   const [confirmedMonitorId, setConfirmedMonitorId] = useState<string | null>(null)
@@ -650,11 +683,16 @@ export default function SearchPageClient({
     trackedResultsViewRef.current = false
     trackedExpiredRef.current = false
     scrollMilestonesRef.current = new Set()
+    setQuery(initialQuery)
+    setParsed(initialParsed)
     setStatus(initialStatus)
     setProgress(initialProgress)
     setOffers(initialOffers)
+    setSearchedAt(initialSearchedAt)
+    setExpiresAt(initialExpiresAt)
+    setCachedGemini(initialGeminiProp)
     setDisplayCurrency(initialCurrency)
-  }, [searchId, initialCurrency])
+  }, [searchId, initialCurrency, initialExpiresAt, initialGeminiProp, initialOffers, initialParsed, initialProgress, initialQuery, initialSearchedAt, initialStatus])
 
   useEffect(() => {
     const normalizedQuery = query.trim()
@@ -731,11 +769,36 @@ export default function SearchPageClient({
         const startedParam = normalizeStartedAtParam(searchedAt)
         if (startedParam) params.set('started', startedParam)
         if (query) params.set('q', query)
+        if (displayCurrency) params.set('cur', displayCurrency)
         const queryString = params.toString()
         const res = await fetch(`/api/results/${searchId}${queryString ? `?${queryString}` : ''}`, { cache: 'no-store' })
         if (!res.ok) return
         const data = await res.json()
         if (data.progress) setProgress(data.progress)
+
+        if (data.gemini_justification && typeof data.gemini_justification === 'object') {
+          setCachedGemini(data.gemini_justification as SearchPageClientProps['initialGemini'])
+        }
+
+        const nextParsed = data.parsed && typeof data.parsed === 'object' ? data.parsed as Partial<ParsedQuery> : null
+        if (nextParsed) {
+          setParsed((current) => mergeParsedQuery(current, nextParsed))
+        }
+
+        const nextQuery = typeof data.query === 'string' && data.query.trim().length > 0
+          ? data.query.trim()
+          : nextParsed ? buildFallbackResultsQuery(nextParsed) : ''
+        if (nextQuery) {
+          setQuery((current) => (current.trim().length > 0 ? current : nextQuery))
+        }
+
+        if (typeof data.searched_at === 'string' && data.searched_at.trim().length > 0) {
+          setSearchedAt(data.searched_at)
+        }
+
+        if (typeof data.expires_at === 'string' && data.expires_at.trim().length > 0) {
+          setExpiresAt(data.expires_at)
+        }
 
         // Merge partial offers even while still searching
         if (data.offers?.length) {
@@ -785,7 +848,7 @@ export default function SearchPageClient({
       if (newIdsTimer) clearTimeout(newIdsTimer)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [searchId, isSearching, isTestSearch])
+  }, [displayCurrency, fswSession, isSearching, isTestSearch, query, searchId, searchedAt])
 
   // Hard client-side timeout: if the FSW keeps reporting `searching` for an
   // unreasonably long time (4 min for exotic / no-coverage routes like
@@ -1298,7 +1361,7 @@ export default function SearchPageClient({
           viaIata={nlParsed?.via_iata}
           maxStops={parsed.ai_direct_only === true ? 0 : (typeof nlParsed?.stops === 'number' ? nlParsed.stops : undefined)}
           fallbackNotes={parsed.fallback_notes}
-          initialGemini={initialGemini}
+          initialGemini={cachedGemini}
         />
       )}
 
