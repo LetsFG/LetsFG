@@ -15,7 +15,7 @@ export interface PersistedSearchResult {
   searched_at?: string
   expires_at?: string
   stored_at: number
-  gemini_justification?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
+  gemini_justification?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string; display_currency?: string }
 }
 
 // ── Search-time metadata sidecar ─────────────────────────────────────
@@ -263,12 +263,16 @@ export function updateGeminiJustification(
   searchId: string,
   gemini: { title?: string; hero: string; runners: string[]; offer_ids?: string[] },
   locale?: string,
+  displayCurrency?: string,
 ): void {
   loadCache()
   const existing = resultsCache.get(searchId)
   if (!existing) return  // only attach to a cached result — don't create phantom entries
   const offerIds = Array.isArray(gemini.offer_ids)
     ? gemini.offer_ids.filter((offerId) => typeof offerId === 'string' && offerId.length > 0)
+    : undefined
+  const normalizedDisplayCurrency = typeof displayCurrency === 'string' && displayCurrency.trim().length > 0
+    ? displayCurrency.trim().toUpperCase()
     : undefined
   resultsCache.set(searchId, {
     ...existing,
@@ -277,6 +281,7 @@ export function updateGeminiJustification(
       offer_ids: offerIds,
       ts: Date.now(),
       locale,
+      display_currency: normalizedDisplayCurrency,
     },
   })
   persistCache()

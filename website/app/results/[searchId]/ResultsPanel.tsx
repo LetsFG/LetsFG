@@ -705,7 +705,7 @@ interface Props {
     origin?: { intended: string; used_code: string; used_name: string; hub_name: string; reason: string }
     destination?: { intended: string; used_code: string; used_name: string; hub_name: string; reason: string }
   }
-  initialGemini?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string }
+  initialGemini?: GeminiJustificationPayload
 }
 
 const EMAIL_UNLOCK_TOKEN_STORAGE_PREFIX = 'lfg_monitor_email_unlock:'
@@ -736,6 +736,71 @@ function normalizeGeminiOfferIds(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null
   const offerIds = value.filter((offerId): offerId is string => typeof offerId === 'string' && offerId.length > 0)
   return offerIds.length > 0 ? offerIds : null
+}
+
+interface GeminiJustificationPayload {
+  title?: string
+  hero: string
+  runners: string[]
+  offer_ids?: string[]
+  ts: number
+  locale?: string
+  display_currency?: string
+}
+
+interface GeminiJustificationState {
+  title?: string
+  hero: string
+  runners: string[]
+}
+
+function normalizeGeminiDisplayCurrency(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  return normalized.length > 0 ? normalized : null
+}
+
+function restoreGeminiPayload(
+  payload: GeminiJustificationPayload | null | undefined,
+  locale: string,
+  currency: string,
+  allowMissingCurrency = false,
+): { justification: GeminiJustificationState; offerIdsKey: string | null } | null {
+  if (!payload?.hero || payload.hero.length <= 10) {
+    return null
+  }
+
+  const age = Date.now() - (payload.ts ?? 0)
+  if (age >= 6 * 3600 * 1000) {
+    return null
+  }
+
+  const cachedLocale = payload.locale ?? 'en'
+  if (cachedLocale !== locale) {
+    return null
+  }
+
+  const requestedCurrency = normalizeGeminiDisplayCurrency(currency)
+  const cachedCurrency = normalizeGeminiDisplayCurrency(payload.display_currency)
+  if (!requestedCurrency) {
+    return null
+  }
+  if (!cachedCurrency && !allowMissingCurrency) {
+    return null
+  }
+  if (cachedCurrency && cachedCurrency !== requestedCurrency) {
+    return null
+  }
+
+  const offerIds = normalizeGeminiOfferIds(payload.offer_ids)
+  return {
+    justification: {
+      title: payload.title,
+      hero: payload.hero,
+      runners: payload.runners ?? [],
+    },
+    offerIdsKey: offerIds ? offerIds.join(',') : null,
+  }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -850,24 +915,20 @@ export default function ResultsPanel({
   const [isUnlocked, setIsUnlocked] = useState(false)
   const [revealedSources, setRevealedSources] = useState<Record<string, string>>({})
   const restoredGeminiOfferIdsRef = useRef<string | null>(null)
-  const [geminiJustification, setGeminiJustification] = useState<{
-    title?: string
-    hero: string
-    runners: string[]
-  } | 'loading' | null>(() => {
+  const [geminiJustification, setGeminiJustification] = useState<GeminiJustificationState | 'loading' | null>(() => {
     // Keep the initial render deterministic across server and client.
     // Browser cache restoration happens after mount to avoid hydration mismatches.
-    if (initialGemini?.hero && initialGemini.hero.length > 10) {
-      const age = Date.now() - (initialGemini.ts ?? 0)
-      const cachedLocale = initialGemini.locale ?? 'en'
-      if (age < 6 * 3600 * 1000 && cachedLocale === locale) {
-        const offerIds = normalizeGeminiOfferIds(initialGemini.offer_ids)
-        restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
-        return { title: initialGemini.title, hero: initialGemini.hero, runners: initialGemini.runners }
-      }
+    const restored = restoreGeminiPayload(initialGemini, locale, currency)
+    if (restored) {
+      restoredGeminiOfferIdsRef.current = restored.offerIdsKey
+      return restored.justification
     }
     return null
   })
+  const restoredInitialGemini = useMemo(
+    () => restoreGeminiPayload(initialGemini, locale, currency),
+    [currency, initialGemini, locale],
+  )
   // Tracks which generation phase has fired and what hero it was based on
   const geminiStateRef = useRef<{
     phase: 'none' | 'early' | 'mid' | 'final'
@@ -883,6 +944,18 @@ export default function ResultsPanel({
   }>({ phase: 'none', heroId: null, lastSentIds: null, callCount: 0, gen20Fired: false, gen40Fired: false, gen70Fired: false, finalFired: false, finalSentIds: null, finalRefired: false })
 
   useEffect(() => {
+    const restored = restoreGeminiPayload(initialGemini, locale, currency)
+    if (!restored) return
+    restoredGeminiOfferIdsRef.current = restored.offerIdsKey
+    setGeminiJustification((current) => {
+      if (current !== 'loading' && current?.hero === restored.justification.hero) {
+        return current
+      }
+      return restored.justification
+    })
+  }, [currency, initialGemini, locale])
+
+  useEffect(() => {
     if (geminiJustification !== null || !searchId) return
     try {
       const raw = localStorage.getItem(`gemini_${searchId}_${locale}_${currency}`)
@@ -893,18 +966,14 @@ export default function ResultsPanel({
         runners?: string[]
         offer_ids?: string[]
         ts?: number
+        display_currency?: string
       }
-      const age = Date.now() - (cached.ts ?? 0)
-      if (age >= 6 * 3600 * 1000 || typeof cached.hero !== 'string' || cached.hero.length <= 10) {
+      const restored = restoreGeminiPayload(cached as GeminiJustificationPayload, locale, currency, true)
+      if (!restored) {
         return
       }
-      const offerIds = normalizeGeminiOfferIds(cached.offer_ids)
-      restoredGeminiOfferIdsRef.current = offerIds ? offerIds.join(',') : null
-      setGeminiJustification({
-        title: cached.title,
-        hero: cached.hero,
-        runners: cached.runners ?? [],
-      })
+      restoredGeminiOfferIdsRef.current = restored.offerIdsKey
+      setGeminiJustification(restored.justification)
     } catch {
       // Ignore cache parse failures and fall back to live ranking.
     }
@@ -1310,7 +1379,7 @@ export default function ResultsPanel({
             try {
               localStorage.setItem(
                 `gemini_${searchId}_${locale}_${currency}`,
-                JSON.stringify({ ...result, offer_ids: offerIds, ts: Date.now() }),
+                JSON.stringify({ ...result, offer_ids: offerIds, ts: Date.now(), display_currency: currency }),
               )
             } catch { /* ignore */ }
           }
@@ -1358,8 +1427,10 @@ export default function ResultsPanel({
   useEffect(() => {
     if (geminiStateRef.current.phase !== 'none') return  // already started
     if (globalRankTopThree.length === 0) return
-    if (!isSearching && geminiJustification !== null && geminiJustification !== 'loading') {
-      if (restoredGeminiOfferIdsRef.current === currentTopOfferIds) {
+    const restoredOfferIds = restoredGeminiOfferIdsRef.current ?? restoredInitialGemini?.offerIdsKey ?? null
+    const hasRestoredGemini = (geminiJustification !== null && geminiJustification !== 'loading') || Boolean(restoredInitialGemini)
+    if (!isSearching && hasRestoredGemini) {
+      if (restoredOfferIds === currentTopOfferIds) {
         geminiStateRef.current.phase = 'final'
         geminiStateRef.current.heroId = getOfferInstanceKey(globalRankTopThree[0].offer)
         geminiStateRef.current.lastSentIds = currentTopOfferIds
@@ -1380,7 +1451,7 @@ export default function ResultsPanel({
       return
     }
     callGemini('early')
-  }, [progress, globalRankTopThree, currentTopOfferIds, callGemini, geminiJustification, isSearching, allOffers.length])
+  }, [progress, globalRankTopThree, currentTopOfferIds, callGemini, geminiJustification, isSearching, allOffers.length, restoredInitialGemini])
 
   // Gen 2 — fires at 30% progress if a better offer displaced the current hero
   useEffect(() => {

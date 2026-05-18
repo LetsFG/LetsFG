@@ -7,7 +7,7 @@ import { getLiveFxRates } from '../../../lib/live-fx'
 import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
-import { buildFallbackSearchQuery, buildMissingSearchShareSummary, buildSearchShareSummary, type SearchResult } from './search-share-model'
+import { buildFallbackSearchQuery, buildSearchShareSummary, type SearchResult } from './search-share-model'
 import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'
 import { getInitialSearchResults, resolveRequestCurrency } from './search-share-server'
 
@@ -43,7 +43,7 @@ export async function generateMetadata({
   searchParams,
 }: {
   params: Promise<{ searchId: string }>
-  searchParams: Promise<{ probe?: string; cur?: string; oc?: string }>
+  searchParams: Promise<{ probe?: string; cur?: string; oc?: string; q?: string; started?: string }>
 }): Promise<Metadata> {
   const { searchId } = await params
   const locale = await getLocale()
@@ -56,26 +56,34 @@ export async function generateMetadata({
 
   const summary = result
     ? buildSearchShareSummary(result, displayCurrency, { offersAnalyzedOverride: offersCountOverride, fxRates })
-    : buildMissingSearchShareSummary()
+    : null
 
-  const metadataTitle = locale === 'ja'
-    ? summary.status === 'missing'
-      ? 'フライト検索が見つかりません — LetsFG'
-      : summary.status === 'searching'
+  const fallbackQuery = sp?.q?.trim() || ''
+  const fallbackTitle = locale === 'ja'
+    ? fallbackQuery ? `${fallbackQuery} のフライト検索結果 — LetsFG` : 'フライト検索結果 — LetsFG'
+    : fallbackQuery ? `Flight search results for ${fallbackQuery} — LetsFG` : 'Flight search results — LetsFG'
+  const fallbackDescription = locale === 'ja'
+    ? 'LetsFG のライブフライト検索結果です。経路情報と最新料金を読み込んでいます。'
+    : 'Live LetsFG flight search results. Route details and current fares will load shortly.'
+
+  const metadataTitle = summary
+    ? locale === 'ja'
+      ? summary.status === 'searching'
         ? `${summary.routeLabel} のフライトを検索中 — LetsFG`
         : summary.status === 'expired'
           ? '検索有効期限切れ — LetsFG'
           : `${summary.routeLabel} のフライト結果 — LetsFG`
-    : summary.title
-  const metadataDescription = locale === 'ja'
-    ? summary.status === 'missing'
-      ? 'この共有フライト検索は利用できなくなりました。最新のライブ結果を見るにはもう一度検索してください。'
-      : summary.status === 'searching'
+      : summary.title
+    : fallbackTitle
+  const metadataDescription = summary
+    ? locale === 'ja'
+      ? summary.status === 'searching'
         ? `${summary.routeLabel} のライブ検索を継続中です。しばらくすると結果が表示されます。`
         : summary.status === 'expired'
           ? `${summary.routeLabel} の共有結果は有効期限切れです。最新料金を見るには再検索してください。`
           : `${summary.routeLabel} のライブ検索結果です。手数料なし、航空会社の生運賃。`
-    : summary.description
+      : summary.description
+    : fallbackDescription
   const imageParams = new URLSearchParams()
   if (isProbe) imageParams.set('probe', '1')
   if (sp?.cur?.trim()) imageParams.set('cur', sp.cur.trim())
@@ -97,7 +105,9 @@ export async function generateMetadata({
           url: imageUrl,
           width: RESULTS_SHARE_IMAGE_SIZE.width,
           height: RESULTS_SHARE_IMAGE_SIZE.height,
-          alt: locale === 'ja' ? `${summary.routeLabel} のフライト検索サマリー` : `${summary.routeLabel} flight search summary`,
+          alt: summary
+            ? locale === 'ja' ? `${summary.routeLabel} のフライト検索サマリー` : `${summary.routeLabel} flight search summary`
+            : locale === 'ja' ? 'LetsFG フライト検索サマリー' : 'LetsFG flight search summary',
         },
       ],
     },
@@ -123,7 +133,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
   // Render immediately with the current snapshot and let SearchPageClient poll.
   // If the live snapshot fetch is slow, fall back to a searching shell so the
   // client can mount and start polling without sitting on loading.tsx.
-  const result = await getInitialSearchResults(searchId, isProbe, sp?._fss)
+  const result = await getInitialSearchResults(searchId, isProbe, sp?._fss, initialCurrency)
     ?? buildSearchingShell(searchId, sp?.started, sp?.q?.trim() || '')
 
   const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result
