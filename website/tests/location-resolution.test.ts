@@ -315,6 +315,30 @@ test('homepage airport matching uses generated aliases and expanded airport cove
   assert.ok(hartfordResults.some((airport) => airport.code === 'BDL'))
 })
 
+test('multi-airport city suggestions keep the metro label instead of a satellite airport label', () => {
+  const parisResults = searchAirports('Paris', 'en', 5)
+  assert.deepEqual(parisResults[0], {
+    code: 'PAR',
+    names: { en: 'Paris' },
+    country: 'FR',
+    isCity: true,
+  })
+
+  assert.deepEqual(findBestLocationMatch('New York'), {
+    code: 'NYC',
+    name: 'New York',
+    type: 'city',
+    country: 'US',
+  })
+
+  assert.deepEqual(findBestLocationMatch('Milan'), {
+    code: 'MIL',
+    name: 'Milan',
+    type: 'city',
+    country: 'IT',
+  })
+})
+
 test('Hawaii airports resolve correctly and do not produce false positives via substring', () => {
   withFixedNow('2026-05-01T12:00:00Z', () => {
     // "hawaii" in a query should not match AII (Ali-Sabieh) via substring "aii" inside "hawaii"
