@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport, searchAirports } from './airports'
-import { findNearestAirport } from './lib/nearby-airports'
 import {
   CURRENCY_CHANGE_EVENT,
   readBrowserSearchCurrency,
@@ -704,7 +703,6 @@ const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
 }
 
 const LS_KEY_HOME_ORIGIN_PREFILL = 'lfg_home_origin_prefill'
-const SS_KEY_HOME_ORIGIN_GEO_ATTEMPTED = 'lfg_home_origin_geo_attempted'
 
 function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): string {
   const cleaned = placeholder.replace(/^try:\s*/i, '').trim()
@@ -719,26 +717,6 @@ function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): strin
   }
 
   return AUTO_PREFILL_FALLBACK_SUFFIXES[locale] || AUTO_PREFILL_FALLBACK_SUFFIXES.en
-}
-
-function resolveAutoPrefillOriginFromCoordinates(lat: number, lon: number, locale: string): string {
-  const nearest = findNearestAirport(lat, lon)
-  if (!nearest) return ''
-
-  const airportMatch = findBestMatch(nearest.c, locale)
-  if (airportMatch) {
-    return getAirportName(airportMatch, locale)
-  }
-
-  const city = nearest.ci?.trim()
-  if (city) return city
-
-  const name = nearest.n
-    ?.replace(/\bInternational\b/gi, '')
-    ?.replace(/\bAirport\b/gi, '')
-    ?.replace(/\s{2,}/g, ' ')
-    ?.trim()
-  return name || nearest.c
 }
 
 export default function HomeSearchForm({
@@ -854,89 +832,20 @@ export default function HomeSearchForm({
   useEffect(() => {
     if (normalizedInitialQuery || normalizedDetectedOrigin || autoPrefillOrigin) return
 
-    const applyDetectedOrigin = (nextOrigin: string) => {
-      const trimmedOrigin = nextOrigin.trim()
-      if (!trimmedOrigin || userEditedAutoPrefillRef.current) return
+    try {
+      const cachedOrigin = localStorage.getItem(LS_KEY_HOME_ORIGIN_PREFILL)?.trim() || ''
+      if (!cachedOrigin || userEditedAutoPrefillRef.current) return
 
       const currentValue = inputRef.current?.value.trim() ?? ''
       if (currentValue) return
 
-      setAutoPrefillOrigin(trimmedOrigin)
-      setInputValue(trimmedOrigin)
-      setQuery(trimmedOrigin)
-    }
-
-    try {
-      const cachedOrigin = localStorage.getItem(LS_KEY_HOME_ORIGIN_PREFILL)?.trim() || ''
-      if (cachedOrigin) {
-        applyDetectedOrigin(cachedOrigin)
-        return
-      }
-
-      if (sessionStorage.getItem(SS_KEY_HOME_ORIGIN_GEO_ATTEMPTED)) {
-        return
-      }
+      setAutoPrefillOrigin(cachedOrigin)
+      setInputValue(cachedOrigin)
+      setQuery(cachedOrigin)
     } catch {
       // Ignore storage failures in private mode.
     }
-
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return
-
-    let cancelled = false
-
-    const requestBrowserLocation = () => {
-      try {
-        sessionStorage.setItem(SS_KEY_HOME_ORIGIN_GEO_ATTEMPTED, '1')
-      } catch {
-        // Ignore storage failures in private mode.
-      }
-
-      navigator.geolocation.getCurrentPosition((position) => {
-        if (cancelled) return
-
-        const detectedOrigin = resolveAutoPrefillOriginFromCoordinates(
-          position.coords.latitude,
-          position.coords.longitude,
-          locale,
-        )
-        if (!detectedOrigin) return
-
-        try {
-          localStorage.setItem(LS_KEY_HOME_ORIGIN_PREFILL, detectedOrigin)
-        } catch {
-          // Ignore storage failures in private mode.
-        }
-
-        applyDetectedOrigin(detectedOrigin)
-      }, () => {
-        // Ignore denied/timeout errors; the form still works normally.
-      }, {
-        enableHighAccuracy: false,
-        maximumAge: 30 * 60 * 1000,
-        timeout: 4000,
-      })
-    }
-
-    const permissions = navigator.permissions
-    if (!permissions?.query) {
-      requestBrowserLocation()
-      return () => {
-        cancelled = true
-      }
-    }
-
-    permissions.query({ name: 'geolocation' as PermissionName }).then((status) => {
-      if (cancelled || status.state === 'denied') return
-      requestBrowserLocation()
-    }).catch(() => {
-      if (cancelled) return
-      requestBrowserLocation()
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [autoPrefillOrigin, locale, normalizedDetectedOrigin, normalizedInitialQuery])
+  }, [autoPrefillOrigin, normalizedDetectedOrigin, normalizedInitialQuery])
 
   useEffect(() => {
     setPrefCurrency(readBrowserSearchCurrency(initialCurrency))
