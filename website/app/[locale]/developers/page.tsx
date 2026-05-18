@@ -2,63 +2,47 @@ import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import GlobeButton from '../../globe-button'
+import HomeMonitorNav from '../../home-monitor-nav'
+import DevelopersPortal from './DevelopersPortal'
+import { formatStars, getGitHubStars } from '../../../lib/github-stars'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const API_BASE_URL = 'https://api.letsfg.co'
 const SWAGGER_URL = `${API_BASE_URL}/docs`
-const REDOC_URL = `${API_BASE_URL}/redoc`
-const MCP_URL = `${API_BASE_URL}/mcp`
+const DOCS_URL = 'https://docs.letsfg.co'
 const OPENAPI_URL = 'https://raw.githubusercontent.com/LetsFG/LetsFG/main/openapi.yaml'
-const SUPPORT_EMAIL = 'contact@letsfg.co'
 const SUPPORT_MAILTO = 'mailto:contact@letsfg.co?subject=LetsFG%20partner%20API%20access'
 
-const endpointCards = [
+const pricingCards = [
   {
-    method: 'GET',
-    path: '/api/v1/flights/resolve-location',
-    summary: 'Resolve city or airport names to stable IATA codes before search.',
-    status: 'Ready for search-only integrations',
+    range: '1 to 10 searches',
+    rate: '$0.50 / search',
   },
   {
-    method: 'POST',
-    path: '/api/v1/flights/search',
-    summary: 'Production search endpoint for price, route, duration, stopovers, and conditions.',
-    status: 'Ready for search-only integrations',
+    range: '11 to 100 searches',
+    rate: '$0.20 / search',
   },
   {
-    method: 'POST',
-    path: '/api/v1/bookings/unlock',
-    summary: 'Confirms live airline price and reserves the offer for booking.',
-    status: 'Documented now; enable later when commercial terms are aligned',
+    range: '101+ searches',
+    rate: '$0.10 / search',
   },
-  {
-    method: 'POST',
-    path: '/api/v1/bookings/book',
-    summary: 'Creates the booking after unlock using real passenger details.',
-    status: 'Documented now; keep disabled until privacy and support workflow are agreed',
-  },
-]
-
-const rateLimits = [
-  'Search API: 60 req/min per agent',
-  'Resolve location: 120 req/min per agent',
-  'Unlock: 20 req/min per agent',
-  'Book: 10 req/min per agent',
-]
-
-const launchNotes = [
-  'Partner key flow: self-serve registration exists today, and dedicated partner keys can be coordinated by email.',
-  'Sandbox: no separate public sandbox is documented in the repo today. For immediate rollout, use production in search-only mode.',
-  'Pricing: search is free. Unlock is free with GitHub star verification. Booking charges the ticket price plus Stripe processing.',
-  'Search-only mode does not require passenger profiles, payment, or website scraping.',
-  'Referral tracking, attribution, branding approval, GDPR/DPA terms, and live booking operations are handled directly at contact@letsfg.co.',
-  'Support: contact@letsfg.co and GitHub Issues. The public docs note typical email response time is under 1 hour.',
 ]
 
 export const metadata: Metadata = {
-  title: 'LetsFG API for Partners',
+  title: 'LetsFG Developers',
   description:
-    'Production API, OpenAPI spec, rate limits, and rollout notes for LetsFG partner integrations.',
+    'Card-backed access to the LetsFG concierge backend: ranked travel options, reasoning, and booking-first API responses from the same system behind letsfg.co.',
+}
+
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18" className="lp-github-icon">
+      <path
+        fill="currentColor"
+        d="M8 0C3.58 0 0 3.58 0 8a8.01 8.01 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.54 7.54 0 0 1 4.01 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+      />
+    </svg>
+  )
 }
 
 export default async function DevelopersPage({
@@ -67,10 +51,25 @@ export default async function DevelopersPage({
   params: Promise<{ locale: string }>
 }) {
   const { locale } = await params
+  const githubStars = await getGitHubStars()
 
   return (
     <main className="lp-root dev-page">
-      <div className="dev-hero-shell">
+      <section className="lp-hero dev-hero-shell">
+        <div className="lp-hero-sky" aria-hidden="true">
+          <Image
+            src="/chatgpt-sky-bg.jpg"
+            alt=""
+            fill
+            priority
+            unoptimized
+            sizes="(max-width: 767px) 1px, 1440px"
+            className="lp-hero-sky-img"
+            style={{ objectFit: 'cover', objectPosition: 'center 42%' }}
+          />
+        </div>
+        <div className="lp-hero-fade" aria-hidden="true" />
+
         <div className="lp-topbar">
           <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label="LetsFG home">
             <Image
@@ -84,224 +83,79 @@ export default async function DevelopersPage({
             />
           </Link>
 
-          <div aria-hidden="true" />
+          <HomeMonitorNav locale={locale} />
 
           <div className="lp-topbar-side">
             <GlobeButton inline />
-            <a href={REPO_URL} target="_blank" rel="noreferrer" className="dev-top-link">
-              GitHub
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className={githubStars !== null ? 'res-icon-btn res-icon-btn--gh' : 'res-icon-btn'}
+              aria-label="GitHub"
+              title="GitHub"
+            >
+              <GitHubIcon />
+              {githubStars !== null && (
+                <span className="res-gh-stars"><span className="res-gh-star" aria-hidden="true">⭐</span>{formatStars(githubStars)}</span>
+              )}
             </a>
           </div>
         </div>
 
-        <section className="dev-hero">
-          <div className="dev-shell dev-hero-grid">
-            <div className="dev-copy">
-              <span className="dev-kicker">Partner API</span>
-              <h1 className="dev-title">Integrate LetsFG in an agent today.</h1>
-              <p className="dev-subtitle">
-                Production REST API first. SDK and MCP as fallback. Search-only can ship now,
-                and unlock or booking can stay off until commercial, privacy, and support flows
-                are agreed.
-              </p>
+        <div className="lp-hero-content dev-hero-content">
+          <span className="dev-kicker">Official Developers API</span>
+          <h1 className="dev-title">Connect to the LetsFG booking concierge.</h1>
+          <p className="dev-subtitle">
+            This API talks to the same backend agent behind letsfg.co. One request in, ranked trip
+            options out, with reasoning, booking paths, and a concierge-style answer instead of
+            forty disconnected searches.
+          </p>
 
-              <div className="dev-pill-row" aria-label="Integration highlights">
-                <span className="dev-pill">Search-first rollout</span>
-                <span className="dev-pill">OpenAPI 3.1</span>
-                <span className="dev-pill">Location lookup + flight search</span>
-                <span className="dev-pill">No scraping required</span>
-              </div>
-
-              <div className="dev-cta-row">
-                <a href={SWAGGER_URL} target="_blank" rel="noreferrer" className="dev-button dev-button--primary">
-                  Open Swagger
-                </a>
-                <a href={OPENAPI_URL} target="_blank" rel="noreferrer" className="dev-button dev-button--ghost">
-                  Open OpenAPI YAML
-                </a>
-                <a href={SUPPORT_MAILTO} className="dev-button dev-button--ghost">
-                  Request partner access
-                </a>
-              </div>
-            </div>
-
-            <aside className="dev-spotlight">
-              <span className="dev-card-kicker">What is live now</span>
-              <h2 className="dev-spotlight-title">Search-only integration</h2>
-              <ul className="dev-list">
-                <li>Location lookup and flight search on the production API.</li>
-                <li>Runtime envs already match common agent setups: LETSFG_API_KEY and LETSFG_BASE_URL.</li>
-                <li>Stable contract published via Swagger, ReDoc, and the OpenAPI spec.</li>
-                <li>Unlock and booking endpoints are documented for later enablement.</li>
-              </ul>
-            </aside>
-          </div>
-        </section>
-      </div>
-
-      <section className="dev-section">
-        <div className="dev-shell">
-          <div className="dev-section-head">
-            <span className="dev-section-kicker">Use the right surface</span>
-            <h2 className="dev-section-title">Production API first. Local tools as fallback.</h2>
+          <div className="dev-pill-row" aria-label="Integration highlights">
+            <span className="dev-pill">Same backend as letsfg.co</span>
+            <span className="dev-pill">Ranked with reasoning</span>
+            <span className="dev-pill">Booking-first responses</span>
+            <span className="dev-pill">Card-backed access</span>
           </div>
 
-          <div className="dev-card-grid">
-            <article className="dev-card">
-              <span className="dev-card-kicker">Production API</span>
-              <h3>Use the REST API for live partner integrations.</h3>
-              <p>
-                Base URL: <code>{API_BASE_URL}</code>
-              </p>
-              <p>
-                Auth: send your key in the <code>X-API-Key</code> header.
-              </p>
-              <p>
-                If you need a dedicated partner key or custom limits, email{' '}
-                <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>.
-              </p>
-            </article>
-
-            <article className="dev-card">
-              <span className="dev-card-kicker">OpenAPI + docs</span>
-              <h3>Everything public is already documented.</h3>
-              <p>
-                Interactive docs: <a href={SWAGGER_URL} target="_blank" rel="noreferrer">Swagger</a> and{' '}
-                <a href={REDOC_URL} target="_blank" rel="noreferrer">ReDoc</a>.
-              </p>
-              <p>
-                Importable spec: <a href={OPENAPI_URL} target="_blank" rel="noreferrer">openapi.yaml</a>.
-              </p>
-            </article>
-
-            <article className="dev-card">
-              <span className="dev-card-kicker">Fallbacks</span>
-              <h3>SDK and MCP stay available as backup paths.</h3>
-              <p>
-                JS and Python SDKs live in the public repo, and remote MCP is available at{' '}
-                <a href={MCP_URL} target="_blank" rel="noreferrer">{MCP_URL}</a>.
-              </p>
-              <p>
-                That makes the hybrid rollout straightforward: production API for live traffic,
-                SDK or MCP for local fallback and prototyping.
-              </p>
-            </article>
+          <div className="dev-cta-row">
+            <a href="#portal" className="dev-button dev-button--primary">
+              Get API access
+            </a>
+            <a href={SWAGGER_URL} target="_blank" rel="noreferrer" className="dev-button dev-button--ghost">
+              Browse docs
+            </a>
           </div>
         </div>
       </section>
 
       <section className="dev-section dev-section--compact">
         <div className="dev-shell">
-          <div className="dev-section-head">
-            <span className="dev-section-kicker">Stable contract</span>
-            <h2 className="dev-section-title">Endpoints you can wire against now.</h2>
-          </div>
+          <div className="dev-rate-table dev-rate-table--centered" aria-label="Pricing tiers">
+            <div className="dev-rate-table-head">
+              <span className="dev-section-kicker">Pricing</span>
+              <h2 className="dev-section-title">Usage-based search billing.</h2>
+              <p>
+                Minimum top-up is $5. Search pricing is calculated automatically from your total search volume.
+              </p>
+            </div>
 
-          <div className="dev-endpoint-grid">
-            {endpointCards.map((endpoint) => (
-              <article key={endpoint.path} className="dev-endpoint-card">
-                <div className="dev-endpoint-head">
-                  <span className="dev-method">{endpoint.method}</span>
-                  <code className="dev-path">{endpoint.path}</code>
-                </div>
-                <p className="dev-endpoint-summary">{endpoint.summary}</p>
-                <p className="dev-endpoint-status">{endpoint.status}</p>
-              </article>
+            {pricingCards.map((card) => (
+              <div key={card.range} className="dev-rate-row">
+                <span className="dev-rate-range">{card.range}</span>
+                <strong className="dev-rate-price">{card.rate}</strong>
+              </div>
             ))}
+
+            <p className="dev-rate-footnote">After 100 searches, the $0.10 rate stays the same.</p>
           </div>
         </div>
       </section>
 
-      <section className="dev-section dev-section--compact">
-        <div className="dev-shell dev-detail-grid">
-          <article className="dev-card dev-card--code">
-            <span className="dev-card-kicker">Search-only example</span>
-            <h3>Drop this into a provider adapter.</h3>
-            <pre className="dev-code"><code>{`const baseUrl = process.env.LETSFG_BASE_URL ?? 'https://api.letsfg.co';
-const apiKey = process.env.LETSFG_API_KEY!;
-
-const headers = {
-  'Content-Type': 'application/json',
-  'X-API-Key': apiKey,
-};
-
-const locations = await fetch(
-  \`${'${baseUrl}'}/api/v1/flights/resolve-location?query=London\`,
-  { headers }
-).then((response) => response.json());
-
-const results = await fetch(\`${'${baseUrl}'}/api/v1/flights/search\`, {
-  method: 'POST',
-  headers,
-  body: JSON.stringify({
-    origin: 'LON',
-    destination: 'BCN',
-    date_from: '2026-06-15',
-    adults: 1,
-    currency: 'EUR',
-  }),
-}).then((response) => response.json());`}</code></pre>
-          </article>
-
-          <article className="dev-card">
-            <span className="dev-card-kicker">API key flow</span>
-            <h3>Start immediately with self-serve registration.</h3>
-            <pre className="dev-code dev-code--small"><code>{`curl -X POST https://api.letsfg.co/api/v1/agents/register \\
-  -H "Content-Type: application/json" \\
-  -d '{"agent_name":"your-agent","email":"team@example.com"}'`}</code></pre>
-            <p>
-              That returns an API key for production calls today. If you want a dedicated partner key,
-              contact <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section className="dev-section dev-section--compact">
-        <div className="dev-shell dev-detail-grid">
-          <article className="dev-card">
-            <span className="dev-card-kicker">Rate limits</span>
-            <h3>Standard production limits.</h3>
-            <ul className="dev-list">
-              {rateLimits.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </article>
-
-          <article className="dev-card">
-            <span className="dev-card-kicker">Partner rollout notes</span>
-            <h3>What is manual today.</h3>
-            <ul className="dev-list">
-              {launchNotes.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </article>
-        </div>
-      </section>
-
-      <section className="dev-section dev-section--last">
-        <div className="dev-shell">
-          <div className="dev-contact-card">
-            <span className="dev-card-kicker">Need a fast rollout?</span>
-            <h2 className="dev-contact-title">Send the partner team your runtime shape and we can wire the rest around it.</h2>
-            <p className="dev-contact-copy">
-              If you are already building around <code>LETSFG_API_KEY</code> and{' '}
-              <code>LETSFG_BASE_URL</code>, you can ship location lookup plus search immediately and keep
-              unlock or booking for phase two.
-            </p>
-            <div className="dev-cta-row">
-              <a href={SUPPORT_MAILTO} className="dev-button dev-button--primary">
-                Email partner team
-              </a>
-              <a href={SWAGGER_URL} target="_blank" rel="noreferrer" className="dev-button dev-button--ghost">
-                Browse docs
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
+      <div id="portal">
+        <DevelopersPortal locale={locale} />
+      </div>
 
       <footer className="lp-footer">
         <Link href={`/${locale}`} className="lp-footer-link">
@@ -312,6 +166,9 @@ const results = await fetch(\`${'${baseUrl}'}/api/v1/flights/search\`, {
         </a>
         <a href={OPENAPI_URL} target="_blank" rel="noreferrer" className="lp-footer-link">
           OpenAPI
+        </a>
+        <a href={DOCS_URL} target="_blank" rel="noreferrer" className="lp-footer-link">
+          Docs
         </a>
         <a href={REPO_URL} target="_blank" rel="noreferrer" className="lp-footer-link">
           GitHub
