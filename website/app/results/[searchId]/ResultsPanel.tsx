@@ -1250,6 +1250,7 @@ export default function ResultsPanel({
       body: JSON.stringify({
         phase,
         searchId,
+        scannedDealsCount: allOffers.length,
         topOffers: globalRankTopThree.map(r => ({
           offer: {
             id: r.offer.id,
