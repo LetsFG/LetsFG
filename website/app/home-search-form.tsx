@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport, searchAirports } from './airports'
+import { findNearestAirport } from './lib/nearby-airports'
 import {
   CURRENCY_CHANGE_EVENT,
   readBrowserSearchCurrency,
@@ -703,6 +704,7 @@ const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
 }
 
 const LS_KEY_HOME_ORIGIN_PREFILL = 'lfg_home_origin_prefill'
+const SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED = 'lfg_home_origin_ip_lookup_attempted'
 
 function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): string {
   const cleaned = placeholder.replace(/^try:\s*/i, '').trim()
@@ -717,6 +719,26 @@ function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): strin
   }
 
   return AUTO_PREFILL_FALLBACK_SUFFIXES[locale] || AUTO_PREFILL_FALLBACK_SUFFIXES.en
+}
+
+function resolveAutoPrefillOriginFromCoordinates(lat: number, lon: number, locale: string): string {
+  const nearest = findNearestAirport(lat, lon)
+  if (!nearest) return ''
+
+  const airportMatch = findBestMatch(nearest.c, locale)
+  if (airportMatch) {
+    return getAirportName(airportMatch, locale)
+  }
+
+  const city = nearest.ci?.trim()
+  if (city) return city
+
+  const name = nearest.n
+    ?.replace(/\bInternational\b/gi, '')
+    ?.replace(/\bAirport\b/gi, '')
+    ?.replace(/\s{2,}/g, ' ')
+    ?.trim()
+  return name || nearest.c
 }
 
 export default function HomeSearchForm({
@@ -834,17 +856,64 @@ export default function HomeSearchForm({
 
     try {
       const cachedOrigin = localStorage.getItem(LS_KEY_HOME_ORIGIN_PREFILL)?.trim() || ''
-      if (!cachedOrigin || userEditedAutoPrefillRef.current) return
+      if (cachedOrigin && !userEditedAutoPrefillRef.current) {
+        const currentValue = inputRef.current?.value.trim() ?? ''
+        if (currentValue) return
+
+        setAutoPrefillOrigin(cachedOrigin)
+        setInputValue(cachedOrigin)
+        setQuery(cachedOrigin)
+        return
+      }
+
+      if (sessionStorage.getItem(SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED)) return
+      sessionStorage.setItem(SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED, '1')
+    } catch {
+      // Ignore storage failures in private mode.
+    }
+
+    if (typeof window === 'undefined') return
+
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 4000)
+
+    void fetch('https://ipwho.is/', {
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) return null
+      return response.json() as Promise<{
+        success?: boolean
+        latitude?: number
+        longitude?: number
+      }>
+    }).then((data) => {
+      if (!data?.success) return
+
+      const detectedOrigin = resolveAutoPrefillOriginFromCoordinates(
+        data.latitude ?? Number.NaN,
+        data.longitude ?? Number.NaN,
+        locale,
+      )
+      if (!detectedOrigin || userEditedAutoPrefillRef.current) return
 
       const currentValue = inputRef.current?.value.trim() ?? ''
       if (currentValue) return
 
-      setAutoPrefillOrigin(cachedOrigin)
-      setInputValue(cachedOrigin)
-      setQuery(cachedOrigin)
-    } catch {
-      // Ignore storage failures in private mode.
-    }
+      try {
+        localStorage.setItem(LS_KEY_HOME_ORIGIN_PREFILL, detectedOrigin)
+      } catch {
+        // Ignore storage failures in private mode.
+      }
+
+      setAutoPrefillOrigin(detectedOrigin)
+      setInputValue(detectedOrigin)
+      setQuery(detectedOrigin)
+    }).catch(() => {
+      // Ignore passive IP lookup failures; the form still works normally.
+    }).finally(() => {
+      window.clearTimeout(timeoutId)
+    })
   }, [autoPrefillOrigin, normalizedDetectedOrigin, normalizedInitialQuery])
 
   useEffect(() => {
