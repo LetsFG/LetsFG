@@ -704,7 +704,7 @@ const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
 }
 
 const LS_KEY_HOME_ORIGIN_PREFILL = 'lfg_home_origin_prefill'
-const SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED = 'lfg_home_origin_ip_lookup_attempted'
+const SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED = 'lfg_home_origin_ip_lookup_attempted_v2'
 
 function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): string {
   const cleaned = placeholder.replace(/^try:\s*/i, '').trim()
