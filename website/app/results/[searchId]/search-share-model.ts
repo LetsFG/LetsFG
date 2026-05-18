@@ -2,7 +2,7 @@ import { getOfferDisplayTotalPrice, type FxRateTable } from '../../../lib/displa
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import { deduplicateOffers } from '../../lib/rankOffers'
 import type { TripPurpose } from '../../lib/trip-purpose'
-import { findBestMatch } from '../../airports'
+import { resolveShareLocationName } from '../../airports'
 
 export interface FlightOffer {
   id: string
@@ -115,19 +115,31 @@ function formatCount(value: number) {
   return new Intl.NumberFormat('en-US').format(Math.max(0, Math.round(value)))
 }
 
-function resolveCodeDisplayName(value?: string) {
+function compactWhitespace(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function resolveCodeDisplayName(value?: string, options?: { preferCity?: boolean }) {
   const normalized = value?.trim().toUpperCase()
   if (!normalized || !/^[A-Z]{3}$/.test(normalized)) {
     return null
   }
 
-  const match = findBestMatch(normalized, 'en')
-  const displayName = match?.names?.en?.trim()
+  const displayName = resolveShareLocationName(normalized, options)
   if (!displayName || displayName.toUpperCase() === normalized) {
     return null
   }
 
   return displayName
+}
+
+function normalizeShareSummaryLabel(value?: string | null, options?: { preferCity?: boolean }) {
+  const compact = compactWhitespace(value || '')
+  if (!compact) {
+    return null
+  }
+
+  return resolveShareLocationName(compact, options) || compact
 }
 
 function resolvePlaceLabel(label?: string, fallback?: string) {
@@ -143,10 +155,6 @@ function resolvePlaceLabel(label?: string, fallback?: string) {
   }
 
   return 'Anywhere'
-}
-
-function compactWhitespace(value: string) {
-  return value.replace(/\s+/g, ' ').trim()
 }
 
 function shortenPlaceLabel(label: string) {
@@ -259,6 +267,29 @@ export function buildFallbackSearchQuery(parsed: SearchResult['parsed']): string
   return parts.join(' ').trim()
 }
 
+export function extractShareLabelsFromQuery(query?: string | null) {
+  const compact = compactWhitespace(query || '')
+  if (!compact) {
+    return null
+  }
+
+  const detectedCodes = Array.from(compact.matchAll(/\b[a-zA-Z]{3}\b/g)).map((match) => match[0])
+  if (detectedCodes.length < 2) {
+    return null
+  }
+
+  const fromLabel = normalizeShareSummaryLabel(detectedCodes[0], { preferCity: true })
+  const toLabel = normalizeShareSummaryLabel(detectedCodes[1], { preferCity: true })
+  if (!fromLabel || !toLabel) {
+    return null
+  }
+
+  return {
+    fromLabel,
+    toLabel,
+  }
+}
+
 export function buildMissingSearchShareSummary(): SearchShareSummary {
   return {
     status: 'missing',
@@ -281,6 +312,37 @@ export function buildMissingSearchShareSummary(): SearchShareSummary {
   }
 }
 
+export function buildFallbackSearchShareSummaryFromLabels(
+  fromLabel: string,
+  toLabel: string,
+  offersAnalyzed?: number | null,
+): SearchShareSummary {
+  const normalizedFromLabel = normalizeShareSummaryLabel(fromLabel, { preferCity: true }) || fromLabel
+  const normalizedToLabel = normalizeShareSummaryLabel(toLabel, { preferCity: true }) || toLabel
+  const routeLabel = `${normalizedFromLabel} → ${normalizedToLabel}`
+  const offersValue = formatCount(typeof offersAnalyzed === 'number' && offersAnalyzed > 0 ? offersAnalyzed : 0)
+
+  return {
+    status: 'completed',
+    fromLabel: shortenPlaceLabel(normalizedFromLabel),
+    toLabel: shortenPlaceLabel(normalizedToLabel),
+    routeLabel,
+    title: `Flights ${routeLabel} — LetsFG`,
+    description: `Live flight search results for ${routeLabel}. ${offersValue} offers analyzed. Zero markup, raw airline prices.`,
+    offersMetric: {
+      label: 'OFFERS ANALYZED',
+      value: offersValue,
+      caption: 'live offers',
+    },
+    secondaryMetric: {
+      label: 'STATUS',
+      value: 'Live',
+      caption: 'open results',
+    },
+    cheapestFormattedPrice: null,
+  }
+}
+
 export function buildSearchShareSummary(
   result: SearchResult,
   displayCurrency?: string,
@@ -294,8 +356,14 @@ export function buildSearchShareSummary(
     ? null
     : formatCurrencyAmount(cheapestDisplayPrice, currency)
 
-  const fromFull = resolvePlaceLabel(result.parsed.origin_name, result.parsed.origin)
-  const toFull = resolvePlaceLabel(result.parsed.destination_name, result.parsed.destination)
+  const fromFull = normalizeShareSummaryLabel(
+    resolvePlaceLabel(result.parsed.origin_name, result.parsed.origin),
+    { preferCity: true },
+  ) || resolvePlaceLabel(result.parsed.origin_name, result.parsed.origin)
+  const toFull = normalizeShareSummaryLabel(
+    resolvePlaceLabel(result.parsed.destination_name, result.parsed.destination),
+    { preferCity: true },
+  ) || resolvePlaceLabel(result.parsed.destination_name, result.parsed.destination)
   const routeLabel = `${fromFull} → ${toFull}`
   const offersAnalyzed = resolveOffersAnalyzed(result, dedupedOffers, options?.offersAnalyzedOverride)
   const topPicks = resolveTopPicks(result)

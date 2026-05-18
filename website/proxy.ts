@@ -10,6 +10,7 @@ import {
   getGlobalRateLimitStore,
   getRateLimitPolicy,
 } from './lib/rate-limit'
+import { isPublicShareAssetPath } from './lib/share-preview'
 
 const intlMiddleware = createMiddleware(routing)
 const ANON_USER_COOKIE_MAX_AGE_SECONDS = 10 * 365 * 24 * 60 * 60
@@ -112,6 +113,7 @@ export default function proxy(req: NextRequest) {
       || routing.defaultLocale
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-next-intl-locale', detectedLocale)
+    requestHeaders.set('x-letsfg-pathname', pathname)
     requestHeaders.set(SESSION_UID_HEADER_NAME, sessionUid)
     res = NextResponse.next({ request: { headers: requestHeaders } })
   } else {
@@ -132,8 +134,10 @@ export default function proxy(req: NextRequest) {
     path: '/',
   } as const
 
-  res.cookies.set(HOSTING_SESSION_COOKIE_NAME, sessionUid, cookieOptions)
-  res.cookies.set(LEGACY_UID_COOKIE_NAME, sessionUid, cookieOptions)
+  if (!isPublicShareAssetPath(pathname)) {
+    res.cookies.set(HOSTING_SESSION_COOKIE_NAME, sessionUid, cookieOptions)
+    res.cookies.set(LEGACY_UID_COOKIE_NAME, sessionUid, cookieOptions)
+  }
 
   if (rateLimitDecision) {
     setRateLimitHeaders(res, pathname, rateLimitDecision)
