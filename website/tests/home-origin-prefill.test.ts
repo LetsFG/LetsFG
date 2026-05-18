@@ -4,7 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { resolveHomeOriginFromCoordinates } from '../lib/home-origin-prefill.ts'
+import { resolveHomeOriginFromCoordinates, resolveHomeOriginPrefill } from '../lib/home-origin-prefill.ts'
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url))
 const WEBSITE_ROOT = path.resolve(TEST_DIR, '..')
@@ -32,4 +32,18 @@ test('homepage passes the detected origin into the search form and keeps the ric
   assert.match(formSource, /const autoPrefillPristine = !!autoPrefillOrigin/)
   assert.match(formSource, /buildAutoPrefillGhostSuffix\(locale, heroPlaceholder\)/)
   assert.match(formSource, /if \(autoPrefillPristine\) \{/)
+})
+
+test('geoip fallback skips private proxy hops in forwarded IP chains', () => {
+  const headers = {
+    get(name: string) {
+      return name.toLowerCase() === 'x-forwarded-for' ? '10.0.0.1, 8.8.8.8' : null
+    },
+  }
+
+  const resolved = resolveHomeOriginPrefill(headers, 'en')
+
+  assert.ok(resolved)
+  assert.equal(resolved?.code, 'ICT')
+  assert.equal(resolved?.city, 'Wichita')
 })
