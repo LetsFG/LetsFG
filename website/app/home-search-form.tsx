@@ -741,6 +741,46 @@ function resolveAutoPrefillOriginFromCoordinates(lat: number, lon: number, local
   return name || nearest.c
 }
 
+async function loadPassiveIpCoordinates(signal: AbortSignal): Promise<{ latitude: number; longitude: number } | null> {
+  try {
+    const response = await fetch('https://ipinfo.io/json', {
+      cache: 'no-store',
+      signal,
+    })
+    if (response.ok) {
+      const data = (await response.json()) as { loc?: string }
+      const [latRaw = '', lonRaw = ''] = data.loc?.split(',') ?? []
+      const latitude = Number.parseFloat(latRaw)
+      const longitude = Number.parseFloat(lonRaw)
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return { latitude, longitude }
+      }
+    }
+  } catch {
+    // Fall through to the secondary passive IP provider.
+  }
+
+  try {
+    const response = await fetch('https://ipapi.co/json/', {
+      cache: 'no-store',
+      signal,
+    })
+    if (!response.ok) return null
+
+    const data = (await response.json()) as {
+      latitude?: number
+      longitude?: number
+    }
+    const latitude = data.latitude ?? Number.NaN
+    const longitude = data.longitude ?? Number.NaN
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+    return { latitude, longitude }
+  } catch {
+    return null
+  }
+}
+
 export default function HomeSearchForm({
   initialQuery = '',
   initialDetectedOrigin = '',
@@ -877,22 +917,12 @@ export default function HomeSearchForm({
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => controller.abort(), 4000)
 
-    void fetch('https://ipwho.is/', {
-      cache: 'no-store',
-      signal: controller.signal,
-    }).then(async (response) => {
-      if (!response.ok) return null
-      return response.json() as Promise<{
-        success?: boolean
-        latitude?: number
-        longitude?: number
-      }>
-    }).then((data) => {
-      if (!data?.success) return
+    void loadPassiveIpCoordinates(controller.signal).then((data) => {
+      if (!data) return
 
       const detectedOrigin = resolveAutoPrefillOriginFromCoordinates(
-        data.latitude ?? Number.NaN,
-        data.longitude ?? Number.NaN,
+        data.latitude,
+        data.longitude,
         locale,
       )
       if (!detectedOrigin || userEditedAutoPrefillRef.current) return
