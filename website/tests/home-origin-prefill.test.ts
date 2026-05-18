@@ -32,9 +32,8 @@ test('homepage passes the detected origin into the search form and keeps the ric
   assert.match(formSource, /const autoPrefillPristine = !!autoPrefillOrigin/)
   assert.match(formSource, /buildAutoPrefillGhostSuffix\(locale, heroPlaceholder\)/)
   assert.match(formSource, /if \(autoPrefillPristine\) \{/)
-  assert.match(formSource, /navigator\.geolocation\.getCurrentPosition/)
   assert.match(formSource, /localStorage\.getItem\(LS_KEY_HOME_ORIGIN_PREFILL\)/)
-  assert.match(formSource, /resolveAutoPrefillOriginFromCoordinates\(/)
+  assert.doesNotMatch(formSource, /navigator\.geolocation\.getCurrentPosition/)
 })
 
 test('geoip fallback skips private proxy hops in forwarded IP chains', () => {
