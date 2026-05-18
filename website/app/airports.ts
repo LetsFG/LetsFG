@@ -456,6 +456,48 @@ function getLocationAliases(entry: GeneratedLocationEntry): string[] {
   )
 }
 
+function resolveLocationDisplayName(entry: GeneratedLocationEntry): string {
+  if (entry.type !== 'city' || !entry.airports?.length) return entry.name
+
+  const normalizedAliases = new Set(getLocationAliases(entry))
+  const candidateCities = new Map<string, { label: string; count: number; aliasMatch: boolean }>()
+
+  for (const airportCode of entry.airports) {
+    const airportEntry = GENERATED_LOCATION_BY_CODE.get(airportCode)
+    const label = airportEntry?.city?.trim()
+    if (!label) continue
+
+    const normalizedLabel = normalizeForSearch(label)
+    if (!normalizedLabel) continue
+
+    const existing = candidateCities.get(normalizedLabel)
+    if (existing) {
+      existing.count += 1
+      continue
+    }
+
+    candidateCities.set(normalizedLabel, {
+      label,
+      count: 1,
+      aliasMatch: normalizedAliases.has(normalizedLabel),
+    })
+  }
+
+  let bestCandidate: { label: string; count: number; aliasMatch: boolean } | null = null
+  for (const candidate of candidateCities.values()) {
+    if (
+      !bestCandidate ||
+      candidate.count > bestCandidate.count ||
+      (candidate.count === bestCandidate.count && Number(candidate.aliasMatch) > Number(bestCandidate.aliasMatch)) ||
+      (candidate.count === bestCandidate.count && candidate.aliasMatch === bestCandidate.aliasMatch && candidate.label.length < bestCandidate.label.length)
+    ) {
+      bestCandidate = candidate
+    }
+  }
+
+  return bestCandidate?.label || entry.name
+}
+
 function getAirportSearchTerms(airport: Airport): string[] {
   const localizedNames = Object.values(airport.names)
     .map((name) => normalizeForSearch(name))
@@ -474,7 +516,7 @@ function getAirportSearchTerms(airport: Airport): string[] {
 function toLocationMatch(entry: GeneratedLocationEntry): LocationMatch {
   return {
     code: entry.code,
-    name: entry.name,
+    name: resolveLocationDisplayName(entry),
     type: entry.type,
     country: entry.country,
   }
@@ -585,7 +627,7 @@ for (const entry of ALL_GENERATED_LOCATIONS) {
   if (entry.type !== 'city' || !entry.airports || entry.airports.length <= 1) continue
   const cityAirport: Airport & { isCity: true } = {
     code: entry.code,
-    names: { en: entry.name },
+    names: { en: resolveLocationDisplayName(entry) },
     country: entry.country,
     isCity: true,
   }
