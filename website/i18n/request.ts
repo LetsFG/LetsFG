@@ -14,10 +14,8 @@ export default getRequestConfig(async ({ requestLocale }) => {
     locale = resolveLocaleCookieValue((cookieName) => cookieStore.get(cookieName)?.value) || routing.defaultLocale
   }
 
-  const resolvedLocale = locale || routing.defaultLocale
-
   return {
-    locale: resolvedLocale,
-    messages: (await import(`../messages/${resolvedLocale}.json`)).default,
+    locale,
+    messages: (await import(`../messages/${locale}.json`)).default,
   }
 })

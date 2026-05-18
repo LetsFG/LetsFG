@@ -15,9 +15,11 @@ test('active results URLs keep recent search context while the search is still r
   const source = readSource('app/results/[searchId]/SearchPageClient.tsx')
 
   assert.match(source, /function normalizeStartedAtParam\(/)
+  assert.match(source, /if \(currency\) \{\s*params\.set\('cur', currency\)\s*\}/s)
   assert.match(source, /if \(\/\^\\d\+\$\/\.test\(value\)\) \{\s*const numeric = Number\.parseInt\(value, 10\)/s)
   assert.match(source, /if \(startedAt\) \{\s*params\.set\('started', startedAt\)\s*\}/s)
   assert.match(source, /if \(preserveQuery\) \{\s*params\.set\('q', query\)\s*\}/s)
+  assert.match(source, /currency: displayCurrency,/)
   assert.match(source, /startedAt: status === 'searching' \? normalizeStartedAtParam\(searchedAt\) : undefined,/) 
   assert.match(source, /preserveQuery: status === 'searching',/)
   assert.match(source, /if \(startedParam\) params\.set\('started', startedParam\)/)

@@ -32,14 +32,21 @@ export function normalizeHomeConvoFollowUpTopics(
 
 export function buildHomeConvoTopicOrder(
   aiTopics: readonly string[] | null | undefined,
+  requiredTopics: readonly HomeConvoFollowUpTopic[] = [],
 ): HomeConvoFollowUpTopic[] {
+  const normalizedRequiredTopics = normalizeHomeConvoFollowUpTopics(requiredTopics)
   const normalizedAiTopics = normalizeHomeConvoFollowUpTopics(aiTopics)
-  const preferredPersonalizationTopics = normalizedAiTopics.filter((topic) => !HOME_CONVO_ESSENTIAL_TOPICS.includes(topic))
+
+  if (normalizedAiTopics.length > 0) {
+    return [
+      ...normalizedRequiredTopics,
+      ...normalizedAiTopics.filter((topic) => !normalizedRequiredTopics.includes(topic)),
+    ]
+  }
 
   return [
     ...HOME_CONVO_ESSENTIAL_TOPICS,
-    ...preferredPersonalizationTopics,
-    ...HOME_CONVO_PERSONALIZATION_TOPICS.filter((topic) => !preferredPersonalizationTopics.includes(topic)),
+    ...HOME_CONVO_PERSONALIZATION_TOPICS,
   ]
 }
 

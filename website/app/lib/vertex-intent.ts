@@ -97,12 +97,12 @@ export function applyVertexIntent(
     }
   }
 
-  if (!viaIata && ai.via_city) {
+  if (ai.via_city) {
     const aiVia = resolveCity(ai.via_city)
     if (aiVia) viaIata = aiVia.code
   }
 
-  if (!cabin && ai.cabin_class) {
+  if (ai.cabin_class) {
     cabin = mapAiCabinClass(ai.cabin_class)
   }
 
@@ -132,10 +132,10 @@ export function applyVertexIntent(
   if (ai.ret_time_pref) aiIntent.ai_ret_time_pref = ai.ret_time_pref
   if (ai.passenger_context) aiIntent.ai_passenger_context = ai.passenger_context
 
-  if ((!dateFrom || parsed.date_is_default) && ai.departure_date) {
+  if (ai.departure_date) {
     dateFrom = ai.departure_date
   }
-  if (!returnDate && ai.return_date) {
+  if (ai.return_date) {
     returnDate = ai.return_date
   }
   if (returnDate && dateFrom && returnDate <= dateFrom) {
