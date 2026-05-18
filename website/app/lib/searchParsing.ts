@@ -4778,8 +4778,8 @@ export function parseNLQuery(query: string): ParsedQuery {
   if (destStr) {
     // Stop destination string at common date lead-ins that weren't caught by the regex
     destStr = destStr
-      // "next month" and multilingual equivalents must come first (before the next/this weekday rule)
-      .replace(/\s+(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+miesięcu?|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b.*/i, '')
+      // Relative month phrases must come first (before the next/this weekday rule)
+      .replace(/\s+(?:(?:next\s+month|nächsten?\s+monat|le\s+mois\s+prochain|el\s+(?:pr[oó]ximo\s+mes|mes\s+que\s+viene)|il\s+mese\s+prossimo|volgende\s+maand|n[aä]sta\s+m[aå]nad|sljedeći\s+miesięcu?|przyszłym?\s+miesiącu?|pr[oó]ximo\s+m[eê]s|muajin\s+e\s+ardhsh[eë]m|w\s+przyszłym\s+miesi[aą]cu)\b|今月|来月).*/i, '')
       .replace(/\s+(?:(?:next|this|ten|tego|t[ęe]|ta)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|vikend|helg|wochenende|fin\s+de\s+semana|week[-\s]?end|fine\s+settimana|weekeinde)|(?:the\s+week\s+of\s+thanksgiving|thanksgiving\s+week|thanksgiving))\b.*/i, '')
       // Strip Polish departure/arrival keywords absorbed into destStr (e.g. "Barcelony wyjazd piątek")
       .replace(/[,\s]+(?:wyjazd|wylot|odlot|powrót|przylot|lot\s+powrotny)\b.*/i, '')
@@ -5093,6 +5093,17 @@ export function parseNLQuery(query: string): ParsedQuery {
         if (d < today) d.setFullYear(today.getFullYear() + 1)
         return toLocalDateStr(d)
       }
+    }
+
+    // Japanese relative months: "今月", "来月"
+    if (text.includes('今月')) {
+      result.date_month_only = true
+      return toLocalDateStr(new Date(today.getFullYear(), today.getMonth(), today.getDate()))
+    }
+
+    if (text.includes('来月')) {
+      result.date_month_only = true
+      return toLocalDateStr(new Date(today.getFullYear(), today.getMonth() + 1, 1))
     }
 
     // Month-only: "in May", "im Mai", "en mayo", "en juin"

@@ -13,11 +13,11 @@ import {
 import { setResultsLocaleSearchParam } from '../lib/locale-routing'
 import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec, hasTripTypeContext } from './lib/home-convo-personalization'
 import { parseNLQuery } from './lib/searchParsing'
+import { applyVertexIntent } from './lib/vertex-intent'
 import {
   buildHomeConvoTopicOrder,
   needsDateClarification,
   normalizeHomeConvoFollowUpTopics,
-  shouldWaitForGeminiAssistOnHomeSubmit,
   type HomeConvoFollowUpTopic,
 } from './lib/home-search-assist'
 import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './lib/trip-purpose'
@@ -866,7 +866,11 @@ export default function HomeSearchForm({
   function buildConvoQuestions(_raw: string): ConvoQuestion[] {
     const p = convo?.parsed   // structured NLP result
     const qs: ConvoQuestion[] = []
-    const preferredTopicOrder = buildHomeConvoTopicOrder(convo?.aiFollowUpTopics)
+    const requiredTopics: HomeConvoFollowUpTopic[] = []
+    if (convo?.missingOrigin) requiredTopics.push('origin')
+    if (convo?.missingDestination) requiredTopics.push('destination')
+    if (needsDateClarification(p)) requiredTopics.push('date')
+    const preferredTopicOrder = buildHomeConvoTopicOrder(convo?.aiFollowUpTopics, requiredTopics)
 
     // ── 0a. City disambiguation — when we couldn’t resolve a city, show candidates ──
     // These are blocking questions: fix the city first, then the rest of the convo.
@@ -1291,63 +1295,86 @@ export default function HomeSearchForm({
     let aiFollowUpTopics: HomeConvoFollowUpTopic[] = []
     try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
 
-    // ── Gemini fallback for missing slots ───────────────────────────────────
-    // The regex parser is fast and deterministic but can miss exotic phrasing
-    // ("Tokyo to Sweden in June for 4 days" once tripped on "swed**en in** june",
-    //  any unusual relative date, slang trip purpose, etc.). When critical slots
-    // are still empty, race a /api/parse-query call (Gemini) against a 1.5s
-    // budget and merge any fields it fills. Only fills *missing* fields — never
-    // overrides a successful regex hit. Net effect: home page stops asking
-    // dumb follow-up questions for queries the regex couldn't crack.
-    const needsGeminiAssist = shouldWaitForGeminiAssistOnHomeSubmit(trimmed, _nlp)
-    if (needsGeminiAssist) {
-      try {
-        const ctrl = new AbortController()
-        const timer = setTimeout(() => ctrl.abort(), 1500)
-        const resp = await fetch('/api/parse-query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: trimmed }),
-          signal: ctrl.signal,
-        }).catch(() => null)
-        clearTimeout(timer)
-        if (resp && resp.ok) {
-          const ai = await resp.json().catch(() => null) as {
-            origin?: string | null; origin_name?: string | null
-            destination?: string | null; destination_name?: string | null
-            departure_date?: string | null; return_date?: string | null
-            passengers?: number | null; trip_purpose?: TripPurpose | null; trip_purposes?: TripPurpose[] | null
-            anywhere_destination?: boolean
-            follow_up_topics?: string[] | null
-          } | null
-          if (ai) {
-            aiFollowUpTopics = normalizeHomeConvoFollowUpTopics(ai.follow_up_topics)
-            const base: ReturnType<typeof parseNLQuery> = _nlp ?? ({} as ReturnType<typeof parseNLQuery>)
-            // Fill ONLY missing fields (Gemini never overrides a successful regex hit)
-            if (!base.origin && ai.origin) { base.origin = ai.origin; if (ai.origin_name) base.origin_name = ai.origin_name }
-            if (!base.destination && ai.destination) { base.destination = ai.destination; if (ai.destination_name) base.destination_name = ai.destination_name }
-            if ((!base.date || base.date_is_default) && ai.departure_date) {
-              base.date = ai.departure_date
-              base.date_is_default = false
-            }
-            if (!base.return_date && ai.return_date) base.return_date = ai.return_date
-            if (!base.adults && ai.passengers && ai.passengers > 0) base.adults = ai.passengers
-            const mergedTripPurposes = normalizeTripPurposes({
-              tripPurpose: base.trip_purpose,
-              tripPurposes: [...(base.trip_purposes ?? []), ...(ai.trip_purposes ?? []), ai.trip_purpose],
-            })
-            if (mergedTripPurposes.length > 0) {
-              base.trip_purposes = mergedTripPurposes
-              if (!base.trip_purpose) base.trip_purpose = mergedTripPurposes[0]
-            }
-            if (!base.anywhere_destination && ai.anywhere_destination) base.anywhere_destination = true
-            // Final ordering sanity check
-            if (base.return_date && base.date && base.return_date <= base.date) base.return_date = undefined
-            _nlp = base
+    // ── Gemini-first parse on every submit ──────────────────────────────────
+    // The deterministic parser remains the instant local fallback and preserves
+    // fuzzy/disambiguation state, but homepage submit now always races Gemini so
+    // multilingual intent extraction and follow-up planning are the default path.
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 1500)
+      const resp = await fetch('/api/parse-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: trimmed }),
+        signal: ctrl.signal,
+      }).catch(() => null)
+      clearTimeout(timer)
+      if (resp && resp.ok) {
+        const ai = await resp.json().catch(() => null) as {
+          origin?: string | null; origin_name?: string | null
+          destination?: string | null; destination_name?: string | null
+          origin_city: string | null; destination_city: string | null; via_city: string | null
+          origin_lat?: number | null; origin_lon?: number | null
+          destination_lat?: number | null; destination_lon?: number | null
+          departure_date?: string | null; return_date?: string | null
+          passengers?: number | null
+          cabin_class?: 'economy' | 'premium_economy' | 'business' | 'first' | null
+          trip_purpose?: TripPurpose | null; trip_purposes?: TripPurpose[] | null
+          direct_only?: boolean | null; sort_by?: 'price' | 'duration' | null
+          depart_after?: string | null; depart_before?: string | null
+          bags_included?: boolean | null
+          dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+          ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+          passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
+          is_round_trip?: boolean | null
+          anywhere_destination?: boolean
+          follow_up_topics?: HomeConvoFollowUpTopic[] | null
+        } | null
+        if (ai) {
+          aiFollowUpTopics = normalizeHomeConvoFollowUpTopics(ai.follow_up_topics)
+          const base: ReturnType<typeof parseNLQuery> = _nlp ?? ({} as ReturnType<typeof parseNLQuery>)
+          const appliedAi = applyVertexIntent(base, ai, base.adults || 1)
+          if (appliedAi.origin) {
+            base.origin = appliedAi.origin
+            base.origin_name = appliedAi.originName
+            delete base.failed_origin_raw
+            delete base.origin_candidates
           }
+          if (appliedAi.destination) {
+            base.destination = appliedAi.destination
+            base.destination_name = appliedAi.destinationName
+            delete base.failed_destination_raw
+            delete base.destination_candidates
+          }
+          if (appliedAi.viaIata) base.via_iata = appliedAi.viaIata
+          if (appliedAi.dateFrom) {
+            base.date = appliedAi.dateFrom
+            base.date_is_default = false
+          }
+          base.return_date = appliedAi.returnDate
+          base.adults = appliedAi.adults
+          if (appliedAi.cabin) base.cabin = appliedAi.cabin
+          const mergedTripPurposes = normalizeTripPurposes({
+            tripPurpose: base.trip_purpose,
+            tripPurposes: [...(base.trip_purposes ?? []), ...(ai.trip_purposes ?? []), ai.trip_purpose],
+          })
+          if (mergedTripPurposes.length > 0) {
+            base.trip_purposes = mergedTripPurposes
+            base.trip_purpose = getPrimaryTripPurpose({ tripPurpose: base.trip_purpose, tripPurposes: mergedTripPurposes })
+          }
+          if (ai.passenger_context) base.passenger_context = ai.passenger_context
+          if (ai.anywhere_destination) {
+            base.anywhere_destination = true
+            delete base.destination
+            delete base.destination_name
+            delete base.failed_destination_raw
+            delete base.destination_candidates
+          }
+          if (base.return_date && base.date && base.return_date <= base.date) base.return_date = undefined
+          _nlp = base
         }
-      } catch { /* ignore — fall back to regex-only behaviour */ }
-    }
+      }
+    } catch { /* ignore — fall back to local parser behaviour */ }
 
     // Detect whether the user explicitly said "from <city>" (true directional origin).
     // A bare city name with no direction word is treated as destination — we ask where they depart FROM.

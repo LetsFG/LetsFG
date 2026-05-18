@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   buildHomeConvoTopicOrder,
+  needsDateClarification,
   normalizeHomeConvoFollowUpTopics,
   shouldWaitForGeminiAssistOnHomeSubmit,
 } from '../app/lib/home-search-assist.ts'
@@ -69,6 +70,27 @@ test('home submit still waits for AI date help when the convo would otherwise as
   })
 })
 
+test('home submit keeps Japanese relative-month queries in date clarification mode', () => {
+  withFixedNow('2026-05-14T12:00:00Z', () => {
+    const thisMonthQuery = '東京からバルセロナ 今月'
+    const thisMonthParsed = parseNLQuery(thisMonthQuery)
+
+    assert.equal(thisMonthParsed.origin, 'TYO')
+    assert.equal(thisMonthParsed.destination, 'BCN')
+    assert.equal(thisMonthParsed.date, '2026-05-14')
+    assert.equal(thisMonthParsed.date_month_only, true)
+    assert.equal(thisMonthParsed.date_is_default, undefined)
+    assert.equal(needsDateClarification(thisMonthParsed), true)
+    assert.equal(shouldWaitForGeminiAssistOnHomeSubmit(thisMonthQuery, thisMonthParsed), true)
+
+    const nextMonthParsed = parseNLQuery('東京からバルセロナ 来月')
+
+    assert.equal(nextMonthParsed.date, '2026-06-01')
+    assert.equal(nextMonthParsed.date_month_only, true)
+    assert.equal(nextMonthParsed.date_is_default, undefined)
+  })
+})
+
 test('home submit now waits for AI when the home convo needs personalization help', () => {
   withFixedNow('2026-05-14T12:00:00Z', () => {
     const query = 'London to Paris next Friday'
@@ -88,7 +110,12 @@ test('home convo topic helpers preserve essential question order while honoring 
   )
 
   assert.deepEqual(
-    buildHomeConvoTopicOrder(['priority', 'trip_purpose']),
-    ['origin', 'destination', 'date', 'priority', 'trip_purpose', 'party_size', 'trip_type'],
+    buildHomeConvoTopicOrder(undefined),
+    ['origin', 'destination', 'date', 'party_size', 'trip_type', 'trip_purpose', 'priority'],
+  )
+
+  assert.deepEqual(
+    buildHomeConvoTopicOrder(['priority', 'trip_purpose'], ['date']),
+    ['date', 'priority', 'trip_purpose'],
   )
 })

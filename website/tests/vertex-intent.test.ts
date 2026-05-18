@@ -75,3 +75,36 @@ test('applyVertexIntent maps AI cabin class into the backend cabin code when reg
   assert.equal(applied.cabin, 'C')
   assert.equal(applied.aiIntent.ai_cabin_class, 'business')
 })
+
+test('applyVertexIntent prefers AI dates and cabin when Gemini provides them', () => {
+  const parsed = parseNLQuery('London to New York next Friday')
+  parsed.cabin = 'M'
+
+  const ai: VertexCityResult = {
+    origin_city: 'London',
+    destination_city: 'New York, New York',
+    via_city: null,
+    passengers: 2,
+    cabin_class: 'business',
+    direct_only: null,
+    sort_by: null,
+    depart_after: null,
+    depart_before: null,
+    bags_included: null,
+    trip_purpose: null,
+    dep_time_pref: null,
+    ret_time_pref: null,
+    passenger_context: 'couple',
+    is_round_trip: true,
+    departure_date: '2026-05-23',
+    return_date: '2026-05-30',
+  }
+
+  const applied = applyVertexIntent(parsed, ai, parsed.adults || 1)
+
+  assert.equal(applied.dateFrom, '2026-05-23')
+  assert.equal(applied.returnDate, '2026-05-30')
+  assert.equal(applied.cabin, 'C')
+  assert.equal(applied.adults, 2)
+  assert.equal(applied.aiIntent.ai_passenger_context, 'couple')
+})

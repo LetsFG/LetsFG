@@ -55,6 +55,7 @@ function buildResultsSharePath({
   query,
   locale,
   isTestSearch,
+  currency,
   offersCountOverride,
   fswSession,
   startedAt,
@@ -64,6 +65,7 @@ function buildResultsSharePath({
   query: string
   locale: string
   isTestSearch: boolean
+  currency?: string
   offersCountOverride?: number
   fswSession?: string
   startedAt?: string
@@ -93,6 +95,10 @@ function buildResultsSharePath({
 
   if (preserveQuery) {
     params.set('q', query)
+  }
+
+  if (currency) {
+    params.set('cur', currency)
   }
 
   setResultsLocaleSearchParam(params, locale)
@@ -562,9 +568,10 @@ export default function SearchPageClient({
       query,
       locale,
       isTestSearch,
+      currency: displayCurrency,
       offersCountOverride: status === 'completed' ? offers.length : undefined,
     }),
-    [isTestSearch, locale, offers.length, query, searchId, status],
+    [displayCurrency, isTestSearch, locale, offers.length, query, searchId, status],
   )
   const activeResultsPath = useMemo(
     () => buildResultsSharePath({
@@ -572,6 +579,7 @@ export default function SearchPageClient({
       query,
       locale,
       isTestSearch,
+      currency: displayCurrency,
       offersCountOverride: status === 'completed' ? offers.length : undefined,
       // Keep Cloud Run affinity in the address bar while the search is still
       // live so discarded/restored tabs can resume polling the owning FSW
@@ -582,7 +590,7 @@ export default function SearchPageClient({
       startedAt: status === 'searching' ? normalizeStartedAtParam(searchedAt) : undefined,
       preserveQuery: status === 'searching',
     }),
-    [fswSession, isTestSearch, locale, offers.length, query, searchId, searchedAt, status],
+    [displayCurrency, fswSession, isTestSearch, locale, offers.length, query, searchId, searchedAt, status],
   )
   const tripMin = searchParams.get('trip_min') ? parseInt(searchParams.get('trip_min')!, 10) : parsed.min_trip_days
   const tripMax = searchParams.get('trip_max') ? parseInt(searchParams.get('trip_max')!, 10) : parsed.max_trip_days
