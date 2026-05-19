@@ -100,6 +100,21 @@ class FlightSearchRequest(BaseModel):
         default_factory=dict,
         description="Provider-specific filter payloads keyed by provider name, e.g. {'google_flights': {...}}",
     )
+    country_filter: Optional[frozenset[str]] = Field(
+        default=None,
+        description="ISO alpha-2 countries used to filter source markets and route endpoints",
+    )
+    include_global: bool = Field(
+        False,
+        description="Include global aggregators when country_filter is active",
+    )
+
+    @field_validator("country_filter", mode="before")
+    @classmethod
+    def validate_country_filter(cls, v: Any) -> Optional[frozenset[str]]:
+        if v is None:
+            return None
+        return frozenset(str(code).strip().upper() for code in v if str(code).strip())
 
     @field_validator("origin", "destination")
     @classmethod

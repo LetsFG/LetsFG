@@ -33,6 +33,7 @@ except ImportError:
 
 from letsfg.client import LetsFG, LetsFGError, AuthenticationError
 from letsfg.connectors.currency import fetch_rates, _fallback_convert
+from letsfg.connectors.source_regions import REGIONS, resolve_country_filter
 
 app = typer.Typer(
     name="letsfg",
@@ -348,6 +349,9 @@ def search(
     direct: bool = typer.Option(False, "--direct", "-d", help="Direct flights only (shortcut for --max-stops 0)"),
     max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
     mode: Optional[str] = typer.Option(None, "--mode", "-m", help="Search mode: 'fast' (OTAs + key airlines, 20-40s) or default (all 200+ connectors)"),
+    country: Optional[list[str]] = typer.Option(None, "--country", "-C", help="Filter sources to ISO country code(s), comma-separated or repeated (e.g. BR or BR,AR)"),
+    region: Optional[str] = typer.Option(None, "--region", help="Filter sources by predefined region"),
+    include_global: bool = typer.Option(False, "--include-global", help="Include global aggregators when a country/region filter is active"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show pipeline diagnostics (per-source offer counts at each filter stage)"),
 ):
@@ -386,6 +390,10 @@ def search(
 
     # --direct is a shortcut for --max-stops 0
     effective_max_stops = 0 if direct else max_stops
+    try:
+        country_filter = resolve_country_filter(country, region)
+    except ValueError as e:
+        _err(f"{e} Valid regions: {', '.join(sorted(REGIONS))}.")
 
     async def _run():
         asyncio.get_event_loop().set_exception_handler(lambda loop, ctx: None)
@@ -402,6 +410,8 @@ def search(
             max_browsers=max_browsers,
             max_stopovers=effective_max_stops,
             mode=mode,
+            country_filter=country_filter,
+            include_global=include_global,
         )
 
     try:

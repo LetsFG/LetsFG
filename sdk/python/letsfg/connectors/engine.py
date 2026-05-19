@@ -244,6 +244,7 @@ from .starair import StarAirConnectorClient
 from .his import HISConnectorClient
 
 from ..models.flights import AirlineSummary, FlightOffer, FlightSearchRequest, FlightSearchResponse
+from .source_regions import REGIONS, passes_country_filter, route_touches_country
 
 logger = logging.getLogger(__name__)
 
@@ -891,6 +892,9 @@ class MultiProvider:
         if fast_mode:
             logger.info("Fast mode: using ~25 OTAs/metas/key LCCs instead of %d full connectors",
                         len(_DIRECT_AIRLINE_connectorS))
+        country_filter = req.country_filter
+        include_global = req.include_global
+        country_skipped = 0
         
         tasks = []
         providers_used = []
@@ -932,7 +936,8 @@ class MultiProvider:
         if ryanair_connector and (not fast_mode or "ryanair_direct" in _FAST_MODE_SOURCES) and (
                 not cabin_filter_active or "ryanair_direct" not in _ECONOMY_ONLY_SOURCES) and (
                 not origin_country or not dest_country or not ryanair_countries
-                or (origin_country in ryanair_countries and dest_country in ryanair_countries)):
+                or (origin_country in ryanair_countries and dest_country in ryanair_countries)) and (
+                passes_country_filter("ryanair_direct", req.origin, req.destination, country_filter, include_global)):
             tasks.append(self._search_ryanair_direct(ryanair_connector, req))
             providers_used.append("ryanair_direct")
 
@@ -941,12 +946,14 @@ class MultiProvider:
         if _BROWSERS_AVAILABLE and wizzair_connector and (not fast_mode or "wizzair_direct" in _FAST_MODE_SOURCES) and (
                 not cabin_filter_active or "wizzair_direct" not in _ECONOMY_ONLY_SOURCES) and (
                 not origin_country or not dest_country or not wizz_countries
-                or (origin_country in wizz_countries and dest_country in wizz_countries)):
+                or (origin_country in wizz_countries and dest_country in wizz_countries)) and (
+                passes_country_filter("wizzair_direct", req.origin, req.destination, country_filter, include_global)):
             tasks.append(self._search_wizzair_direct(wizzair_connector, req))
             providers_used.append("wizzair_direct")
 
         # Kiwi is a global aggregator — always query it (always in fast mode set)
-        if kiwi_connector and (not fast_mode or "kiwi_connector" in _FAST_MODE_SOURCES):
+        if kiwi_connector and (not fast_mode or "kiwi_connector" in _FAST_MODE_SOURCES) and (
+                passes_country_filter("kiwi_connector", req.origin, req.destination, country_filter, include_global)):
             tasks.append(self._search_kiwi_connector(kiwi_connector, req))
             providers_used.append("kiwi_connector")
 
@@ -987,6 +994,22 @@ class MultiProvider:
             logger.info("Fast mode: filtered to %d/%d connectors",
                         len(filtered_connectors), before_fast)
 
+        if country_filter is not None:
+            before_country = len(filtered_connectors)
+            filtered_connectors = [
+                (src, cls, t) for src, cls, t in filtered_connectors
+                if passes_country_filter(src, req.origin, req.destination, country_filter, include_global)
+            ]
+            country_skipped = before_country - len(filtered_connectors)
+            if country_skipped:
+                logger.info("Country filter: skipped %d/%d connectors for country=%s include_global=%s",
+                            country_skipped, before_country, sorted(country_filter), include_global)
+
+        has_special_country_source = any(
+            provider in {"ryanair_direct", "wizzair_direct", "kiwi_connector"}
+            for provider in providers_used
+        )
+
         # Skip browser-based connectors when Chrome is not available
         # (cloud/agent environments). API-only connectors still run.
         browser_skipped = 0
@@ -1001,6 +1024,15 @@ class MultiProvider:
                 logger.info("No browser available — skipped %d browser-based connectors "
                             "(API-only connectors + Kiwi aggregator still active)",
                             browser_skipped)
+
+        if country_filter is not None and not self.backend_available and not has_special_country_source and not filtered_connectors:
+            valid_regions = ", ".join(sorted(REGIONS))
+            raise ValueError(
+                "No local sources matched country filter "
+                f"{sorted(country_filter)} for route {req.origin}->{req.destination}; "
+                f"{country_skipped} sources were removed. "
+                f"Try --include-global or a different --region. Valid regions: {valid_regions}."
+            )
 
         skipped = len(_DIRECT_AIRLINE_connectorS) - len(filtered_connectors)
         if skipped - browser_skipped > 0:
@@ -1065,6 +1097,8 @@ class MultiProvider:
                 # Skip economy-only connectors when cabin filter is active
                 if cabin_filter_active and label in _ECONOMY_ONLY_SOURCES:
                     continue
+                if not passes_country_filter(label, req.origin, req.destination, country_filter, include_global):
+                    continue
                 client_out = getter()
                 client_ret = getter()
                 if client_out:
@@ -1096,6 +1130,11 @@ class MultiProvider:
                 return_filtered = [
                     (s, c, t) for s, c, t in return_filtered
                     if s not in _ECONOMY_ONLY_SOURCES
+                ]
+            if country_filter is not None:
+                return_filtered = [
+                    (s, c, t) for s, c, t in return_filtered
+                    if passes_country_filter(s, return_req.origin, return_req.destination, country_filter, include_global)
                 ]
             # Skip browser connectors when Chrome is not available (same as outbound)
             if not _BROWSERS_AVAILABLE:
@@ -1224,6 +1263,17 @@ class MultiProvider:
                 failed.append(provider)
                 continue
             if isinstance(result, FlightSearchResponse):
+                if provider == "backend" and country_filter is not None:
+                    before_backend_country = len(result.offers)
+                    result.offers = [
+                        offer for offer in result.offers
+                        if self._offer_route_touches_country(offer, req, country_filter)
+                    ]
+                    result.total_results = len(result.offers)
+                    backend_country_skipped = before_backend_country - len(result.offers)
+                    if backend_country_skipped:
+                        logger.info("Country filter: removed %d backend offers for country=%s",
+                                    backend_country_skipped, sorted(country_filter))
                 if result.offers:
                     succeeded.append(f"{provider}({len(result.offers)})")
                 else:
@@ -1470,6 +1520,19 @@ class MultiProvider:
             search_params={},
             source_tiers=source_tiers,
         )
+
+    @staticmethod
+    def _offer_route_touches_country(
+        offer: FlightOffer,
+        req: FlightSearchRequest,
+        country_filter: frozenset[str],
+    ) -> bool:
+        """Backend offers are filtered by displayed route endpoints only."""
+        if offer.outbound and offer.outbound.segments:
+            first = offer.outbound.segments[0]
+            last = offer.outbound.segments[-1]
+            return route_touches_country(first.origin, last.destination, country_filter)
+        return route_touches_country(req.origin, req.destination, country_filter)
 
     # ── Telemetry: report connector health to backend ────────────────────────
 
