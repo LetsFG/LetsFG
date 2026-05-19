@@ -87,7 +87,7 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 | **Setup** | `pip install letsfg` | [letsfg.co/developers](https://letsfg.co/developers) | [letsfg.co](https://letsfg.co) |
 | **Runs where** | Your machine | Our servers | Our servers |
 
-- **Local:** Fires 200+ airline connectors on your machine via Playwright. Free and unlimited forever — personal use, tinkering, local agents. Searches take 1–15 min depending on how many connectors you run.
+- **Local:** Fires 200+ airline connectors on your machine via Playwright. Free, unlimited, personal use only. Searches take 1–15 min depending on how many connectors you run.
 - **Developer API:** Server-side search with no local browser requirements. Built for teams and products. Prepaid credits, no wait, extremely efficient. → [letsfg.co/developers](https://letsfg.co/developers)
 - **Website:** [letsfg.co](https://letsfg.co) is purpose-built for agents (OpenClaw, etc.) and humans who need instant results without installing anything. No browser automation required on your end.
 
