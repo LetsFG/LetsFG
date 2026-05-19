@@ -80,6 +80,16 @@ LetsFG is an agent-native flight search & booking platform. This public reposito
 
 **API Base URL:** `https://letsfg.co/developers/api/v1`
 
+### Three access modes
+
+| Mode | What it is | Speed | Cost |
+|------|-----------|-------|------|
+| **Local** (CLI / SDK / MCP-local) | 200+ connectors run on the user's machine via Playwright | 1–15 min | Free, unlimited |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Server-side search, no local browsers needed | Seconds | Prepaid credits |
+| **Website** ([letsfg.co](https://letsfg.co)) | Purpose-built for agents/humans who can't run local browsers (OpenClaw, etc.) | Seconds | Free search + small unlock fee |
+
+The local SDK is what this repository primarily contains. The Developer API and website backend live in the private repository (`LetsFG-private`).
+
 ## Repository Structure
 
 ```

@@ -17,6 +17,14 @@ description: "LetsFG — Agent-native flight search, hotel search, and booking A
 - **Packages:** PyPI `letsfg` · npm `letsfg` · npm `letsfg-mcp`
 - **License:** MIT
 
+## Access Modes
+
+| Mode | Best for | Speed | Cost |
+|------|----------|-------|------|
+| **Local** (CLI / `pip install letsfg` / MCP-local) | Personal use, local agents | 1–15 min (local browsers) | Free, unlimited |
+| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | Seconds (server-side) | Prepaid credits |
+| **Website** (`https://letsfg.co`) | Agents without local browser access (OpenClaw, etc.) | Seconds | Free search + small unlock fee |
+
 ## Skills
 
 ### search_flights

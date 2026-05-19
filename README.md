@@ -77,6 +77,22 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 
 ---
 
+## Three ways to use LetsFG
+
+| | **Local** (CLI / SDK / MCP) | **Developer API** | **Website** |
+|---|---|---|---|
+| **Best for** | Personal use, experimentation | Business / commercial / high-volume | Quick search, no install |
+| **Speed** | 1–15 min (local browsers) | Seconds (server-side) | Seconds |
+| **Cost** | 100% free, unlimited | Prepaid credits | Free search + small unlock fee |
+| **Setup** | `pip install letsfg` | [letsfg.co/developers](https://letsfg.co/developers) | [letsfg.co](https://letsfg.co) |
+| **Runs where** | Your machine | Our servers | Our servers |
+
+- **Local:** Fires 200+ airline connectors on your machine via Playwright. Free and unlimited forever — personal use, tinkering, local agents. Searches take 1–15 min depending on how many connectors you run.
+- **Developer API:** Server-side search with no local browser requirements. Built for teams and products. Prepaid credits, no wait, extremely efficient. → [letsfg.co/developers](https://letsfg.co/developers)
+- **Website:** [letsfg.co](https://letsfg.co) is purpose-built for agents (OpenClaw, etc.) and humans who need instant results without installing anything. No browser automation required on your end.
+
+---
+
 ## Real prices: LetsFG vs Google Flights
 
 We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026). Same airline, same itinerary — LetsFG was cheaper every time:
@@ -118,11 +134,14 @@ When you're ready to integrate it into your own agent, keep reading.
 |----------------|--------|--------|------|-------------|
 | **CLI / Python SDK / npm** | ✅ Free | ✅ Free | Ticket price only | Your machine |
 | **MCP Server (local)** | ✅ Free | ✅ Free | Ticket price only | Your machine |
+| **Developer API** | Prepaid | Prepaid | Ticket price only | Our servers |
 | **letsfg.co** | ✅ Free | Small one-time fee per search | Ticket price only | Our servers |
 
-**Local = 100% free.** The CLI, Python SDK, npm packages, and local MCP server run 200+ connectors covering 400+ airlines on your machine. No API key needed, no fees, no limits.
+**Local = 100% free, personal use.** The CLI, Python SDK, npm packages, and local MCP server run 200+ connectors covering 400+ airlines on your machine. No API key needed, no fees, no limits. Searches take 1–15 minutes depending on how many connectors run.
 
-**letsfg.co = free search + small unlock fee.** Search is free, and when you unlock a search you get the booking links for all flights from that search. Booking stays at the raw airline price — zero markup.
+**Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) runs searches server-side — no local Playwright, no wait, results in seconds. Built for products and teams. Prepaid credits.
+
+**letsfg.co = free search + small unlock fee.** Search is free, and when you unlock a search you get the booking links for all flights from that search. Purpose-built for agents (OpenClaw etc.) that can't run local browser automation.
 
 > 💡 **Know someone who travels?** The more people discover LetsFG, the more airlines we cover — and the better it gets for everyone. **[⭐ Star](https://github.com/LetsFG/LetsFG)** · **[Share with a friend](#-join-the-community-)**
 
