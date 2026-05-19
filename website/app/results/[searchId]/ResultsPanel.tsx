@@ -1729,7 +1729,8 @@ export default function ResultsPanel({
   ]
 
   return (
-    <div className="rf-layout rf-layout--curated">
+    <>
+      <div className="rf-layout rf-layout--curated">
       {/* ── Filter sidebar (hidden — curated mode) ─────────────────────── */}
       {/* ── Results card ───────────────────────────────────────────────────── */}
       <div className="rf-card-shell">
@@ -2353,5 +2354,6 @@ export default function ResultsPanel({
         onClose={() => setPickFeedbackPopupVisible(false)}
       />
     )}
+    </>
   )
 }
