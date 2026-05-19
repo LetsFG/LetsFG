@@ -25,7 +25,7 @@ from ..models.flights import (
     FlightSearchRequest,
     FlightSearchResponse,
 )
-from .momondo import _parse_booking_holdings_poll
+from .momondo import _booking_holdings_search_code, _parse_booking_holdings_poll
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,8 @@ class CheapflightsConnectorClient:
         from playwright.async_api import async_playwright
 
         api_responses: list[dict] = []
+        search_origin = _booking_holdings_search_code(req.origin)
+        search_dest = _booking_holdings_search_code(req.destination)
 
         async def on_response(response):
             url = response.url
@@ -108,11 +110,12 @@ class CheapflightsConnectorClient:
 
         pw = await async_playwright().start()
         try:
-            from .browser import get_proxy
+            from .browser import block_meta_search_resources, get_proxy, meta_search_bandwidth_args
             proxy = get_proxy("CHEAPFLIGHTS_PROXY") or get_proxy("KAYAK_PROXY")
             launch_kw: dict = {
                 "headless": False,
                 "args": [
+                    *meta_search_bandwidth_args(),
                     "--window-position=-2400,-2400",
                     "--window-size=1366,768",
                     "--disable-blink-features=AutomationControlled",
@@ -130,9 +133,7 @@ class CheapflightsConnectorClient:
                 ),
             )
             page = await ctx.new_page()
-            if proxy:
-                from .browser import auto_block_if_proxied
-                await auto_block_if_proxied(page)
+            await block_meta_search_resources(page)
             page.on("response", on_response)
 
             dep_date = req.date_from.isoformat()
@@ -140,7 +141,7 @@ class CheapflightsConnectorClient:
             cabin = _cf_cabin.get(req.cabin_class, "e") if req.cabin_class else "e"
             url = (
                 f"https://www.cheapflights.com/flight-search/"
-                f"{req.origin}-{req.destination}/{dep_date}/"
+                f"{search_origin}-{search_dest}/{dep_date}/"
                 f"{req.adults or 1}adult"
                 f"?sort=price_a&cabin={cabin}"
             )

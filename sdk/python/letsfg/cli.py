@@ -799,7 +799,7 @@ def recover(
     import urllib.request
     import urllib.error
 
-    url = base_url or os.environ.get("LETSFG_BASE_URL") or "https://api.letsfg.co"
+    url = base_url or os.environ.get("LETSFG_BASE_URL") or "https://letsfg.co/developers"
 
     if code:
         # Step 2: Verify code and get new key

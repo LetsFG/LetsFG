@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { sanitizePersistedSearchResult } from '../lib/results-cache.ts'
-import { applyGoogleFlightsBaseline, normalizeTrustedOffer } from '../lib/trusted-offer.ts'
+import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../lib/trusted-offer.ts'
 
 function buildOffer(raw: Record<string, unknown>, idx: number) {
   return normalizeTrustedOffer({
@@ -33,6 +33,34 @@ test('normalizeTrustedOffer drops non-positive Google comparison prices', () => 
   }, 0)
 
   assert.equal(offer.google_flights_price, undefined)
+})
+
+test('toPublicOffer keeps single-segment aircraft details for direct fares', () => {
+  const publicOffer = toPublicOffer(normalizeTrustedOffer({
+    id: 'direct-with-aircraft',
+    price: 320,
+    currency: 'USD',
+    airline: 'Example Air',
+    outbound: {
+      stopovers: 0,
+      total_duration_seconds: 9 * 60 * 60,
+      segments: [
+        {
+          origin: 'ORD',
+          destination: 'LHR',
+          departure: '2026-06-01T19:25:00Z',
+          arrival: '2026-06-02T05:25:00Z',
+          flight_no: 'EA10',
+          aircraft: 'Boeing 787-9',
+        },
+      ],
+    },
+  }, 0))
+
+  assert.equal(publicOffer.flight_number, 'EA10')
+  assert.equal(publicOffer.segments?.length, 1)
+  assert.equal(publicOffer.segments?.[0]?.flight_number, 'EA10')
+  assert.equal(publicOffer.segments?.[0]?.aircraft, 'Boeing 787-9')
 })
 
 test('applyGoogleFlightsBaseline ignores zero fallback and matches only positive Google source prices', () => {

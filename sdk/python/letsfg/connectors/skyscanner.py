@@ -20,7 +20,7 @@ import time
 import uuid
 from datetime import datetime, date as date_type
 from typing import Any, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from ..models.flights import (
     FlightOffer,
@@ -87,9 +87,59 @@ _ENTITY_CACHE: dict[str, str] = {
     "YYZ": "95673353", "ZAG": "95673639", "ZRH": "95673856",
 }
 
+_AIRPORT_TO_SKY_CITY: dict[str, str] | None = None
+
 
 def _currency_to_market(currency: str) -> str:
     return _CURRENCY_MARKET.get(currency.upper(), "UK")
+
+
+def _skyscanner_search_code(code: str) -> str:
+    normalized = code.upper().strip()
+    if not normalized:
+        return normalized
+    return _airport_to_skyscanner_city().get(normalized, normalized)
+
+
+def _airport_to_skyscanner_city() -> dict[str, str]:
+    global _AIRPORT_TO_SKY_CITY
+    if _AIRPORT_TO_SKY_CITY is not None:
+        return _AIRPORT_TO_SKY_CITY
+
+    mapping: dict[str, str] = {}
+    try:
+        from .airline_routes import CITY_AIRPORTS
+
+        city_sizes = {
+            city_code: len(airports)
+            for city_code, airports in CITY_AIRPORTS.items()
+            if city_code in _ENTITY_CACHE
+        }
+
+        for city_code, airports in CITY_AIRPORTS.items():
+            if city_code not in _ENTITY_CACHE:
+                continue
+            for airport_code in airports:
+                airport = str(airport_code or "").upper().strip()
+                if not airport or airport == city_code:
+                    continue
+
+                current = mapping.get(airport)
+                if current is None:
+                    mapping[airport] = city_code
+                    continue
+
+                current_size = city_sizes.get(current, 0)
+                candidate_size = city_sizes.get(city_code, 0)
+                if candidate_size > current_size or (
+                    candidate_size == current_size and city_code < current
+                ):
+                    mapping[airport] = city_code
+    except Exception:
+        mapping = {}
+
+    _AIRPORT_TO_SKY_CITY = mapping
+    return mapping
 
 
 def _parse_dt(s: Any) -> datetime:
@@ -165,14 +215,25 @@ class SkyscannerConnectorClient:
         import os
         from curl_cffi.requests import AsyncSession
 
-        d = req.date_from
-        origin = req.origin.upper()
-        dest = req.destination.upper()
+        travel_date = req.date_from
+        requested_origin = req.origin.upper()
+        requested_dest = req.destination.upper()
+        origin = _skyscanner_search_code(requested_origin)
+        dest = _skyscanner_search_code(requested_dest)
         cabin = _SKY_CABIN.get(req.cabin_class, "economy") if req.cabin_class else "economy"
         cabin_api = _SKY_CABIN_API.get(req.cabin_class, "ECONOMY") if req.cabin_class else "ECONOMY"
         currency = req.currency or "EUR"
         market = _currency_to_market(currency)
-        date_str = f"{d.year % 100:02d}{d.month:02d}{d.day:02d}"
+        date_str = f"{travel_date.year % 100:02d}{travel_date.month:02d}{travel_date.day:02d}"
+
+        if origin != requested_origin or dest != requested_dest:
+            logger.debug(
+                "SKYSCANNER: widened %s->%s to %s->%s",
+                requested_origin,
+                requested_dest,
+                origin,
+                dest,
+            )
 
         proxy_url = os.environ.get("LETSFG_PROXY", "").strip() or None
         # Use sticky session so all requests share the same exit IP (PX ties cookies to IP)
@@ -220,13 +281,13 @@ class SkyscannerConnectorClient:
                     timeout=20,
                 )
                 if r_page.status_code == 200 and (not origin_eid or not dest_eid):
-                    o, d = _extract_entity_ids(r_page.text, origin, dest)
+                    o, resolved_dest_eid = _extract_entity_ids(r_page.text, origin, dest)
                     if o:
                         origin_eid = o
                         _ENTITY_CACHE[origin] = o
-                    if d:
-                        dest_eid = d
-                        _ENTITY_CACHE[dest] = d
+                    if resolved_dest_eid:
+                        dest_eid = resolved_dest_eid
+                        _ENTITY_CACHE[dest] = resolved_dest_eid
             except Exception as e:
                 logger.debug("SKYSCANNER: search page failed: %s", e)
 
@@ -251,9 +312,9 @@ class SkyscannerConnectorClient:
                     "legDestination": {"@type": "entity", "entityId": dest_eid},
                     "dates": {
                         "@type": "date",
-                        "year": str(d.year),
-                        "month": f"{d.month:02d}",
-                        "day": f"{d.day:02d}",
+                            "year": str(travel_date.year),
+                            "month": f"{travel_date.month:02d}",
+                            "day": f"{travel_date.day:02d}",
                     },
                 }],
             }
@@ -393,17 +454,14 @@ def _parse_radar(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
     """Parse Skyscanner radar API v2 response into FlightOffer list."""
     target_cur = req.currency or "EUR"
     offers: list[FlightOffer] = []
+    search_origin = _skyscanner_search_code(req.origin).lower()
+    search_dest = _skyscanner_search_code(req.destination).lower()
 
     itineraries = data.get("itineraries", {})
     results = itineraries.get("results", [])
 
     for result in results:
         try:
-            selected_price = _select_display_price(result)
-            if selected_price is None:
-                continue
-            raw_price, formatted = selected_price
-
             legs = result.get("legs", [])
             if not legs:
                 continue
@@ -426,14 +484,52 @@ def _parse_radar(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
                 )
 
             itin_id = result.get("id", "")
+            fallback_booking_url = (
+                f"https://www.skyscanner.net/transport/flights/"
+                f"{search_origin}/{search_dest}/"
+            )
+
+            pricing_options = _safe_pricing_options(result)
+            if pricing_options:
+                for option_index, option in enumerate(pricing_options):
+                    raw_price = _pricing_option_amount(option)
+                    if raw_price is None:
+                        continue
+
+                    option_key = _pricing_option_identifier(option, fallback=str(option_index))
+                    h = hashlib.md5(f"ss_{itin_id}_{option_key}".encode()).hexdigest()[:10]
+                    booking_url = _pricing_option_booking_url(option) or fallback_booking_url
+                    conditions = _build_offer_conditions(result, option)
+
+                    offers.append(FlightOffer(
+                        id=f"ss_{h}",
+                        price=raw_price,
+                        currency=target_cur,
+                        price_formatted=f"{target_cur} {raw_price:.2f}",
+                        outbound=outbound,
+                        inbound=inbound,
+                        airlines=all_airlines,
+                        owner_airline=all_airlines[0] if all_airlines else "",
+                        source="skyscanner_meta",
+                        source_tier="free",
+                        is_locked=False,
+                        booking_url=booking_url,
+                        conditions=conditions,
+                    ))
+                continue
+
+            selected_price = _select_display_price(result)
+            if selected_price is None:
+                continue
+            raw_price, formatted = selected_price
             h = hashlib.md5(f"ss_{itin_id}_{raw_price}".encode()).hexdigest()[:10]
-            formatted = formatted or f"{target_cur} {raw_price:.2f}"
+            conditions = _build_offer_conditions(result)
 
             offers.append(FlightOffer(
                 id=f"ss_{h}",
                 price=raw_price,
                 currency=target_cur,
-                price_formatted=formatted,
+                price_formatted=formatted or f"{target_cur} {raw_price:.2f}",
                 outbound=outbound,
                 inbound=inbound,
                 airlines=all_airlines,
@@ -441,10 +537,8 @@ def _parse_radar(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
                 source="skyscanner_meta",
                 source_tier="free",
                 is_locked=False,
-                booking_url=(
-                    f"https://www.skyscanner.net/transport/flights/"
-                    f"{req.origin.lower()}/{req.destination.lower()}/"
-                ),
+                booking_url=fallback_booking_url,
+                conditions=conditions,
             ))
         except Exception as e:
             logger.warning("SKYSCANNER: parse itinerary failed: %s", e)
@@ -452,28 +546,95 @@ def _parse_radar(data: dict, req: FlightSearchRequest) -> list[FlightOffer]:
     return offers
 
 
-def _select_display_price(result: dict) -> tuple[float, str] | None:
-    price_obj = result.get("price", {})
-    preferred_option_id = price_obj.get("pricingOptionId")
+def _build_offer_conditions(result: dict, option: dict | None = None) -> dict[str, str]:
+    conditions: dict[str, str] = {}
 
-    safe_options: list[tuple[str, float]] = []
+    fare_policy = result.get("farePolicy")
+    if isinstance(fare_policy, dict):
+        change_allowed = fare_policy.get("isChangeAllowed")
+        partially_changeable = fare_policy.get("isPartiallyChangeable")
+        if change_allowed is True:
+            conditions["change_before_departure"] = "allowed"
+        elif partially_changeable is True:
+            conditions["change_before_departure"] = "allowed_with_fee"
+        elif "isChangeAllowed" in fare_policy or "isPartiallyChangeable" in fare_policy:
+            conditions["change_before_departure"] = "not_allowed"
+
+        cancellation_allowed = fare_policy.get("isCancellationAllowed")
+        partially_refundable = fare_policy.get("isPartiallyRefundable")
+        if cancellation_allowed is True:
+            conditions["refund_before_departure"] = "allowed"
+        elif partially_refundable is True:
+            conditions["refund_before_departure"] = "allowed_with_fee"
+        elif "isCancellationAllowed" in fare_policy or "isPartiallyRefundable" in fare_policy:
+            conditions["refund_before_departure"] = "not_allowed"
+
+    if result.get("hasFlexibleOptions") is True:
+        conditions["flexible_ticket_options"] = "available"
+    elif result.get("hasFlexibleOptions") is False:
+        conditions["flexible_ticket_options"] = "not_available"
+
+    is_self_transfer = result.get("isSelfTransfer")
+    is_protected_self_transfer = result.get("isProtectedSelfTransfer")
+    if is_self_transfer is True:
+        conditions["self_transfer"] = "protected" if is_protected_self_transfer is True else "unprotected"
+    elif is_self_transfer is False:
+        conditions["self_transfer"] = "not_self_transfer"
+
+    deeplink_query = _pricing_option_deeplink_query(option) if option is not None else {}
+    fare_type = deeplink_query.get("fare_type")
+    if fare_type:
+        conditions["fare_type"] = fare_type
+
+    transfer_protection = deeplink_query.get("transfer_protection")
+    if transfer_protection:
+        conditions["self_transfer_protection"] = transfer_protection
+
+    return conditions
+
+
+def _safe_pricing_options(result: dict) -> list[dict]:
+    price_obj = result.get("price", {})
+    preferred_option_id = str(price_obj.get("pricingOptionId") or "")
+
+    safe_options: list[dict] = []
+    consistent_base_fare_options: list[dict] = []
     for option in result.get("pricingOptions", []) or []:
         amount = _pricing_option_amount(option)
         if amount is None:
             continue
         if _is_base_fare_pricing_option(option):
+            if _is_consistent_base_fare_option(option):
+                consistent_base_fare_options.append(option)
             continue
-        safe_options.append((str(option.get("pricingOptionId") or ""), amount))
+        safe_options.append(option)
 
     if safe_options:
-        if preferred_option_id:
-            for option_id, amount in safe_options:
-                if option_id == preferred_option_id:
-                    return amount, ""
-        return min(safe_options, key=lambda option: option[1])[1], ""
+        return _ordered_pricing_options(safe_options, preferred_option_id)
+
+    if consistent_base_fare_options:
+        return _ordered_pricing_options(consistent_base_fare_options, preferred_option_id)
+
+    return []
+
+
+def _select_safe_pricing_option(result: dict) -> dict | None:
+    safe_options = _safe_pricing_options(result)
+    if not safe_options:
+        return None
+    return safe_options[0]
+
+
+def _select_display_price(result: dict) -> tuple[float, str] | None:
+    selected_option = _select_safe_pricing_option(result)
+    if selected_option is not None:
+        amount = _pricing_option_amount(selected_option)
+        if amount is not None:
+            return amount, ""
 
     # Radar sometimes exposes only base-fare teaser prices. Those understate the final total,
     # so skip the itinerary entirely instead of surfacing a fake cheaper fare.
+    price_obj = result.get("price", {})
     if result.get("pricingOptions"):
         return None
 
@@ -483,19 +644,129 @@ def _select_display_price(result: dict) -> tuple[float, str] | None:
     return float(raw_price), str(price_obj.get("formatted") or "")
 
 
+def _select_booking_url(result: dict) -> str:
+    selected_option = _select_safe_pricing_option(result)
+    if selected_option is None:
+        return ""
+    return _pricing_option_booking_url(selected_option)
+
+
 def _pricing_option_amount(option: dict) -> float | None:
     price = option.get("price", {})
-    amount = price.get("amount")
-    if isinstance(amount, (int, float)) and amount > 0:
-        return float(amount)
+    amount = _positive_price(price.get("amount"))
+    if amount is not None:
+        return amount
 
     for item in option.get("items", []) or []:
         item_price = item.get("price", {})
-        item_amount = item_price.get("amount")
-        if isinstance(item_amount, (int, float)) and item_amount > 0:
-            return float(item_amount)
+        item_amount = _positive_price(item_price.get("amount"))
+        if item_amount is not None:
+            return item_amount
 
     return None
+
+
+def _pick_preferred_pricing_option(options: list[dict], preferred_option_id: str) -> dict:
+    if preferred_option_id:
+        for option in options:
+            if str(option.get("pricingOptionId") or "") == preferred_option_id:
+                return option
+    return min(options, key=lambda option: _pricing_option_amount(option) or float("inf"))
+
+
+def _ordered_pricing_options(options: list[dict], preferred_option_id: str) -> list[dict]:
+    ordered: list[dict] = []
+    remaining = list(options)
+    if preferred_option_id:
+        for idx, option in enumerate(remaining):
+            if str(option.get("pricingOptionId") or "") == preferred_option_id:
+                ordered.append(option)
+                remaining.pop(idx)
+                break
+    remaining.sort(
+        key=lambda option: (
+            _pricing_option_amount(option) or float("inf"),
+            str(option.get("pricingOptionId") or ""),
+        )
+    )
+    ordered.extend(remaining)
+    return ordered
+
+
+def _positive_price(raw_value: object) -> float | None:
+    if isinstance(raw_value, (int, float)) and raw_value > 0:
+        return float(raw_value)
+    if isinstance(raw_value, str):
+        try:
+            parsed = float(raw_value.strip())
+        except ValueError:
+            return None
+        if parsed > 0:
+            return parsed
+    return None
+
+
+def _pricing_option_booking_url(option: dict) -> str:
+    for item in option.get("items", []) or []:
+        url = item.get("url") or item.get("bookingUrl") or item.get("deepLink") or item.get("deeplink")
+        normalized_url = _normalize_skyscanner_booking_url(url)
+        if normalized_url:
+            return normalized_url
+
+    for agent in option.get("agents", []) or []:
+        normalized_url = _normalize_skyscanner_booking_url(agent.get("url"))
+        if normalized_url:
+            return normalized_url
+
+    for key in ("url", "bookingUrl", "deepLink", "deeplink"):
+        normalized_url = _normalize_skyscanner_booking_url(option.get(key))
+        if normalized_url:
+            return normalized_url
+
+    return ""
+
+
+def _pricing_option_deeplink_query(option: dict | None) -> dict[str, str]:
+    if not isinstance(option, dict):
+        return {}
+
+    deeplink = _pricing_option_booking_url(option)
+    if not deeplink:
+        return {}
+
+    parsed_query = parse_qs(urlparse(deeplink).query)
+    return {
+        key: values[0]
+        for key, values in parsed_query.items()
+        if values and values[0]
+    }
+
+
+def _pricing_option_identifier(option: dict, *, fallback: str) -> str:
+    option_id = str(option.get("pricingOptionId") or "").strip()
+    if option_id:
+        return option_id
+
+    booking_url = _pricing_option_booking_url(option)
+    if booking_url:
+        return hashlib.md5(booking_url.encode()).hexdigest()[:10]
+
+    amount = _pricing_option_amount(option)
+    if amount is not None:
+        return f"{fallback}_{amount:.2f}"
+
+    return fallback
+
+
+def _normalize_skyscanner_booking_url(raw_url: object) -> str:
+    url = str(raw_url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("//"):
+        return f"https:{url}"
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return urljoin("https://www.skyscanner.net/", url)
 
 
 def _is_base_fare_pricing_option(option: dict) -> bool:
@@ -507,6 +778,33 @@ def _is_base_fare_pricing_option(option: dict) -> bool:
         if fare_type.lower() == "base_fare":
             return True
     return False
+
+
+def _is_consistent_base_fare_option(option: dict) -> bool:
+    option_amount = _pricing_option_amount(option)
+    if option_amount is None:
+        return False
+
+    ticket_price = _base_fare_ticket_price(option)
+    if ticket_price is None or abs(ticket_price - option_amount) > 0.01:
+        return False
+
+    return True
+
+
+def _base_fare_ticket_price(option: dict) -> float | None:
+    for item in option.get("items", []) or []:
+        url = item.get("url")
+        if not url:
+            continue
+        query = parse_qs(urlparse(str(url)).query)
+        fare_type = query.get("fare_type", [""])[0]
+        if fare_type.lower() != "base_fare":
+            continue
+        ticket_price = _positive_price(query.get("ticket_price", [""])[0])
+        if ticket_price is not None:
+            return ticket_price
+    return None
 
 
 def _build_route(leg: dict, req: FlightSearchRequest) -> FlightRoute | None:

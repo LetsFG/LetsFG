@@ -2,7 +2,7 @@
 
 Full endpoint details for the LetsFG flight search and booking API.
 
-**Base URL:** `https://api.letsfg.co`
+**Base URL:** `https://letsfg.co/developers/api/v1`
 
 ## Authentication
 

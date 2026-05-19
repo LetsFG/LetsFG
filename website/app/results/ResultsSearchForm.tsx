@@ -12,6 +12,7 @@ import { trackSearchSessionEvent } from '../../lib/search-session-analytics'
 interface ResultsSearchFormProps {
   initialQuery?: string
   initialCurrency?: CurrencyCode
+  autoClarify?: boolean
   onSearchSubmit?: (query: string) => void
   trackingSearchId?: string
   trackingSourcePath?: string
@@ -21,6 +22,7 @@ interface ResultsSearchFormProps {
 export default function ResultsSearchForm({
   initialQuery = '',
   initialCurrency = 'EUR',
+  autoClarify = false,
   onSearchSubmit,
   trackingSearchId,
   trackingSourcePath,
@@ -45,5 +47,5 @@ export default function ResultsSearchForm({
     onSearchSubmit?.(nextQuery)
   }
 
-  return <HomeSearchForm initialQuery={initialQuery} initialCurrency={prefCurrency} compact autoFocus={false} probeMode={probeMode} onSearchStart={handleSearchStart} />
+  return <HomeSearchForm initialQuery={initialQuery} initialCurrency={prefCurrency} compact autoFocus={false} autoClarify={autoClarify} probeMode={probeMode} onSearchStart={handleSearchStart} />
 }

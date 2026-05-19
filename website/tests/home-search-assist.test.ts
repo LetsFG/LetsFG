@@ -3,6 +3,11 @@ import test from 'node:test'
 
 import {
   buildHomeConvoTopicOrder,
+  getEssentialSearchClarificationState,
+  getRequiredSearchClarificationTopics,
+  getSearchClarificationState,
+  hasPriorityContext,
+  isSearchLaunchReady,
   needsDateClarification,
   normalizeHomeConvoFollowUpTopics,
   shouldWaitForGeminiAssistOnHomeSubmit,
@@ -99,7 +104,99 @@ test('home submit now waits for AI when the home convo needs personalization hel
     assert.equal(parsed.origin, 'LON')
     assert.equal(parsed.destination, 'PAR')
     assert.equal(parsed.date, '2026-05-15')
+    assert.equal(isSearchLaunchReady(query, parsed), false)
     assert.equal(shouldWaitForGeminiAssistOnHomeSubmit(query, parsed), true)
+  })
+})
+
+test('search readiness now requires party size, trip purpose, and ranking priority', () => {
+  withFixedNow('2026-05-14T12:00:00Z', () => {
+    const query = 'London to Paris next Friday as a couple'
+    const parsed = parseNLQuery(query)
+    const clarification = getSearchClarificationState(query, parsed)
+
+    assert.equal(clarification.missingPartySize, false)
+    assert.equal(clarification.missingTripPurpose, true)
+    assert.equal(clarification.missingPriority, true)
+    assert.deepEqual(getRequiredSearchClarificationTopics(query, parsed), ['trip_purpose', 'priority'])
+    assert.equal(isSearchLaunchReady(query, parsed), false)
+  })
+})
+
+test('raw timing constraints do not satisfy the priority question by themselves', () => {
+  const parsed = parseNLQuery('London to Paris next Friday, morning departure')
+
+  assert.equal(hasPriorityContext(parsed), false)
+})
+
+test('ranking and product preferences still satisfy the priority question', () => {
+  const parsed = parseNLQuery('London to Paris next Friday, cheapest option, direct flights only')
+
+  assert.equal(hasPriorityContext(parsed), true)
+})
+
+test('same-airport routes stay in clarification mode and are not launch-ready', () => {
+  const query = 'from Fort myers to RSW, September 30'
+  const parsed = parseNLQuery(query)
+  const clarification = getEssentialSearchClarificationState(query, parsed)
+
+  assert.equal(parsed.origin, 'RSW')
+  assert.equal(parsed.destination, undefined)
+  assert.equal(parsed.failed_destination_raw, 'RSW')
+  assert.equal(parsed.same_route, true)
+  assert.equal(clarification.sameRoute, true)
+  assert.equal(clarification.missingDestination, true)
+  assert.equal(isSearchLaunchReady(query, parsed), false)
+  assert.equal(shouldWaitForGeminiAssistOnHomeSubmit(query, parsed), true)
+})
+
+test('single-location queries with date context still stay out of launch-ready state', () => {
+  const query = 'Oklahoma City Okc Will Rogers International Airport, next weekend, as a couple, special occasion'
+  const parsed = parseNLQuery(query)
+
+  assert.equal(parsed.origin, 'OKC')
+  assert.equal(parsed.destination, undefined)
+  assert.equal(isSearchLaunchReady(query, parsed), false)
+  assert.equal(shouldWaitForGeminiAssistOnHomeSubmit(query, parsed), true)
+})
+
+test('special occasion counts as trip-purpose context for a fully specified query', () => {
+  const query = 'BOD to DTM 2026-06-03 return 2026-06-11, as a couple, special occasion, cheapest option'
+  const parsed = parseNLQuery(query)
+  const clarification = getSearchClarificationState(query, parsed)
+
+  assert.equal(parsed.origin, 'BOD')
+  assert.equal(parsed.destination, 'DTM')
+  assert.equal(parsed.trip_purpose, 'special_occasion')
+  assert.equal(clarification.missingPartySize, false)
+  assert.equal(clarification.missingTripPurpose, false)
+  assert.equal(clarification.missingPriority, false)
+  assert.equal(isSearchLaunchReady(query, parsed), true)
+})
+
+test('special occasion without explicit ranking priority stays in clarification mode', () => {
+  const query = 'BOD to DTM 2026-06-03 return 2026-06-11, as a couple, special occasion'
+  const parsed = parseNLQuery(query)
+  const clarification = getSearchClarificationState(query, parsed)
+
+  assert.equal(parsed.trip_purpose, 'special_occasion')
+  assert.equal(parsed.cabin, undefined)
+  assert.equal(hasPriorityContext(parsed), false)
+  assert.equal(clarification.missingPriority, true)
+  assert.equal(isSearchLaunchReady(query, parsed), false)
+})
+
+test('weekend timing constraints still leave priority missing for follow-up', () => {
+  withFixedNow('2026-05-19T12:00:00Z', () => {
+    const query = 'London to Barcelona this weekend, Friday evening out, Sunday night back'
+    const parsed = parseNLQuery(query)
+    const clarification = getSearchClarificationState(query, parsed)
+
+    assert.equal(clarification.missingPartySize, true)
+    assert.equal(clarification.missingTripPurpose, true)
+    assert.equal(clarification.missingPriority, true)
+    assert.deepEqual(getRequiredSearchClarificationTopics(query, parsed), ['party_size', 'trip_purpose', 'priority'])
+    assert.equal(isSearchLaunchReady(query, parsed), false)
   })
 })
 
@@ -111,7 +208,7 @@ test('home convo topic helpers preserve essential question order while honoring 
 
   assert.deepEqual(
     buildHomeConvoTopicOrder(undefined),
-    ['origin', 'destination', 'date', 'party_size', 'trip_type', 'trip_purpose', 'priority'],
+    ['origin', 'destination', 'date', 'party_size', 'trip_purpose', 'priority', 'trip_type'],
   )
 
   assert.deepEqual(

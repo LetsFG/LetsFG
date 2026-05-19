@@ -26,7 +26,7 @@ from letsfg.models.flights import FlightSearchRequest
 
 logger = logging.getLogger(__name__)
 
-_TELEMETRY_URL = "https://api.letsfg.co/api/v1/analytics/stats/record-local-search"
+_TELEMETRY_URL = "https://letsfg.co/developers/api/v1/analytics/stats/record-local-search"
 
 
 def _fire_telemetry(source: str) -> None:
@@ -34,9 +34,14 @@ def _fire_telemetry(source: str) -> None:
     if os.environ.get("LETSFG_NO_TELEMETRY"):
         return
     try:
-        body = json.dumps({"source": source}).encode()
+        client_type = (source or "python-sdk").strip() or "python-sdk"
+        body = json.dumps({"source": client_type}).encode()
         req = _Req(_TELEMETRY_URL, data=body,
-                   headers={"Content-Type": "application/json", "User-Agent": "letsfg-local/1.0"},
+                   headers={
+                       "Content-Type": "application/json",
+                       "User-Agent": "letsfg-local/1.0",
+                       "X-Client-Type": client_type,
+                   },
                    method="POST")
         urlopen(req, timeout=3)
     except Exception:
@@ -468,7 +473,7 @@ def _run_checkout_local(params: dict) -> dict:
     passengers = params.get("passengers")
     checkout_token = params.get("checkout_token", "")
     api_key = params.get("api_key", "")
-    base_url = params.get("base_url", "https://api.letsfg.co")
+    base_url = params.get("base_url", "https://letsfg.co/developers")
 
     # If we only have offer_id but no full offer, return URL-only
     if not offer and not offer_id:

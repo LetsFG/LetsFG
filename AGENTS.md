@@ -20,7 +20,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 - **Token-efficient** — one tool call replaces what would take thousands of tokens of browser automation, scraping setup, and HTML parsing. Results come back as structured JSON.
 - **Works with any agent** — OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, or any MCP-compatible client. Also available as Python SDK, JS SDK, and CLI.
 
-**API Base URL:** `https://api.letsfg.co`
+**API Base URL:** `https://letsfg.co/developers/api/v1`
 
 ## Why Use This Instead of Building Your Own
 
@@ -116,7 +116,7 @@ letsfg unlock off_xxx
 # Output: Confirmed price: EUR 189.50, Fee: $3.00, Booking URL: https://...
 
 # cURL — MPP path (agent auto-pays via mppx)
-curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
+curl -X POST https://letsfg.co/developers/api/v1/bookings/unlock \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"offer_id": "off_xxx"}'
@@ -125,7 +125,7 @@ curl -X POST https://api.letsfg.co/api/v1/bookings/unlock \
 # → 200: {"offer_id":"off_xxx","confirmed_price":189.50,"unlock_fee":3.00,"booking_url":"https://..."}
 
 # Or use mppx CLI (handles the 402/pay/retry cycle automatically):
-npx mppx https://api.letsfg.co/api/v1/bookings/unlock \
+npx mppx https://letsfg.co/developers/api/v1/bookings/unlock \
   -X POST -H "X-API-Key: trav_..." -d '{"offer_id": "off_xxx"}'
 ```
 
@@ -227,7 +227,7 @@ console.log(`${flights.totalResults} offers`);
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+            "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }
@@ -280,7 +280,7 @@ Every authenticated request requires the `X-API-Key` header. The SDK/CLI handles
 letsfg register --name my-agent --email agent@example.com
 
 # cURL
-curl -X POST https://api.letsfg.co/api/v1/agents/register \
+curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 
@@ -298,7 +298,7 @@ letsfg search LHR JFK 2026-04-15  # reads env automatically
 letsfg search LHR JFK 2026-04-15 --api-key trav_...
 
 # Option 3: cURL (raw HTTP)
-curl -X POST https://api.letsfg.co/api/v1/flights/search \
+curl -X POST https://letsfg.co/developers/api/v1/flights/search \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
@@ -963,7 +963,7 @@ if booking_url:
 ## Get an API Key
 
 ```bash
-curl -X POST https://api.letsfg.co/api/v1/agents/register \
+curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
@@ -972,10 +972,10 @@ curl -X POST https://api.letsfg.co/api/v1/agents/register \
 
 | Endpoint | URL |
 |----------|-----|
-| OpenAPI/Swagger | https://api.letsfg.co/docs |
-| Agent discovery | https://api.letsfg.co/.well-known/ai-plugin.json |
-| Agent manifest | https://api.letsfg.co/.well-known/agent.json |
-| LLM instructions | https://api.letsfg.co/llms.txt |
+| OpenAPI/Swagger | https://letsfg.co/developers/api/docs |
+| Agent discovery | https://letsfg.co/developers/api/.well-known/ai-plugin.json |
+| Agent manifest | https://letsfg.co/developers/api/.well-known/agent.json |
+| LLM instructions | https://letsfg.co/developers/api/llms.txt |
 
 ## Links
 

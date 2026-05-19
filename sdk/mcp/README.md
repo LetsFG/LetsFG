@@ -132,7 +132,7 @@ npx letsfg-mcp
 Or connect via remote MCP (no install):
 
 ```
-https://api.letsfg.co/mcp
+https://letsfg.co/developers/api/mcp
 ```
 
 ### Windows — `npx ENOENT` Fix
@@ -253,7 +253,7 @@ The flow for agents:
 4. Once verified — unlimited access forever. First 1,000 stars only.
 
 ```bash
-curl -X POST https://api.letsfg.co/api/v1/agents/register \
+curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 ```
@@ -279,7 +279,7 @@ letsfg register --name my-agent --email you@example.com
 │     │     200 airline connectors via Playwright + httpx        │
 │     │     Data goes: your machine → airline website → back    │
 │     │                                                        │
-│     └─→ HTTPS to api.letsfg.co (backend)                     │
+│     └─→ HTTPS to letsfg.co/developers/api (public API)       │
 │           unlock, book, payment, enterprise GDS search        │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -289,11 +289,11 @@ letsfg register --name my-agent --email you@example.com
 | Operation | Where data flows | What is sent |
 |-----------|-----------------|--------------|
 | `search_flights` (local) | Your machine → airline websites | Route, date, passenger count |
-| `search_flights` (GDS) | Your machine → api.letsfg.co → GDS providers | Route, date, passenger count, API key |
-| `resolve_location` | Your machine → api.letsfg.co | City/airport name |
-| `unlock_flight_offer` | Your machine → api.letsfg.co → airline | Offer ID, payment token |
-| `book_flight` | Your machine → api.letsfg.co → airline | Passenger name, DOB, email, phone |
-| `setup_payment` | Your machine → api.letsfg.co → Stripe | Payment token (card handled by Stripe) |
+| `search_flights` (GDS) | Your machine → letsfg.co/developers/api → GDS providers | Route, date, passenger count, API key |
+| `resolve_location` | Your machine → letsfg.co/developers/api | City/airport name |
+| `unlock_flight_offer` | Your machine → letsfg.co/developers/api → airline | Offer ID, payment token |
+| `book_flight` | Your machine → letsfg.co/developers/api → airline | Passenger name, DOB, email, phone |
+| `setup_payment` | Your machine → letsfg.co/developers/api → Stripe | Payment token (card handled by Stripe) |
 
 ---
 

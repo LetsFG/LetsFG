@@ -41,6 +41,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 from .booking_base import (
     CheckoutProgress,
@@ -2256,14 +2257,80 @@ _register(_base_cfg("Virgin Atlantic", "virginatlantic_direct",
 # through their specific checkout UIs (passenger forms, payment page).
 
 _register(_base_cfg("Google Flights (SerpAPI)", "serpapi_google_ota",
-    # SerpAPI returns Google Flights deep links → lands on airline checkout
-    # or OTA checkout. The engine navigates the intermediary.
+    # SerpAPI search offers currently carry a Google Flights results URL.
+    # The probe flow must resolve the matched result card to a real seller page.
     goto_timeout=60000,
+    details_extractor_handler="_extract_google_checkout_details",
     flight_cards_selector="[class*='flight'], [class*='result'], [class*='offer']",
     fare_selectors=["button:has-text('Select')"],
     cookie_selectors=[
+        "button:has-text('Reject all')",
         "button:has-text('Accept all')",
         "button:has-text('I agree')",
+    ],
+))
+
+_register(_base_cfg("Skyscanner", "skyscanner_meta",
+    goto_timeout=60000,
+    flight_cards_selector="[class*='itinerary'], [class*='flight'], [class*='result'], [data-testid*='flight']",
+    fare_selectors=[
+        "button:has-text('View Deal')",
+        "button:has-text('Select')",
+        "button:has-text('Book')",
+    ],
+    cookie_selectors=[
+        "button:has-text('Accept')",
+        "button:has-text('I agree')",
+        "button:has-text('Agree')",
+        "[class*='cookie'] button",
+    ],
+))
+
+_register(_base_cfg("Momondo", "momondo_meta",
+    goto_timeout=60000,
+    flight_cards_selector="[class*='flight'], [class*='result'], [class*='itinerary'], [data-testid*='flight']",
+    fare_selectors=[
+        "button:has-text('View Deal')",
+        "button:has-text('Select')",
+        "button:has-text('Book')",
+    ],
+    cookie_selectors=[
+        "button:has-text('Accept')",
+        "button:has-text('I agree')",
+        "button:has-text('Agree')",
+        "[class*='cookie'] button",
+    ],
+))
+
+_register(_base_cfg("Kayak", "kayak_meta",
+    goto_timeout=60000,
+    flight_cards_selector="[class*='flight'], [class*='result'], [class*='itinerary'], [data-testid*='flight']",
+    fare_selectors=[
+        "button:has-text('View Deal')",
+        "button:has-text('Select')",
+        "button:has-text('Book')",
+    ],
+    cookie_selectors=[
+        "button:has-text('Accept')",
+        "button:has-text('I agree')",
+        "button:has-text('Agree')",
+        "[class*='cookie'] button",
+    ],
+))
+
+_register(_base_cfg("Cheapflights", "cheapflights_meta",
+    goto_timeout=60000,
+    flight_cards_selector="[class*='flight'], [class*='result'], [class*='itinerary'], [data-testid*='flight']",
+    fare_selectors=[
+        "button:has-text('View Deal')",
+        "button:has-text('Select')",
+        "button:has-text('Book')",
+    ],
+    cookie_selectors=[
+        "button:has-text('Accept')",
+        "button:has-text('I agree')",
+        "button:has-text('Agree')",
+        "[class*='cookie'] button",
     ],
 ))
 
@@ -2345,6 +2412,10 @@ AIRLINE_CONFIGS["porter_direct"] = AIRLINE_CONFIGS["porter_scraper"]
 
 # Wizzair: engine registers "wizzair_direct", checkout has "wizzair_api"
 AIRLINE_CONFIGS["wizzair_direct"] = AIRLINE_CONFIGS["wizzair_api"]
+
+# Meta/aggregator connectors use search-facing source tags in engine.py.
+AIRLINE_CONFIGS["serpapi_google"] = AIRLINE_CONFIGS["serpapi_google_ota"]
+AIRLINE_CONFIGS["wego_meta"] = AIRLINE_CONFIGS["wego_ota"]
 
 
 # ── Generic Checkout Engine ──────────────────────────────────────────────
@@ -3007,7 +3078,7 @@ class GenericCheckoutEngine:
 
             captured_details = self._merge_checkout_details(
                 captured_details,
-                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+                await self._extract_checkout_details(page, config, offer=offer, default_currency=offer.get("currency", "EUR")),
             )
 
             step = "passengers_filled"
@@ -3061,7 +3132,7 @@ class GenericCheckoutEngine:
 
             captured_details = self._merge_checkout_details(
                 captured_details,
-                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+                await self._extract_checkout_details(page, config, offer=offer, default_currency=offer.get("currency", "EUR")),
             )
 
             # ── Step 6: Skip extras ──────────────────────────────────
@@ -3091,7 +3162,7 @@ class GenericCheckoutEngine:
 
             captured_details = self._merge_checkout_details(
                 captured_details,
-                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+                await self._extract_checkout_details(page, config, offer=offer, default_currency=offer.get("currency", "EUR")),
             )
 
             step = "extras_skipped"
@@ -3099,7 +3170,7 @@ class GenericCheckoutEngine:
             # ── Step 7: Skip seats ───────────────────────────────────
             captured_details = self._merge_checkout_details(
                 captured_details,
-                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+                await self._extract_checkout_details(page, config, offer=offer, default_currency=offer.get("currency", "EUR")),
             )
             await safe_click_first(page, config.seats_skip_selectors, timeout=2000, desc="skip seats")
             await page.wait_for_timeout(1000)
@@ -3111,7 +3182,7 @@ class GenericCheckoutEngine:
 
             captured_details = self._merge_checkout_details(
                 captured_details,
-                await self._extract_checkout_details(page, config, offer.get("currency", "EUR")),
+                await self._extract_checkout_details(page, config, offer=offer, default_currency=offer.get("currency", "EUR")),
             )
 
             # ── Step 8: Verify final page state before claiming success ──────
@@ -3243,6 +3314,204 @@ class GenericCheckoutEngine:
                 pass
             # Synchronous kill — guarantees browser dies even on CancelledError
             _force_kill_browser()
+
+    async def probe_offer_details(
+        self,
+        config: AirlineCheckoutConfig,
+        offer: dict,
+        *,
+        headless: bool = True,
+    ) -> dict:
+        """Resolve live add-on and fare-detail signals without running full checkout."""
+        t0 = time.monotonic()
+        booking_url = str(offer.get("booking_url") or "").strip()
+        offer_id = str(offer.get("id") or "")
+        if not booking_url:
+            return {
+                "status": "failed",
+                "airline": config.airline_name,
+                "source": config.source_tag,
+                "offer_id": offer_id,
+                "message": "No booking URL available for this offer.",
+                "details": {},
+            }
+
+        from playwright.async_api import async_playwright
+
+        pw = None
+        browser = None
+        context = None
+        page = None
+        try:
+            pw = await async_playwright().start()
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--window-position=-2400,-2400",
+                "--window-size=1440,900",
+            ]
+            launch_kwargs: dict = {"headless": headless, "args": launch_args}
+            if config.use_chrome_channel:
+                launch_kwargs["channel"] = "chrome"
+            if config.use_proxy:
+                from letsfg.connectors.browser import get_default_proxy, patchright_bandwidth_args
+
+                proxy_dict = get_default_proxy()
+                if proxy_dict:
+                    launch_kwargs["proxy"] = proxy_dict
+                    launch_args.extend(patchright_bandwidth_args())
+
+            browser = await pw.chromium.launch(**launch_kwargs)
+
+            locale = random.choice(config.locale_pool) if config.locale_pool else config.locale
+            tz = random.choice(config.timezone_pool) if config.timezone_pool else config.timezone
+            context = await browser.new_context(
+                viewport={"width": 1440, "height": 900},
+                locale=locale,
+                timezone_id=tz,
+            )
+            try:
+                from playwright_stealth import stealth_async
+
+                page = await context.new_page()
+                await stealth_async(page)
+            except ImportError:
+                page = await context.new_page()
+
+            try:
+                from .browser import auto_block_if_proxied
+
+                await auto_block_if_proxied(page)
+            except Exception:
+                pass
+
+            logger.info("%s probe: navigating to %s", config.airline_name, booking_url)
+            try:
+                await page.goto(booking_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+            except Exception as nav_err:
+                logger.warning("%s probe: goto error (%s) — continuing", config.airline_name, str(nav_err)[:100])
+            await page.wait_for_timeout(2000)
+            await self._settle_meta_booking_handoff(page, config)
+            if headless and await self._should_retry_meta_probe_headed(page, config):
+                retry_result = await self.probe_offer_details(config, offer, headless=False)
+                if retry_result.get("status") == "ok":
+                    return retry_result
+            await self._dismiss_cookies(page, config)
+
+            details = await self._extract_checkout_details(
+                page,
+                config,
+                offer=offer,
+                default_currency=str(offer.get("currency") or "EUR"),
+            )
+            final_snapshot = await self._snapshot_checkout_page(page)
+            inferred_page = self._infer_checkout_page(details, final_snapshot)
+            if inferred_page:
+                details = self._merge_checkout_details(details, {"checkout_page": inferred_page})
+
+            return {
+                "status": "ok",
+                "airline": config.airline_name,
+                "source": config.source_tag,
+                "offer_id": offer_id,
+                "booking_url": booking_url,
+                "resolved_booking_url": details.get("resolved_booking_url") or final_snapshot.get("current_url") or page.url or booking_url,
+                "elapsed_seconds": round(time.monotonic() - t0, 2),
+                "details": details,
+            }
+        except Exception as exc:
+            logger.error("%s probe error: %s", config.airline_name, exc, exc_info=True)
+            return {
+                "status": "error",
+                "airline": config.airline_name,
+                "source": config.source_tag,
+                "offer_id": offer_id,
+                "booking_url": booking_url,
+                "elapsed_seconds": round(time.monotonic() - t0, 2),
+                "message": str(exc),
+                "details": {},
+            }
+        finally:
+            if context is not None:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+            if pw is not None:
+                try:
+                    await pw.stop()
+                except Exception:
+                    pass
+
+    async def _settle_meta_booking_handoff(self, page, config: AirlineCheckoutConfig) -> None:
+        if config.source_tag not in {"momondo_meta", "kayak_meta", "cheapflights_meta"}:
+            return
+
+        deadline = time.monotonic() + 10.0
+        last_signature = ""
+        while time.monotonic() < deadline:
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=1500)
+            except Exception:
+                pass
+
+            snapshot = await self._snapshot_checkout_page(page)
+            current_url = str(snapshot.get("current_url") or page.url or "").strip()
+            current_url_lower = current_url.lower()
+            host = urlparse(current_url_lower).netloc
+            body = str(snapshot.get("body_snippet") or "").strip().lower()
+
+            on_booking_holdings_host = any(domain in host for domain in ("momondo.com", "kayak.com", "cheapflights.com"))
+            interstitial = (
+                on_booking_holdings_host
+                and "/book/flight" in current_url_lower
+                and ("sending you to book" in body or len(body) < 220)
+            )
+            meaningful_body = len(body) >= 250 or any(
+                marker in body
+                for marker in (
+                    "cancellation",
+                    "baggage",
+                    "bags",
+                    "insurance",
+                    "protection",
+                    "meal",
+                    "traveler",
+                    "passenger",
+                    "continue",
+                )
+            )
+
+            if not interstitial and meaningful_body:
+                return
+
+            signature = f"{current_url_lower}|{body[:200]}"
+            if signature == last_signature and not interstitial:
+                return
+            last_signature = signature
+
+            await page.wait_for_timeout(1000)
+
+    async def _should_retry_meta_probe_headed(self, page, config: AirlineCheckoutConfig) -> bool:
+        if config.source_tag not in {"momondo_meta", "kayak_meta", "cheapflights_meta"}:
+            return False
+
+        snapshot = await self._snapshot_checkout_page(page)
+        current_url = str(snapshot.get("current_url") or page.url or "").strip().lower()
+        host = urlparse(current_url).netloc
+        if not any(domain in host for domain in ("momondo.com", "kayak.com", "cheapflights.com")):
+            return False
+
+        title = str(snapshot.get("page_title") or "").strip().lower()
+        body = str(snapshot.get("body_snippet") or "").strip().lower()
+        combined = f"{title} {body}"
+        if "403" not in combined:
+            return False
+        return any(marker in combined for marker in ("forbidden", "page isn't available", "page not found"))
 
     async def _detect_security_gate(self, page) -> dict | None:
         snapshot = await self._snapshot_checkout_page(page)
@@ -3379,7 +3648,27 @@ class GenericCheckoutEngine:
 
         passenger_terms = ("passenger details", "traveller details", "traveler details", "guest details", "contact details")
         seat_terms = ("seat map", "select seat", "choose your seat", "hot seat")
-        extras_terms = ("baggage", "checked bag", "bags", "add-ons", "add ons", "extras")
+        extras_terms = (
+            "baggage",
+            "checked bag",
+            "bags",
+            "add-ons",
+            "add ons",
+            "extras",
+            "meal",
+            "food",
+            "snack",
+            "drink",
+            "wifi",
+            "wi-fi",
+            "internet",
+            "insurance",
+            "protection",
+            "coverage",
+            "lounge",
+            "priority",
+            "onboard services",
+        )
 
         if on_checkout_surface and checkout_page:
             return checkout_page
@@ -5656,7 +5945,14 @@ class GenericCheckoutEngine:
         except Exception:
             return False
 
-    async def _extract_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
+    async def _extract_checkout_details(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        *,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> dict:
         if not config.details_extractor_handler:
             return {}
         handler = getattr(self, config.details_extractor_handler, None)
@@ -5664,13 +5960,183 @@ class GenericCheckoutEngine:
             logger.debug("%s checkout: details extractor '%s' not found", config.airline_name, config.details_extractor_handler)
             return {}
         try:
-            return await handler(page, config, default_currency=default_currency)
+            return await handler(page, config, offer=offer, default_currency=default_currency)
         except Exception as exc:
             logger.debug("%s checkout: details extractor '%s' failed: %s", config.airline_name, config.details_extractor_handler, exc)
             return {}
 
-    async def _extract_aircairo_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
-        details = await self._extract_generic_visible_checkout_details(page, config, default_currency=default_currency)
+    async def _extract_google_checkout_details(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> dict:
+        await self._google_resolve_consent(page)
+        current_url = (page.url or "").lower()
+        if "google." not in current_url or "/travel/flights" not in current_url:
+            details = await self._extract_generic_visible_checkout_details(
+                page,
+                config,
+                offer=offer,
+                default_currency=default_currency,
+            )
+            details["resolved_booking_url"] = page.url
+            return details
+
+        details: dict = {}
+        clicked_card = await self._google_click_best_offer_card(page, offer)
+        if clicked_card:
+            details["google_selected_card_text"] = clicked_card["text"]
+            details["google_selected_card_score"] = clicked_card["score"]
+            await page.wait_for_timeout(2500)
+            await self._dismiss_cookies(page, config)
+
+        seller_url = ""
+        for _ in range(3):
+            current_url = (page.url or "").lower()
+            if "google." not in current_url or "/travel/flights" not in current_url:
+                seller_details = await self._extract_generic_visible_checkout_details(
+                    page,
+                    config,
+                    offer=offer,
+                    default_currency=default_currency,
+                )
+                seller_details["resolved_booking_url"] = page.url
+                return self._merge_checkout_details(details, seller_details)
+
+            if "/travel/flights/booking" in current_url:
+                await self._google_wait_for_booking_options(page)
+                booking_details: dict = {}
+                continue_options: list[dict] = []
+                for attempt in range(2):
+                    booking_details = self._merge_checkout_details(
+                        booking_details,
+                        await self._extract_generic_visible_checkout_details(
+                            page,
+                            config,
+                            offer=offer,
+                            default_currency=default_currency,
+                        ),
+                    )
+                    continue_options = await self._google_collect_booking_continue_options(page, default_currency=default_currency)
+                    if continue_options or booking_details.get("available_add_ons") or booking_details.get("visible_price_options") or booking_details.get("price_breakdown"):
+                        break
+                    if attempt == 0:
+                        await page.wait_for_timeout(2500)
+
+                details = self._merge_checkout_details(details, booking_details)
+                if continue_options:
+                    details["google_booking_continue_options"] = continue_options
+                selected_option = self._google_pick_booking_continue_option(continue_options)
+                if selected_option:
+                    details["google_selected_booking_option"] = {
+                        "seller_label": selected_option.get("seller_label"),
+                        "amount": selected_option.get("amount"),
+                        "currency": selected_option.get("currency"),
+                        "is_summary": bool(selected_option.get("is_summary")),
+                        "aria_label": selected_option.get("aria_label"),
+                    }
+                if not selected_option:
+                    details["resolved_booking_url"] = page.url
+                    return details
+                if not await self._google_click_booking_continue(page, option=selected_option):
+                    details["resolved_booking_url"] = page.url
+                    return details
+                details.setdefault("google_clicked_options", []).append(
+                    str((selected_option or {}).get("aria_label") or (selected_option or {}).get("seller_label") or "Continue")
+                )
+                await page.wait_for_timeout(5000)
+                external_page = self._google_find_external_context_page(page)
+                if external_page is not None:
+                    page = external_page
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+                await self._dismiss_cookies(page, config)
+                current_external_url = (page.url or "").lower()
+                if "tickets.vueling.com" in current_external_url:
+                    try:
+                        await page.wait_for_function(
+                            r'''() => Array.from(document.querySelectorAll('button')).some((button) => {
+                                const text = (button.innerText || button.textContent || '').replace(/\s+/g, ' ').trim();
+                                if (!/select flight/i.test(text)) return false;
+                                const rect = button.getBoundingClientRect();
+                                if (rect.width < 60 || rect.height < 20) return false;
+                                const style = window.getComputedStyle(button);
+                                return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                            }) || Array.from(document.querySelectorAll('.vy-card-bundle, [class*="card-bundle"]')).some((card) => {
+                                const rect = card.getBoundingClientRect();
+                                if (rect.width < 80 || rect.height < 60) return false;
+                                const style = window.getComputedStyle(card);
+                                return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                            })''',
+                            timeout=15000,
+                        )
+                    except Exception:
+                        pass
+                    vueling_config = AIRLINE_CONFIGS.get("vueling_direct") or config
+                    await self._dismiss_cookies(page, vueling_config)
+                    seller_details = await self._extract_generic_visible_checkout_details(
+                        page,
+                        config,
+                        offer=offer,
+                        default_currency=default_currency,
+                    )
+                    if seller_details.get("fare_bundle_options"):
+                        seller_details["resolved_booking_url"] = page.url
+                        return self._merge_checkout_details(details, seller_details)
+                continue
+
+            seller_candidates = await self._google_collect_seller_candidates(page, offer)
+            if seller_candidates:
+                details["google_booking_options"] = seller_candidates[:8]
+
+            seller_url = self._google_pick_seller_url(seller_candidates)
+            if seller_url:
+                break
+
+            next_action = self._google_pick_intermediate_action(seller_candidates)
+            if not next_action:
+                details["resolved_booking_url"] = page.url
+                return details
+            if not await self._google_click_candidate(page, next_action):
+                details["resolved_booking_url"] = page.url
+                return details
+            details.setdefault("google_clicked_options", []).append(str(next_action.get("text") or ""))
+            await page.wait_for_timeout(2500)
+            await self._dismiss_cookies(page, config)
+
+        if not seller_url:
+            details["resolved_booking_url"] = page.url
+            return details
+
+        logger.info("%s probe: resolved Google seller URL %s", config.airline_name, seller_url)
+        try:
+            await page.goto(seller_url, wait_until="domcontentloaded", timeout=config.goto_timeout)
+        except Exception as nav_err:
+            logger.warning("%s probe: seller goto error (%s)", config.airline_name, str(nav_err)[:100])
+        await page.wait_for_timeout(3000)
+        await self._dismiss_cookies(page, config)
+
+        seller_details = await self._extract_generic_visible_checkout_details(
+            page,
+            config,
+            offer=offer,
+            default_currency=default_currency,
+        )
+        seller_details["resolved_booking_url"] = page.url or seller_url
+        return self._merge_checkout_details(details, seller_details)
+
+    async def _extract_aircairo_checkout_details(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> dict:
+        details = await self._extract_generic_visible_checkout_details(page, config, offer=offer, default_currency=default_currency)
         checkout_page = str(details.get("checkout_page") or "").lower()
         current_url = (page.url or "").lower()
 
@@ -5807,7 +6273,13 @@ class GenericCheckoutEngine:
             "seat_selection_observation": "Sampled Air Cairo seat-map seat prices directly from the visible seat detail panels.",
         }
 
-    async def _extract_airasia_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
+    async def _extract_airasia_checkout_details(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> dict:
         return await page.evaluate(
             r'''(defaultCurrency) => {
                 const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
@@ -6391,7 +6863,13 @@ class GenericCheckoutEngine:
             default_currency
         )
 
-    async def _extract_volaris_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
+    async def _extract_volaris_checkout_details(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> dict:
         return await page.evaluate(
             r'''(defaultCurrency) => {
                 const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
@@ -6737,8 +7215,15 @@ class GenericCheckoutEngine:
             default_currency
         )
 
-    async def _extract_generic_visible_checkout_details(self, page, config: AirlineCheckoutConfig, default_currency: str = "EUR") -> dict:
-        return await page.evaluate(
+    async def _extract_generic_visible_checkout_details(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+        allow_discovery: bool = True,
+    ) -> dict:
+        result = await page.evaluate(
             r'''(defaultCurrency) => {
                 const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
                 const symbolCurrency = {
@@ -6897,7 +7382,7 @@ class GenericCheckoutEngine:
                     result.checkout_page = 'payment';
                 } else if (/seat map|select your seat|seat selection|choose your seats|pick your seat|extra legroom/.test(pageSignals)) {
                     result.checkout_page = 'seats';
-                } else if (/baggage|checked bag|extra bag|carry-on|carry on|priority boarding|insurance|meal|add extras|choose extras/.test(pageSignals)) {
+                } else if (/baggage|checked bag|extra bag|carry-on|carry on|priority boarding|insurance|protection|coverage|meal|food|snack|drink|wifi|wi-fi|internet|lounge|add extras|choose extras|onboard services/.test(pageSignals)) {
                     result.checkout_page = 'extras';
                 } else if (/passenger|traveller details|contact details|customer details|guest details/.test(pageSignals)) {
                     result.checkout_page = 'passengers';
@@ -6955,14 +7440,20 @@ class GenericCheckoutEngine:
                     });
                 }
 
-                const collectItems = (keywords, type, excludedKeywords = []) => {
+                const genericMentionRe = /\b(included|free|no extra cost|included in your fare|already selected|available|optional|purchase|purchasable|during checkout|add later|add at checkout|available during checkout)\b/i;
+                const onboardMentionRe = /\b(included|free|no extra cost|included in your fare|already selected|available|optional|purchase|purchasable|buy[- ]?on[- ]?board|buy on board|on board|onboard|during checkout|during the flight|add later|add at checkout|available during checkout)\b/i;
+
+                const collectItems = (keywords, type, excludedKeywords = [], options = {}) => {
+                    const allowMention = Boolean(options.allowMention);
+                    const mentionPattern = options.mentionPattern || genericMentionRe;
                     const items = [];
                     for (const entry of elementTexts) {
                         if (!keywords.some((keyword) => entry.haystack.includes(keyword))) continue;
                         if (excludedKeywords.some((keyword) => entry.haystack.includes(keyword))) continue;
                         const money = parseMoney(entry.text);
                         const included = /included|free|no extra cost|included in your fare|already selected/i.test(entry.text);
-                        if (!hasPositiveMoney(money) && !included) continue;
+                        const mentioned = allowMention && mentionPattern.test(entry.text);
+                        if (!hasPositiveMoney(money) && !included && !mentioned) continue;
                         items.push({
                             label: cleanLabel(entry.text) || entry.text,
                             text: entry.text,
@@ -6975,7 +7466,9 @@ class GenericCheckoutEngine:
                     return items;
                 };
 
-                const collectLineItems = (keywords, type, excludedKeywords = []) => {
+                const collectLineItems = (keywords, type, excludedKeywords = [], options = {}) => {
+                    const allowMention = Boolean(options.allowMention);
+                    const mentionPattern = options.mentionPattern || genericMentionRe;
                     const items = [];
                     for (const line of bodyLines) {
                         const haystack = line.toLowerCase();
@@ -6983,7 +7476,8 @@ class GenericCheckoutEngine:
                         if (excludedKeywords.some((keyword) => haystack.includes(keyword))) continue;
                         const money = parseMoney(line);
                         const included = /included|free|no extra cost|included in your fare|already selected/i.test(line);
-                        if (!hasPositiveMoney(money) && !included) continue;
+                        const mentioned = allowMention && mentionPattern.test(line);
+                        if (!hasPositiveMoney(money) && !included && !mentioned) continue;
                         items.push({
                             label: cleanLabel(line) || line,
                             text: line,
@@ -7014,27 +7508,43 @@ class GenericCheckoutEngine:
                 }
 
                 const meals = dedupe([
-                    ...collectItems(['meal', 'food', 'snack', 'drink'], 'meals'),
-                    ...collectLineItems(['meal', 'food', 'snack', 'drink'], 'meals'),
+                    ...collectItems(['meal', 'food', 'snack', 'drink', 'beverage', 'catering', 'menu'], 'meals', [], { allowMention: true, mentionPattern: onboardMentionRe }),
+                    ...collectLineItems(['meal', 'food', 'snack', 'drink', 'beverage', 'catering', 'menu'], 'meals', [], { allowMention: true, mentionPattern: onboardMentionRe }),
                 ]);
                 if (meals.length) {
                     availableAddOns.meals = meals;
                 }
 
+                const wifi = dedupe([
+                    ...collectItems(['wifi', 'wi-fi', 'internet'], 'wifi', [], { allowMention: true, mentionPattern: onboardMentionRe }),
+                    ...collectLineItems(['wifi', 'wi-fi', 'internet'], 'wifi', [], { allowMention: true, mentionPattern: onboardMentionRe }),
+                ]);
+                if (wifi.length) {
+                    availableAddOns.wifi = wifi;
+                }
+
                 const priority = dedupe([
-                    ...collectItems(['priority', 'fast track', 'priority boarding'], 'priority'),
-                    ...collectLineItems(['priority', 'fast track', 'priority boarding'], 'priority'),
+                    ...collectItems(['priority', 'fast track', 'priority boarding'], 'priority', [], { allowMention: true }),
+                    ...collectLineItems(['priority', 'fast track', 'priority boarding'], 'priority', [], { allowMention: true }),
                 ]);
                 if (priority.length) {
                     availableAddOns.priority = priority;
                 }
 
                 const insurance = dedupe([
-                    ...collectItems(['insurance'], 'insurance'),
-                    ...collectLineItems(['insurance'], 'insurance'),
+                    ...collectItems(['insurance', 'protection', 'coverage'], 'insurance', [], { allowMention: true }),
+                    ...collectLineItems(['insurance', 'protection', 'coverage'], 'insurance', [], { allowMention: true }),
                 ]);
                 if (insurance.length) {
                     availableAddOns.insurance = insurance;
+                }
+
+                const lounge = dedupe([
+                    ...collectItems(['lounge', 'vip lounge'], 'lounge', [], { allowMention: true }),
+                    ...collectLineItems(['lounge', 'vip lounge'], 'lounge', [], { allowMention: true }),
+                ]);
+                if (lounge.length) {
+                    availableAddOns.lounge = lounge;
                 }
 
                 const packages = dedupe([
@@ -7091,6 +7601,1398 @@ class GenericCheckoutEngine:
             }''',
             default_currency
         )
+
+        vueling_details = await self._extract_vueling_bundle_details(
+            page,
+            offer=offer,
+            default_currency=default_currency,
+        )
+        if vueling_details:
+            result = self._merge_checkout_details(result, vueling_details)
+            parsed_add_ons = (
+                vueling_details.get("available_add_ons")
+                if isinstance(vueling_details.get("available_add_ons"), dict)
+                else {}
+            )
+            parsed_packages = parsed_add_ons.get("packages") if isinstance(parsed_add_ons.get("packages"), list) else []
+            if parsed_packages:
+                merged_add_ons = dict(result.get("available_add_ons") or {})
+                merged_add_ons["packages"] = parsed_packages
+                result["available_add_ons"] = merged_add_ons
+
+        if allow_discovery:
+            discovery_details = await self._discover_generic_checkout_add_ons(
+                page,
+                config,
+                offer=offer,
+                default_currency=default_currency,
+                existing_details=result,
+            )
+            if discovery_details:
+                result = self._merge_checkout_details(result, discovery_details)
+
+        return result
+
+    async def _discover_generic_checkout_add_ons(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        *,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+        existing_details: Optional[dict] = None,
+    ) -> dict:
+        current_details = existing_details or {}
+        if not self._should_attempt_generic_add_on_discovery(page, current_details):
+            return {}
+
+        discovery_trace: list[dict] = []
+        discovered = await self._explore_generic_checkout_surface(
+            page,
+            config,
+            offer=offer,
+            default_currency=default_currency,
+            accumulated_details=current_details,
+            depth=0,
+            max_depth=2,
+            visited_surfaces=set(),
+            visited_actions=set(),
+            discovery_trace=discovery_trace,
+        )
+        if discovered:
+            discovered.setdefault(
+                "generic_discovery_observation",
+                "Smart generic discovery followed visible extras or onboard-service controls on the live seller surface.",
+            )
+            if discovery_trace:
+                discovered["generic_discovery_trace"] = discovery_trace[:12]
+        return discovered
+
+    async def _explore_generic_checkout_surface(
+        self,
+        page,
+        config: AirlineCheckoutConfig,
+        *,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+        accumulated_details: Optional[dict] = None,
+        depth: int = 0,
+        max_depth: int = 2,
+        visited_surfaces: Optional[set[str]] = None,
+        visited_actions: Optional[set[str]] = None,
+        discovery_trace: Optional[list[dict]] = None,
+    ) -> dict:
+        accumulated = accumulated_details or {}
+        surface_keys = visited_surfaces if visited_surfaces is not None else set()
+        action_keys = visited_actions if visited_actions is not None else set()
+        trace = discovery_trace if discovery_trace is not None else []
+
+        snapshot = await self._snapshot_checkout_page(page)
+        surface_key = self._checkout_surface_signature(snapshot)
+        if surface_key in surface_keys:
+            return {}
+        surface_keys.add(surface_key)
+
+        discovered = await self._extract_generic_visible_checkout_details(
+            page,
+            config,
+            offer=offer,
+            default_currency=default_currency,
+            allow_discovery=False,
+        )
+        combined = self._merge_checkout_details(accumulated, discovered)
+        if depth >= max_depth or self._generic_discovery_target_satisfied(combined):
+            return discovered
+
+        for _ in range(4):
+            candidates = await self._collect_generic_discovery_candidates(page)
+            next_candidate = None
+            for candidate in candidates:
+                action_key = self._generic_discovery_action_key(page.url, candidate)
+                if not action_key or action_key in action_keys:
+                    continue
+                next_candidate = candidate
+                action_keys.add(action_key)
+                break
+            if next_candidate is None:
+                break
+
+            before_url = str(page.url or "")
+            known_urls = {
+                str(candidate_page.url or "").strip()
+                for candidate_page in getattr(page.context, "pages", [])
+                if str(candidate_page.url or "").strip()
+            }
+            candidate_index = next_candidate.get("index")
+            if not isinstance(candidate_index, int):
+                continue
+            if not await self._click_generic_discovery_candidate(page, candidate_index):
+                continue
+
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=3000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(1500)
+
+            popup_page = self._checkout_find_new_context_page(page, known_urls)
+            target_page = popup_page or page
+            if popup_page is not None:
+                try:
+                    await target_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except Exception:
+                    pass
+            await self._dismiss_cookies(target_page, config)
+
+            after_snapshot = await self._snapshot_checkout_page(target_page)
+            trace.append({
+                "depth": depth,
+                "action": str(next_candidate.get("text") or "").strip(),
+                "from_url": before_url,
+                "to_url": str(after_snapshot.get("current_url") or "").strip(),
+                "popup": popup_page is not None,
+            })
+
+            child_details = await self._extract_generic_visible_checkout_details(
+                target_page,
+                config,
+                offer=offer,
+                default_currency=default_currency,
+                allow_discovery=False,
+            )
+            child_url = str(target_page.url or "").strip()
+            if child_url and child_url != before_url:
+                child_details["resolved_booking_url"] = child_url
+            discovered = self._merge_checkout_details(discovered, child_details)
+            combined = self._merge_checkout_details(accumulated, discovered)
+
+            if depth < max_depth and self._should_continue_generic_add_on_discovery(target_page, combined):
+                deeper_details = await self._explore_generic_checkout_surface(
+                    target_page,
+                    config,
+                    offer=offer,
+                    default_currency=default_currency,
+                    accumulated_details=combined,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    visited_surfaces=surface_keys,
+                    visited_actions=action_keys,
+                    discovery_trace=trace,
+                )
+                discovered = self._merge_checkout_details(discovered, deeper_details)
+                combined = self._merge_checkout_details(accumulated, discovered)
+
+            if popup_page is not None:
+                try:
+                    await popup_page.close()
+                except Exception:
+                    pass
+            elif child_url and child_url != before_url:
+                try:
+                    await page.go_back(wait_until="domcontentloaded", timeout=6000)
+                    await page.wait_for_timeout(1000)
+                    await self._dismiss_cookies(page, config)
+                except Exception:
+                    pass
+
+            if self._generic_discovery_target_satisfied(combined):
+                break
+
+        return discovered
+
+    async def _collect_generic_discovery_candidates(self, page) -> list[dict]:
+        try:
+            candidates = await page.evaluate(
+                r'''() => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                    const bookingHoldingsMetaHost = /(^|\.)momondo\.com$|(^|\.)kayak\.com$|(^|\.)cheapflights\.com$/i.test(window.location.hostname || '');
+                    const isVisible = (element) => {
+                        if (!element) return false;
+                        const rect = element.getBoundingClientRect();
+                        if (rect.width < 20 || rect.height < 10) return false;
+                        const style = window.getComputedStyle(element);
+                        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                    };
+
+                    const selectors = 'button, [role="button"], [role="tab"], a[href], summary, [aria-controls]';
+                    const nodes = Array.from(document.querySelectorAll(selectors));
+                    const seen = new Set();
+                    const results = [];
+                    for (const [index, node] of nodes.entries()) {
+                        if (!isVisible(node)) continue;
+                        const text = normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || node.getAttribute('title') || '');
+                        const href = normalize(node.getAttribute('href') || '');
+                        const controlsId = normalize(node.getAttribute('aria-controls') || '');
+                        const controlled = controlsId ? document.getElementById(controlsId) : null;
+                        const controlledText = normalize(controlled?.innerText || controlled?.textContent || '').slice(0, 180);
+                        const haystack = normalize(`${text} ${href} ${controlledText}`).toLowerCase();
+                        if ((!text && !href) || haystack.length > 260) continue;
+                        if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+                        if (bookingHoldingsMetaHost) {
+                            if (/(^|\b)(packages?|search for packages|package holidays?|car rental|car hire|hotel|hotels|stay|stays|google play|app store|get it on google play|get on google play|download app|open in app)(\b|$)/i.test(haystack)) {
+                                continue;
+                            }
+                            if (/(play\.google\.com|apps\.apple\.com|\/packages(?:\/|$)|\/car-rental(?:\/|$)|\/hotels?(?:\/|$)|\/stays?(?:\/|$))/i.test(href)) {
+                                continue;
+                            }
+                        }
+                        if (!/(meal|food|snack|drink|beverage|catering|menu|wifi|wi-fi|internet|insurance|protection|coverage|priority|lounge|bags?|baggage|luggage|extras|add-ons|add ons|services|options|bundle|package|fare|details)/i.test(haystack)) {
+                            continue;
+                        }
+                        if (/(payment|billing|card number|card details|secure payment|search flights|search results|sign in|log in|register|complete booking|book now|confirm booking|select flight)/i.test(haystack)) {
+                            continue;
+                        }
+
+                        let score = 0;
+                        if (/(wifi|wi-fi|internet)/i.test(haystack)) score += 10;
+                        if (/(meal|food|snack|drink|beverage|catering|menu)/i.test(haystack)) score += 9;
+                        if (/(insurance|protection|coverage)/i.test(haystack)) score += 9;
+                        if (/(priority|lounge)/i.test(haystack)) score += 7;
+                        if (/(extras|add-ons|add ons|services|options|onboard|ancillar)/i.test(haystack)) score += 6;
+                        if (/(bags?|baggage|luggage|bundle|package|fare)/i.test(haystack)) score += 5;
+                        if (/(view options|view details|see options|see details|details|learn more|more info)/i.test(text)) score += 3;
+                        if (/(meal|wifi|insurance|priority|lounge|service|extras|addon|ancillar|option)/i.test(href)) score += 4;
+                        if ((node.getAttribute('role') || '').toLowerCase() === 'tab') score += 2;
+                        if (node.hasAttribute('aria-controls')) score += 2;
+                        if ((node.getAttribute('aria-expanded') || '').toLowerCase() === 'false') score += 1;
+                        if ((node.getAttribute('aria-selected') || '').toLowerCase() === 'false') score += 1;
+                        if (controlledText) score += 1;
+
+                        const dedupeKey = `${text.toLowerCase()}|${href.toLowerCase()}|${controlsId.toLowerCase()}`;
+                        if (seen.has(dedupeKey)) continue;
+                        seen.add(dedupeKey);
+                        results.push({ index, text, href, score, controls_id: controlsId, controlled_text: controlledText });
+                    }
+
+                    results.sort((left, right) => (right.score - left.score) || left.text.localeCompare(right.text));
+                    return results.slice(0, 8);
+                }'''
+            )
+        except Exception:
+            return []
+        return candidates if isinstance(candidates, list) else []
+
+    async def _click_generic_discovery_candidate(self, page, candidate_index: int) -> bool:
+        if candidate_index < 0:
+            return False
+        try:
+            return bool(await page.evaluate(
+                r'''(candidateIndex) => {
+                    const selectors = 'button, [role="button"], [role="tab"], a[href], summary, [aria-controls]';
+                    const nodes = Array.from(document.querySelectorAll(selectors));
+                    const target = nodes[candidateIndex];
+                    if (!target) return false;
+                    const rect = target.getBoundingClientRect();
+                    if (rect.width < 20 || rect.height < 10) return false;
+                    const style = window.getComputedStyle(target);
+                    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || '1') === 0) {
+                        return false;
+                    }
+                    target.scrollIntoView({ block: 'center' });
+                    if (target.tagName === 'A' && target.getAttribute('target') === '_blank') {
+                        target.removeAttribute('target');
+                    }
+                    target.click();
+                    return true;
+                }''',
+                candidate_index,
+            ))
+        except Exception:
+            return False
+
+    def _should_attempt_generic_add_on_discovery(self, page, details: dict) -> bool:
+        current_url = (page.url or "").lower()
+        if "google." in current_url and "/travel/flights" in current_url:
+            return False
+        if details.get("fare_bundle_options"):
+            return False
+
+        checkout_page = str(details.get("checkout_page") or "").strip().lower()
+        if checkout_page == "blocked":
+            return False
+        service_url_hints = ("service", "addon", "extra", "meal", "wifi", "insurance", "baggage", "option", "ancillar")
+        if checkout_page == "passengers" and not any(hint in current_url for hint in service_url_hints):
+            return False
+        if checkout_page and checkout_page not in {"select_flight", "extras", "seats", "payment", "passengers"}:
+            return False
+
+        if self._generic_discovery_target_satisfied(details):
+            return False
+        return bool(urlparse(str(page.url or "")).netloc)
+
+    def _should_continue_generic_add_on_discovery(self, page, details: dict) -> bool:
+        current_url = (page.url or "").lower()
+        if not current_url.startswith("http"):
+            return False
+        if "google." in current_url and "/travel/flights" in current_url:
+            return False
+        if self._generic_discovery_target_satisfied(details):
+            return False
+
+        checkout_page = str(details.get("checkout_page") or "").strip().lower()
+        if checkout_page == "blocked":
+            return False
+
+        service_url_hints = ("service", "addon", "extra", "meal", "wifi", "insurance", "baggage", "option", "ancillar")
+        if checkout_page == "passengers" and not any(hint in current_url for hint in service_url_hints):
+            return False
+        return True
+
+    @staticmethod
+    def _generic_discovery_target_satisfied(details: dict) -> bool:
+        target_categories = ("meals", "insurance", "wifi")
+        return all(GenericCheckoutEngine._has_checkout_add_on_category(details, category) for category in target_categories)
+
+    @staticmethod
+    def _generic_discovery_action_key(current_url: str, candidate: dict) -> str:
+        text = str(candidate.get("text") or "").strip().lower()
+        href = str(candidate.get("href") or "").strip().lower()
+        controls_id = str(candidate.get("controls_id") or "").strip().lower()
+        if not any((text, href, controls_id)):
+            return ""
+        return f"{str(current_url or '').strip().lower()}|{text}|{href}|{controls_id}"
+
+    @staticmethod
+    def _checkout_surface_signature(snapshot: dict) -> str:
+        current_url = str((snapshot or {}).get("current_url") or "").strip().lower()
+        title = str((snapshot or {}).get("page_title") or "").strip().lower()
+        body = str((snapshot or {}).get("body_snippet") or "").strip().lower()
+        return f"{current_url}|{title}|{body}"
+
+    @staticmethod
+    def _has_checkout_add_on_category(details: dict, category: str) -> bool:
+        add_ons = details.get("available_add_ons") if isinstance(details.get("available_add_ons"), dict) else {}
+        items = add_ons.get(category) if isinstance(add_ons, dict) else None
+        return isinstance(items, list) and any(isinstance(item, dict) for item in items)
+
+    @staticmethod
+    def _checkout_find_new_context_page(page, known_urls: set[str]):
+        for candidate in reversed(list(getattr(page.context, "pages", []))):
+            url = str(candidate.url or "").strip()
+            if not url.startswith("http"):
+                continue
+            if url in known_urls:
+                continue
+            return candidate
+        return None
+
+    async def _extract_vueling_bundle_details(
+        self,
+        page,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> dict:
+        current_url = (page.url or "").lower()
+        if "tickets.vueling.com" not in current_url:
+            return {}
+
+        if not await self._vueling_has_visible_bundle_cards(page):
+            if "/booking/selectflight" not in current_url:
+                return {}
+            if not await self._vueling_reveal_bundle_cards(page, offer=offer, default_currency=default_currency):
+                return {}
+
+        try:
+            raw_bundles = await page.evaluate(
+                r'''(defaultCurrency) => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = (element) => {
+                        if (!element) return false;
+                        const rect = element.getBoundingClientRect();
+                        if (rect.width < 80 || rect.height < 60) return false;
+                        const style = window.getComputedStyle(element);
+                        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                    };
+                    const unique = (values) => {
+                        const seen = new Set();
+                        const deduped = [];
+                        for (const value of values || []) {
+                            const text = normalize(value);
+                            if (!text) continue;
+                            const key = text.toLowerCase();
+                            if (seen.has(key)) continue;
+                            seen.add(key);
+                            deduped.push(text);
+                        }
+                        return deduped;
+                    };
+                    const parseNumberToken = (token) => {
+                        const clean = normalize(token).replace(/[^\d.,-]/g, '');
+                        if (!clean) return null;
+                        let normalizedNumber = clean;
+                        if (normalizedNumber.includes('.') && normalizedNumber.includes(',')) {
+                            if (normalizedNumber.lastIndexOf('.') > normalizedNumber.lastIndexOf(',')) {
+                                normalizedNumber = normalizedNumber.replace(/,/g, '');
+                            } else {
+                                normalizedNumber = normalizedNumber.replace(/\./g, '').replace(',', '.');
+                            }
+                        } else if (normalizedNumber.includes(',')) {
+                            const parts = normalizedNumber.split(',');
+                            if (parts.length === 2 && parts[1].length <= 2) {
+                                normalizedNumber = `${parts[0].replace(/\./g, '')}.${parts[1]}`;
+                            } else {
+                                normalizedNumber = normalizedNumber.replace(/,/g, '');
+                            }
+                        } else {
+                            normalizedNumber = normalizedNumber.replace(/,/g, '');
+                        }
+                        const parsed = Number(normalizedNumber);
+                        return Number.isFinite(parsed) ? parsed : null;
+                    };
+                    const parseMoney = (text) => {
+                        const clean = normalize(text).replace(/\u00a0/g, ' ');
+                        let match = clean.match(/([A-Z]{3}|[€£$])\s*([\d.,]+(?:\s*[\d.,]+)?)/i);
+                        if (match) {
+                            const amount = parseNumberToken(match[2]);
+                            if (amount !== null) {
+                                return {
+                                    currency: match[1] === '€' ? 'EUR' : match[1] === '£' ? 'GBP' : match[1] === '$' ? (defaultCurrency || 'USD') : match[1].toUpperCase(),
+                                    amount,
+                                };
+                            }
+                        }
+                        match = clean.match(/([\d.,]+(?:\s*[\d.,]+)?)\s*([A-Z]{3}|[€£$])\b/i);
+                        if (match) {
+                            const amount = parseNumberToken(match[1]);
+                            if (amount !== null) {
+                                return {
+                                    currency: match[2] === '€' ? 'EUR' : match[2] === '£' ? 'GBP' : match[2] === '$' ? (defaultCurrency || 'USD') : match[2].toUpperCase(),
+                                    amount,
+                                };
+                            }
+                        }
+                        return null;
+                    };
+
+                    const cards = Array.from(document.querySelectorAll('.vy-card-bundle, [class*="card-bundle"]'))
+                        .filter((card) => {
+                            const parentCard = card.parentElement?.closest('.vy-card-bundle, [class*="card-bundle"]');
+                            if (parentCard) return false;
+                            return isVisible(card) && /select bundle|ticket price/i.test(normalize(card.innerText || card.textContent || ''));
+                        });
+
+                    return cards.map((card) => {
+                        const header = normalize(
+                            card.querySelector('.vy-card-bundle_header-title, [class*="header-title"]')?.innerText
+                            || card.querySelector('h1, h2, h3, h4')?.innerText
+                            || ''
+                        );
+                        const body = card.querySelector('.vy-card-bundle_body, [class*="bundle_body"], section');
+                        let benefits = Array.from(body ? body.querySelectorAll('li') : []).map((node) => normalize(node.innerText || node.textContent || ''));
+                        if (!benefits.length && body) {
+                            benefits = normalize(body.innerText || body.textContent || '').split(/\n+/).map(normalize);
+                        }
+                        benefits = unique(
+                            benefits.filter((text) => !/select bundle|ticket price|only during the booking process/i.test(text))
+                        );
+
+                        const priceTexts = [
+                            ...Array.from(card.querySelectorAll('button, [role="button"]')).map((node) => normalize(node.innerText || node.textContent || '')),
+                            ...Array.from(card.querySelectorAll('[class*="footer"], [class*="price"]')).map((node) => normalize(node.innerText || node.textContent || '')),
+                        ].filter(Boolean);
+
+                        let price = null;
+                        for (const text of priceTexts) {
+                            const parsed = parseMoney(text);
+                            if (!parsed) continue;
+                            if (!price || parsed.amount < price.amount) {
+                                price = parsed;
+                            }
+                        }
+
+                        return {
+                            header,
+                            benefits,
+                            amount: price?.amount ?? null,
+                            currency: price?.currency || (defaultCurrency || 'EUR'),
+                            included: Boolean(price && Math.abs(price.amount) < 0.001),
+                            text: normalize(card.innerText || card.textContent || ''),
+                        };
+                    }).filter((item) => item.header);
+                }''',
+                default_currency,
+            )
+        except Exception as exc:
+            logger.debug("Vueling bundle probe: bundle parse failed: %s", exc)
+            return {}
+
+        if not isinstance(raw_bundles, list) or not raw_bundles:
+            return {}
+
+        normalized_bundles: list[dict] = []
+        for raw_bundle in raw_bundles:
+            if not isinstance(raw_bundle, dict):
+                continue
+            header = str(raw_bundle.get("header") or "").strip()
+            label, summary = self._vueling_split_bundle_header(header)
+            if not label:
+                continue
+            benefits = []
+            for item in raw_bundle.get("benefits") or []:
+                text = str(item or "").strip()
+                if text and text not in benefits:
+                    benefits.append(text)
+            amount = raw_bundle.get("amount")
+            if amount is not None:
+                try:
+                    amount = float(amount)
+                except Exception:
+                    amount = None
+            currency = str(raw_bundle.get("currency") or default_currency or "EUR").upper()
+            included = bool(raw_bundle.get("included")) or (amount is not None and abs(amount) < 0.001)
+            description_parts = []
+            if summary:
+                description_parts.append(summary)
+            if benefits:
+                description_parts.append("; ".join(benefits))
+            normalized_bundles.append(
+                {
+                    "label": label,
+                    "fare_family": label,
+                    "summary": summary,
+                    "benefits": benefits,
+                    "currency": currency,
+                    "amount": 0.0 if amount is not None and abs(amount) < 0.001 else amount,
+                    "included": included,
+                    "type": "package",
+                    "description": "; ".join(description_parts),
+                    "text": str(raw_bundle.get("text") or header).strip(),
+                }
+            )
+
+        deduped_bundles: list[dict] = []
+        seen_bundle_keys: set[str] = set()
+        for bundle in normalized_bundles:
+            key = "|".join(
+                [
+                    str(bundle.get("label") or "").strip().lower(),
+                    str(bundle.get("currency") or "").strip().upper(),
+                    "" if bundle.get("amount") is None else f"{float(bundle.get('amount') or 0.0):.2f}",
+                    ";".join(str(value).strip().lower() for value in bundle.get("benefits") or [] if str(value).strip()),
+                ]
+            )
+            if not key or key in seen_bundle_keys:
+                continue
+            seen_bundle_keys.add(key)
+            deduped_bundles.append(bundle)
+        normalized_bundles = deduped_bundles
+
+        if not normalized_bundles:
+            return {}
+
+        normalized_bundles.sort(
+            key=lambda item: (
+                item.get("amount") is None,
+                float(item.get("amount") or 0.0),
+                str(item.get("label") or ""),
+            )
+        )
+        for index, item in enumerate(normalized_bundles):
+            item["selected"] = index == 0
+
+        base_bundle = normalized_bundles[0]
+        conditions: dict[str, str] = {
+            "fare_family": str(base_bundle.get("fare_family") or base_bundle.get("label") or "").strip(),
+            "fare_bundle": str(base_bundle.get("fare_family") or base_bundle.get("label") or "").strip(),
+        }
+        if base_bundle.get("summary"):
+            conditions["fare_bundle_description"] = str(base_bundle["summary"])
+        if base_bundle.get("benefits"):
+            conditions["fare_bundle_benefits"] = "; ".join(str(value) for value in base_bundle["benefits"])
+
+        benefit_patterns = {
+            "cabin_bag": r"underseat cabin bag|cabin bag|overhead locker|luggage in the overhead locker",
+            "checked_bag": r"checked bag",
+            "seat": r"choose .*seats?|exclusive seats?|standard seats?|seat selection",
+            "priority": r"priority",
+        }
+        for key, pattern in benefit_patterns.items():
+            for benefit in base_bundle.get("benefits") or []:
+                benefit_text = str(benefit or "").strip()
+                if re.search(pattern, benefit_text, re.IGNORECASE):
+                    conditions[key] = f"included - {benefit_text}"
+                    break
+
+        upgrade_summaries: list[str] = []
+        for bundle in normalized_bundles[1:]:
+            parts = [str(bundle.get("label") or "").strip()]
+            amount = bundle.get("amount")
+            currency = str(bundle.get("currency") or default_currency or "EUR").upper()
+            if amount is not None:
+                parts[0] = f"{parts[0]} (+{float(amount):.2f} {currency})"
+            bundle_benefits = [str(value).strip() for value in bundle.get("benefits") or [] if str(value).strip()]
+            if bundle_benefits:
+                parts.append("; ".join(bundle_benefits))
+            upgrade_summaries.append(": ".join(part for part in parts if part))
+        if upgrade_summaries:
+            conditions["fare_bundle_upgrades"] = " | ".join(upgrade_summaries[:3])
+
+        return {
+            "checkout_page": "extras",
+            "fare_bundle_options": normalized_bundles,
+            "conditions": conditions,
+            "available_add_ons": {
+                "packages": [dict(item) for item in normalized_bundles],
+            },
+            "vueling_bundle_observation": "Vueling fare bundles were opened from the selected-flight page and parsed from the live booking surface.",
+        }
+
+    async def _vueling_has_visible_bundle_cards(self, page) -> bool:
+        try:
+            return bool(await page.evaluate(
+                r'''() => Array.from(document.querySelectorAll('.vy-card-bundle, [class*="card-bundle"]')).some((card) => {
+                    const rect = card.getBoundingClientRect();
+                    if (rect.width < 80 || rect.height < 60) return false;
+                    const style = window.getComputedStyle(card);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                })'''
+            ))
+        except Exception:
+            return False
+
+    async def _vueling_reveal_bundle_cards(
+        self,
+        page,
+        offer: Optional[dict] = None,
+        default_currency: str = "EUR",
+    ) -> bool:
+        vueling_config = AIRLINE_CONFIGS.get("vueling_direct")
+        if vueling_config is not None:
+            await self._dismiss_cookies(page, vueling_config)
+
+        for _ in range(2):
+            if await self._vueling_has_visible_bundle_cards(page):
+                return True
+
+            try:
+                await page.wait_for_function(
+                    r'''() => Array.from(document.querySelectorAll('button')).some((button) => {
+                        const text = (button.innerText || button.textContent || '').replace(/\s+/g, ' ').trim();
+                        if (!/select flight/i.test(text)) return false;
+                        const rect = button.getBoundingClientRect();
+                        if (rect.width < 60 || rect.height < 20) return false;
+                        const style = window.getComputedStyle(button);
+                        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                    }) || Array.from(document.querySelectorAll('.vy-card-bundle, [class*="card-bundle"]')).some((card) => {
+                        const rect = card.getBoundingClientRect();
+                        if (rect.width < 80 || rect.height < 60) return false;
+                        const style = window.getComputedStyle(card);
+                        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                    })''',
+                    timeout=12000,
+                )
+            except Exception:
+                pass
+
+            try:
+                raw_options = await page.evaluate(
+                    r'''() => {
+                        const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                        const isVisible = (element) => {
+                            if (!element) return false;
+                            const rect = element.getBoundingClientRect();
+                            if (rect.width < 60 || rect.height < 20) return false;
+                            const style = window.getComputedStyle(element);
+                            return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                        };
+                        return Array.from(document.querySelectorAll('button')).map((button, index) => ({
+                            index,
+                            text: normalize(button.innerText || button.textContent || ''),
+                            visible: isVisible(button),
+                        })).filter((item) => item.visible && /select flight/i.test(item.text));
+                    }'''
+                )
+            except Exception:
+                return False
+
+            if not isinstance(raw_options, list) or not raw_options:
+                await page.wait_for_timeout(2500)
+                continue
+
+            target_price = None
+            target_currency = str(default_currency or "EUR").upper()
+            if isinstance(offer, dict):
+                try:
+                    target_price = float(offer.get("price")) if offer.get("price") is not None else None
+                except Exception:
+                    target_price = None
+                target_currency = str(offer.get("currency") or target_currency).upper()
+
+            ranked_options: list[tuple[float, dict]] = []
+            for option in raw_options:
+                if not isinstance(option, dict):
+                    continue
+                amount, currency = self._google_parse_visible_price(str(option.get("text") or ""), default_currency=target_currency)
+                score = 0.0
+                if target_price is not None and amount is not None:
+                    score -= abs(amount - target_price)
+                    if abs(amount - target_price) <= 1.0:
+                        score += 25.0
+                elif amount is not None:
+                    score -= amount / 1000.0
+                ranked_options.append((score, {**option, "amount": amount, "currency": currency}))
+
+            if not ranked_options:
+                return False
+
+            ranked_options.sort(
+                key=lambda item: (
+                    -item[0],
+                    item[1].get("amount") is None,
+                    float(item[1].get("amount") or 0.0),
+                    str(item[1].get("text") or ""),
+                )
+            )
+            candidate = ranked_options[0][1]
+            button_index = candidate.get("index")
+            if not isinstance(button_index, int):
+                return False
+
+            try:
+                clicked = bool(await page.evaluate(
+                    r'''(buttonIndex) => {
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const button = buttons[buttonIndex];
+                        if (!button) return false;
+                        const rect = button.getBoundingClientRect();
+                        if (rect.width < 60 || rect.height < 20) return false;
+                        button.scrollIntoView({ block: 'center' });
+                        button.click();
+                        return true;
+                    }''',
+                    button_index,
+                ))
+            except Exception:
+                clicked = False
+            if not clicked:
+                return False
+
+            await page.wait_for_timeout(4500)
+            if vueling_config is not None:
+                await self._dismiss_cookies(page, vueling_config)
+            try:
+                await page.wait_for_function(
+                    r'''() => Array.from(document.querySelectorAll('.vy-card-bundle, [class*="card-bundle"]')).some((card) => {
+                        const rect = card.getBoundingClientRect();
+                        if (rect.width < 80 || rect.height < 60) return false;
+                        const style = window.getComputedStyle(card);
+                        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') !== 0;
+                    })''',
+                    timeout=10000,
+                )
+            except Exception:
+                pass
+
+        return await self._vueling_has_visible_bundle_cards(page)
+
+    @staticmethod
+    def _vueling_split_bundle_header(header_text: str) -> tuple[str, str]:
+        normalized = " ".join(str(header_text or "").split()).strip()
+        if not normalized:
+            return "", ""
+
+        tokens = normalized.split()
+        label_tokens: list[str] = []
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            has_alpha = any(ch.isalpha() for ch in token)
+            is_upper = has_alpha and token == token.upper() and len(token) > 1
+            if not label_tokens:
+                label_tokens.append(token)
+                index += 1
+                continue
+            if not is_upper:
+                break
+            label_tokens.append(token)
+            index += 1
+
+        label = " ".join(label_tokens).strip().upper()
+        summary = " ".join(tokens[index:]).strip()
+        return label, summary
+
+    def _google_offer_match_score(self, card_text: str, offer: Optional[dict]) -> int:
+        if not isinstance(offer, dict):
+            return -1
+        outbound = offer.get("outbound") if isinstance(offer.get("outbound"), dict) else {}
+        segments = outbound.get("segments") if isinstance(outbound, dict) else []
+        if not isinstance(segments, list) or not segments:
+            return -1
+
+        normalized = " ".join((card_text or "").split()).upper()
+        if not normalized:
+            return -1
+
+        first = segments[0] if isinstance(segments[0], dict) else {}
+        last = segments[-1] if isinstance(segments[-1], dict) else {}
+        dep_airport = str(first.get("origin") or "").upper()
+        arr_airport = str(last.get("destination") or "").upper()
+        dep_time = self._google_display_time(first.get("departure"))
+        arr_time = self._google_display_time(last.get("arrival"))
+        score = 0
+
+        if dep_airport and arr_airport and (
+            f"{dep_airport}–{arr_airport}" in normalized or f"{dep_airport}-{arr_airport}" in normalized
+        ):
+            score += 4
+        if dep_time and dep_time in normalized:
+            score += 3
+        if arr_time and arr_time in normalized:
+            score += 3
+
+        airline_tokens: list[str] = []
+        for value in [offer.get("owner_airline"), *(offer.get("airlines") or [])]:
+            token = str(value or "").strip().upper()
+            if token and token not in airline_tokens:
+                airline_tokens.append(token)
+        for token in airline_tokens:
+            if token in normalized:
+                score += 1
+                break
+
+        try:
+            price = float(offer.get("price") or 0.0)
+        except Exception:
+            price = 0.0
+        if price > 0 and str(int(round(price))) in normalized:
+            score += 1
+        return score
+
+    @staticmethod
+    def _google_display_time(value: object) -> str:
+        hhmm = _extract_hhmm(value)
+        if not hhmm:
+            return ""
+        try:
+            hour_str, minute_str = hhmm.split(":", 1)
+            hour = int(hour_str)
+            minute = int(minute_str)
+        except Exception:
+            return ""
+        suffix = "AM" if hour < 12 else "PM"
+        hour = hour % 12 or 12
+        return f"{hour}:{minute:02d} {suffix}"
+
+    async def _google_collect_visible_card_texts(self, page, selector: str) -> list[str]:
+        texts: list[str] = []
+        seen: set[str] = set()
+        try:
+            locator = page.locator(selector)
+            count = await locator.count()
+        except Exception:
+            return texts
+
+        for index in range(count):
+            try:
+                candidate = locator.nth(index)
+                if not await candidate.is_visible():
+                    continue
+                text = " ".join((await candidate.inner_text()).split())
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                texts.append(text)
+            except Exception:
+                continue
+        return texts
+
+    async def _google_click_card_by_text(self, page, selector: str, target_text: str) -> bool:
+        locator = page.locator(selector)
+        try:
+            count = await locator.count()
+        except Exception:
+            return False
+
+        for index in range(count):
+            try:
+                candidate = locator.nth(index)
+                if not await candidate.is_visible():
+                    continue
+                text = " ".join((await candidate.inner_text()).split())
+                if text != target_text:
+                    continue
+                await candidate.evaluate(
+                    "el => { el.scrollIntoView({ block: 'center' }); el.click(); }"
+                )
+                return True
+            except Exception:
+                continue
+        return False
+
+    async def _google_click_best_offer_card(self, page, offer: Optional[dict]) -> dict:
+        selectors = [
+            'div.yR1fYc[jsaction*="O1htCb"]',
+            'div[jsaction*="O1htCb"]',
+        ]
+        best_selector = ""
+        best_text = ""
+        best_score = -1
+        for selector in selectors:
+            texts = await self._google_collect_visible_card_texts(page, selector)
+            for text in texts:
+                score = self._google_offer_match_score(text, offer)
+                if score > best_score:
+                    best_score = score
+                    best_text = text
+                    best_selector = selector
+            if best_score >= 7:
+                break
+
+        if best_selector and best_text and best_score >= 7:
+            if await self._google_click_card_by_text(page, best_selector, best_text):
+                return {"text": best_text, "score": best_score}
+        return {}
+
+    async def _google_click_first_visible(self, locator) -> bool:
+        try:
+            count = await locator.count()
+        except Exception:
+            return False
+        for index in range(count):
+            try:
+                candidate = locator.nth(index)
+                if not await candidate.is_visible():
+                    continue
+                await candidate.scroll_into_view_if_needed()
+                try:
+                    await candidate.click(timeout=2000)
+                except Exception:
+                    await candidate.evaluate(
+                        "el => { el.scrollIntoView({ block: 'center' }); el.click(); }"
+                    )
+                return True
+            except Exception:
+                continue
+        return False
+
+    async def _google_resolve_consent(self, page) -> None:
+        for _ in range(3):
+            current_url = (page.url or "").lower()
+            if "consent.google.com" not in current_url:
+                return
+            clicked = False
+            for label in ("Reject all", "Accept all", "I agree", "No thanks", "Continue"):
+                try:
+                    locator = page.get_by_role("button", name=re.compile(rf"^{re.escape(label)}$", re.IGNORECASE))
+                    if await self._google_click_first_visible(locator):
+                        clicked = True
+                        break
+                except Exception:
+                    continue
+            if not clicked:
+                try:
+                    clicked = bool(await page.evaluate(
+                        """() => {
+                            const labels = ['reject all', 'accept all', 'i agree', 'no thanks', 'continue'];
+                            const buttons = Array.from(document.querySelectorAll('button'));
+                            for (const button of buttons) {
+                                const text = (button.innerText || button.getAttribute('aria-label') || '').trim().toLowerCase();
+                                if (!text || !labels.includes(text)) continue;
+                                button.scrollIntoView({ block: 'center' });
+                                button.click();
+                                return true;
+                            }
+                            return false;
+                        }"""
+                    ))
+                except Exception:
+                    clicked = False
+            if clicked:
+                await page.wait_for_timeout(1500)
+                continue
+            try:
+                await page.mouse.wheel(0, 1200)
+            except Exception:
+                pass
+            await page.wait_for_timeout(800)
+
+    async def _google_collect_seller_candidates(self, page, offer: Optional[dict]) -> list[dict]:
+        try:
+            raw_candidates = await page.evaluate(
+                """() => {
+                    const nodes = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="link"]'));
+                    const rows = [];
+                    const seen = new Set();
+                    for (const [index, node] of nodes.entries()) {
+                        const rect = node.getBoundingClientRect();
+                        if (rect.width < 40 || rect.height < 18) continue;
+                        const style = window.getComputedStyle(node);
+                        if (style.visibility === 'hidden' || style.display === 'none') continue;
+                        const text = (node.innerText || node.getAttribute('aria-label') || node.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+                        const href = node.href || node.getAttribute('href') || node.getAttribute('data-href') || node.getAttribute('data-url') || '';
+                        if (!text && !href) continue;
+                        const key = `${text}|${href}`;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        rows.push({ text, href, candidate_index: index });
+                    }
+                    return rows;
+                }"""
+            )
+        except Exception:
+            return []
+
+        if not isinstance(raw_candidates, list):
+            return []
+
+        ranked: list[tuple[int, dict]] = []
+        for candidate in raw_candidates:
+            if not isinstance(candidate, dict):
+                continue
+            score = self._google_seller_candidate_score(candidate, offer)
+            if score <= 0:
+                continue
+            resolved_url = self._google_unwrap_url(str(candidate.get("href") or ""))
+            ranked.append((score, {
+                "candidate_index": candidate.get("candidate_index"),
+                "score": score,
+                "text": str(candidate.get("text") or "").strip(),
+                "href": str(candidate.get("href") or "").strip(),
+                "resolved_url": resolved_url,
+            }))
+
+        ranked.sort(key=lambda item: (-item[0], item[1].get("text") or item[1].get("resolved_url") or ""))
+        return [item for _score, item in ranked[:12]]
+
+    def _google_seller_candidate_score(self, candidate: dict, offer: Optional[dict]) -> int:
+        text = str(candidate.get("text") or "")
+        href = str(candidate.get("href") or "")
+        lower_text = text.lower().strip()
+        upper_text = text.upper()
+        resolved_url = self._google_unwrap_url(href)
+        score = 0
+
+        if lower_text in {"about", "feedback", "google"}:
+            return -10
+
+        if resolved_url:
+            if not self._google_is_google_domain(resolved_url):
+                score += 5
+            else:
+                score -= 4
+        elif href:
+            score += 1
+
+        if re.search(r"\b(BOOK|SELECT|CONTINUE|CHECKOUT|DEAL|OPTION)\b", upper_text):
+            score += 3
+        if "SELECT FLIGHT" in upper_text:
+            score += 6
+        if not resolved_url and len(text) > 60:
+            score += 2
+
+        if isinstance(offer, dict):
+            try:
+                price = float(offer.get("price") or 0.0)
+            except Exception:
+                price = 0.0
+            if price > 0 and str(int(round(price))) in upper_text:
+                score += 1
+            for airline in [offer.get("owner_airline"), *(offer.get("airlines") or [])]:
+                token = str(airline or "").strip().upper()
+                if token and token in upper_text:
+                    score += 1
+                    break
+
+        if re.search(r"\b(BAGGAGE|PRICE GRAPH|TRACK|DATES|POLICY|NOTICE|SHARE)\b", upper_text):
+            score -= 2
+        return score
+
+    def _google_pick_seller_url(self, candidates: list[dict]) -> str:
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            resolved_url = str(candidate.get("resolved_url") or "").strip()
+            if resolved_url and not self._google_is_google_domain(resolved_url):
+                return resolved_url
+        return ""
+
+    def _google_pick_intermediate_action(self, candidates: list[dict]) -> dict:
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            resolved_url = str(candidate.get("resolved_url") or "").strip()
+            if resolved_url and not self._google_is_google_domain(resolved_url):
+                continue
+            if str(candidate.get("text") or "").strip() and int(candidate.get("score") or 0) >= 6:
+                return candidate
+        return {}
+
+    async def _google_click_candidate(self, page, candidate: dict) -> bool:
+        try:
+            candidate_index = int(candidate.get("candidate_index"))
+        except Exception:
+            return False
+        try:
+            return bool(await page.evaluate(
+                """(index) => {
+                    const nodes = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="link"]'));
+                    const target = nodes[index];
+                    if (!target) return false;
+                    const rect = target.getBoundingClientRect();
+                    if (rect.width < 40 || rect.height < 18) return false;
+                    const style = window.getComputedStyle(target);
+                    if (style.visibility === 'hidden' || style.display === 'none') return false;
+                    target.scrollIntoView({ block: 'center' });
+                    target.click();
+                    return true;
+                }""",
+                candidate_index,
+            ))
+        except Exception:
+            return False
+
+    async def _google_wait_for_booking_options(self, page) -> None:
+        try:
+            await page.wait_for_function(
+                "() => /booking options|continue|book with/i.test(document.body?.innerText || '')",
+                timeout=15000,
+            )
+        except Exception:
+            pass
+
+    def _google_parse_visible_price(self, text: str, default_currency: str = "EUR") -> tuple[Optional[float], str]:
+        raw_text = str(text or "").strip()
+        if not raw_text:
+            return None, str(default_currency or "EUR").upper()
+
+        symbol_map = {
+            "€": "EUR",
+            "$": "USD",
+            "£": "GBP",
+        }
+        word_map = {
+            "eur": "EUR",
+            "euro": "EUR",
+            "euros": "EUR",
+            "usd": "USD",
+            "dollar": "USD",
+            "dollars": "USD",
+            "gbp": "GBP",
+            "pound": "GBP",
+            "pounds": "GBP",
+            "pln": "PLN",
+            "zloty": "PLN",
+            "zlotys": "PLN",
+            "zlotych": "PLN",
+        }
+
+        symbol_match = re.search(r"([€$£])\s*([0-9]+(?:[.,][0-9]+)?)", raw_text)
+        if symbol_match:
+            amount_text = symbol_match.group(2).replace(",", ".")
+            try:
+                return float(amount_text), symbol_map.get(symbol_match.group(1), str(default_currency or "EUR").upper())
+            except Exception:
+                pass
+
+        lower_text = raw_text.lower()
+        word_match = re.search(
+            r"([0-9]+(?:[.,][0-9]+)?)\s*(eur|euro|euros|usd|dollar|dollars|gbp|pound|pounds|pln|zloty|zlotys|zlotych)",
+            lower_text,
+        )
+        if word_match:
+            amount_text = word_match.group(1).replace(",", ".")
+            try:
+                return float(amount_text), word_map.get(word_match.group(2), str(default_currency or "EUR").upper())
+            except Exception:
+                pass
+
+        return None, str(default_currency or "EUR").upper()
+
+    async def _google_collect_booking_continue_options(self, page, default_currency: str = "EUR") -> list[dict]:
+        try:
+            options = await page.evaluate(
+                r"""() => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = (node) => {
+                        if (!node) return false;
+                        const rect = node.getBoundingClientRect();
+                        if (rect.width < 40 || rect.height < 18) return false;
+                        const style = window.getComputedStyle(node);
+                        return style.visibility !== 'hidden' && style.display !== 'none';
+                    };
+
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const rows = [];
+                    for (const [index, button] of buttons.entries()) {
+                        if (!isVisible(button)) continue;
+                        const aria = normalize(button.getAttribute('aria-label') || '');
+                        if (!/^Continue to book with /i.test(aria)) continue;
+
+                        let card = button.parentElement;
+                        while (card && card !== document.body) {
+                            const text = normalize(card.innerText || card.textContent || '');
+                            if (/^Book with /i.test(text) && /continue/i.test(text) && text.length < 400) break;
+                            card = card.parentElement;
+                        }
+
+                        const cardText = normalize(card?.innerText || card?.textContent || '');
+                        rows.push({
+                            button_index: index,
+                            aria_label: aria,
+                            button_text: normalize(button.innerText || button.textContent || ''),
+                            card_text: cardText,
+                            data_option_index: card?.querySelector('[data-option-index]')?.getAttribute('data-option-index') || '',
+                        });
+                    }
+                    return rows;
+                }"""
+            )
+        except Exception:
+            return []
+
+        if not isinstance(options, list):
+            return []
+
+        structured: list[dict] = []
+        seen = set()
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            aria_label = str(option.get("aria_label") or "").strip()
+            card_text = str(option.get("card_text") or "").strip()
+            if not aria_label:
+                continue
+            amount, currency = self._google_parse_visible_price(aria_label or card_text, default_currency=default_currency)
+            seller_label = aria_label
+            seller_match = re.search(r"Continue to book with\s+(.+?)(?:\s+for\s+[0-9€$£]|$)", aria_label, re.IGNORECASE)
+            if seller_match:
+                seller_label = seller_match.group(1).strip()
+            is_summary = "," in seller_label or "separate tickets" in card_text.lower()
+            key = (seller_label.lower(), amount, currency, str(option.get("data_option_index") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            structured.append({
+                "button_index": option.get("button_index"),
+                "seller_label": seller_label,
+                "aria_label": aria_label,
+                "card_text": card_text,
+                "amount": amount,
+                "currency": currency,
+                "is_summary": is_summary,
+                "data_option_index": str(option.get("data_option_index") or ""),
+            })
+
+        structured.sort(
+            key=lambda item: (
+                bool(item.get("is_summary")),
+                float(item.get("amount")) if item.get("amount") is not None else float("inf"),
+                str(item.get("seller_label") or "").lower(),
+            )
+        )
+        return structured[:8]
+
+    def _google_pick_booking_continue_option(self, options: list[dict]) -> dict:
+        if not isinstance(options, list):
+            return {}
+        seller_specific = [option for option in options if isinstance(option, dict) and not option.get("is_summary")]
+        if seller_specific:
+            return seller_specific[0]
+        for option in options:
+            if isinstance(option, dict):
+                return option
+        return {}
+
+    def _google_find_external_context_page(self, page):
+        try:
+            for candidate in page.context.pages:
+                candidate_url = str(getattr(candidate, "url", "") or "").strip()
+                if candidate_url.startswith("http") and not self._google_is_google_domain(candidate_url):
+                    return candidate
+        except Exception:
+            return None
+        return None
+
+    async def _google_click_booking_continue(self, page, option: Optional[dict] = None) -> bool:
+        if isinstance(option, dict):
+            try:
+                button_index = int(option.get("button_index"))
+            except Exception:
+                button_index = -1
+            if button_index >= 0:
+                try:
+                    locator = page.locator("button").nth(button_index)
+                    await locator.scroll_into_view_if_needed()
+                    await locator.click(timeout=4000)
+                    return True
+                except Exception:
+                    try:
+                        return bool(await page.evaluate(
+                            """(index) => {
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                const button = buttons[index];
+                                if (!button) return false;
+                                button.scrollIntoView({ block: 'center' });
+                                button.click();
+                                return true;
+                            }""",
+                            button_index,
+                        ))
+                    except Exception:
+                        pass
+        try:
+            return bool(await page.evaluate(
+                r"""() => {
+                    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                    const isVisible = (node) => {
+                        if (!node) return false;
+                        const rect = node.getBoundingClientRect();
+                        if (rect.width < 40 || rect.height < 18) return false;
+                        const style = window.getComputedStyle(node);
+                        return style.visibility !== 'hidden' && style.display !== 'none';
+                    };
+
+                    const cards = Array.from(document.querySelectorAll('div, c-wiz, section')).filter((node) => {
+                        const text = normalize(node.innerText || node.textContent || '');
+                        return /booking options/i.test(text) && /(continue|book with)/i.test(text);
+                    });
+
+                    const roots = cards.length ? cards : [document.body];
+                    for (const root of roots) {
+                        const nodes = Array.from(root.querySelectorAll('button, a[href], [role="button"], [role="link"]'));
+                        const exactContinue = nodes.find((node) => isVisible(node) && /^continue$/i.test(normalize(node.innerText || node.getAttribute('aria-label') || '')));
+                        if (exactContinue) {
+                            exactContinue.scrollIntoView({ block: 'center' });
+                            exactContinue.click();
+                            return true;
+                        }
+                        const partnerLink = nodes.find((node) => isVisible(node) && /^book with/i.test(normalize(node.innerText || node.getAttribute('aria-label') || '')));
+                        if (partnerLink) {
+                            partnerLink.scrollIntoView({ block: 'center' });
+                            partnerLink.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }"""
+            ))
+        except Exception:
+            return False
+
+    def _google_is_google_domain(self, raw_url: str) -> bool:
+        netloc = urlparse(str(raw_url or "")).netloc.lower().split(":", 1)[0]
+        return bool(netloc) and (
+            netloc == "google.com"
+            or netloc.endswith(".google.com")
+            or netloc.startswith("google.")
+            or netloc.startswith("www.google.")
+            or ".google." in netloc
+            or netloc == "google"
+            or netloc.endswith(".google")
+        )
+
+    def _google_unwrap_url(self, raw_url: str) -> str:
+        url = str(raw_url or "").strip()
+        if not url:
+            return ""
+        parsed = urlparse(url)
+        if self._google_is_google_domain(url):
+            query = parse_qs(parsed.query)
+            for key in ("q", "url", "continue", "dest"):
+                values = query.get(key)
+                if values and values[0].startswith("http"):
+                    return values[0]
+        return url
 
     async def _wizzair_checkout(self, page, config, offer, offer_id, booking_url, passengers, t0):
         """WizzAir custom checkout using homepage preload + SPA hash navigation.

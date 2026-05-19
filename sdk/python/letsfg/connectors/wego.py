@@ -44,8 +44,6 @@ from .browser import (
     proxy_is_configured,
     acquire_browser_slot,
     release_browser_slot,
-    block_all_heavy_resources,
-    auto_block_if_proxied,
 )
 
 logger = logging.getLogger(__name__)
@@ -460,7 +458,6 @@ class WegoConnectorClient:
                 locale="en-US",
             )
             page = await context.new_page()
-            await auto_block_if_proxied(page)
 
             # ── API response interception ──
             # Capture Wego's flight data API responses as they stream in.
@@ -502,6 +499,7 @@ class WegoConnectorClient:
                 await page.bring_to_front()
             except Exception:
                 pass
+            await asyncio.sleep(2)
 
             cf_passed = False
             for cf_wait in range(30):  # up to 30 s
@@ -529,6 +527,9 @@ class WegoConnectorClient:
 
                 if cf_wait == 0:
                     logger.info("WEGO: Cloudflare challenge detected, waiting...")
+                    await _solve_cf_turnstile(page)
+                    await asyncio.sleep(2)
+                    continue
 
                 # Simulate human idle every 2s (mouse jitter, tiny scroll)
                 if cf_wait % 2 == 0:
@@ -551,6 +552,7 @@ class WegoConnectorClient:
                     await page.bring_to_front()
                 except Exception:
                     pass
+                await asyncio.sleep(2)
                 for cf_retry in range(12):
                     try:
                         title = (await page.title()).lower()
@@ -567,6 +569,10 @@ class WegoConnectorClient:
                     if await _cf_token_present(page):
                         cf_passed = True
                         break
+                    if cf_retry == 0:
+                        await _solve_cf_turnstile(page)
+                        await asyncio.sleep(2)
+                        continue
                     if cf_retry % 2 == 0:
                         await _simulate_human_idle(page)
                     if cf_retry % 4 == 0:

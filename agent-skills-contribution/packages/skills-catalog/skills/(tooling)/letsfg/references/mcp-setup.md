@@ -16,7 +16,7 @@ letsfg star --github your-username
 Or via cURL:
 
 ```bash
-curl -X POST https://api.letsfg.co/api/v1/agents/register \
+curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
@@ -29,7 +29,7 @@ Works with any client that supports HTTP-based MCP.
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+      "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }
@@ -64,7 +64,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+      "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }

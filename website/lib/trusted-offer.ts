@@ -17,6 +17,7 @@ export interface TrustedSegment {
   departure_time: string
   arrival_time: string
   duration_minutes?: number
+  aircraft?: string
 }
 
 export interface TrustedInbound {
@@ -1354,6 +1355,11 @@ function normalizeSegments(segments: any[], fallbackAirlineName: string, fallbac
       departure_time: departure,
       arrival_time: arrival,
       duration_minutes: durationMinutes,
+      aircraft: parseStringValue(segment.aircraft)
+        || parseStringValue(segment.aircraft_name)
+        || parseStringValue(segment.aircraftType)
+        || parseStringValue(segment.equipmentName)
+        || undefined,
     }
   })
 }
@@ -1407,7 +1413,7 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
       stops: inboundRaw.stopovers ?? Math.max(0, inboundSegments.length - 1),
       airline: inboundAirlineName,
       airline_code: inboundAirlineCode,
-      segments: inboundSegments.length > 1 ? normalizeSegments(inboundSegments, inboundAirlineName, inboundAirlineCode) : undefined,
+      segments: inboundSegments.length > 0 ? normalizeSegments(inboundSegments, inboundAirlineName, inboundAirlineCode) : undefined,
     }
   }
 
@@ -1435,7 +1441,7 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
     duration_minutes: durationMinutes,
     stops: outbound.stopovers ?? Math.max(0, segments.length - 1),
     flight_number: normalizeFlightNumber(first.flight_no || first.flight_number || '', airlineCode),
-    segments: normalizedSegments.length > 1 ? normalizedSegments : undefined,
+    segments: normalizedSegments.length > 0 ? normalizedSegments : undefined,
     inbound,
     booking_url: raw.booking_url || bookingOptions?.[0]?.booking_url || undefined,
     is_combo: isCombo,

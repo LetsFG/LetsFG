@@ -1,5 +1,6 @@
 export type TripPurpose =
   | 'honeymoon'
+  | 'special_occasion'
   | 'business'
   | 'ski'
   | 'beach'
@@ -12,6 +13,7 @@ export type TripPurpose =
 
 export const TRIP_PURPOSES: readonly TripPurpose[] = [
   'honeymoon',
+  'special_occasion',
   'business',
   'ski',
   'beach',

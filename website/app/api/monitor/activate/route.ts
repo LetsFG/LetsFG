@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMonitorStripe } from '../../../../lib/stripe'
 
-const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
+import { getLetsfgApiBase } from '../../../../lib/letsfg-api'
+
+const API_BASE = getLetsfgApiBase()
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
 
 /**

@@ -1,0 +1,1102 @@
+
+> letsfg-website@0.1.0 build
+> npm run test && next build
+
+
+> letsfg-website@0.1.0 test
+> npm run test:locations && npm run test:city-pair-matrix && npm run test:round-trip-detection && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:checkout-unlock-experiment && npm run test:user-currency && npm run test:mixed-currency-rendering && npm run test:results-rerun-state && npm run test:results-query-fallback && npm run test:results-expired-cache-state && npm run test:results-expired-response-state && npm run test:google-comparison && npm run test:pfp-quality-gate && npm run test:pfp-normalizer && npm run test:pfp-ingest && npm run test:pfp-distribution-service && npm run test:pfp-flight-page && npm run test:pfp-json-ld && npm run test:pfp-seo-head && npm run test:pfp-sitemap && npm run test:pfp-tracker && npm run test:pfp-experiment-context && npm run test:pfp-cron-cleanup && npm run test:pfp-integration
+
+
+> letsfg-website@0.1.0 test:locations
+> tsx --test tests/location-resolution.test.ts
+
+TAP version 13
+# Subtest: parseNLQuery keeps the reported website examples working
+ok 1 - parseNLQuery keeps the reported website examples working
+  ---
+  duration_ms: 166.0543
+  type: 'test'
+  ...
+# Subtest: parseNLQuery keeps outbound and return time preferences for Friday evening / Monday morning weekend searches
+ok 2 - parseNLQuery keeps outbound and return time preferences for Friday evening / Monday morning weekend searches
+  ---
+  duration_ms: 22.3241
+  type: 'test'
+  ...
+# Subtest: parseNLQuery derives a return date from bare trip-duration phrasing
+ok 3 - parseNLQuery derives a return date from bare trip-duration phrasing
+  ---
+  duration_ms: 12.0863
+  type: 'test'
+  ...
+# Subtest: parseNLQuery falls back to generated global coverage for long-tail names
+ok 4 - parseNLQuery falls back to generated global coverage for long-tail names
+  ---
+  duration_ms: 171.4993
+  type: 'test'
+  ...
+# Subtest: parseNLQuery handles shorthand airports, holiday weeks, and metro aliases
+ok 5 - parseNLQuery handles shorthand airports, holiday weeks, and metro aliases
+  ---
+  duration_ms: 101.4354
+  type: 'test'
+  ...
+# Subtest: findBestLocationMatch prefers explicit airports and city codes correctly
+ok 6 - findBestLocationMatch prefers explicit airports and city codes correctly
+  ---
+  duration_ms: 31.6
+  type: 'test'
+  ...
+# Subtest: homepage airport matching uses generated aliases and expanded airport coverage
+ok 7 - homepage airport matching uses generated aliases and expanded airport coverage
+  ---
+  duration_ms: 10.0691
+  type: 'test'
+  ...
+# Subtest: Hawaii airports resolve correctly and do not produce false positives via substring
+ok 8 - Hawaii airports resolve correctly and do not produce false positives via substring
+  ---
+  duration_ms: 1141.2617
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2251.2642
+
+> letsfg-website@0.1.0 test:city-pair-matrix
+> tsx --test tests/city-pair-matrix.test.ts
+
+TAP version 13
+# Subtest: city-pair: Berlin Oslo
+ok 1 - city-pair: Berlin Oslo
+  ---
+  duration_ms: 213.1127
+  type: 'test'
+  ...
+# Subtest: city-pair: berlin oslo
+ok 2 - city-pair: berlin oslo
+  ---
+  duration_ms: 117.3882
+  type: 'test'
+  ...
+# Subtest: city-pair: BERLIN OSLO
+ok 3 - city-pair: BERLIN OSLO
+  ---
+  duration_ms: 12.6685
+  type: 'test'
+  ...
+# Subtest: city-pair: Madrid Barcelona
+ok 4 - city-pair: Madrid Barcelona
+  ---
+  duration_ms: 9.8321
+  type: 'test'
+  ...
+# Subtest: city-pair: Paris Rome
+ok 5 - city-pair: Paris Rome
+  ---
+  duration_ms: 25.4889
+  type: 'test'
+  ...
+# Subtest: city-pair: London Tokyo
+ok 6 - city-pair: London Tokyo
+  ---
+  duration_ms: 14.2801
+  type: 'test'
+  ...
+# Subtest: city-pair: Warsaw Krakow
+ok 7 - city-pair: Warsaw Krakow
+  ---
+  duration_ms: 13.6706
+  type: 'test'
+  ...
+# Subtest: city-pair: Munich Vienna
+ok 8 - city-pair: Munich Vienna
+  ---
+  duration_ms: 10.8144
+  type: 'test'
+  ...
+# Subtest: city-pair: Amsterdam Brussels
+ok 9 - city-pair: Amsterdam Brussels
+  ---
+  duration_ms: 13.3316
+  type: 'test'
+  ...
+# Subtest: city-pair: Copenhagen Stockholm
+ok 10 - city-pair: Copenhagen Stockholm
+  ---
+  duration_ms: 9.9384
+  type: 'test'
+  ...
+# Subtest: city-pair: Dublin Lisbon
+ok 11 - city-pair: Dublin Lisbon
+  ---
+  duration_ms: 10.0886
+  type: 'test'
+  ...
+# Subtest: city-pair: Athens Istanbul
+ok 12 - city-pair: Athens Istanbul
+  ---
+  duration_ms: 10.8826
+  type: 'test'
+  ...
+# Subtest: city-pair: Dubai Singapore
+ok 13 - city-pair: Dubai Singapore
+  ---
+  duration_ms: 12.4614
+  type: 'test'
+  ...
+# Subtest: city-pair: Bangkok Sydney
+ok 14 - city-pair: Bangkok Sydney
+  ---
+  duration_ms: 12.8336
+  type: 'test'
+  ...
+# Subtest: city-pair: Los Angeles Miami
+ok 15 - city-pair: Los Angeles Miami
+  ---
+  duration_ms: 7.2412
+  type: 'test'
+  ...
+# Subtest: city-pair: Toronto Mexico City
+ok 16 - city-pair: Toronto Mexico City
+  ---
+  duration_ms: 21.1517
+  type: 'test'
+  ...
+# Subtest: city-pair: Sao Paulo Buenos Aires
+ok 17 - city-pair: Sao Paulo Buenos Aires
+  ---
+  duration_ms: 12.8709
+  type: 'test'
+  ...
+# Subtest: city-pair: Bogota Johannesburg
+ok 18 - city-pair: Bogota Johannesburg
+  ---
+  duration_ms: 10.0204
+  type: 'test'
+  ...
+# Subtest: city-pair: Cairo Helsinki
+ok 19 - city-pair: Cairo Helsinki
+  ---
+  duration_ms: 8.1976
+  type: 'test'
+  ...
+# Subtest: city-pair: New York Tokyo
+ok 20 - city-pair: New York Tokyo
+  ---
+  duration_ms: 9.246
+  type: 'test'
+  ...
+# Subtest: city-pair: New York to Tokyo
+ok 21 - city-pair: New York to Tokyo
+  ---
+  duration_ms: 22.8084
+  type: 'test'
+  ...
+# Subtest: city-pair: Buenos Aires Madrid
+ok 22 - city-pair: Buenos Aires Madrid
+  ---
+  duration_ms: 6.9776
+  type: 'test'
+  ...
+# Subtest: city-pair: Hong Kong Singapore
+ok 23 - city-pair: Hong Kong Singapore
+  ---
+  duration_ms: 9.3594
+  type: 'test'
+  ...
+# Subtest: city-pair: San Francisco New York
+ok 24 - city-pair: San Francisco New York
+  ---
+  duration_ms: 6.5704
+  type: 'test'
+  ...
+# Subtest: city-pair: Mexico City Toronto
+ok 25 - city-pair: Mexico City Toronto
+  ---
+  duration_ms: 11.4535
+  type: 'test'
+  ...
+# Subtest: city-pair: Sao Paulo to New York
+ok 26 - city-pair: Sao Paulo to New York
+  ---
+  duration_ms: 4.2007
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin, Oslo
+ok 27 - city-pair: Berlin, Oslo
+  ---
+  duration_ms: 7.0401
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin-Oslo
+ok 28 - city-pair: Berlin-Oslo
+  ---
+  duration_ms: 8.7513
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin - Oslo
+ok 29 - city-pair: Berlin - Oslo
+  ---
+  duration_ms: 25.713
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin ΓÇô Oslo
+ok 30 - city-pair: Berlin ΓÇô Oslo
+  ---
+  duration_ms: 66.2486
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin ΓÇö Oslo
+ok 31 - city-pair: Berlin ΓÇö Oslo
+  ---
+  duration_ms: 61.1262
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin/Oslo
+ok 32 - city-pair: Berlin/Oslo
+  ---
+  duration_ms: 7.1794
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin ΓåÆ Oslo
+ok 33 - city-pair: Berlin ΓåÆ Oslo
+  ---
+  duration_ms: 24.6934
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin -> Oslo
+ok 34 - city-pair: Berlin -> Oslo
+  ---
+  duration_ms: 25.557
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin > Oslo
+ok 35 - city-pair: Berlin > Oslo
+  ---
+  duration_ms: 9.9573
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin to Oslo
+ok 36 - city-pair: Berlin to Oslo
+  ---
+  duration_ms: 26.8106
+  type: 'test'
+  ...
+# Subtest: city-pair: from Berlin to Oslo
+ok 37 - city-pair: from Berlin to Oslo
+  ---
+  duration_ms: 28.3904
+  type: 'test'
+  ...
+# Subtest: city-pair: From Berlin To Oslo
+ok 38 - city-pair: From Berlin To Oslo
+  ---
+  duration_ms: 25.3074
+  type: 'test'
+  ...
+# Subtest: city-pair: fly Berlin to Oslo
+ok 39 - city-pair: fly Berlin to Oslo
+  ---
+  duration_ms: 28.2026
+  type: 'test'
+  ...
+# Subtest: city-pair: flying Berlin to Oslo
+ok 40 - city-pair: flying Berlin to Oslo
+  ---
+  duration_ms: 15.621
+  type: 'test'
+  ...
+# Subtest: city-pair: flights Berlin Oslo
+ok 41 - city-pair: flights Berlin Oslo
+  ---
+  duration_ms: 15.5699
+  type: 'test'
+  ...
+# Subtest: city-pair: flight Berlin to Oslo
+ok 42 - city-pair: flight Berlin to Oslo
+  ---
+  duration_ms: 25.9347
+  type: 'test'
+  ...
+# Subtest: city-pair: cheap flights Berlin Oslo
+ok 43 - city-pair: cheap flights Berlin Oslo
+  ---
+  duration_ms: 35.576
+  type: 'test'
+  ...
+# Subtest: city-pair: cheapest flight from Berlin to Oslo
+ok 44 - city-pair: cheapest flight from Berlin to Oslo
+  ---
+  duration_ms: 22.8954
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo next month
+ok 45 - city-pair: Berlin Oslo next month
+  ---
+  duration_ms: 13.684
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo tomorrow
+ok 46 - city-pair: Berlin Oslo tomorrow
+  ---
+  duration_ms: 14.5425
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo this weekend
+ok 47 - city-pair: Berlin Oslo this weekend
+  ---
+  duration_ms: 7.026
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo June
+ok 48 - city-pair: Berlin Oslo June
+  ---
+  duration_ms: 5.0656
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo June 15
+ok 49 - city-pair: Berlin Oslo June 15
+  ---
+  duration_ms: 7.3785
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo couple
+ok 50 - city-pair: Berlin Oslo couple
+  ---
+  duration_ms: 5.4643
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo for a couple
+ok 51 - city-pair: Berlin Oslo for a couple
+  ---
+  duration_ms: 7.3023
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo round trip
+ok 52 - city-pair: Berlin Oslo round trip
+  ---
+  duration_ms: 12.4262
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo one way
+ok 53 - city-pair: Berlin Oslo one way
+  ---
+  duration_ms: 15.4261
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo direct
+ok 54 - city-pair: Berlin Oslo direct
+  ---
+  duration_ms: 14.7171
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo business class
+ok 55 - city-pair: Berlin Oslo business class
+  ---
+  duration_ms: 42.7647
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo for 2 people
+ok 56 - city-pair: Berlin Oslo for 2 people
+  ---
+  duration_ms: 7.4651
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin Oslo cheapest
+ok 57 - city-pair: Berlin Oslo cheapest
+  ---
+  duration_ms: 14.7312
+  type: 'test'
+  ...
+# Subtest: city-pair: Madrid a Barcelona
+ok 58 - city-pair: Madrid a Barcelona
+  ---
+  duration_ms: 25.3983
+  type: 'test'
+  ...
+# Subtest: city-pair: Berlin nach Oslo
+ok 59 - city-pair: Berlin nach Oslo
+  ---
+  duration_ms: 27.1223
+  type: 'test'
+  ...
+# Subtest: city-pair: Paris ├á Rome
+ok 60 - city-pair: Paris ├á Rome
+  ---
+  duration_ms: 24.8914
+  type: 'test'
+  ...
+# Subtest: city-pair: Roma a Milano
+ok 61 - city-pair: Roma a Milano
+  ---
+  duration_ms: 24.5767
+  type: 'test'
+  ...
+# Subtest: city-pair: Warszawa do Krakowa
+ok 62 - city-pair: Warszawa do Krakowa
+  ---
+  duration_ms: 37.3158
+  type: 'test'
+  ...
+# Subtest: city-pair: Lisboa para Madrid
+ok 63 - city-pair: Lisboa para Madrid
+  ---
+  duration_ms: 26.2091
+  type: 'test'
+  ...
+# Subtest: city-pair: Amsterdam naar Brussel
+ok 64 - city-pair: Amsterdam naar Brussel
+  ---
+  duration_ms: 25.6502
+  type: 'test'
+  ...
+1..64
+# tests 64
+# suites 0
+# pass 64
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2220.4916
+
+> letsfg-website@0.1.0 test:round-trip-detection
+> tsx --test tests/round-trip-detection.test.ts
+
+TAP version 13
+# Subtest: round-trip: Warsaw Paris next month, as a couple, round trip\\, city break, cheapes
+ok 1 - round-trip: Warsaw Paris next month, as a couple, round trip\\, city break, cheapes
+  ---
+  duration_ms: 261.3322
+  type: 'test'
+  ...
+# Subtest: round-trip: Berlin Oslo next month round trip
+ok 2 - round-trip: Berlin Oslo next month round trip
+  ---
+  duration_ms: 77.1494
+  type: 'test'
+  ...
+# Subtest: round-trip: Berlin Oslo next month round-trip
+ok 3 - round-trip: Berlin Oslo next month round-trip
+  ---
+  duration_ms: 39.3289
+  type: 'test'
+  ...
+# Subtest: round-trip: Berlin Oslo next month roundtrip
+ok 4 - round-trip: Berlin Oslo next month roundtrip
+  ---
+  duration_ms: 43.6362
+  type: 'test'
+  ...
+# Subtest: round-trip: Berlin to Oslo next month, return flight
+ok 5 - round-trip: Berlin to Oslo next month, return flight
+  ---
+  duration_ms: 39.8227
+  type: 'test'
+  ...
+# Subtest: round-trip: London Barcelona round trip in June
+ok 6 - round-trip: London Barcelona round trip in June
+  ---
+  duration_ms: 17.032
+  type: 'test'
+  ...
+# Subtest: round-trip: London to Madrid return ticket next month
+ok 7 - round-trip: London to Madrid return ticket next month
+  ---
+  duration_ms: 30.8736
+  type: 'test'
+  ...
+# Subtest: round-trip: Warsaw to Paris round trip, city break, next month
+ok 8 - round-trip: Warsaw to Paris round trip, city break, next month
+  ---
+  duration_ms: 1007.6064
+  type: 'test'
+  ...
+# Subtest: round-trip: Berlin Oslo weekend break round trip next month
+ok 9 - round-trip: Berlin Oslo weekend break round trip next month
+  ---
+  duration_ms: 72.5632
+  type: 'test'
+  ...
+# Subtest: round-trip: London to Barcelona round trip next month
+ok 10 - round-trip: London to Barcelona round trip next month
+  ---
+  duration_ms: 16.9524
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2203.8862
+
+> letsfg-website@0.1.0 test:ratelimit
+> tsx --test tests/rate-limit.test.ts
+
+TAP version 13
+# Subtest: search creation is throttled more tightly than results polling
+ok 1 - search creation is throttled more tightly than results polling
+  ---
+  duration_ms: 1.4147
+  type: 'test'
+  ...
+# Subtest: token bucket blocks bursts and refills over time
+ok 2 - token bucket blocks bursts and refills over time
+  ---
+  duration_ms: 0.4247
+  type: 'test'
+  ...
+# Subtest: client keys prefer forwarded IPs and fall back to session IDs
+ok 3 - client keys prefer forwarded IPs and fall back to session IDs
+  ---
+  duration_ms: 28.4283
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 422.4145
+
+> letsfg-website@0.1.0 test:flight-datetime
+> tsx --test tests/flight-datetime.test.ts
+
+TAP version 13
+# Subtest: formatFlightTime keeps unknown clock times as placeholders
+ok 1 - formatFlightTime keeps unknown clock times as placeholders
+  ---
+  duration_ms: 1.0479
+  type: 'test'
+  ...
+# Subtest: normalizeTrustedOffer does not invent clock times from date-only route data
+ok 2 - normalizeTrustedOffer does not invent clock times from date-only route data
+  ---
+  duration_ms: 1.7625
+  type: 'test'
+  ...
+# Subtest: normalizeTrustedOffer still infers missing clock times when an explicit clock is present
+ok 3 - normalizeTrustedOffer still infers missing clock times when an explicit clock is present
+  ---
+  duration_ms: 0.4382
+  type: 'test'
+  ...
+# Subtest: normalizeTrustedOffer reads alternate upstream timestamp keys
+ok 4 - normalizeTrustedOffer reads alternate upstream timestamp keys
+  ---
+  duration_ms: 0.337
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 327.2091
+
+> letsfg-website@0.1.0 test:flight-time-surfaces
+> tsx --test tests/flight-time-surfaces.test.ts
+
+TAP version 13
+# Subtest: website source does not bypass shared flight time formatting
+ok 1 - website source does not bypass shared flight time formatting
+  ---
+  duration_ms: 37.6394
+  type: 'test'
+  ...
+# Subtest: results and booking surfaces use formatFlightTime for displayed clocks
+ok 2 - results and booking surfaces use formatFlightTime for displayed clocks
+  ---
+  duration_ms: 1.3286
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 362.5647
+
+> letsfg-website@0.1.0 test:checkout-unlock-experiment
+> tsx --test tests/checkout-unlock-experiment.test.ts
+
+TAP version 13
+# Subtest: checkout unlock experiment routes half of traffic to payment-only
+ok 1 - checkout unlock experiment routes half of traffic to payment-only
+  ---
+  duration_ms: 1.4481
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 317.8651
+
+> letsfg-website@0.1.0 test:user-currency
+> tsx --test tests/user-currency.test.ts
+
+TAP version 13
+# Subtest: detectPreferredCurrency prefers geo headers when available
+ok 1 - detectPreferredCurrency prefers geo headers when available
+  ---
+  duration_ms: 22.3032
+  type: 'test'
+  ...
+# Subtest: detectPreferredCurrency falls back to accept-language regions
+ok 2 - detectPreferredCurrency falls back to accept-language regions
+  ---
+  duration_ms: 0.6279
+  type: 'test'
+  ...
+# Subtest: detectPreferredCurrency uses locale fallback when only a language header remains
+ok 3 - detectPreferredCurrency uses locale fallback when only a language header remains
+  ---
+  duration_ms: 0.3242
+  type: 'test'
+  ...
+# Subtest: formatCurrencyAmount renders currency symbols for visible prices
+ok 4 - formatCurrencyAmount renders currency symbols for visible prices
+  ---
+  duration_ms: 21.4496
+  type: 'test'
+  ...
+# Subtest: resolveSearchCurrency prefers explicit query param over cookie and fallback
+ok 5 - resolveSearchCurrency prefers explicit query param over cookie and fallback
+  ---
+  duration_ms: 0.3239
+  type: 'test'
+  ...
+# Subtest: resolveSearchCurrency falls back to cookie when query is missing
+ok 6 - resolveSearchCurrency falls back to cookie when query is missing
+  ---
+  duration_ms: 0.138
+  type: 'test'
+  ...
+# Subtest: resolveSearchCurrency preserves detected local fallback when supported
+ok 7 - resolveSearchCurrency preserves detected local fallback when supported
+  ---
+  duration_ms: 0.1304
+  type: 'test'
+  ...
+# Subtest: resolveSearchCurrency falls back to EUR for invalid values
+ok 8 - resolveSearchCurrency falls back to EUR for invalid values
+  ---
+  duration_ms: 0.1171
+  type: 'test'
+  ...
+# Subtest: DISPLAY_CURRENCIES exposes an expanded deduplicated currency picker
+ok 9 - DISPLAY_CURRENCIES exposes an expanded deduplicated currency picker
+  ---
+  duration_ms: 0.3319
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 366.551
+
+> letsfg-website@0.1.0 test:mixed-currency-rendering
+> tsx --test tests/mixed-currency-rendering.test.ts
+
+TAP version 13
+# Subtest: display price conversion can normalize mixed offer currencies into PLN
+ok 1 - display price conversion can normalize mixed offer currencies into PLN
+  ---
+  duration_ms: 1.1156
+  type: 'test'
+  ...
+# Subtest: results panel formats visible prices in the selected currency
+ok 2 - results panel formats visible prices in the selected currency
+  ---
+  duration_ms: 2.2722
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 361.5153
+
+> letsfg-website@0.1.0 test:results-rerun-state
+> tsx --test tests/results-rerun-state.test.ts
+
+TAP version 13
+# Subtest: results client resets visible state when a new searchId loads
+ok 1 - results client resets visible state when a new searchId loads
+  ---
+  duration_ms: 2.5992
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 358.2444
+
+> letsfg-website@0.1.0 test:results-query-fallback
+> tsx --test tests/results-query-fallback.test.ts
+
+TAP version 13
+# Subtest: results page prefers the explicit rerun query before falling back to result or parsed data
+not ok 1 - results page prefers the explicit rerun query before falling back to result or parsed data
+  ---
+  duration_ms: 3.2593
+  type: 'test'
+  location: 'C:\\Users\\Adam\\Desktop\\folder\\LetsFG\\website\\tests\\results-query-fallback.test.ts:2:1517'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /function buildFallbackSearchQuery\(parsed: SearchResult\['parsed'\]\): string \{[\s\S]*const origin = parsed\.origin \|\| parsed\.origin_name[\s\S]*const destination = parsed\.destination \|\| parsed\.destination_name[\s\S]*const parts = \[`\$\{origin\} to \$\{destination\}`\][\s\S]*if \(parsed\.date\) parts\.push\(parsed\.date\)[\s\S]*if \(parsed\.return_date\) parts\.push\(`return \$\{parsed\.return_date\}`\)[\s\S]*return parts\.join\(' '\)\.trim\(\)[\s\S]*\}/. Input:
+    
+    "import { Metadata } from 'next'\r\n" +
+      "import { notFound } from 'next/navigation'\r\n" +
+      "import SearchPageClient from './SearchPageClient'\r\n" +
+      "import { getOfferDisplayTotalPrice } from '../../../lib/display-price'\r\n" +
+      "import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'\r\n" +
+      "import { formatCurrencyAmount } from '../../../lib/user-currency'\r\n" +
+      "import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'\r\n" +
+      "import { buildFallbackSearchQuery, buildMissingSearchShareSummary, buildSearchShareSummary, type SearchResult } from './search-share-model'\r\n" +
+      "import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'\r\n" +
+      "import { getSearchResults, resolveRequestCurrency } from './search-share-server'\r\n" +
+      '\r\n' +
+      '// Generate metadata for SEO and social sharing\r\n' +
+      'export async function generateMetadata({\r\n' +
+      '  params,\r\n' +
+      '  searchParams,\r\n' +
+      '}: {\r\n' +
+      '  params: Promise<{ searchId: string }>\r\n' +
+      '  searchParams: Promise<{ probe?: string; cur?: string }>\r\n' +
+      '}): Promise<Metadata> {\r\n' +
+      '  const { searchId } = await params\r\n' +
+      '  const sp = await searchParams\r\n' +
+      '  const isProbe = isProbeModeValue(sp?.probe)\r\n' +
+      '  const displayCurrency = await resolveRequestCurrency(sp?.cur)\r\n' +
+      '  const result = await getSearchResults(searchId, isProbe)\r\n' +
+      '\r\n' +
+      '  const summary = result\r\n' +
+      '    ? buildSearchShareSummary(result, displayCurrency)\r\n' +
+      '    : buildMissingSearchShareSummary()\r\n' +
+      '  const opengraphImageUrl = `/results/${searchId}/opengraph-image`\r\n' +
+      '  const twitterImageUrl = `/results/${searchId}/twitter-image`\r\n' +
+      '\r\n' +
+      '  return {\r\n' +
+      '    title: summary.title,\r\n' +
+      '    description: summary.description,\r\n' +
+      '    openGraph: {\r\n' +
+      '      title: summary.title,\r\n' +
+      '      description: summary.description,\r\n' +
+      '      url: `/results/${searchId}`,\r\n' +
+      "      siteName: 'LetsFG',\r\n" +
+      "      type: 'website',\r\n" +
+      '      images: [\r\n' +
+      '        {\r\n' +
+      '          url: opengraphImageUrl,\r\n' +
+      '          width: RESULTS_SHARE_IMAGE_SIZE.width,\r\n' +
+      '          height: RESULTS_SHARE_IMAGE_SIZE.height,\r\n' +
+      '          alt: `${summary.routeLabel} flight search summary`,\r\n' +
+      '        },\r\n' +
+      '      ],\r\n' +
+      '    },\r\n' +
+      '    twitter: {\r\n' +
+      "      card: 'summary_large_image',\r\n" +
+      '      title: summary.title,\r\n' +
+      '      description: summary.description,\r\n' +
+      '      images: [twitterImageUrl],\r\n' +
+      '    },\r\n' +
+      '  }\r\n' +
+      '}\r\n' +
+      '\r\n' +
+      'export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string; started?: string; probe?: string; cur?: string; q?: string; _fss?: string }> }) {\r\n' +
+      '  const { searchId } = await params\r\n' +
+      '  const sp = await searchParams\r\n' +
+      '  const isProbe = isProbeModeValue(sp?.probe)\r\n' +
+      '  const initialCurrency = await resolveRequestCurrency(sp?.cur)\r\n' +
+      '  const trackingSearchId = getTrackingSearchId(searchId, isProbe)\r\n' +
+      '  // Render immediately with the current snapshot and let SearchPageClient poll.\r\n' +
+      '  // Blocking here traps users on loading.tsx while the server waits.\r\n' +
+      '  const result = await getSearchResults(searchId, isProbe, sp?._fss)\r\n' +
+      '\r\n' +
+      '  if (!result) {\r\n' +
+      '    notFound()\r\n' +
+      '  }\r\n' +
+      '\r\n' +
+      '  const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result\r\n' +
+      '  const query = sp?.q?.trim() || resultQuery?.trim() || buildFallbackSearchQuery(parsed)\r\n' +
+      '\r\n' +
+      "  const isSearching = status === 'searching'\r\n" +
+      '  const routeLabel = [parsed.origin_name || parsed.origin, parsed.destination_name || parsed.destination]\r\n' +
+      '    .filter(Boolean)\r\n' +
+      "    .join(' ΓåÆ ')\r\n" +
+      '\r\n' +
+      '  const allOffers = Array.from(\r\n' +
+      '    new Map((offers || []).map((offer) => [getOfferInstanceKey(offer), offer])).values()\r\n' +
+      '  )\r\n' +
+      '\r\n' +
+      '  // JSON-LD for SEO (server-rendered once; not updated client-side)\r\n' +
+      '  const jsonLd = isSearching\r\n' +
+      '    ? {\r\n' +
+      "        '@context': 'https://schema.org',\r\n" +
+      "        '@type': 'SearchResultsPage',\r\n" +
+      '        name: `LetsFG ΓÇö Searching flights ${routeLabel || query}`,\r\n' +
+      '        description: `Searching 180+ airlines. ${progress?.checked || 0} of ${progress?.total || 180} checked. ${progress?.found || 0} results found so far.`,\r\n' +
+      '        url: `https://letsfg.co/results/${searchId}`,\r\n' +
+      '      }\r\n' +
+      "    : status === 'completed' && offers\r\n" +
+      '    ? {\r\n' +
+      "        '@context': 'https://schema.org',\r\n" +
+      "        '@type': 'ItemList',\r\n" +
+      '        name: `Flights ${routeLabel}`,\r\n' +
+      '        numberOfItems: offers.length,\r\n' +
+      '        itemListElement: offers.slice(0, 10).map((offer, i) => ({\r\n' +
+      "          '@type': 'ListItem',\r\n" +
+      '          position: i + 1,\r\n' +
+      '          item: {\r\n' +
+      "            '@type': 'Product',\r\n" +
+      '            name: `${offer.airline} ${offer.origin}ΓåÆ${offer.destination}`,\r\n' +
+      '            offers: {\r\n' +
+      "              '@type': 'Offer',\r\n" +
+      '              price: String(Math.round(getOfferDisplayTotalPrice(offer, initialCurrency))),\r\n' +
+      '              priceCurrency: initialCurrency,\r\n' +
+      "              availability: 'https://schema.org/InStock',\r\n" +
+      '            },\r\n' +
+      '          },\r\n' +
+      '        })),\r\n' +
+      '      }\r\n' +
+      '    : null\r\n' +
+      '\r\n' +
+      '  return (\r\n' +
+      '    <>\r\n' +
+      '      {jsonLd && (\r\n' +
+      '        <script\r\n' +
+      '          type="application/ld+json"\r\n' +
+      '          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}\r\n' +
+      '        />\r\n' +
+      '      )}\r\n' +
+      '\r\n' +
+      '      {/* SearchPageClient owns all dynamic rendering (searching Γåö results transition).\r\n' +
+      '          It polls /api/results/{searchId} every 5 s on the client ΓÇö no router.refresh()\r\n' +
+      '          so SearchingTasks is never remounted and its animation state is always preserved. */}\r\n' +
+      '      <SearchPageClient\r\n' +
+      '        searchId={searchId}\r\n' +
+      '        trackingSearchId={trackingSearchId}\r\n' +
+      '        isTestSearch={isProbe}\r\n' +
+      '        initialCurrency={initialCurrency}\r\n' +
+      '        query={query}\r\n' +
+      '        parsed={parsed}\r\n' +
+      '        initialStatus={status}\r\n' +
+      '        initialProgress={progress}\r\n' +
+      '        initialOffers={allOffers}\r\n' +
+      '        searchedAt={searched_at || sp?.started}\r\n' +
+      '        expiresAt={expires_at}\r\n' +
+      '        fswSession={sp?._fss}\r\n' +
+      '        initialGemini={gemini_justification}\r\n' +
+      '      />\r\n' +
+      '    </>\r\n' +
+      '  )\r\n' +
+      '}\r\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    import { Metadata } from 'next'
+    import { notFound } from 'next/navigation'
+    import SearchPageClient from './SearchPageClient'
+    import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
+    import { deduplicateOffers, getOfferInstanceKey } from '../../lib/rankOffers'
+    import { formatCurrencyAmount } from '../../../lib/user-currency'
+    import { getTrackingSearchId, isProbeModeValue } from '../../../lib/probe-mode'
+    import { buildFallbackSearchQuery, buildMissingSearchShareSummary, buildSearchShareSummary, type SearchResult } from './search-share-model'
+    import { RESULTS_SHARE_IMAGE_SIZE } from './search-share-image'
+    import { getSearchResults, resolveRequestCurrency } from './search-share-server'
+    
+    // Generate metadata for SEO and social sharing
+    export async function generateMetadata({
+      params,
+      searchParams,
+    }: {
+      params: Promise<{ searchId: string }>
+      searchParams: Promise<{ probe?: string; cur?: string }>
+    }): Promise<Metadata> {
+      const { searchId } = await params
+      const sp = await searchParams
+      const isProbe = isProbeModeValue(sp?.probe)
+      const displayCurrency = await resolveRequestCurrency(sp?.cur)
+      const result = await getSearchResults(searchId, isProbe)
+    
+      const summary = result
+        ? buildSearchShareSummary(result, displayCurrency)
+        : buildMissingSearchShareSummary()
+      const opengraphImageUrl = `/results/${searchId}/opengraph-image`
+      const twitterImageUrl = `/results/${searchId}/twitter-image`
+    
+      return {
+        title: summary.title,
+        description: summary.description,
+        openGraph: {
+          title: summary.title,
+          description: summary.description,
+          url: `/results/${searchId}`,
+          siteName: 'LetsFG',
+          type: 'website',
+          images: [
+            {
+              url: opengraphImageUrl,
+              width: RESULTS_SHARE_IMAGE_SIZE.width,
+              height: RESULTS_SHARE_IMAGE_SIZE.height,
+              alt: `${summary.routeLabel} flight search summary`,
+            },
+          ],
+        },
+        twitter: {
+          card: 'summary_large_image',
+          title: summary.title,
+          description: summary.description,
+          images: [twitterImageUrl],
+        },
+      }
+    }
+    
+    export default async function ResultsPage({ params, searchParams }: { params: Promise<{ searchId: string }>; searchParams: Promise<{ sort?: string; filter?: string; started?: string; probe?: string; cur?: string; q?: string; _fss?: string }> }) {
+      const { searchId } = await params
+      const sp = await searchParams
+      const isProbe = isProbeModeValue(sp?.probe)
+      const initialCurrency = await resolveRequestCurrency(sp?.cur)
+      const trackingSearchId = getTrackingSearchId(searchId, isProbe)
+      // Render immediately with the current snapshot and let SearchPageClient poll.
+      // Blocking here traps users on loading.tsx while the server waits.
+      const result = await getSearchResults(searchId, isProbe, sp?._fss)
+    
+      if (!result) {
+        notFound()
+      }
+    
+      const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result
+      const query = sp?.q?.trim() || resultQuery?.trim() || buildFallbackSearchQuery(parsed)
+    
+      const isSearching = status === 'searching'
+      const routeLabel = [parsed.origin_name || parsed.origin, parsed.destination_name || parsed.destination]
+        .filter(Boolean)
+        .join(' ΓåÆ ')
+    
+      const allOffers = Array.from(
+        new Map((offers || []).map((offer) => [getOfferInstanceKey(offer), offer])).values()
+      )
+    
+      // JSON-LD for SEO (server-rendered once; not updated client-side)
+      const jsonLd = isSearching
+        ? {
+            '@context': 'https://schema.org',
+            '@type': 'SearchResultsPage',
+            name: `LetsFG ΓÇö Searching flights ${routeLabel || query}`,
+            description: `Searching 180+ airlines. ${progress?.checked || 0} of ${progress?.total || 180} checked. ${progress?.found || 0} results found so far.`,
+            url: `https://letsfg.co/results/${searchId}`,
+          }
+        : status === 'completed' && offers
+        ? {
+            '@context': 'https://schema.org',
+            '@type': 'ItemList',
+            name: `Flights ${routeLabel}`,
+            numberOfItems: offers.length,
+            itemListElement: offers.slice(0, 10).map((offer, i) => ({
+              '@type': 'ListItem',
+              position: i + 1,
+              item: {
+                '@type': 'Product',
+                name: `${offer.airline} ${offer.origin}ΓåÆ${offer.destination}`,
+                offers: {
+                  '@type': 'Offer',
+                  price: String(Math.round(getOfferDisplayTotalPrice(offer, initialCurrency))),
+                  priceCurrency: initialCurrency,
+                  availability: 'https://schema.org/InStock',
+                },
+              },
+            })),
+          }
+        : null
+    
+      return (
+        <>
+          {jsonLd && (
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
+          )}
+    
+          {/* SearchPageClient owns all dynamic rendering (searching Γåö results transition).
+              It polls /api/results/{searchId} every 5 s on the client ΓÇö no router.refresh()
+              so SearchingTasks is never remounted and its animation state is always preserved. */}
+          <SearchPageClient
+            searchId={searchId}
+            trackingSearchId={trackingSearchId}
+            isTestSearch={isProbe}
+            initialCurrency={initialCurrency}
+            query={query}
+            parsed={parsed}
+            initialStatus={status}
+            initialProgress={progress}
+            initialOffers={allOffers}
+            searchedAt={searched_at || sp?.started}
+            expiresAt={expires_at}
+            fswSession={sp?._fss}
+            initialGemini={gemini_justification}
+          />
+        </>
+      )
+    }
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\Adam\Desktop\folder\LetsFG\website\tests\results-query-fallback.test.ts:17:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 373.9288

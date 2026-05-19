@@ -57,10 +57,10 @@ letsfg = "letsfg.cli:main"
 
 [project.urls]
 Homepage = "https://letsfg.co"
-Documentation = "https://api.letsfg.co/docs"
+Documentation = "https://letsfg.co/developers/api/docs"
 Repository = "https://github.com/LetsFG/LetsFG"
 Issues = "https://github.com/LetsFG/LetsFG/issues"
-"API Reference" = "https://api.letsfg.co/redoc"
+"API Reference" = "https://letsfg.co/developers/api/openapi.json"
 
 [tool.hatch.build.targets.wheel]
 packages = ["letsfg"]

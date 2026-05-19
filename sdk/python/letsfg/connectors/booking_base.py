@@ -123,7 +123,7 @@ FAKE_PASSENGER = {
 
 # ── Unlock token verification ────────────────────────────────────────────
 
-_DEFAULT_API_URL = "https://api.letsfg.co"
+_DEFAULT_API_URL = "https://letsfg.co/developers"
 
 
 def verify_checkout_token(

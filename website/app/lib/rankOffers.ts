@@ -12,7 +12,15 @@
  */
 
 import { normalizeGoogleFlightsComparisonPrice } from '../../lib/google-flights-savings'
+import { extractOfferDetailSignals } from '../../lib/offer-details'
 import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './trip-purpose'
+
+interface RankOfferSegment {
+  layover_minutes?: number
+  airline?: string
+  flight_number?: string
+  aircraft?: string
+}
 
 // ── Minimal offer shape (subset of FlightOffer in ResultsPanel) ───────────
 export interface RankOffer {
@@ -32,21 +40,24 @@ export interface RankOffer {
   arrival_time: string
   duration_minutes: number
   stops: number
-  segments?: Array<{ layover_minutes?: number }>
+  segments?: RankOfferSegment[]
   inbound?: {
     departure_time?: string
     arrival_time?: string
     origin?: string
     destination?: string
     stops?: number
+    segments?: RankOfferSegment[]
   }
   ancillaries?: {
-    checked_bag?: { included?: boolean; price?: number; currency?: string }
-    seat_selection?: { included?: boolean; price?: number; currency?: string }
+    cabin_bag?: { included?: boolean; price?: number; currency?: string; description?: string }
+    checked_bag?: { included?: boolean; price?: number; currency?: string; description?: string }
+    seat_selection?: { included?: boolean; price?: number; currency?: string; description?: string }
   }
   conditions?: {
     refund_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
     change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+    [key: string]: string | undefined
   }
 }
 
@@ -60,6 +71,7 @@ export interface RankingContext {
   arrivalTimePref?: 'morning' | 'afternoon' | 'evening'
   requireBag?: boolean
   requireSeat?: boolean
+  requireMeals?: boolean
   requireCancellation?: boolean
   preferredAirline?: string
   preferQuickFlight?: boolean
@@ -142,6 +154,11 @@ const W: Record<string, Weights> = {
     price: 0.08, stops: 0.28, duration: 0.10, depTime: 0.14,
     arrivalTime: 0.18, baggage: 0.02, savings: 0.02, comfortHours: 0.08, layover: 0.10,
   },
+  // Special occasion — still prioritize smooth timing/directness, but keep price meaningful.
+  special_occasion: {
+    price: 0.14, stops: 0.24, duration: 0.10, depTime: 0.12,
+    arrivalTime: 0.16, baggage: 0.02, savings: 0.06, comfortHours: 0.08, layover: 0.08,
+  },
   // Ski — bag essential (equipment); early arrival to maximize slopes
   ski: {
     price: 0.12, stops: 0.16, duration: 0.10, depTime: 0.16,
@@ -181,6 +198,7 @@ const W: Record<string, Weights> = {
 
 const PURPOSE_WEIGHT_PROFILES: Record<TripPurpose, Weights> = {
   honeymoon: W.honeymoon,
+  special_occasion: W.special_occasion,
   business: W.business_traveler,
   ski: W.ski,
   beach: W.beach,
@@ -195,6 +213,7 @@ const PURPOSE_WEIGHT_PROFILES: Record<TripPurpose, Weights> = {
 const EARLY_ARRIVAL_PURPOSES = new Set<TripPurpose>([
   'city_break',
   'beach',
+  'special_occasion',
   'graduation',
   'concert_festival',
   'sports_event',
@@ -344,6 +363,61 @@ function retDepTimeMismatchMultiplier(offer: RankOffer, retTimePref: string | un
  *  buckets (for round-trips), stop counts, and core fare conditions. Including the
  *  inbound leg prevents collapsing distinct return options for the same outbound. */
 export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
+  type RankAncillary = NonNullable<RankOffer['ancillaries']>[keyof NonNullable<RankOffer['ancillaries']>]
+  const mergeAncillary = (current: RankAncillary | undefined, next: RankAncillary | undefined): RankAncillary | undefined => {
+    if (!current) return next ? { ...next } : undefined
+    if (!next) return current
+
+    return {
+      included: typeof current.included === 'boolean' ? current.included : next.included,
+      price: typeof current.price === 'number' ? current.price : next.price,
+      currency: current.currency || next.currency,
+      description: current.description || next.description,
+    }
+  }
+  const mergeOfferDetails = (representative: T, bucketOffers: T[], representativePrice: number): T => {
+    const samePriceMatches = bucketOffers.filter((candidate) => Math.abs((candidate.displayPrice ?? candidate.price) - representativePrice) < 0.01)
+    if (samePriceMatches.length <= 1) {
+      return representative
+    }
+
+    let mergedAncillaries = representative.ancillaries
+      ? {
+          cabin_bag: representative.ancillaries.cabin_bag,
+          checked_bag: representative.ancillaries.checked_bag,
+          seat_selection: representative.ancillaries.seat_selection,
+        }
+      : undefined
+    let mergedConditions = representative.conditions ? { ...representative.conditions } : undefined
+
+    for (const candidate of samePriceMatches) {
+      if (candidate.ancillaries) {
+        mergedAncillaries = {
+          cabin_bag: mergeAncillary(mergedAncillaries?.cabin_bag, candidate.ancillaries.cabin_bag),
+          checked_bag: mergeAncillary(mergedAncillaries?.checked_bag, candidate.ancillaries.checked_bag),
+          seat_selection: mergeAncillary(mergedAncillaries?.seat_selection, candidate.ancillaries.seat_selection),
+        }
+      }
+
+      if (candidate.conditions) {
+        const nextConditions = { ...(mergedConditions ?? {}) }
+        for (const [conditionKey, conditionValue] of Object.entries(candidate.conditions)) {
+          if (!conditionValue) continue
+          const currentValue = nextConditions[conditionKey]
+          if (!currentValue || currentValue === 'unknown') {
+            nextConditions[conditionKey] = conditionValue
+          }
+        }
+        mergedConditions = nextConditions
+      }
+    }
+
+    return {
+      ...representative,
+      ancillaries: mergedAncillaries,
+      conditions: mergedConditions,
+    }
+  }
   const bucket = (iso: string) => Math.round(isoToMins(iso) / 30)
   const dayKey = (iso: string | undefined) => {
     if (!iso) return ''
@@ -379,24 +453,34 @@ export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
     o.conditions?.refund_before_departure ?? 'unknown',
     o.conditions?.change_before_departure ?? 'unknown',
   ].join('_')
-  // First pass: find the cheapest effective price in each bucket
-  const bucketMin = new Map<string, number>()
-  for (const o of offers) {
-    const k = key(o)
-    const ep = o.displayPrice ?? o.price
-    if (!bucketMin.has(k) || ep < bucketMin.get(k)!) bucketMin.set(k, ep)
-  }
-  // Second pass: keep the first occurrence of the cheapest offer in each bucket
-  const bucketSeen = new Set<string>()
-  return offers.filter(o => {
-    const k = key(o)
-    const ep = o.displayPrice ?? o.price
-    if (Math.abs(ep - bucketMin.get(k)!) < 0.01 && !bucketSeen.has(k)) {
-      bucketSeen.add(k)
-      return true
+  const buckets = new Map<string, { minPrice: number; representative: T; representativeIndex: number; offers: T[] }>()
+
+  offers.forEach((offer, index) => {
+    const offerKey = key(offer)
+    const effectivePrice = offer.displayPrice ?? offer.price
+    const bucketState = buckets.get(offerKey)
+
+    if (!bucketState) {
+      buckets.set(offerKey, {
+        minPrice: effectivePrice,
+        representative: offer,
+        representativeIndex: index,
+        offers: [offer],
+      })
+      return
     }
-    return false
+
+    bucketState.offers.push(offer)
+    if (effectivePrice < bucketState.minPrice - 0.01) {
+      bucketState.minPrice = effectivePrice
+      bucketState.representative = offer
+      bucketState.representativeIndex = index
+    }
   })
+
+  return [...buckets.values()]
+    .sort((left, right) => left.representativeIndex - right.representativeIndex)
+    .map((bucketState) => mergeOfferDetails(bucketState.representative, bucketState.offers, bucketState.minPrice))
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -613,6 +697,15 @@ function refundabilityMultiplier(offer: RankOffer, requireCancellation: boolean 
   return 0.08
 }
 
+function mealPreferenceMultiplier(offer: RankOffer, requireMeals: boolean | undefined): number {
+  if (!requireMeals) return 1.0
+
+  const mealSignal = extractOfferDetailSignals(offer).meals
+  if (mealSignal === 'included') return 1.0
+  if (mealSignal === 'available') return 0.84
+  return 0.56
+}
+
 // ── Fact generation ────────────────────────────────────────────────────────
 function generateFacts(
   offer: RankOffer,
@@ -734,6 +827,16 @@ function generateFacts(
     tradeoffs.push('refund policy not shown in the fare data')
   }
 
+  // ── Meals / food ─────────────────────────────────────────────────────────
+  const mealSignal = extractOfferDetailSignals(offer).meals
+  if (ctx.requireMeals && mealSignal === 'included') {
+    heroFacts.push('meal included in fare')
+  } else if (ctx.requireMeals && mealSignal === 'available') {
+    heroFacts.push('meal option shown in fare data')
+  } else if (ctx.requireMeals) {
+    tradeoffs.push('meal availability not shown in the fare data')
+  }
+
   // ── Preferred airline ────────────────────────────────────────────────────
   if (ctx.preferredAirline) {
     const airLower = offer.airline.toLowerCase()
@@ -839,6 +942,7 @@ export function rankOffers<T extends RankOffer>(
       * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
       * depTimeMismatchMultiplier(depMins, ctx.depTimePref)
       * retDepTimeMismatchMultiplier(offer, ctx.retTimePref)
+      * mealPreferenceMultiplier(offer, ctx.requireMeals)
       * refundabilityMultiplier(offer, ctx.requireCancellation)
 
     return { offer, score, rank: 0, breakdown: bd, heroFacts: [], tradeoffs: [] }
@@ -934,6 +1038,7 @@ export function getProfileLabel(ctx: RankingContext): string | null {
     tripPurposes: ctx.tripPurposes,
   })
   if (tripPurpose === 'honeymoon')         return 'profileHoneymoon'
+  if (tripPurpose === 'special_occasion')  return 'profileCouple'
   if (tripPurpose === 'business')          return 'profileBusiness'
   if (tripPurpose === 'ski')               return 'profileSki'
   if (tripPurpose === 'beach')             return 'profileBeach'

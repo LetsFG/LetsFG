@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getMonitorStripe, toStripeAmount } from '../../../lib/stripe'
 import { convertCurrencyAmount } from '../../../lib/display-price'
 import { getLiveFxRates } from '../../../lib/live-fx'
+import { getLetsfgApiBase } from '../../../lib/letsfg-api'
 
 // Currencies Stripe supports for checkout. Falls back to USD for anything else.
 const STRIPE_CURRENCIES = new Set([
@@ -10,7 +11,7 @@ const STRIPE_CURRENCIES = new Set([
   'SAR', 'THB', 'MYR', 'IDR', 'PHP', 'KRW', 'TRY', 'EGP', 'VND', 'BGN', 'NGN',
 ])
 
-const API_BASE = process.env.LETSFG_API_URL || 'https://api.letsfg.co'
+const API_BASE = getLetsfgApiBase()
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
 

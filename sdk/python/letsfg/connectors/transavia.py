@@ -357,15 +357,6 @@ class TransaviaConnectorClient:
                 await self._dismiss_cookies(page)
                 await asyncio.sleep(1.5)
 
-                # Navigate to booking page to warm up session cookies
-                await page.goto(
-                    "https://www.transavia.com/book/en-eu/search-a-flight",
-                    wait_until="domcontentloaded",
-                    timeout=30000,
-                )
-                await asyncio.sleep(2.0)
-                await self._dismiss_cookies(page)
-
                 # Extract cookies
                 cookies = await context.cookies()
                 if cookies:

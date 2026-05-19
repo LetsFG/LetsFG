@@ -12,8 +12,8 @@ description: "LetsFG — Agent-native flight search, hotel search, and booking A
 - **Type:** API + SDK + MCP Server + CLI
 - **Purpose:** Agent-native flight search, hotel search, and booking
 - **Compatible agents:** OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client
-- **API Base URL:** `https://api.letsfg.co`
-- **MCP Endpoint:** `https://api.letsfg.co/mcp` (Streamable HTTP)
+- **API Base URL:** `https://letsfg.co/developers/api/v1`
+- **MCP Endpoint:** `https://letsfg.co/developers/api/mcp` (Streamable HTTP)
 - **Packages:** PyPI `letsfg` · npm `letsfg` · npm `letsfg-mcp`
 - **License:** MIT
 
@@ -238,7 +238,7 @@ print(f"PNR: {booking.booking_reference}")
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+            "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_..."
       }

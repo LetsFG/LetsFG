@@ -472,6 +472,13 @@ _BLOCKED_RESOURCE_TYPES = frozenset({
     "manifest",    # PWA manifests - not needed for scraping
 })
 
+# Meta search result pages only need scripts + JSON poll responses.
+# Blocking stylesheets here saves a few more MB without affecting API capture.
+_META_SEARCH_BLOCKED_RESOURCE_TYPES = frozenset({
+    *_BLOCKED_RESOURCE_TYPES,
+    "stylesheet",
+})
+
 # URL patterns to block (analytics, tracking, ads, social widgets)
 # These are regex-like globs matched against full URL
 _BLOCKED_URL_PATTERNS = (
@@ -571,6 +578,24 @@ async def _aggressive_block_handler(route):
     await route.continue_()
 
 
+async def _meta_search_block_handler(route):
+    """Block heavy resources plus stylesheets for poll-driven meta search pages."""
+    req = route.request
+    url = req.url.lower()
+
+    if req.resource_type in _META_SEARCH_BLOCKED_RESOURCE_TYPES:
+        await route.abort()
+        return
+
+    for pattern in _BLOCKED_URL_PATTERNS:
+        check = pattern.replace("*", "")
+        if check in url:
+            await route.abort()
+            return
+
+    await route.continue_()
+
+
 async def block_heavy_resources(page) -> None:
     """Block images, video, and fonts to save proxy bandwidth.
 
@@ -587,6 +612,15 @@ async def block_all_heavy_resources(page) -> None:
     Blocks ~90% of typical page weight while keeping core functionality.
     """
     await page.route("**/*", _aggressive_block_handler)
+
+
+async def block_meta_search_resources(page) -> None:
+    """Block everything Booking Holdings poll capture does not need.
+
+    This is stricter than ``block_all_heavy_resources`` because these pages only
+    need scripts and the JSON poll/fetch responses. Stylesheets can be skipped.
+    """
+    await page.route("**/*", _meta_search_block_handler)
 
 
 async def auto_block_if_proxied(page) -> None:
@@ -992,6 +1026,14 @@ def patchright_bandwidth_args() -> list[str]:
             args=[*patchright_bandwidth_args(), ...],
         )
     """
+    return [
+        *bandwidth_saving_args(),
+        *disable_background_networking_args(),
+    ]
+
+
+def meta_search_bandwidth_args() -> list[str]:
+    """Chrome args for browser-based meta connectors where page visuals do not matter."""
     return [
         *bandwidth_saving_args(),
         *disable_background_networking_args(),

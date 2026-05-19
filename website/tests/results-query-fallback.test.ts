@@ -31,5 +31,18 @@ test('results search form reuses the compact home form so clarification still ru
 
   assert.match(source, /import HomeSearchForm from '\.\.\/home-search-form'/)
   assert.match(source, /onSearchStart=\{handleSearchStart\}/)
-  assert.match(source, /compact autoFocus=\{false\} probeMode=\{probeMode\}/)
+  assert.match(source, /compact autoFocus=\{false\} autoClarify=\{autoClarify\} probeMode=\{probeMode\}/)
+})
+
+test('pending results page adopts the in-flight prefire before falling back to the server bootstrap route', () => {
+  const pendingSource = readSource('app/results/pending/page.tsx')
+  const handoffSource = readSource('lib/client-search-handoff.ts')
+
+  assert.match(handoffSource, /export function startClientSearchHandoff\(/)
+  assert.match(handoffSource, /export async function waitForClientSearchHandoff\(/)
+  assert.match(handoffSource, /export function clearClientSearchHandoff\(/)
+  assert.match(pendingSource, /waitForClientSearchHandoff\(activeToken, PREFIRE_ROUTE_WAIT_MS\)/)
+  assert.match(pendingSource, /startClientSearchHandoff\(activeToken, \{/)
+  assert.match(pendingSource, /router\.replace\(`\/results\/\$\{result\.searchId\}\?\$\{nextParams\.toString\(\)\}`\)/)
+  assert.match(pendingSource, /router\.replace\(`\/results\?\$\{nextParams\.toString\(\)\}`\)/)
 })

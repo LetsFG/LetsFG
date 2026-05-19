@@ -152,6 +152,7 @@ class OpodoConnectorClient:
         from .browser import inject_stealth_js, auto_block_if_proxied
 
         graphql_data: list[dict] = []
+        graphql_ready = asyncio.Event()
 
         async def on_response(response):
             if "graphql" not in response.url:
@@ -164,6 +165,7 @@ class OpodoConnectorClient:
                         si = data.get("data", {}).get("searchItinerary")
                         if si and si.get("itineraries"):
                             graphql_data.append(si)
+                            graphql_ready.set()
             except Exception:
                 pass
 
@@ -232,27 +234,36 @@ class OpodoConnectorClient:
                 url += f";ret={req.return_from.isoformat()}"
 
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(3000)
+
+            # Leave the page as soon as the first usable search payload lands.
+            try:
+                await asyncio.wait_for(graphql_ready.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
 
             # Dismiss cookie consent
-            for sel in [
-                "#didomi-notice-agree-button",
-                "button:has-text('Continue without agreeing')",
-                "button:has-text('Accept')",
-            ]:
-                try:
-                    btn = page.locator(sel)
-                    if await btn.count() > 0:
-                        await btn.first.click(force=True)
-                        await page.wait_for_timeout(500)
+            if not graphql_ready.is_set():
+                for sel in [
+                    "#didomi-notice-agree-button",
+                    "button:has-text('Continue without agreeing')",
+                    "button:has-text('Accept')",
+                ]:
+                    try:
+                        btn = page.locator(sel)
+                        if await btn.count() > 0:
+                            await btn.first.click(force=True)
+                            await page.wait_for_timeout(500)
+                            break
+                    except Exception:
+                        pass
+                    if graphql_ready.is_set():
                         break
-                except Exception:
-                    pass
 
-            for _ in range(6):
-                await page.wait_for_timeout(5000)
-                if graphql_data:
-                    break
+            if not graphql_ready.is_set():
+                try:
+                    await asyncio.wait_for(graphql_ready.wait(), timeout=12.0)
+                except asyncio.TimeoutError:
+                    pass
 
             await page.close()
             if ctx_owned:

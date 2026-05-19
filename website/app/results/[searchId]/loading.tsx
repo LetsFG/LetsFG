@@ -1,9 +1,9 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
-import { useLocale } from 'next-intl'
 import Link from 'next/link'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useLocale } from 'next-intl'
 import Image from 'next/image'
 import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
@@ -27,6 +27,7 @@ interface SearchInfo {
 
 function LoadingInner() {
   const params = useParams()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const locale = useLocale()
   const searchId = params.searchId as string
@@ -37,6 +38,10 @@ function LoadingInner() {
   const homeHref = buildLocaleHomePath(locale, probeMode)
 
   const [info, setInfo] = useState<SearchInfo>({})
+
+  useEffect(() => {
+    router.prefetch(homeHref)
+  }, [homeHref, router])
 
   // Seed the epoch from the ?started= timestamp so the simulated counter
   // knows how long the search has already been running.

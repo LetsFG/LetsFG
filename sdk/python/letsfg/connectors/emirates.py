@@ -637,6 +637,7 @@ class EmiratesConnectorClient:
         observed_lowest_price: float = 0.0
         observed_currency: str = ""
         search_request_tokens: set[str] = set()
+        results_api_ready = asyncio.Event()
 
         async def _on_response(response):
             nonlocal observed_currency, observed_lowest_price
@@ -676,6 +677,8 @@ class EmiratesConnectorClient:
                         try:
                             payload = json.loads(text)
                             _extract_api_flights(payload, api_flights)
+                            if api_flights:
+                                results_api_ready.set()
                         except (json.JSONDecodeError, ValueError):
                             pass
 
@@ -731,6 +734,7 @@ class EmiratesConnectorClient:
                     data = await response.json()
                     if isinstance(data, dict) and "options" in data:
                         flexi_data.update(data)
+                        results_api_ready.set()
                         logger.info("Emirates: captured flexi-fares response")
                 except Exception:
                     pass
@@ -868,6 +872,10 @@ class EmiratesConnectorClient:
                 url = page.url
                 if akamai_blocked:
                     logger.warning("Emirates: Akamai blocked, proceeding to fallback extraction")
+                    break
+                if results_api_ready.is_set():
+                    logger.info("Emirates: captured search-results API payload, skipping extra results-page wait")
+                    got_results = True
                     break
                 if "search-results" in url:
                     # Wait for flight data to load

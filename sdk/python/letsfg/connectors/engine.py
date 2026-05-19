@@ -10,7 +10,7 @@ Results from both are merged, deduplicated, and sorted.
 
 Environment variables:
   LETSFG_API_KEY  — API key for the Cloud Run backend
-  LETSFG_BASE_URL — Backend URL (default: https://api.letsfg.co)
+    LETSFG_BASE_URL — Backend URL (default: https://letsfg.co/developers)
 """
 
 from __future__ import annotations
@@ -822,7 +822,7 @@ def _extract_legs_from_roundtrip(
 class MultiProvider:
     """Searches ALL flight sources in parallel — local connectors + Cloud Run backend."""
 
-    _BACKEND_URL = (os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or "https://api.letsfg.co").rstrip("/")
+    _BACKEND_URL = (os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or "https://letsfg.co/developers").rstrip("/")
     _BACKEND_KEY = os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY", "")
     _BACKEND_TIMEOUT = 30.0  # Backend queries paid APIs in parallel; 30s covers slowest GDS
 

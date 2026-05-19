@@ -1,9 +1,9 @@
 'use client'
 
-import { Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { useLocale } from 'next-intl'
+import { Suspense, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useLocale } from 'next-intl'
 import Image from 'next/image'
 import CurrencyButton from '../currency-button'
 import GlobeButton from '../globe-button'
@@ -18,12 +18,17 @@ import { parseNLQuery } from '../lib/searchParsing'
 
 function LoadingInner() {
   const params = useSearchParams()
+  const router = useRouter()
   const locale = useLocale()
   const query = params.get('q') || ''
   const probeMode = params.get('probe') === '1'
   const initialCurrency = normalizeCurrencyCode(params.get('cur')) || 'EUR'
   const parsed = parseNLQuery(query)
   const homeHref = buildLocaleHomePath(locale, probeMode)
+
+  useEffect(() => {
+    router.prefetch(homeHref)
+  }, [homeHref, router])
 
   return (
     <main className="res-page res-page--searching">

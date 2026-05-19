@@ -31,7 +31,7 @@ test('fetchLiveFxRates requests EUR-based Frankfurter quotes and returns a rate 
     }))
   })
 
-  assert.match(requestedUrl, /\/rates\?/)
+  assert.match(requestedUrl, /\/v2\/rates\?/)
   assert.match(requestedUrl, /base=EUR/)
   assert.match(requestedUrl, /quotes=/)
   assert.equal(rates.USD, 1.2)

@@ -70,6 +70,7 @@ const CITY_LIKE_PURPOSES = new Set<TripPurpose>([
 const RELAXED_PURPOSES = new Set<TripPurpose>([
   'beach',
   'honeymoon',
+  'special_occasion',
   'spring_break',
 ])
 
@@ -114,6 +115,12 @@ export function buildPartySizeQuestionSpec(
       return {
         questionKey: 'pax_q_business',
         chips: uniqueChips(['solo', 'colleague', 'small_team', 'family']),
+      }
+    }
+    if (tripPurposes[0] === 'special_occasion') {
+      return {
+        questionKey: 'pax_q',
+        chips: uniqueChips(['partner', 'two', 'family', 'small_group']),
       }
     }
     if (tripPurposes[0] === 'city_break') {

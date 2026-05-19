@@ -11,17 +11,19 @@ import {
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
-import { setResultsLocaleSearchParam } from '../lib/locale-routing'
-import { buildPartySizeQuestionSpec, buildPriorityQuestionSpec, hasTripTypeContext } from './lib/home-convo-personalization'
-import { parseNLQuery } from './lib/searchParsing'
-import { applyVertexIntent } from './lib/vertex-intent'
 import {
-  buildHomeConvoTopicOrder,
-  needsDateClarification,
+  clearClientSearchHandoff,
+  createClientSearchHandoffToken,
+  startClientSearchHandoff,
+} from '../lib/client-search-handoff'
+import { setResultsLocaleSearchParam } from '../lib/locale-routing'
+import { getTrackedSourcePath } from '../lib/probe-mode'
+import { buildClarificationSearchSessionPayload, trackSearchSession } from '../lib/search-session-analytics'
+import {
   normalizeHomeConvoFollowUpTopics,
   type HomeConvoFollowUpTopic,
 } from './lib/home-search-assist'
-import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './lib/trip-purpose'
+import type { TripPurpose } from './lib/trip-purpose'
 
 const DESTINATION_KEYS = [
   { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
@@ -241,6 +243,64 @@ function generateTimeSuggestion(locale: string): string {
   return `, ${timeOptions[locale] || timeOptions.en}`
 }
 
+type GeminiClarificationResponse = {
+  follow_up_questions?: GeminiClarificationQuestion[] | null
+  ready_to_search?: boolean | null
+  origin?: string | null
+  origin_name?: string | null
+  destination?: string | null
+  destination_name?: string | null
+  origin_city: string | null
+  destination_city: string | null
+  via_city: string | null
+  origin_lat?: number | null
+  origin_lon?: number | null
+  destination_lat?: number | null
+  destination_lon?: number | null
+  departure_date?: string | null
+  return_date?: string | null
+  passengers?: number | null
+  cabin_class?: 'economy' | 'premium_economy' | 'business' | 'first' | null
+  trip_purpose?: TripPurpose | null
+  trip_purposes?: TripPurpose[] | null
+  direct_only?: boolean | null
+  sort_by?: 'price' | 'duration' | null
+  depart_after?: string | null
+  depart_before?: string | null
+  bags_included?: boolean | null
+  dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
+  is_round_trip?: boolean | null
+  anywhere_destination?: boolean
+  follow_up_topics?: HomeConvoFollowUpTopic[] | null
+}
+
+type GeminiClarificationChoice = {
+  key: string
+  label?: string | null
+}
+
+type GeminiClarificationQuestion = {
+  topic: HomeConvoFollowUpTopic
+  question?: string | null
+  free_hint?: string | null
+  multi_choice?: boolean | null
+  is_essential?: boolean | null
+  suggested_answers?: GeminiClarificationChoice[] | null
+}
+
+function parseClockTimeToMinutes(value: string | null | undefined): number | undefined {
+  if (!value) return undefined
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim())
+  if (!match) return undefined
+
+  const hours = parseInt(match[1], 10)
+  const minutes = parseInt(match[2], 10)
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return undefined
+  return hours * 60 + minutes
+}
+
 function PlaneIcon() {
   // Font Awesome 6 Free Solid — fa-plane-departure (CC BY 4.0)
   return (
@@ -349,7 +409,7 @@ function parseQuery(query: string, locale: string): ParsedQuery {
 
   // Check for trip purpose keywords
   const hasPurposeKeyword =
-    /\b(?:honeymoon|romantic|anniversary|business\s+trip|for\s+work|ski(?:ing)?\s+(?:trip|holiday)|beach\s+(?:trip|holiday|vacation)|city\s+break|weekend\s+(?:trip|break|getaway)|long\s+weekend)\b/i.test(query)
+    /\b(?:honeymoon|romantic|anniversary|special\s+occasion|birthday\s+(?:trip|holiday|getaway)|celebration\s+(?:trip|holiday|getaway)|business\s+trip|for\s+work|ski(?:ing)?\s+(?:trip|holiday)|beach\s+(?:trip|holiday|vacation)|city\s+break|weekend\s+(?:trip|break|getaway)|long\s+weekend)\b/i.test(query)
 
   // Check for trip duration keywords
   const hasTripDuration =
@@ -687,6 +747,7 @@ function insertAirport(
 
 // Set to true to skip the API call and go straight to the loading UI demo
 const DEMO_LOADING = false
+const PREFIRED_SEARCH_TTL_MS = 3 * 60 * 1000
 
 interface HomeSearchFormProps {
   initialQuery?: string
@@ -694,6 +755,7 @@ interface HomeSearchFormProps {
   initialCurrency?: CurrencyCode
   compact?: boolean
   autoFocus?: boolean
+  autoClarify?: boolean
   probeMode?: boolean
   onSearchStart?: (query: string) => void
 }
@@ -787,6 +849,7 @@ export default function HomeSearchForm({
   initialCurrency = 'EUR',
   compact = false,
   autoFocus = true,
+  autoClarify = false,
   probeMode = false,
   onSearchStart,
 }: HomeSearchFormProps = {}) {
@@ -810,6 +873,7 @@ export default function HomeSearchForm({
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const [mounted, setMounted] = useState(false)
   const [autoPrefillOrigin, setAutoPrefillOrigin] = useState(normalizedDetectedOrigin)
+  const formRef = useRef<HTMLFormElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const dropdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -817,6 +881,9 @@ export default function HomeSearchForm({
   const rowRef = useRef<HTMLDivElement>(null)
   const suppressDropdownRef = useRef(false)
   const userEditedAutoPrefillRef = useRef(false)
+  const autoClarifyQueryRef = useRef('')
+  const clarificationAnalyticsKeyRef = useRef('')
+  const clarifyRequestGenerationRef = useRef(0)
 
   const DESTINATIONS = DESTINATION_KEYS.map((d) => ({
     ...d,
@@ -879,6 +946,17 @@ export default function HomeSearchForm({
     setInputValue(nextInitialQuery || nextDetectedOrigin)
     setQuery(nextInitialQuery || nextDetectedOrigin)
   }, [initialDetectedOrigin, initialQuery])
+
+  useEffect(() => {
+    const trimmed = normalizedInitialQuery
+    if (!autoClarify || !trimmed) return
+    if (autoClarifyQueryRef.current === trimmed) return
+    autoClarifyQueryRef.current = trimmed
+    const frame = window.requestAnimationFrame(() => {
+      formRef.current?.requestSubmit()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [autoClarify, normalizedInitialQuery])
 
   useEffect(() => {
     const normalizedOrigin = initialDetectedOrigin.trim()
@@ -962,18 +1040,14 @@ export default function HomeSearchForm({
   } | null>(null)
 
   // ── Conversational personalization state ─────────────────────────────────────
-  type QAnswer = { q: string; a: string; aDisplay: string }
+  type QAnswer = { topic?: HomeConvoFollowUpTopic; q: string; a: string; aDisplay: string }
   interface ConvoState {
     pendingQuery: string
     step: number
     answers: QAnswer[]
     collapsing: boolean
-    missingOrigin?: boolean       // true when user gave destination-only query
-    missingDestination?: boolean  // true when user gave origin-only query (single city, no "to")
-    parsed?: ReturnType<typeof parseNLQuery>  // already-computed NLP result
-    disambigOriginRaw?: string  // failed origin text to replace when disambig resolves
-    disambigDestRaw?: string    // failed dest text to replace when disambig resolves
-    aiFollowUpTopics?: HomeConvoFollowUpTopic[]
+    questions: ConvoQuestion[]
+    clarification: GeminiClarificationResponse
   }
   const [convo, setConvo] = useState<ConvoState | null>(null)
   const convoBottomRef = useRef<HTMLDivElement>(null)
@@ -982,146 +1056,137 @@ export default function HomeSearchForm({
   const [convoMultiSel, setConvoMultiSel] = useState<string[]>([])
   // Pre-fired search: started in background as soon as convo begins, so the
   // results page opens with the search already running.
-  const prefiredSearchRef = useRef<{ searchId: string; startedAt: number; fswSession?: string } | null>(null)
+  const prefiredSearchRef = useRef<{ searchId: string; startedAt: number; fswSession?: string; handoffToken?: string } | null>(null)
+  const prefiredSearchGenerationRef = useRef(0)
 
-  type ConvoQuestion = { q: string; chips: { label: string; key: string }[]; freeHint?: string; isOriginQuestion?: boolean; multiChoice?: boolean; isCityDisambig?: 'origin' | 'destination'; failedRaw?: string; isEssential?: boolean }
+  const clearPrefiredSearch = useCallback((options: { preserveHandoff?: boolean } = {}) => {
+    const current = prefiredSearchRef.current
+    prefiredSearchGenerationRef.current += 1
+    prefiredSearchRef.current = null
+    if (!options.preserveHandoff && current?.handoffToken) {
+      clearClientSearchHandoff(current.handoffToken)
+    }
+  }, [])
 
-  // Helper: chip object with a translated display label and English key for phrase lookup
-  const mkChip = (labelKey: Parameters<typeof ths>[0], englishKey: string) => ({ label: ths(labelKey), key: englishKey })
+  const launchPrefiredSearch = useCallback((searchQuery: string) => {
+    const generation = prefiredSearchGenerationRef.current + 1
+    const startedAt = Date.now()
+    const handoffToken = createClientSearchHandoffToken()
+    prefiredSearchGenerationRef.current = generation
+    prefiredSearchRef.current = { searchId: '', startedAt, handoffToken }
 
-  // Build a personalised 2-3 question set from the raw query text.
-  // Skips questions the user already answered in their query.
-  // Uses the structured parseNLQuery result stored in convo.parsed — fully
-  // language-agnostic, no raw-string regexes needed here.
-  function buildConvoQuestions(_raw: string): ConvoQuestion[] {
-    const p = convo?.parsed   // structured NLP result
-    const qs: ConvoQuestion[] = []
-    const requiredTopics: HomeConvoFollowUpTopic[] = []
-    if (convo?.missingOrigin) requiredTopics.push('origin')
-    if (convo?.missingDestination) requiredTopics.push('destination')
-    if (needsDateClarification(p)) requiredTopics.push('date')
-    const preferredTopicOrder = buildHomeConvoTopicOrder(convo?.aiFollowUpTopics, requiredTopics)
-
-    // ── 0a. City disambiguation — when we couldn’t resolve a city, show candidates ──
-    // These are blocking questions: fix the city first, then the rest of the convo.
-    const originCands = convo?.parsed?.origin_candidates
-    const destCands = convo?.parsed?.destination_candidates
-    const failedOriginRaw = convo?.disambigOriginRaw
-    const failedDestRaw = convo?.disambigDestRaw
-    if (failedOriginRaw && originCands && originCands.length > 0) {
-      qs.push({
-        q: `Couldn’t find “${failedOriginRaw}” — did you mean?`,
-        chips: originCands.map(c => ({ label: c.name, key: c.code })),
-        freeHint: 'or type another city…',
-        isCityDisambig: 'origin',
-        failedRaw: failedOriginRaw,
+    void startClientSearchHandoff(handoffToken, {
+      query: searchQuery,
+      ...(prefCurrency ? { currency: prefCurrency } : {}),
+      probeMode,
+    }).then((d) => {
+        if (prefiredSearchGenerationRef.current !== generation) return
+        if (d?.searchId) {
+          prefiredSearchRef.current = { searchId: d.searchId, startedAt, fswSession: d.fswSession, handoffToken }
+        } else {
+          prefiredSearchRef.current = null
+        }
       })
-    }
-    if (failedDestRaw && destCands && destCands.length > 0) {
-      qs.push({
-        q: `Couldn’t find “${failedDestRaw}” — did you mean?`,
-        chips: destCands.map(c => ({ label: c.name, key: c.code })),
-        freeHint: 'or type another city…',
-        isCityDisambig: 'destination',
-        failedRaw: failedDestRaw,
+      .catch(() => {
+        if (prefiredSearchGenerationRef.current !== generation) return
+        prefiredSearchRef.current = null
       })
+  }, [prefCurrency, probeMode])
+
+  type ConvoQuestion = { topic: HomeConvoFollowUpTopic; q: string; chips: { label: string; key: string }[]; freeHint?: string; multiChoice?: boolean; isEssential?: boolean }
+
+  const buildAiConvoQuestions = useCallback((ai: GeminiClarificationResponse): ConvoQuestion[] => {
+    const questions: ConvoQuestion[] = []
+    const seenTopics = new Set<HomeConvoFollowUpTopic>()
+    const aiQuestions = Array.isArray(ai.follow_up_questions) ? ai.follow_up_questions : []
+
+    for (const question of aiQuestions) {
+      const topic = question?.topic
+      if (!topic || seenTopics.has(topic)) continue
+
+      const chips = (Array.isArray(question.suggested_answers) ? question.suggested_answers : [])
+        .filter((choice): choice is GeminiClarificationChoice => Boolean(choice && typeof choice.key === 'string' && choice.key.trim()))
+        .map((choice) => {
+          const key = choice.key.trim()
+          const label = typeof choice.label === 'string' && choice.label.trim()
+            ? choice.label.trim()
+            : key
+          return { key, label }
+        })
+
+      questions.push({
+        topic,
+        q: typeof question.question === 'string' && question.question.trim() ? question.question.trim() : topic,
+        chips,
+        freeHint: typeof question.free_hint === 'string' && question.free_hint.trim() ? question.free_hint.trim() : undefined,
+        multiChoice: question.multi_choice === true,
+        isEssential: question.is_essential === true,
+      })
+      seenTopics.add(topic)
     }
-    // If we have disambig questions, they’re the only ones we need right now
-    if (qs.length > 0) return qs
 
-    const hasPax = (p?.adults !== undefined && p.adults > 1)
-      || !!(p?.children) || !!(p?.infants)
-      || !!(p?.passenger_context) || !!(p?.group_size)
-    const hasRtContext = hasTripTypeContext(p ?? {})
-    const hasTripPurpose = normalizeTripPurposes({ tripPurpose: p?.trip_purpose, tripPurposes: p?.trip_purposes }).length > 0
-    const hasPriority = p?.stops === 0 || !!(p?.cabin)
+    return questions
+  }, [])
 
-    for (const topic of preferredTopicOrder) {
-      if (topic === 'origin' && convo?.missingOrigin) {
-        qs.push({
-          q: ths('where_from_q'),
-          chips: [],
-          freeHint: ths('where_from_hint'),
-          isOriginQuestion: true,
-          isEssential: true,
-        })
-        continue
-      }
+  const CONVO_QUESTIONS = convo?.questions ?? []
 
-      if (topic === 'destination' && convo?.missingDestination) {
-        qs.push({
-          q: ths('where_to_q'),
-          chips: [],
-          freeHint: ths('where_to_hint'),
-          isEssential: true,
-        })
-        continue
-      }
+  const openClarificationConvo = useCallback((
+    pendingQuery: string,
+    clarification: GeminiClarificationResponse,
+  ) => {
+    const questions = buildAiConvoQuestions(clarification)
+    const followUpTopics = normalizeHomeConvoFollowUpTopics(clarification.follow_up_topics)
 
-      if (topic === 'date' && (needsDateClarification(p) || convo?.aiFollowUpTopics?.includes('date'))) {
-        qs.push({
-          q: ths('when_q'),
-          chips: [
-            { label: ths('chip_this_weekend'), key: 'this weekend' },
-            { label: ths('chip_next_weekend'), key: 'next weekend' },
-            { label: ths('chip_in_2_weeks'), key: 'in 2 weeks' },
-            { label: ths('chip_next_month'), key: 'next month' },
-          ],
-          freeHint: ths('when_hint'),
-          isEssential: true,
-        })
-        continue
-      }
-
-      if (topic === 'party_size' && !hasPax) {
-        const questionSpec = buildPartySizeQuestionSpec(p ?? {})
-        const q = ths(questionSpec.questionKey)
-        const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
-        qs.push({ q, chips, freeHint: ths('pax_hint') })
-        continue
-      }
-
-      if (topic === 'trip_type' && !hasRtContext) {
-        qs.push({ q: ths('rt_q'), chips: [
-          mkChip('chip_one_way', 'one way'),
-          mkChip('chip_rt_weekend', 'return weekend'),
-          mkChip('chip_rt_1week', 'return 1 week'),
-          mkChip('chip_rt_2weeks', 'return 2 weeks'),
-        ], freeHint: ths('or_describe_trip') })
-        continue
-      }
-
-      if (topic === 'trip_purpose' && !hasTripPurpose) {
-        const isLong = !!(p?.min_trip_days && p.min_trip_days >= 14)
-        let q = ths('trip_q')
-        let chips = [mkChip('chip_sun_relax', 'Sun & relax'), mkChip('chip_city_explore', 'City exploring'), mkChip('chip_business', 'Business'), mkChip('chip_occasion', 'Special occasion')]
-        if (isLong) { q = ths('trip_q_long'); chips = [mkChip('chip_adventure', 'Adventure'), mkChip('chip_backpacking', 'Backpacking'), mkChip('chip_luxury', 'Luxury'), mkChip('chip_remote_work', 'Remote work')] }
-        qs.push({ q, chips, freeHint: ths('trip_hint'), multiChoice: true })
-        continue
-      }
-
-      if (topic === 'priority' && !hasPriority) {
-        const questionSpec = buildPriorityQuestionSpec(p ?? {})
-        const q = ths(questionSpec.questionKey)
-        const chips = questionSpec.chips.map((chip) => mkChip(chip.labelKey as Parameters<typeof ths>[0], chip.englishKey))
-        qs.push({ q, chips, freeHint: ths('priority_hint'), multiChoice: true })
+    if (typeof window !== 'undefined') {
+      const trackingKey = `${window.location.pathname}|${pendingQuery.toLowerCase()}`
+      if (clarificationAnalyticsKeyRef.current !== trackingKey) {
+        clarificationAnalyticsKeyRef.current = trackingKey
+        trackSearchSession(buildClarificationSearchSessionPayload({
+          query: pendingQuery,
+          origin: clarification.origin ?? undefined,
+          origin_name: clarification.origin_name ?? clarification.origin_city ?? undefined,
+          destination: clarification.destination ?? undefined,
+          destination_name: clarification.destination_name ?? clarification.destination_city ?? undefined,
+          route: clarification.origin && clarification.destination ? `${clarification.origin}-${clarification.destination}` : undefined,
+          date_from: clarification.departure_date ?? undefined,
+          return_date: clarification.return_date ?? undefined,
+          adults: clarification.passengers || 1,
+          currency: prefCurrency,
+          source: window.location.pathname.includes('/results') ? 'website-results-form' : 'website-home-form',
+          source_path: getTrackedSourcePath(window.location.pathname || '/', probeMode),
+          is_test_search: probeMode || undefined,
+          follow_up_topics: followUpTopics,
+          missing_origin: followUpTopics.includes('origin'),
+          missing_destination: followUpTopics.includes('destination'),
+          needs_date_clarification: followUpTopics.includes('date'),
+          same_route: Boolean(clarification.origin && clarification.destination && clarification.origin === clarification.destination),
+        }), { keepalive: true })
       }
     }
 
-    // Always return at least 2 personalization questions (only if essential slots are filled)
-    if (qs.length === 0 && !convo?.missingOrigin && !convo?.missingDestination) {
-      qs.push({ q: ths('fallback_q1'), chips: [mkChip('chip_just_me', 'Just me'), mkChip('chip_two', 'Two of us'), mkChip('chip_family', 'Family'), mkChip('chip_group', 'Group')] })
-      qs.push({ q: ths('fallback_q2'), chips: [mkChip('chip_cheapest_fare', 'Cheapest fare'), mkChip('chip_no_stops', 'No stops'), mkChip('chip_good_timing', 'Good timing'), mkChip('chip_flexible', 'Flexible')], multiChoice: true })
+    const nextConvo = {
+      pendingQuery,
+      step: 0,
+      answers: [] as QAnswer[],
+      collapsing: false,
+      questions,
+      clarification,
     }
 
-    return qs
-  }
+    if (convo && convo.pendingQuery !== pendingQuery) {
+      setConvo(null)
+      setConvoFreeText('')
+      setConvoMultiSel([])
+      setTimeout(() => setConvo(nextConvo), 0)
+      return
+    }
 
-  const CONVO_QUESTIONS = convo ? buildConvoQuestions(convo.pendingQuery) : []
+    setConvo(nextConvo)
+    setConvoFreeText('')
+    setConvoMultiSel([])
+  }, [buildAiConvoQuestions, convo, prefCurrency, probeMode])
 
-  // Translate convo chip answers into phrases parseNLQuery already understands.
-  // Bare chip labels like "Family" or "Sun & relax" don't match the parser's regexes,
-  // so we expand them into natural language that does.
+  // Translate convo chip answers into phrases the downstream search parser already understands.
   const CONVO_ANSWER_PHRASES: Record<string, string> = {
     // Party / who
     'solo': 'travelling solo',
@@ -1191,42 +1256,38 @@ export default function HomeSearchForm({
   // `answer` is the English key (for phrase lookup); `display` is the localised label shown to the user.
   // Build the final search query, handling the case where the first answer was
   // the missing origin (prepend "from X to" instead of appending).
-  function buildFinalQuery(pending: string, answers: QAnswer[], missingOrigin?: boolean, disambigOriginRaw?: string, disambigDestRaw?: string, missingDestination?: boolean): string {
+  function buildFinalQuery(pending: string, answers: QAnswer[]): string {
     let q = pending
-    const remaining: QAnswer[] = []
-    for (const ans of answers) {
-      // City disambig answers substitute the failed raw text directly in the query
-      if (disambigOriginRaw && ans.a && q.toLowerCase().includes(disambigOriginRaw.toLowerCase())) {
-        const re = new RegExp(disambigOriginRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-        q = q.replace(re, ans.aDisplay)
-        disambigOriginRaw = undefined
-      } else if (disambigDestRaw && ans.a && q.toLowerCase().includes(disambigDestRaw.toLowerCase())) {
-        const re = new RegExp(disambigDestRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-        q = q.replace(re, ans.aDisplay)
-        disambigDestRaw = undefined
-      } else {
-        remaining.push(ans)
+    let originAnswer: string | null = null
+    let destinationAnswer: string | null = null
+    const contextParts: string[] = []
+
+    for (const answer of answers) {
+      if (answer.topic === 'origin' && !originAnswer) {
+        originAnswer = answer.a.trim()
+        continue
       }
+      if (answer.topic === 'destination' && !destinationAnswer) {
+        destinationAnswer = answer.a.trim()
+        continue
+      }
+      contextParts.push(expandConvoAnswer(answer.a))
     }
-    if (missingOrigin && remaining.length > 0) {
-      const originAnswer = remaining[0].a.trim()
-      const rest = remaining.slice(1).map(qa => expandConvoAnswer(qa.a)).join(', ')
-      const base = rest ? `${q}, ${rest}` : q
-      return `from ${originAnswer} to ${base}`
+
+    if (originAnswer) {
+      q = q ? `from ${originAnswer} to ${q}` : `from ${originAnswer}`
     }
-    if (missingDestination && remaining.length > 0) {
-      const destAnswer = remaining[0].a.trim()
-      const rest = remaining.slice(1).map(qa => expandConvoAnswer(qa.a)).join(', ')
-      return rest ? `${q} to ${destAnswer}, ${rest}` : `${q} to ${destAnswer}`
+    if (destinationAnswer) {
+      q = q ? `${q} to ${destinationAnswer}` : `to ${destinationAnswer}`
     }
-    const contextParts = remaining.map(qa => expandConvoAnswer(qa.a)).join(', ')
-    return contextParts ? `${q}, ${contextParts}` : q
+
+    return contextParts.length > 0 ? `${q}, ${contextParts.join(', ')}` : q
   }
 
   const commitConvoAnswer = useCallback((answer: string, display?: string) => {
     if (!convo) return
     setConvoMultiSel([])
-    const newAnswers = [...convo.answers, { q: currentQ!.q, a: answer, aDisplay: display ?? answer }]
+    const newAnswers = [...convo.answers, { topic: currentQ!.topic, q: currentQ!.q, a: answer, aDisplay: display ?? answer }]
     const nextStep = convo.step + 1
     if (nextStep >= CONVO_QUESTIONS.length) {
       // All done — build context suffix and navigate
@@ -1234,55 +1295,19 @@ export default function HomeSearchForm({
       setTimeout(() => {
         // If the user edited the search box during the wizard use the current text
         // as the base — do NOT blindly trust convo.pendingQuery which was captured
-        // at wizard open time. Also cancel the stale pre-fired search if any.
+        // at wizard open time.
         const currentInput = inputRef.current?.value.trim() ?? ''
         const baseQuery = (currentInput && currentInput !== convo.pendingQuery)
           ? currentInput
           : convo.pendingQuery
-        if (currentInput && currentInput !== convo.pendingQuery) {
-          const stale = prefiredSearchRef.current
-          if (stale?.searchId) {
-            const cancelUrl = `/api/results/cancel/${encodeURIComponent(stale.searchId)}`
-            if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-              navigator.sendBeacon(cancelUrl)
-            } else {
-              fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
-            }
-          }
-          prefiredSearchRef.current = null
-        }
-        const finalQuery = buildFinalQuery(baseQuery, newAnswers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
+        const finalQuery = buildFinalQuery(baseQuery, newAnswers)
         setConvo(null)
         setConvoFreeText('')
-        navigateSearch(finalQuery)
+        void navigateSearch(finalQuery, convo.clarification)
       }, 420)
     } else {
       setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: false })
       setConvoFreeText('')
-      // Fire background search as soon as the last essential question is answered.
-      // Essential = origin, destination, date. Once we have all three the search can run
-      // in parallel while the user answers personalization questions.
-      const moreEssentialRemaining = CONVO_QUESTIONS.slice(nextStep).some(q => q.isEssential)
-      if (!moreEssentialRemaining && !prefiredSearchRef.current) {
-        // Set sentinel IMMEDIATELY — before the fetch resolves — so that any
-        // subsequent question answers don't trigger a second pre-fire.
-        prefiredSearchRef.current = { searchId: '', startedAt: Date.now() }
-        const partialQuery = buildFinalQuery(convo.pendingQuery, newAnswers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
-        void fetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: partialQuery, ...(prefCurrency ? { currency: prefCurrency } : {}), ...(probeMode ? { probe: '1' } : {}) }),
-        }).then(r => r.ok ? r.json() : null)
-          .then((d: { search_id?: string; fsw_session?: string } | null) => {
-            if (d?.search_id) {
-              prefiredSearchRef.current = { searchId: d.search_id, startedAt: Date.now(), fswSession: d.fsw_session }
-            }
-          })
-          .catch(() => {
-            // Reset so navigateSearch falls back to query-based URL
-            prefiredSearchRef.current = null
-          })
-      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convo, currentQ])
@@ -1296,24 +1321,11 @@ export default function HomeSearchForm({
       const baseQuery = (currentInput && currentInput !== convo.pendingQuery)
         ? currentInput
         : convo.pendingQuery
-      if (currentInput && currentInput !== convo.pendingQuery) {
-        const stale = prefiredSearchRef.current
-        if (stale?.searchId) {
-          const cancelUrl = `/api/results/cancel/${encodeURIComponent(stale.searchId)}`
-          if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-            navigator.sendBeacon(cancelUrl)
-          } else {
-            fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
-          }
-        }
-        prefiredSearchRef.current = null
-      }
-      const finalQuery = buildFinalQuery(baseQuery, convo.answers, convo.missingOrigin, convo.disambigOriginRaw, convo.disambigDestRaw, convo.missingDestination)
+      const finalQuery = buildFinalQuery(baseQuery, convo.answers)
       setConvo(null)
       setConvoFreeText('')
-      navigateSearch(finalQuery)
+      void navigateSearch(finalQuery, convo.clarification)
     }, 420)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convo])
 
   // Scroll new question into view
@@ -1336,13 +1348,12 @@ export default function HomeSearchForm({
     setInputValue(nextValue)
   }
 
+  useEffect(() => {
+    router.prefetch('/results/pending')
+  }, [router])
+
   // Navigate to results with the given query string.
-  // If the pre-fire already resolved to a search_id, jump straight to that
-  // running search so the results page can start polling immediately.
-  // If not (pre-fire still in-flight or failed), navigate to /results?q=...
-  // which starts its own search on the server side. Either way we navigate
-  // instantly — never wait for the pre-fire.
-  const navigateSearch = (q: string) => {
+  const navigateSearch = useCallback((q: string, clarification?: GeminiClarificationResponse | null) => {
     if (DEMO_LOADING) {
       setIsLoading(true)
       router.push(`/results/demo-loading${probeMode ? '?probe=1' : ''}`)
@@ -1358,17 +1369,45 @@ export default function HomeSearchForm({
       const val = sp.get(key)
       if (val) params.set(key, val)
     }
-
-    const pre = prefiredSearchRef.current
-    prefiredSearchRef.current = null
-    const usePrefiredSearch = !!pre?.searchId && Date.now() - pre.startedAt < 3 * 60 * 1000
-    if (usePrefiredSearch && pre?.fswSession) params.set('_fss', pre.fswSession)
-    const target = usePrefiredSearch
-      ? `/results/${pre!.searchId}?${params.toString()}`
-      : `/results?${params.toString()}`
+    // When the convo wizard has already resolved origin/destination/date via Gemini,
+    // kick off the search immediately (in parallel with navigation) so the pending
+    // page picks up an already-in-flight search instead of waiting for a full
+    // Gemini re-parse. This cuts the loading-page wait from ~5s to ~1s.
+    if (clarification?.origin && clarification?.destination && clarification?.departure_date) {
+      const token = createClientSearchHandoffToken()
+      void startClientSearchHandoff(token, {
+        query: q,
+        ...(prefCurrency ? { currency: prefCurrency } : {}),
+        probeMode,
+        origin: clarification.origin,
+        destination: clarification.destination,
+        date_from: clarification.departure_date,
+        ...(clarification.return_date ? { return_date: clarification.return_date } : {}),
+        ...(clarification.passengers ? { adults: clarification.passengers } : {}),
+        ...(clarification.origin_name ?? clarification.origin_city
+          ? { origin_name: (clarification.origin_name ?? clarification.origin_city)! }
+          : {}),
+        ...(clarification.destination_name ?? clarification.destination_city
+          ? { destination_name: (clarification.destination_name ?? clarification.destination_city)! }
+          : {}),
+        // Forward convo-wizard-collected context so the fast path satisfies isSearchLaunchReady.
+        ...(clarification.cabin_class
+          ? { cabin: clarification.cabin_class === 'business' ? 'C' : clarification.cabin_class === 'first' ? 'F' : clarification.cabin_class === 'premium_economy' ? 'W' : 'M' }
+          : {}),
+        ...(clarification.trip_purpose
+          ? { trip_purpose: clarification.trip_purpose }
+          : clarification.trip_purposes?.[0]
+            ? { trip_purpose: clarification.trip_purposes[0] }
+            : {}),
+        ...(clarification.sort_by ? { sort_by: clarification.sort_by } : {}),
+        ...(clarification.passenger_context ? { passenger_context: clarification.passenger_context } : {}),
+        ...(clarification.direct_only ? { max_stops: 0 } : {}),
+      })
+      params.set('launch', token)
+    }
     setIsLoading(true)
-    window.location.assign(target)
-  }
+    router.push(`/results/pending?${params.toString()}`)
+  }, [locale, prefCurrency, probeMode, router])
 
   // When the user picks a date from the clarification strip, replace the ambiguous
   // fragment with an unambiguous "12 October" / "October 12" form and navigate.
@@ -1378,7 +1417,7 @@ export default function HomeSearchForm({
     const replacement = `${d.getDate()} ${_MONTHS[d.getMonth()]}`
     const newQuery = dateClarify.pendingQuery.replace(dateClarify.originalFragment, replacement)
     setDateClarify(null)
-    navigateSearch(newQuery)
+    void navigateSearch(newQuery)
   }
 
   const handleSearch = async (event: FormEvent) => {
@@ -1391,203 +1430,54 @@ export default function HomeSearchForm({
     if (!trimmed) return
     onSearchStart?.(trimmed)
 
-    // Detect ambiguous date fragment like "10/12" or "3.11" where both parts ≤ 12.
-    // Do this before navigating so we can ask the user which interpretation they meant.
-    const ambRe = /\b(\d{1,2})[\/\.](\d{1,2})\b(?!\s*[\/\.]\s*\d{4})/
-    const ambMatch = ambRe.exec(trimmed)
-    if (ambMatch) {
-      const n1 = parseInt(ambMatch[1], 10)
-      const n2 = parseInt(ambMatch[2], 10)
-      if (n1 >= 1 && n1 <= 12 && n2 >= 1 && n2 <= 12 && n1 !== n2) {
-        const today = new Date()
-        const yr = today.getFullYear()
-        // Interpretation A: n1 = month, n2 = day  (MM/DD — US style)
-        const dA = new Date(yr, n1 - 1, n2)
-        if (dA <= today) dA.setFullYear(yr + 1)
-        // Interpretation B: n1 = day, n2 = month  (DD/MM — international style)
-        const dB = new Date(yr, n2 - 1, n1)
-        if (dB <= today) dB.setFullYear(yr + 1)
-        setDateClarify({
-          a_date: dA.toISOString().slice(0, 10),
-          b_date: dB.toISOString().slice(0, 10),
-          a_label: `${_MONTHS[dA.getMonth()]} ${dA.getDate()}`,
-          b_label: `${dB.getDate()} ${_MONTHS[dB.getMonth()]}`,
-          originalFragment: ambMatch[0],
-          pendingQuery: trimmed,
-        })
-        return   // hold — wait for user to pick
-      }
+    setDateClarify(null)
+    const clarifyGeneration = ++clarifyRequestGenerationRef.current
+
+    if (convo && convo.pendingQuery !== trimmed) {
+      // Different query while convo is open — close it instantly then reopen so the
+      // user can see the panel reset rather than appear frozen.
+      setConvo(null)
+      setConvoFreeText('')
+      setConvoMultiSel([])
     }
 
-    // No ambiguity — launch personalization conversation
-    setDateClarify(null)
-    let _nlp: ReturnType<typeof parseNLQuery> | null = null
-    let aiFollowUpTopics: HomeConvoFollowUpTopic[] = []
-    try { _nlp = parseNLQuery(trimmed) } catch { /* ignore */ }
+    const ctrl = new AbortController()
+    const timer = window.setTimeout(() => ctrl.abort(), 8000)
+    const aiFollowUpPlanPromise = fetch('/api/parse-query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: trimmed }),
+      signal: ctrl.signal,
+    }).catch(() => null)
+    const aiFollowUpResponse = await aiFollowUpPlanPromise
+    window.clearTimeout(timer)
+    if (clarifyRequestGenerationRef.current !== clarifyGeneration) return
 
-    // ── Gemini-first parse on every submit ──────────────────────────────────
-    // The deterministic parser remains the instant local fallback and preserves
-    // fuzzy/disambiguation state, but homepage submit now always races Gemini so
-    // multilingual intent extraction and follow-up planning are the default path.
-    try {
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 1500)
-      const resp = await fetch('/api/parse-query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed }),
-        signal: ctrl.signal,
-      }).catch(() => null)
-      clearTimeout(timer)
-      if (resp && resp.ok) {
-        const ai = await resp.json().catch(() => null) as {
-          origin?: string | null; origin_name?: string | null
-          destination?: string | null; destination_name?: string | null
-          origin_city: string | null; destination_city: string | null; via_city: string | null
-          origin_lat?: number | null; origin_lon?: number | null
-          destination_lat?: number | null; destination_lon?: number | null
-          departure_date?: string | null; return_date?: string | null
-          passengers?: number | null
-          cabin_class?: 'economy' | 'premium_economy' | 'business' | 'first' | null
-          trip_purpose?: TripPurpose | null; trip_purposes?: TripPurpose[] | null
-          direct_only?: boolean | null; sort_by?: 'price' | 'duration' | null
-          depart_after?: string | null; depart_before?: string | null
-          bags_included?: boolean | null
-          dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
-          ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
-          passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
-          is_round_trip?: boolean | null
-          anywhere_destination?: boolean
-          follow_up_topics?: HomeConvoFollowUpTopic[] | null
-        } | null
-        if (ai) {
-          aiFollowUpTopics = normalizeHomeConvoFollowUpTopics(ai.follow_up_topics)
-          const base: ReturnType<typeof parseNLQuery> = _nlp ?? ({} as ReturnType<typeof parseNLQuery>)
-          const appliedAi = applyVertexIntent(base, ai, base.adults || 1)
-          if (appliedAi.origin) {
-            base.origin = appliedAi.origin
-            base.origin_name = appliedAi.originName
-            delete base.failed_origin_raw
-            delete base.origin_candidates
-          }
-          if (appliedAi.destination) {
-            base.destination = appliedAi.destination
-            base.destination_name = appliedAi.destinationName
-            delete base.failed_destination_raw
-            delete base.destination_candidates
-          }
-          if (appliedAi.viaIata) base.via_iata = appliedAi.viaIata
-          if (appliedAi.dateFrom) {
-            base.date = appliedAi.dateFrom
-            base.date_is_default = false
-          }
-          base.return_date = appliedAi.returnDate
-          base.adults = appliedAi.adults
-          if (appliedAi.cabin) base.cabin = appliedAi.cabin
-          const mergedTripPurposes = normalizeTripPurposes({
-            tripPurpose: base.trip_purpose,
-            tripPurposes: [...(base.trip_purposes ?? []), ...(ai.trip_purposes ?? []), ai.trip_purpose],
-          })
-          if (mergedTripPurposes.length > 0) {
-            base.trip_purposes = mergedTripPurposes
-            base.trip_purpose = getPrimaryTripPurpose({ tripPurpose: base.trip_purpose, tripPurposes: mergedTripPurposes })
-          }
-          if (ai.passenger_context) base.passenger_context = ai.passenger_context
-          if (ai.anywhere_destination) {
-            base.anywhere_destination = true
-            delete base.destination
-            delete base.destination_name
-            delete base.failed_destination_raw
-            delete base.destination_candidates
-          }
-          if (base.return_date && base.date && base.return_date <= base.date) base.return_date = undefined
-          _nlp = base
-        }
-      }
-    } catch { /* ignore — fall back to local parser behaviour */ }
+    const ai = aiFollowUpResponse && aiFollowUpResponse.ok
+      ? await aiFollowUpResponse.json().catch(() => null) as GeminiClarificationResponse | null
+      : null
 
-    // Detect whether the user explicitly said "from <city>" (true directional origin).
-    // A bare city name with no direction word is treated as destination — we ask where they depart FROM.
-    const hasExplicitFromKeyword = /\bfrom\b/i.test(trimmed)
-
-    // No city detected for origin at all (empty query, dates only, etc.)
-    const noOriginDetected = !_nlp?.origin && !_nlp?.failed_origin_raw
-    // No city detected for destination
-    const noDestinationDetected = !_nlp?.destination && !_nlp?.failed_destination_raw && !_nlp?.anywhere_destination
-
-    // Single implicit city with no "from" keyword → user almost certainly means their destination
-    // (e.g. "Buenos Aires" = "I want to fly TO Buenos Aires"). Treat as destination, ask "where from?".
-    const implicitSingleCityAsDestination = !!_nlp?.origin && noDestinationDetected && !hasExplicitFromKeyword
-
-    // missingOrigin: no city at all, OR single bare city (treated as destination — origin still unknown)
-    const missingOrigin = noOriginDetected || implicitSingleCityAsDestination
-    // missingDestination: user gave an explicit "from <city>" but no destination
-    const missingDestination = noDestinationDetected && hasExplicitFromKeyword && !noOriginDetected
-
-    // City disambiguation: unresolved cities that have fuzzy candidates
-    const needsOriginDisambig = !!(_nlp?.failed_origin_raw && _nlp?.origin_candidates?.length)
-    const needsDestDisambig = !!(_nlp?.failed_destination_raw && _nlp?.destination_candidates?.length)
-    const needsDisambig = needsOriginDisambig || needsDestDisambig
-    const hasTripPurpose = normalizeTripPurposes({ tripPurpose: _nlp?.trip_purpose, tripPurposes: _nlp?.trip_purposes }).length > 0
-    const hasAiFollowUpPlan = aiFollowUpTopics.length > 0
-
-    if (missingOrigin || missingDestination || needsDisambig || needsDateClarification(_nlp) || (!hasTripPurpose && !_nlp?.passenger_context) || hasAiFollowUpPlan) {
-      const nextConvo = {
-        pendingQuery: trimmed,
-        step: 0,
-        answers: [] as QAnswer[],
-        collapsing: false,
-        missingOrigin,
-        missingDestination,
-        parsed: _nlp ?? undefined,
-        disambigOriginRaw: needsOriginDisambig ? _nlp!.failed_origin_raw : undefined,
-        disambigDestRaw: needsDestDisambig ? _nlp!.failed_destination_raw : undefined,
-        aiFollowUpTopics,
-      }
-      if (convo && convo.pendingQuery !== trimmed) {
-        // Different query while convo is open — close it instantly then reopen so the
-        // user can see the panel reset rather than appear frozen.
-        // Cancel the stale pre-fired search (for the old query) before discarding it.
-        const staleOnQueryChange = prefiredSearchRef.current
-        if (staleOnQueryChange?.searchId) {
-          const cancelUrl = `/api/results/cancel/${encodeURIComponent(staleOnQueryChange.searchId)}`
-          if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-            navigator.sendBeacon(cancelUrl)
-          } else {
-            fetch(cancelUrl, { method: 'POST', keepalive: true }).catch(() => {})
-          }
-        }
-        prefiredSearchRef.current = null
-        setConvo(null)
-        setConvoFreeText('')
-        setConvoMultiSel([])
-        setTimeout(() => setConvo(nextConvo), 0)
-      } else {
-        setConvo(nextConvo)
-      }
-      // Pre-fire the search in the background only when origin, destination, AND date are all
-      // already known from the initial query — we need all three to avoid a useless search.
-      const dateAlreadyKnown = !!(_nlp?.date) && !needsDateClarification(_nlp)
-      if (!missingOrigin && !missingDestination && dateAlreadyKnown) {
-        // Set sentinel immediately so mid-convo answers don't fire a second pre-fire
-        prefiredSearchRef.current = { searchId: '', startedAt: Date.now() }
-        void fetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: trimmed, ...(prefCurrency ? { currency: prefCurrency } : {}), ...(probeMode ? { probe: '1' } : {}) }),
-        }).then(r => r.ok ? r.json() : null)
-          .then((d: { search_id?: string; fsw_session?: string } | null) => {
-            if (d?.search_id) {
-              prefiredSearchRef.current = { searchId: d.search_id, startedAt: Date.now(), fswSession: d.fsw_session }
-            } else {
-              prefiredSearchRef.current = null
-            }
-          })
-          .catch(() => { prefiredSearchRef.current = null })
-      }
+    if (!ai) {
+      setConvo(null)
+      setConvoFreeText('')
+      setConvoMultiSel([])
+      void navigateSearch(trimmed)
       return
     }
-    navigateSearch(trimmed)
+
+    const aiQuestions = buildAiConvoQuestions(ai)
+
+    if (aiQuestions.length === 0) {
+      setConvo(null)
+      setConvoFreeText('')
+      setConvoMultiSel([])
+      void navigateSearch(trimmed)
+      return
+    }
+
+    openClarificationConvo(trimmed, ai)
+    return
+
   }
 
   // Select an airport from the dropdown and insert it into the query
@@ -1750,7 +1640,7 @@ export default function HomeSearchForm({
         </div>
       )}
 
-      <form onSubmit={handleSearch} className={`lp-sf-form${convo && !dateClarify ? ' lp-sf-form--convo-open' : ''}`}>
+      <form ref={formRef} onSubmit={handleSearch} className={`lp-sf-form${convo && !dateClarify ? ' lp-sf-form--convo-open' : ''}`}>
         <div className="lp-sf-frame-wrap" ref={frameRef}>
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
@@ -1951,7 +1841,7 @@ export default function HomeSearchForm({
           <span style={{ opacity: 0.5 }}>?</span>
           <button
             type="button"
-            onClick={() => { setDateClarify(null); navigateSearch(dateClarify.pendingQuery) }}
+            onClick={() => { setDateClarify(null); void navigateSearch(dateClarify.pendingQuery) }}
             aria-label="Skip — search anyway"
             style={{
               marginLeft: 'auto', padding: '2px 8px', borderRadius: '20px', border: 'none',

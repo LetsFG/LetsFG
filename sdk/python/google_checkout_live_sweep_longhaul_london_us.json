@@ -1,0 +1,157 @@
+[
+  {
+    "route": "LHR->LAX",
+    "date": "2026-06-24",
+    "seller": "Air France airline",
+    "seller_price": 835.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.google.com/travel/flights/booking?tfs=CBwQAho_EgoyMDI2LTA2LTI0Ih8KA0xIUhIKMjAyNi0wNi0yNBoDTEFYKgJWUzIDMTQxagcIARIDTEhScgcIARIDTEFYGj4SCjIwMjYtMDYtMjgiHgoDTEFYEgoyMDI2LTA2LTI4GgNMSFIqAlZTMgIyNGoHCAESA0xBWHIHCAESA0xIUkABSAFwAYIBCwj___________8BmAEB&tfu=CmxDalJJUTNjM2VqTmxaVkJCVVZGQlFWTnlZMEZDUnkwdExTMHRMUzB0YkcxaVozSXhPRUZCUVVGQlIyOU1aRzV6U1ZsZlVEWkJFZ1JXVXpJMEdnc0l3WXdGRUFJYUEwVlZVamdjY01uNEJRPT0SAggAIgMSATA&hl=en&curr=EUR",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag: ()",
+        "text": "1st checked bag: €150 (£130)",
+        "currency": "EUR",
+        "amount": 150,
+        "included": false,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "LHR->SFO",
+    "date": "2026-06-24",
+    "seller": null,
+    "seller_price": null,
+    "seller_currency": null,
+    "resolved_booking_url": "https://www.google.com/travel/flights/booking?tfs=CBwQAhpfEgoyMDI2LTA2LTI0Ih0KA0xIUhIKMjAyNi0wNi0yNBoDTVNQKgJETDIBOSIgCgNNU1ASCjIwMjYtMDYtMjQaA1NGTyoCREwyBDI4MDlqBwgBEgNMSFJyBwgBEgNTRk8aYRIKMjAyNi0wNi0yOCIgCgNTRk8SCjIwMjYtMDYtMjgaA1NFQSoCREwyBDE0MTIiHwoDU0VBEgoyMDI2LTA2LTI4GgNMSFIqAlZTMgMxMDZqBwgBEgNTRk9yBwgBEgNMSFJAAUgBcAGCAQsI____________AZgBAQ&tfu=CnRDalJJYUZWb1dWVTVabWxFVlZGQlZYaDNRa0ZDUnkwdExTMHRMUzB0TFdWbVltVXlPVUZCUVVGQlIyOU1aSEJqUTNkYUxXMUJFZ3hFVERFME1USjhWbE14TURZYUN3aTJtUVFRQWhvRFJWVlNPQnh3dHZJRRICCAAiAA&hl=en&curr=EUR",
+    "checkout_page": "payment",
+    "categories": [],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": null,
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "LHR->SEA",
+    "date": "2026-06-24",
+    "seller": null,
+    "seller_price": null,
+    "seller_currency": null,
+    "resolved_booking_url": "https://www.google.com/travel/flights/booking?tfs=CBwQAhpgEgoyMDI2LTA2LTI0Ih8KA0xIUhIKMjAyNi0wNi0yNBoDS0VGKgJGSTIDNDU1Ih8KA0tFRhIKMjAyNi0wNi0yNRoDU0VBKgJGSTIDNjg1agcIARIDTEhScgcIARIDU0VBGoIBEgoyMDI2LTA2LTI4IiAKA1NFQRIKMjAyNi0wNi0yOBoDQk5BKgJXTjIEMTEzMCIfCgNCTkESCjIwMjYtMDYtMjkaA0tFRioCRkkyAzgyNCIfCgNLRUYSCjIwMjYtMDYtMzAaA0xIUioCRkkyAzQ1NGoHCAESA1NFQXIHCAESA0xIUkABSAFwAYIBCwj___________8BmAEB&tfu=CnxDalJJUWxGdWJsbFlRemhZYzJOQlYyeDVZbmRDUnkwdExTMHRMUzB0TFdWbWEyOHlNVUZCUVVGQlIyOU1aSEZuUW5vNGVITkJFaEpYVGpFeE16QjhSa2s0TWpSOFJrazBOVFFhQ3dpVm54QVFBaG9EUlZWU09CeHd2L2NTEgIIACIA&hl=en&curr=EUR",
+    "checkout_page": "payment",
+    "categories": [],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": null,
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "LHR->JFK",
+    "date": "2026-06-24",
+    "seller": "KLM airline",
+    "seller_price": 1136.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.google.com/travel/flights/booking?tfs=CBwQAho-EgoyMDI2LTA2LTI0Ih4KA0xIUhIKMjAyNi0wNi0yNBoDSkZLKgJWUzICMjVqBwgBEgNMSFJyBwgBEgNKRksaPRIKMjAyNi0wNi0yOCIdCgNKRksSCjIwMjYtMDYtMjgaA0xIUioCREwyATNqBwgBEgNKRktyBwgBEgNMSFJAAUgBcAGCAQsI____________AZgBAQ&tfu=CmxDalJJUzNGS01HMVVia3M0UkUxQlFUZHpVVkZDUnkwdExTMHRMUzB0TFdWcWNtY3hPVUZCUVVGQlIyOU1aSEozUVMxcmJ6UkJFZ1ZFVERNak1Sb0xDTVgzQmhBQ0dnTkZWVkk0SEhERGlnZz0SAggAIgMKATE&hl=en&curr=EUR",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage",
+      "seat_selection"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag: ()",
+        "text": "1st checked bag: €140 (£122)",
+        "currency": "EUR",
+        "amount": 140,
+        "included": false,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "2 free checked bags",
+        "text": "2 free checked bags",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  }
+]
