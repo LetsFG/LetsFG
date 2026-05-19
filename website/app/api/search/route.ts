@@ -298,6 +298,13 @@ export async function POST(request: NextRequest) {
     const referrer = getReferrerContext(request)
     const sessionUid = getSessionUid(request) ?? undefined
 
+    // Suppress Gemini's 'date' follow-up if local parsing already has enough date context
+    // (e.g. "end of June, 2 weeks" sets date_month_only + min_trip_days → no clarification needed).
+    // Gemini tends to flag month-only dates even when trip duration makes them actionable.
+    if (aiFollowUpTopics.includes('date') && !needsDateClarification(parsedForLaunch)) {
+      aiFollowUpTopics = aiFollowUpTopics.filter(t => t !== 'date')
+    }
+
     if (aiFollowUpTopics.length > 0) {
       await upsertSearchSessionServer(buildClarificationSearchSessionPayload({
         query: queryText || undefined,

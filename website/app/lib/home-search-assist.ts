@@ -161,11 +161,44 @@ export function needsDateClarification(parsed: ParsedQuery | null | undefined): 
   return !!(parsed.date_month_only && parsed.min_trip_days === undefined && !parsed.return_date)
 }
 
+// Maps multi-airport city codes and same-metro airport pairs.
+// Key = city code → Set of airport codes that are within that metro area.
+// The first loop in isSameMetroArea also catches two individual airports in the
+// same metro (e.g. LHR ↔ LGW, or HND ↔ NRT) without needing a city code.
+const METRO_AREA_AIRPORTS: Readonly<Record<string, ReadonlySet<string>>> = {
+  TYO: new Set(['HND', 'NRT']),
+  LON: new Set(['LHR', 'LGW', 'STN', 'LCY', 'LTN', 'SEN']),
+  NYC: new Set(['JFK', 'LGA', 'EWR']),
+  PAR: new Set(['CDG', 'ORY', 'BVA']),
+  WAS: new Set(['DCA', 'IAD', 'BWI']),
+  CHI: new Set(['ORD', 'MDW']),
+  OSA: new Set(['KIX', 'ITM', 'UKB']),
+  BUE: new Set(['EZE', 'AEP']),
+  GRU: new Set(['GRU', 'CGH', 'VCP']),
+  ICN: new Set(['ICN', 'GMP']),
+  MIL: new Set(['MXP', 'LIN', 'BGY']),
+  SEL: new Set(['ICN', 'GMP']),
+}
+
+function isSameMetroArea(a: string, b: string): boolean {
+  if (a === b) return true
+  // Both airports in the same metro (e.g. LHR ↔ LGW)
+  for (const airports of Object.values(METRO_AREA_AIRPORTS)) {
+    if (airports.has(a) && airports.has(b)) return true
+  }
+  // City code ↔ member airport (e.g. TYO ↔ HND, LON ↔ LHR)
+  const aSet = METRO_AREA_AIRPORTS[a]
+  if (aSet?.has(b)) return true
+  const bSet = METRO_AREA_AIRPORTS[b]
+  if (bSet?.has(a)) return true
+  return false
+}
+
 export function isSameAirportRoute(parsed: ParsedQuery | null | undefined): boolean {
   return !!(
     !parsed?.anywhere_destination && (
       parsed?.same_route === true ||
-      (parsed?.origin && parsed?.destination && parsed.origin === parsed.destination)
+      (parsed?.origin && parsed?.destination && isSameMetroArea(parsed.origin, parsed.destination))
     )
   )
 }
