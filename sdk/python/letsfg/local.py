@@ -63,6 +63,8 @@ async def search_local(
     max_browsers: int | None = None,
     max_stopovers: int | None = None,
     mode: str | None = None,
+    country_filter: frozenset[str] | set[str] | list[str] | None = None,
+    include_global: bool = False,
 ) -> dict:
     """
     Run all 73 local airline connectors and return results as a dict.
@@ -97,6 +99,8 @@ async def search_local(
         currency=currency,
         limit=limit,
         max_stopovers=max_stopovers if max_stopovers is not None else 2,
+        country_filter=country_filter,
+        include_global=include_global,
     )
 
     resp = await multi_provider.search_flights(req, mode=mode)
@@ -567,6 +571,8 @@ def _main() -> None:
             limit=params.get("limit", 50),
             max_browsers=params.get("max_browsers"),
             mode=params.get("mode"),
+            country_filter=params.get("country_filter"),
+            include_global=params.get("include_global", False),
         )
 
     try:

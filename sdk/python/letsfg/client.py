@@ -403,6 +403,8 @@ class LetsFG:
         currency: str = "EUR",
         limit: int = 50,
         max_browsers: int | None = None,
+        country_filter: frozenset[str] | set[str] | list[str] | None = None,
+        include_global: bool = False,
     ) -> FlightSearchResult:
         """
         Search flights using 73 local airline connectors — FREE, no API key needed.
@@ -422,6 +424,8 @@ class LetsFG:
             currency: 3-letter currency code
             limit: Max results (1-200)
             max_browsers: Max concurrent browser processes (1-32, default: auto-detect).
+            country_filter: ISO alpha-2 country codes used to filter source markets.
+            include_global: Include global aggregators when country_filter is active.
 
         Returns:
             FlightSearchResult with offers from local scrapers.
@@ -441,6 +445,8 @@ class LetsFG:
             currency=currency,
             limit=limit,
             max_browsers=max_browsers,
+            country_filter=country_filter,
+            include_global=include_global,
         ))
         return FlightSearchResult.from_dict(result_dict)
 
