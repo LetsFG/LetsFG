@@ -5727,33 +5727,73 @@ body:has(.res-page) {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .rf-pick-fb-btn {
   background: none;
-  border: none;
-  padding: 2px 3px;
+  border: 1px solid rgba(10, 77, 104, 0.18);
+  padding: 3px 7px;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 1.05rem;
   line-height: 1;
-  opacity: 0.45;
-  border-radius: 4px;
-  transition: opacity 0.15s, transform 0.1s;
+  opacity: 0.72;
+  border-radius: 6px;
+  transition: opacity 0.15s, transform 0.1s, background 0.15s, border-color 0.15s;
 }
 
 .rf-pick-fb-btn:hover {
   opacity: 1;
-  transform: scale(1.15);
+  transform: scale(1.12);
+  background: rgba(10, 77, 104, 0.07);
+  border-color: rgba(10, 77, 104, 0.32);
 }
 
-.rf-pick-fb-thanks {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #4caf50;
-  padding: 0 3px;
+/* Best Pick Feedback popup row */
+.bpf-popup { padding: 14px 24px 16px; }
+.bpf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.bpf-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1.5px solid rgba(10, 77, 104, 0.22);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  color: #1a3040;
+  background: #f7fbfd;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.bpf-input:focus { border-color: #0a7a9e; background: #fff; }
+.bpf-send {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #0a4d68;
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.bpf-send:disabled { opacity: 0.38; cursor: default; }
+.bpf-send:not(:disabled):hover { opacity: 0.88; transform: translateY(-1px); }
+.bpf-skip {
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: rgba(20, 45, 60, 0.48);
+  font-size: 0.84rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.bpf-skip:hover { color: rgba(20, 45, 60, 0.75); }
 
 .rf-concierge-headline {
   margin: 0 0 10px;
