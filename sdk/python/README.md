@@ -23,6 +23,13 @@ letsfg search-local LHR BCN 2026-06-15
 
 That fires 200 airline connectors on your machine. **Free. Unlimited. Zero setup.**
 
+```bash
+# Search using only Brazilian sites
+letsfg search BSB SDU 2026-05-24 --country BR
+# Or by region
+letsfg search GRU LIM 2026-06-15 --region latin-america
+```
+
 **Short on time?** Use `--mode fast` to search only OTAs + key airlines (~25 connectors, 20-40s instead of 6+ min):
 
 ```bash
