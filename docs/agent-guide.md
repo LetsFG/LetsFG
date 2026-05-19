@@ -6,7 +6,7 @@ Guidelines for building autonomous AI agents that search, evaluate, and book fli
 
 ## Search Modes
 
-Agents can use **local search** (free, no API key) for quick lookups, or **full search** (API key) for comprehensive results. Local search also supports a **fast mode** that fires only ~25 high-coverage OTAs and key airlines, reducing search time from 6+ minutes to 20-40 seconds:
+Agents can use **local search** (free, no API key) for quick lookups, or the **public developer API** (API key plus prepaid balance) for managed cloud search. Local search also supports a **fast mode** that fires only ~25 high-coverage OTAs and key airlines, reducing search time from 6+ minutes to 20-40 seconds:
 
 ```python
 # Local search — no API key, 200 airline connectors
@@ -29,22 +29,22 @@ result = bt.search("LHR", "JFK", "2026-06-01")
 
 **When to use default (full) local search:** Maximum coverage across all 200+ connectors. Finds niche airlines and routes that OTAs may miss.
 
-**When to use full API search:** Comprehensive coverage across 400+ airlines, booking flow (unlock → book), GDS/NDC fares not available on airline websites.
+**When to use full API search:** Managed cloud search through letsfg.co/developers/api/v1, broader supplier coverage, and account-controlled billing.
 
 ## Architecture
 
 ```
-User request → Agent parses intent → Resolve locations → Search (free)
-  → Filter & rank offers → Present to user → Unlock best (free) → Book (free)
+User request → Agent parses intent → Resolve locations → Search (local free or public prepaid)
+    → Filter & rank offers → Present to user → Unlock best (payment required) → Book
 ```
 
 ## Agent Best Practices
 
 1. **Always resolve locations first.** City names are ambiguous — "London" could be LHR, LGW, STN, LCY, or LTN. Use `resolve_location()` to get IATA codes, then let the user confirm if multiple options exist.
 
-2. **Search is free — use it liberally.** Search multiple dates, multiple origin/destination pairs, different cabin classes. Build a complete picture before unlocking.
+2. **Use the cheap path first.** Search multiple dates and variants locally when you can. If you are using the public website API, remember that search consumes prepaid balance, so batch intentionally.
 
-3. **Understand the 30-minute expiration.** After unlocking, you have 30 minutes to book. If the window expires, you must search again (free) and unlock again (free). Plan your workflow to minimize the gap between unlock and book.
+3. **Understand the 30-minute expiration.** After unlocking, you have 30 minutes to book. If the window expires, you need a fresh search and another unlock attempt, so keep the gap between confirmation and booking small.
 
 4. **Handle price changes gracefully.** Search prices are real-time snapshots. The unlock step confirms the actual current price with the airline. If the confirmed price differs significantly from the search price, inform the user before proceeding to book.
 

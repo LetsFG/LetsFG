@@ -1,28 +1,18 @@
-site_name: LetsFG
-site_url: https://docs.letsfg.co
-site_description: Agent-native flight search & booking API. 400+ airlines, straight from the terminal.
+site_name: LetsFG Docs
+site_url: https://letsfg.co/developers/docs
+site_description: Free local connector search plus the prepaid public developer API served through letsfg.co.
 site_author: LetsFG
 
 repo_url: https://github.com/LetsFG/LetsFG
+repo_name: LetsFG/LetsFG
 
 theme:
   name: material
   custom_dir: docs/overrides
   favicon: assets/favicon.png
-  logo: assets/favicon.png
+  logo: assets/lfg_ban.png
   palette:
-    - scheme: slate
-      primary: teal
-      accent: teal
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to light mode
     - scheme: default
-      primary: teal
-      accent: teal
-      toggle:
-        icon: material/weather-night
-        name: Switch to dark mode
   font:
     text: Lexend
     code: JetBrains Mono
@@ -33,6 +23,7 @@ theme:
     - navigation.expand
     - navigation.top
     - content.code.copy
+    - content.tabs.link
     - search.highlight
     - search.suggest
     - toc.follow
@@ -40,29 +31,35 @@ theme:
     repo: fontawesome/brands/github
 
 nav:
-  - Home: index.md
-  - Getting started:
-    - Quickstart: getting-started.md
-    - Claude Desktop (5 min): quickstart-claude.md
-    - Cursor (5 min): quickstart-cursor.md
-    - Windsurf (5 min): quickstart-windsurf.md
-    - API Guide: api-guide.md
-    - Tutorials: tutorials.md
-  - Architecture:
-    - Architecture & Resilience: architecture-guide.md
-  - Integrations:
-    - AI Agent Guide: agent-guide.md
-    - Self-Hosting & HTTP Endpoints: self-hosting.md
+  - Overview: index.md
+  - Start Here:
+    - Getting Started: getting-started.md
+  - Public Developer API:
+    - API Overview: api-guide.md
+    - Onboarding & Billing: api-onboarding.md
+    - Search & Results: api-search.md
+    - Errors & Limits: api-errors.md
+    - OpenAPI & Swagger: openapi.md
+  - MCP & IDE Agents:
     - Packages & SDKs: packages.md
+    - Claude Desktop: quickstart-claude.md
+    - Cursor: quickstart-cursor.md
+    - Windsurf: quickstart-windsurf.md
+    - AI Agent Guide: agent-guide.md
   - Reference:
     - CLI Reference: cli-reference.md
-    - OpenAPI Spec: openapi.md
+    - Tutorials: tutorials.md
+    - Architecture & Resilience: architecture-guide.md
+    - Self-Hosting & HTTP Endpoints: self-hosting.md
 
 extra:
   generator: false
 
 extra_css:
-  - assets/extra.css
+  - assets/extra-20260519b.css
+
+extra_javascript:
+  - assets/domain-redirect.js
 
 copyright: ""
 

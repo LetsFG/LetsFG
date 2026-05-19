@@ -307,15 +307,14 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         <p>When results are ready, the results page will contain a full table of all flight offers, sorted by price, with airline names, departure and arrival times, durations, stop counts, and offer IDs.</p>
 
         <h2>How to book after viewing results</h2>
-        <p>From the results page, note the offer_id for the flight you want. Then use the LetsFG API:</p>
-        <p>Step 1 — Unlock: POST https://api.letsfg.co/api/v1/bookings/unlock with body: offer_id</p>
-        <p>Step 2 — Book: POST https://api.letsfg.co/api/v1/bookings/book with body: offer_id, passengers array, contact_email</p>
-        <p>Unlock and book are both free with a verified GitHub star. API documentation: https://docs.letsfg.co</p>
+        <p>Programmatic access is issued through the LetsFG developers portal.</p>
+        <p>Open https://letsfg.co/en/developers, continue with Stripe, and copy the API key issued after setup completes.</p>
+        <p>Public developer requests go through https://letsfg.co/developers/api/v1. Current onboarding and API details: https://letsfg.co/developers/docs</p>
 
         <h2>API alternative (for agents with API access)</h2>
-        <p>If you have direct API access, skip the website and use https://api.letsfg.co directly. Register at: POST https://api.letsfg.co/api/v1/agents/register</p>
-        <p>Full documentation: https://docs.letsfg.co/api-guide</p>
-        <p>MCP server (for Claude, Cursor, Windsurf): npx letsfg-mcp or https://api.letsfg.co/mcp</p>
+        <p>The public developer entry point is https://letsfg.co/en/developers. The website flow now issues API keys after Stripe setup instead of a separate register call.</p>
+        <p>Full documentation: https://letsfg.co/developers/docs/api-guide/</p>
+        <p>MCP server (for Claude, Cursor, Windsurf): npx letsfg-mcp. Public onboarding and API access start at https://letsfg.co/en/developers</p>
       </section>
 
       <footer className="lp-footer">

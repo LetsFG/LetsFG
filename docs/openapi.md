@@ -1,66 +1,84 @@
-# OpenAPI Reference
+# OpenAPI and Swagger
 
-LetsFG provides a full OpenAPI 3.1 specification for the REST API.
+<div class="docs-callout">
+  <strong>Use the website-owned schema.</strong> The canonical public contract lives at <code>https://letsfg.co/developers/api/openapi.json</code>. Treat that as the live machine-readable surface, not the old raw repository link.
+</div>
 
-## Interactive Documentation
+<div class="docs-action-row">
+  <a href="https://letsfg.co/developers/api/openapi.json" class="docs-button docs-button--primary" target="_blank">OpenAPI JSON</a>
+  <a href="https://letsfg.co/developers/api/docs" class="docs-button docs-button--ghost" target="_blank">Swagger UI</a>
+  <a href="https://letsfg.co/en/developers" class="docs-button docs-button--ghost" target="_blank">Developers page</a>
+</div>
 
-- **Swagger UI:** [api.letsfg.co/docs](https://api.letsfg.co/docs) — try every endpoint in your browser
-- **ReDoc:** [api.letsfg.co/redoc](https://api.letsfg.co/redoc) — clean, readable API reference
+## Which URL does what?
 
-## OpenAPI Spec
+| Surface | Best for |
+|---------|----------|
+| `https://letsfg.co/developers/api/openapi.json` | Machine-readable schema for generators, SDK tooling, and agent discovery |
+| `https://letsfg.co/developers/api/docs` | Interactive Swagger UI |
+| `https://letsfg.co/developers/api/v1` | The actual REST base for requests |
+| `https://letsfg.co/en/developers` | Human onboarding, hosted checkout, and account context |
 
-The full OpenAPI specification is included in the repository:
+## What is in the live schema?
 
-- **YAML:** [`openapi.yaml`](https://github.com/LetsFG/LetsFG/blob/main/openapi.yaml)
+The live public schema currently includes paths for:
 
-You can import this spec into any OpenAPI-compatible tool (Postman, Insomnia, Swagger Editor, etc.).
+- `POST /agents/register`
+- `POST /agents/hosted-checkout`
+- `POST /agents/hosted-checkout/complete`
+- `POST /agents/setup-payment`
+- `POST /agents/top-up`
+- `POST /agents/billing-portal`
+- `POST /agents/billing-settings`
+- `POST /agents/rotate-key`
+- `GET /agents/me`
+- `POST /flights/search`
+- `GET /flights/locations/{query}`
+- `GET /flights/providers`
 
-## Endpoints
-
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/api/v1/agents/register` | POST | None | Create account, get API key |
-| `/api/v1/agents/me` | GET | API key | Agent profile & usage stats |
-| `/api/v1/agents/setup-payment` | POST | API key | Attach Stripe payment method |
-| `/api/v1/flights/search` | POST | API key | Search 400+ airlines |
-| `/api/v1/flights/resolve-location` | GET | API key | Resolve city/airport to IATA codes |
-| `/api/v1/bookings/unlock` | POST | API key | Unlock offer (free) |
-| `/api/v1/bookings/book` | POST | API key | Book flight (ticket price charged via Stripe) |
-
-**Base URL:** `https://api.letsfg.co`
-
-## Authentication
-
-All endpoints except `/register` require an `X-API-Key` header:
-
-```bash
-curl -X POST https://api.letsfg.co/api/v1/flights/search \
-  -H "X-API-Key: trav_your_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
-```
-
-## Agent Discovery
-
-LetsFG supports standard agent discovery protocols:
-
-| URL | Description |
-|-----|-------------|
-| `https://api.letsfg.co/.well-known/ai-plugin.json` | OpenAI plugin manifest |
-| `https://api.letsfg.co/.well-known/agent.json` | Agent discovery manifest |
-| `https://api.letsfg.co/llms.txt` | LLM instructions |
-| `https://api.letsfg.co/mcp` | MCP Streamable HTTP endpoint |
-
-## Local Search (No API Key)
-
-The 180+ local airline connectors do not use the REST API — they run directly on your machine. No API key is needed:
+## Fetch the schema
 
 ```bash
-pip install letsfg
-letsfg search LHR BCN 2026-04-15
+curl https://letsfg.co/developers/api/openapi.json | jq '.info, .servers'
 ```
 
-```python
-from letsfg.local import search_local
-result = await search_local("LHR", "BCN", "2026-04-15")
+List the documented paths:
+
+```bash
+curl https://letsfg.co/developers/api/openapi.json | jq '.paths | keys'
 ```
+
+## Why this matters
+
+- The website-owned schema matches the public proxy rules for auth and billing.
+- It stays aligned with the website developer surface that agents actually use.
+- Direct backend hosts are not the canonical public integration contract.
+
+## Current public API scope
+
+The public schema currently covers:
+
+- developer registration and hosted onboarding
+- Stripe payment attachment for API-only onboarding
+- prepaid balance funding and billing settings
+- flight search, location resolution, and provider inspection
+
+<div class="docs-resource-grid">
+  <a class="docs-resource-card" href="api-guide/">
+    <p class="docs-card-kicker">Overview</p>
+    <h3>Public API overview</h3>
+    <p>Start here if you need the paid public search lifecycle and canonical URLs before reading the schema.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-onboarding/">
+    <p class="docs-card-kicker">Billing</p>
+    <h3>Onboarding and billing</h3>
+    <p>Map the schema to the real registration, setup-payment, top-up, and billing-portal flow.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-search/">
+    <p class="docs-card-kicker">Search</p>
+    <h3>Search and results</h3>
+    <p>Use request-body examples and response notes that line up with the live `flights/search` contract.</p>
+  </a>
+</div>

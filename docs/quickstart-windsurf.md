@@ -1,22 +1,31 @@
 # Windsurf — 5-Minute Quickstart
 
-Get LetsFG running in Windsurf (Codeium). Search and book flights from Cascade.
+Choose between the paid remote MCP endpoint and the free local MCP server.
 
 ---
 
-## Option A: Remote (no install)
+## Option A: Remote paid MCP
 
-Zero dependencies. Works immediately.
+Use this when you want managed search through the public developer API at `letsfg.co/developers/api/mcp`.
 
 ### 1. Get an API key
 
 ```bash
-curl -s -X POST https://api.letsfg.co/api/v1/agents/register \
+curl -s -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "windsurf", "email": "you@example.com"}'
 ```
 
-### 2. Add to Windsurf MCP config
+Public REST docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
+
+### 2. Finish paid API onboarding
+
+Remote search stays blocked until the account has a Stripe payment method and funded prepaid balance.
+
+- Browserless/API-only path: [Onboarding and Billing](api-onboarding.md)
+- Hosted browser path: [letsfg.co/en/developers](https://letsfg.co/en/developers)
+
+### 3. Add to Windsurf MCP config
 
 Edit `~/.codeium/windsurf/mcp_config.json`:
 
@@ -24,7 +33,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+      "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_key_here"
       }
@@ -33,15 +42,9 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 }
 ```
 
-### 3. Restart Windsurf
+### 4. Restart Windsurf
 
 Close and reopen Windsurf. LetsFG tools appear in the MCP panel.
-
-### 4. Star + verify
-
-In Cascade chat:
-
-> Star https://github.com/LetsFG/LetsFG then link my GitHub: `your-username`
 
 ### 5. Search
 
@@ -49,11 +52,18 @@ In Cascade chat:
 
 ---
 
-## Option B: Local npm (easiest — zero setup)
+## Option B: Local MCP server
 
-No API key needed for search. Works immediately.
+Use this when you want free local search from Cascade.
 
-### 1. Edit `~/.codeium/windsurf/mcp_config.json`
+### 1. Install local prerequisites
+
+```bash
+pip install letsfg
+playwright install chromium
+```
+
+### 2. Edit `~/.codeium/windsurf/mcp_config.json`
 
 ```json
 {
@@ -68,15 +78,15 @@ No API key needed for search. Works immediately.
 
 > **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-### 2. Restart Windsurf
+### 3. Restart Windsurf
 
-### 3. Search — that's it
+### 4. Search — that's it
 
 > Find flights from Paris to Barcelona for Easter.
 
-No API key needed. Searches 200+ airline connectors via cloud backend. Rate limited to 10 searches/min.
+No API key is required for local search. Windsurf calls the local MCP server, which runs LetsFG search on your machine.
 
-### 4. (Optional) Add API key for unlock/book
+### 5. (Optional) Add API key for account-linked actions
 
 ```json
 {
@@ -92,7 +102,7 @@ No API key needed. Searches 200+ airline connectors via cloud backend. Rate limi
 }
 ```
 
-Get a key: `pip install letsfg && letsfg register --name windsurf --email you@example.com`
+Get a key: `curl -X POST https://letsfg.co/developers/api/v1/agents/register -H "Content-Type: application/json" -d '{"agent_name":"windsurf","email":"you@example.com"}'`
 
 ---
 
@@ -109,10 +119,12 @@ Cascade will:
 
 ## Troubleshooting
 
-**"GitHub star verification required"** → Star the repo and ask Cascade to call `link_github`
+**"Connect a payment method and fund your prepaid API balance before searching"** -> your remote paid API account is not ready yet. Finish [Onboarding and Billing](api-onboarding.md) or use the hosted developers page.
 
 **Tools not appearing** → Check `mcp_config.json` path and JSON validity. Restart Windsurf.
 
 **"API key required"** → Verify `X-API-Key` header (remote) or `LETSFG_API_KEY` env (local)
+
+**"Cannot start Python"** -> install the local prerequisites first: `pip install letsfg` and `playwright install chromium`
 
 **Windows: `spawn npx ENOENT`** → Use full path: `"C:\\Program Files\\nodejs\\npx.cmd"`

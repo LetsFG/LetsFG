@@ -1,26 +1,35 @@
 # Claude Desktop — 5-Minute Quickstart
 
-Get LetsFG running in Claude Desktop. Search 400+ airlines from chat.
+Choose between the paid remote MCP endpoint and the free local MCP server.
 
 ---
 
-## Option A: Remote (no install)
+## Option A: Remote paid MCP
 
-Zero dependencies. Works immediately.
+Use this when you want managed search through the public developer API at `letsfg.co/developers/api/mcp`.
 
 ### 1. Get an API key
 
 Open any terminal:
 
 ```bash
-curl -s -X POST https://api.letsfg.co/api/v1/agents/register \
+curl -s -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "claude-desktop", "email": "you@example.com"}'
 ```
 
 Copy the `api_key` from the response (starts with `trav_`).
 
-### 2. Add to Claude Desktop config
+Public REST docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
+
+### 2. Finish paid API onboarding
+
+Remote search stays blocked until the account has a Stripe payment method and funded prepaid balance.
+
+- Browserless/API-only path: [Onboarding and Billing](api-onboarding.md)
+- Hosted browser path: [letsfg.co/en/developers](https://letsfg.co/en/developers)
+
+### 3. Add to Claude Desktop config
 
 Open `Settings → Developer → Edit Config` or edit the file directly:
 
@@ -31,7 +40,7 @@ Open `Settings → Developer → Edit Config` or edit the file directly:
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+      "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_key_here"
       }
@@ -40,31 +49,30 @@ Open `Settings → Developer → Edit Config` or edit the file directly:
 }
 ```
 
-### 3. Restart Claude Desktop
+### 4. Restart Claude Desktop
 
 Close and reopen Claude. You'll see LetsFG tools in the tool list.
-
-### 4. Star + verify
-
-Say to Claude:
-
-> Star https://github.com/LetsFG/LetsFG then link my GitHub: `your-username`
-
-Claude will call `link_github` and confirm. All tools unlocked forever.
 
 ### 5. Search
 
 > Find me the cheapest flight from London to Barcelona next Friday
 
-Done. Claude fires 400+ airline connectors and returns real prices.
+Remote MCP uses the paid public account you just configured.
 
 ---
 
-## Option B: Local npm (easiest — zero setup)
+## Option B: Local MCP server
 
-Runs via cloud backend — no Python, no Playwright, no API key needed for search.
+Use this when you want free local search from Claude Desktop.
 
-### 1. Add to Claude Desktop config
+### 1. Install local prerequisites
+
+```bash
+pip install letsfg
+playwright install chromium
+```
+
+### 2. Add to Claude Desktop config
 
 Open `Settings → Developer → Edit Config`:
 
@@ -81,15 +89,15 @@ Open `Settings → Developer → Edit Config`:
 
 > **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-### 2. Restart Claude Desktop
+### 3. Restart Claude Desktop
 
-### 3. Search — that's it
+### 4. Search — that's it
 
 > Find flights from London to Barcelona next Friday
 
-No API key needed. Searches 200+ airline connectors via cloud backend. Rate limited to 10 searches/min.
+No API key is required for local search. Claude calls the local MCP server, which runs LetsFG search on your machine.
 
-### 4. (Optional) Add API key for unlock/book
+### 5. (Optional) Add API key for account-linked actions
 
 To book flights, add your API key:
 
@@ -107,11 +115,7 @@ To book flights, add your API key:
 }
 ```
 
-Get a key: `pip install letsfg && letsfg register --name claude-desktop --email you@example.com`
-
-### 5. Star + verify (unlocks all tools forever)
-
-> Star https://github.com/LetsFG/LetsFG then link my GitHub: `your-username`
+Get a key: `curl -X POST https://letsfg.co/developers/api/v1/agents/register -H "Content-Type: application/json" -d '{"agent_name":"claude-desktop","email":"you@example.com"}'`
 
 ---
 
@@ -127,9 +131,11 @@ Get a key: `pip install letsfg && letsfg register --name claude-desktop --email 
 
 ## Troubleshooting
 
-**"GitHub star verification required"** → Star the repo and say "link my GitHub: yourname"
+**"Connect a payment method and fund your prepaid API balance before searching"** -> your remote paid API account is not ready yet. Finish [Onboarding and Billing](api-onboarding.md) or use the hosted developers page.
 
 **"API key required"** → Check your config has the `X-API-Key` header (remote) or `LETSFG_API_KEY` env (local)
+
+**"Cannot start Python"** -> install the local prerequisites first: `pip install letsfg` and `playwright install chromium`
 
 **No tools showing** → Restart Claude Desktop. Check the MCP icon in the bottom-left.
 

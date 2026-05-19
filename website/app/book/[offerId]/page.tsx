@@ -259,13 +259,11 @@ export default async function BookPage({
         {offer.inbound?.airline && <p>Return airline: {offer.inbound.airline} ({offer.inbound.airline_code || ''})</p>}
 
         <h2>How to book this flight</h2>
-        <p>Booking via this website requires a payment method. For programmatic booking, use the LetsFG API:</p>
-        <p>Step 1 — Register (one-time): POST https://api.letsfg.co/api/v1/agents/register with body: agent_name, email</p>
-        <p>Step 2 — Star the repo for free access: https://github.com/LetsFG/LetsFG then run: letsfg star --github YOUR_USERNAME</p>
-        <p>Step 3 — Unlock offer (confirms live price, free): POST https://api.letsfg.co/api/v1/bookings/unlock with header X-API-Key and body: offer_id={offer.id}</p>
-        <p>Step 4 — Book (free after unlock): POST https://api.letsfg.co/api/v1/bookings/book with header X-API-Key and body: offer_id, passengers array (given_name, family_name, born_on, gender, title, email), contact_email</p>
-        <p>IMPORTANT: Use the passenger&apos;s real email address. The airline sends the e-ticket and booking confirmation there. Use real legal names matching the passport.</p>
-        <p>Full API documentation: https://docs.letsfg.co/api-guide</p>
+        <p>Booking via this website requires a payment method. Programmatic access is issued through the LetsFG developers portal.</p>
+        <p>Step 1 — Open https://letsfg.co/en/developers, continue with Stripe, and copy the API key issued after setup completes.</p>
+        <p>Step 2 — Fund your prepaid developer balance, then use https://letsfg.co/developers/api/v1 for the current public API surface.</p>
+        <p>IMPORTANT: If you later submit passenger details through the API, use the passenger&apos;s real email address and legal name matching the passport.</p>
+        <p>Full API documentation: https://letsfg.co/developers/docs/api-guide/</p>
 
         <h2>If you cannot use the API</h2>
         <p>On this page, humans can unlock this offer by paying a small one-time fee. Once unlocked, the direct booking link stays available for this browser/user.</p>

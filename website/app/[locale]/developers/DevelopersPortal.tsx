@@ -32,6 +32,7 @@ type DeveloperStatus = {
 
 const STORAGE_KEY = 'letsfg:developer-api-key'
 const MIN_TOP_UP_CENTS = 500
+const DEVELOPER_API_BASE = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'}/developers/api/v1`
 
 function centsToUsd(cents: number) {
   return new Intl.NumberFormat('en-US', {
@@ -394,6 +395,10 @@ export default function DevelopersPortal({ locale }: { locale: string }) {
                   Copy
                 </button>
               </div>
+
+              <p className="dev-inline-note">
+                Public API base: {DEVELOPER_API_BASE}. Search with {DEVELOPER_API_BASE}/flights/search using this key.
+              </p>
 
               <div className="dev-inline-actions dev-inline-actions--secondary">
                 <button

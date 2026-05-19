@@ -1,239 +1,166 @@
 # Getting Started
 
-> 🎬 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-lfg-vs-default-agent-search)** — see LetsFG in action vs default agent search (OpenClaw, Perplexity Computer).
+<div class="docs-callout">
+  <strong>Pick the correct path first.</strong> If you only want to run local connector search from the SDK or repo, stop after Option A. You do not need to create a paid public developer account just to search locally.
+</div>
 
-## One-Click Install (No API Key Needed)
+## Choose the right mode
+
+| Mode | Best for | Setup | Cost |
+|------|----------|-------|------|
+| Local search | SDK users, repo clones, connector debugging, wide local sweeps | Install only | Free |
+| Public developer API | Managed cloud search, account billing, public REST integrations, hosted onboarding | Register, attach Stripe, top up balance | Prepaid balance |
+
+## Option A: Free local search
+
+### 1. Install
 
 ```bash
 pip install letsfg
 ```
 
-That's it. Search flights immediately:
+### 2. Run the first search
 
 ```bash
-letsfg search LHR BCN 2026-04-15
+letsfg search LHR BCN 2026-06-15
 ```
 
-This runs 180+ airline connectors locally on your machine — Ryanair, Wizz Air, EasyJet, Southwest, AirAsia, Norwegian, Qatar Airways, LATAM, Finnair, and more. Completely free, unlimited, zero configuration.
+That default CLI search runs connectors locally on your machine. No signup, no payment method, and no balance top-up are required.
+
+### 3. Use Python local search when you need programmatic control
 
 ```python
 from letsfg.local import search_local
 
-# Free, runs all relevant connectors on your machine
 result = await search_local("GDN", "BCN", "2026-06-15")
 for offer in result.offers[:5]:
     print(f"{offer.airlines[0]}: {offer.currency} {offer.price}")
 ```
 
----
-
-## API Key for Unlock & Book
-
-Search is completely free and runs locally — no API key needed. An API key is required for unlocking offers and booking flights.
-
-### 1. Register (one command, free, instant)
-
-```bash
-# CLI
-letsfg register --name my-agent --email you@example.com
-
-# cURL
-curl -X POST https://api.letsfg.co/api/v1/agents/register \
-  -H "Content-Type: application/json" \
-  -d '{"agent_name": "my-agent", "email": "you@example.com"}'
-
-# Response:
-# { "agent_id": "ag_xxx", "api_key": "trav_xxxxx...", "message": "..." }
-```
-
-### 2. Use the API Key
-
-```bash
-# Set as environment variable (recommended)
-export LETSFG_API_KEY=trav_...
-
-# CLI reads it automatically
-letsfg unlock off_xxx
-
-# Or pass explicitly
-letsfg unlock off_xxx --api-key trav_...
-```
-
-### 3. Python SDK
-
-```python
-from letsfg import LetsFG
-
-# Option A: Pass directly
-bt = LetsFG(api_key="trav_...")
-
-# Option B: Read from environment (LETSFG_API_KEY)
-bt = LetsFG()
-
-# Option C: Register inline
-creds = LetsFG.register("my-agent", "agent@example.com")
-bt = LetsFG(api_key=creds["api_key"])
-```
-
-### 4. Link GitHub (required before unlock)
-
-Star the LetsFG repo and link your GitHub account for free unlimited access. This is a one-time step.
-
-```bash
-# 1. Star the repo: https://github.com/LetsFG/LetsFG
-# 2. Link your GitHub username:
-letsfg star --github your-username
-```
-
-```python
-# Python SDK
-bt.link_github("your-username")
-```
-
-```bash
-# cURL
-curl -X POST https://api.letsfg.co/api/v1/agents/link-github \
-  -H "X-API-Key: trav_..." \
-  -H "Content-Type: application/json" \
-  -d '{"github_username": "your-username"}'
-```
-
-After verification, all operations are free — no further setup needed.
-
-### 5. Verify Authentication Works
-
-```python
-# Check your agent profile — confirms key and payment status
-profile = bt.me()
-print(f"Agent: {profile.agent_name}")
-print(f"Payment: {profile.payment_status}")
-print(f"Searches: {profile.search_count}")
-print(f"Bookings: {profile.booking_count}")
-```
-
-```bash
-letsfg me
-# Agent: my-agent
-# Payment: active
-# Searches: 42
-# Bookings: 3
-```
-
-### Authentication Failure Handling
-
-```python
-from letsfg import LetsFG, AuthenticationError
-
-try:
-    bt = LetsFG(api_key="trav_invalid_key")
-    flights = bt.search("LHR", "JFK", "2026-04-15")
-except AuthenticationError:
-    # HTTP 401 — key is missing, invalid, or expired
-    print("Invalid API key. Register a new one:")
-    creds = LetsFG.register("my-agent", "agent@example.com")
-    bt = LetsFG(api_key=creds["api_key"])
-    # Don't forget to set up payment after re-registering
-    bt.setup_payment(token="tok_visa")
-```
-
----
-
-## Search Flags
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--return` | `-r` | _(one-way)_ | Return date for round-trip (YYYY-MM-DD) |
-| `--adults` | `-a` | `1` | Number of adult passengers (1–9) |
-| `--children` | | `0` | Number of children (2–11 years) |
-| `--cabin` | `-c` | _(any)_ | Cabin class (see below) |
-| `--max-stops` | `-s` | `2` | Maximum stopovers per direction (0–4) |
-| `--currency` | | `EUR` | 3-letter currency code |
-| `--limit` | `-l` | `20` | Maximum number of results (1–100) |
-| `--sort` | | `price` | Sort by `price` or `duration` |
-| `--json` | `-j` | | Output raw JSON (for agents/scripts) |
-| `--mode` | `-m` | _(full)_ | `fast` = OTAs + key airlines only (~25 connectors, 20-40s) |
-| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search (1–32) |
-
-## Multi-Passenger Examples
-
-```bash
-# Family trip: 2 adults + 2 children, economy
-letsfg search LHR BCN 2026-07-15 --return 2026-07-22 --adults 2 --children 2 --cabin M
-
-# Business trip: 3 adults, business class, direct flights only
-letsfg search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
-
-# Solo round-trip, first class, sorted by duration
-letsfg search LAX NRT 2026-08-10 --return 2026-08-24 --cabin F --sort duration
-```
-
-When you search with multiple passengers, the response includes `passenger_ids` (e.g., `["pas_0", "pas_1", "pas_2"]`). You must provide passenger details for **each** ID when booking.
-
-## Cabin Class Codes
-
-| Code | Class | Typical Use Case |
-|------|-------|-----------------|
-| `M` | Economy | Standard seating, cheapest fares |
-| `W` | Premium Economy | Extra legroom, better meals, priority boarding |
-| `C` | Business | Lie-flat seats on long-haul, lounge access, flexible tickets |
-| `F` | First | Top-tier service, suites on some airlines, maximum comfort |
-
-If omitted, the search returns all cabin classes. Specify a cabin code to filter results to that class only.
-
----
-
-## Performance Tuning
-
-LetsFG auto-detects system RAM and scales browser concurrency. This prevents Chrome from overwhelming low-end machines while maximizing throughput on powerful ones.
-
-| Available RAM | Tier | Max Browsers |
-|-------------|------|-------------|
-| < 2 GB | Minimal | 2 |
-| 2–4 GB | Low | 3 |
-| 4–8 GB | Moderate | 5 |
-| 8–16 GB | Standard | 8 |
-| 16–32 GB | High | 12 |
-| 32+ GB | Maximum | 16 |
-
-### Check Your System
-
-```bash
-letsfg system-info
-```
-
-### Override Auto-Detection
-
-```bash
-# Environment variable (highest priority)
-export LETSFG_MAX_BROWSERS=4
-
-# CLI flag (per-search)
-letsfg search LHR BCN 2026-04-15 --max-browsers 4
-```
-
-```python
-from letsfg import configure_max_browsers, get_system_profile
-
-profile = get_system_profile()
-print(f"Tier: {profile['tier']}, recommended: {profile['recommended_max_browsers']}")
-
-# Set explicitly
-configure_max_browsers(4)
-```
-
-Priority order: `LETSFG_MAX_BROWSERS` env var > explicit config > auto-detect from RAM.
-
-### Fast Mode
-
-If a full search takes too long (6+ minutes with all 200+ connectors), use `--mode fast` to search only ~25 high-coverage OTAs and key direct airlines. This typically completes in 20-40 seconds:
+### 4. Optional fast mode
 
 ```bash
 letsfg search LHR BCN 2026-06-15 --mode fast
 ```
 
-```python
-from letsfg.local import search_local
-result = await search_local("LHR", "BCN", "2026-06-15", mode="fast")
+Use `--mode fast` when you want a quicker local sweep across high-coverage OTAs and key airlines.
+
+## Option B: Public developer API
+
+Use this path if you want account-managed cloud search through the website-owned developer API.
+
+### 1. Register and keep the API key
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
 
-Fast mode covers: Kiwi, Skyscanner, Kayak, Momondo, Cheapflights, eDreams, Trip.com, Booking.com, Traveloka, Cleartrip, Wego, Despegar, plus Ryanair, Wizz Air, Southwest, and Allegiant direct.
+Expected response fields include `agent_id`, `api_key`, and `payment_ready`.
+
+### 2. Attach a Stripe payment method
+
+For API-only onboarding, send a Stripe-generated `payment_method_id` or `token`.
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/agents/setup-payment \
+  -H "X-API-Key: trav_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"payment_method_id": "pm_123"}'
+```
+
+If you have a browser available, you can also start hosted onboarding from the developers page or `POST /agents/hosted-checkout`.
+
+### 3. Fund prepaid balance
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/agents/top-up \
+  -H "X-API-Key: trav_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"amount_cents": 2500}'
+```
+
+Search is not enabled until balance exists. Top-up is the step that activates public flight search for that key.
+
+### 4. Run the first public search
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/flights/search \
+  -H "X-API-Key: trav_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-07-15", "adults": 1, "currency": "USD"}'
+```
+
+### 5. Inspect account status
+
+```bash
+curl https://letsfg.co/developers/api/v1/agents/me \
+  -H "X-API-Key: trav_your_api_key"
+```
+
+The profile response shows whether payment is ready, whether API access is enabled, and how much prepaid balance remains.
+
+## Continue with the paid API docs
+
+<div class="docs-resource-grid">
+  <a class="docs-resource-card" href="api-guide/">
+    <p class="docs-card-kicker">Overview</p>
+    <h3>Public API overview</h3>
+    <p>Get the canonical URLs, lifecycle, and the shortest path through the paid public API docs.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-onboarding/">
+    <p class="docs-card-kicker">Billing</p>
+    <h3>Onboarding and billing</h3>
+    <p>Use the browserless setup-payment and top-up flow or the hosted checkout flow when a browser is available.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-search/">
+    <p class="docs-card-kicker">Search</p>
+    <h3>Search and results</h3>
+    <p>See the request fields, location resolution endpoint, provider inspection endpoint, and example responses.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-errors/">
+    <p class="docs-card-kicker">Ops</p>
+    <h3>Errors and limits</h3>
+    <p>Map account state, request limits, and retry behavior before sending paid traffic into production.</p>
+  </a>
+</div>
+
+## Common mistakes
+
+| Problem | What it means | What to do |
+|---------|---------------|------------|
+| `401 API key is required` | Search was attempted without `X-API-Key` | Register first and send the returned key |
+| `402 Connect a payment method and fund your prepaid API balance before searching` | No payment method or no balance | Call `setup-payment`, then `top-up` |
+| `403 Fund your prepaid API balance before using flight search` | The key exists but public search is not activated | Fund balance through `POST /agents/top-up` |
+| `400` on `setup-payment` | Raw card data or browser checkout fields were sent | Send only Stripe-generated `payment_method_id` or `token` |
+
+## Search flags for local CLI mode
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--return` | `-r` | _(one-way)_ | Return date for round-trip (YYYY-MM-DD) |
+| `--adults` | `-a` | `1` | Number of adult passengers (1-9) |
+| `--children` | | `0` | Number of children (2-11 years) |
+| `--cabin` | `-c` | _(any)_ | Cabin class filter |
+| `--max-stops` | `-s` | `2` | Maximum stopovers per direction |
+| `--currency` | | `EUR` | 3-letter currency code |
+| `--limit` | `-l` | `20` | Maximum number of results |
+| `--sort` | | `price` | Sort by `price` or `duration` |
+| `--mode` | `-m` | _(full)_ | `fast` reduces local search fan-out |
+| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search |
+| `--json` | `-j` | | Output raw JSON |
+
+## Performance tuning for local mode
+
+LetsFG auto-detects RAM and scales browser concurrency. Override only when you know the machine needs a smaller or larger local fan-out.
+
+```bash
+letsfg system-info
+
+export LETSFG_MAX_BROWSERS=4
+letsfg search LHR BCN 2026-06-15 --max-browsers 4
+```

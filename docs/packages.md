@@ -9,7 +9,7 @@ LetsFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP 
 | **Python SDK + CLI** | `pip install letsfg` | SDK + CLI + 200 local airline connectors | No (local search). Yes (cloud search, unlock, book) |
 | **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Yes |
 | **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | No (local search). Yes (cloud search, unlock, book) |
-| **Remote MCP** | `https://api.letsfg.co/mcp` | Streamable HTTP — no install needed | Yes |
+| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed | Yes |
 | **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install | No (local search). Yes (cloud search) |
 
 ## Python SDK
@@ -86,7 +86,16 @@ Model Context Protocol server for AI assistants like Claude Desktop, Cursor, and
 npx letsfg-mcp
 ```
 
-By default, search runs via **cloud backend** (75+ airline connectors on scalable infrastructure — no local Python/Playwright needed). Set `LETSFG_SEARCH_MODE=local` to run connectors on your machine instead.
+By default, the npm MCP server runs search locally on your machine by spawning `python -m letsfg.local`. That gives you free local connector search without routing flight search through the paid public API.
+
+### Local prerequisites
+
+```bash
+pip install letsfg
+playwright install chromium
+```
+
+Add `LETSFG_API_KEY` only when you want account-linked operations such as payment setup, unlock, booking, or profile inspection.
 
 ### Configuration
 
@@ -110,51 +119,59 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LETSFG_API_KEY` | (none) | API key for unlock/book/payment operations |
-| `LETSFG_SEARCH_MODE` | `cloud` | `cloud` (default, recommended) or `local` (requires Python + Playwright) |
-| `LETSFG_CLOUD_SEARCH_URL` | (production URL) | Override cloud search endpoint (for testing) |
-| `LETSFG_BASE_URL` | `https://api.letsfg.co` | Override API base URL |
-
-### Rate Limits
-
-Cloud search is rate limited to **10 requests per minute** per IP address. The server returns rate limit info in every response. If you exceed the limit, you'll receive a 429 error with a `retry_after` value.
+| `LETSFG_API_KEY` | (none) | API key for account, payment, unlock, and booking operations |
+| `LETSFG_BASE_URL` | `https://letsfg.co/developers` | Override the website-owned public API base |
+| `LETSFG_PYTHON` | `python3` | Override the Python executable used for local search |
 
 ### Remote MCP (Streamable HTTP)
 
 If your client supports remote MCP servers, connect directly without installing anything:
 
 ```
-https://api.letsfg.co/mcp
+https://letsfg.co/developers/api/mcp
 ```
+
+Remote MCP follows the same paid public API lifecycle as direct REST usage: register, attach Stripe, top up prepaid balance, then search.
+
+For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 
 ### Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `search_flights` | Search 400+ airlines for flights |
+| `search_flights` | Search locally by default; remote MCP uses the paid public developer API |
 | `get_agent_profile` | View account info and usage stats |
 | `resolve_location` | Convert city names to IATA codes |
 | `system_info` | System resources & recommended concurrency |
 | `setup_payment` | Attach a Stripe payment method |
-| `unlock_flight_offer` | Confirm price and reserve (free) |
-| `book_flight` | Create airline booking (PNR) |
+| `unlock_flight_offer` | Confirm price and reserve (payment required) |
+| `book_flight` | Create airline booking after unlock |
 
 [npm page →](https://www.npmjs.com/package/letsfg-mcp)
 
+### Which MCP path should you use?
+
+| Path | Search mode | Billing | Best for |
+|------|-------------|---------|----------|
+| `npx letsfg-mcp` | Local on your machine | Optional for account-linked actions | Free connector search in Claude, Cursor, and Windsurf |
+| `https://letsfg.co/developers/api/mcp` | Managed public search | Required | Hosted, account-managed search through the paid public API |
+
 ## API Endpoints
 
-All packages connect to the same API:
+Public REST integrations use the letsfg.co developer API:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/agents/register` | POST | Create account, get API key |
-| `/api/v1/flights/search` | POST | Search flights |
-| `/api/v1/flights/resolve-location` | GET | Resolve city/airport codes |
-| `/api/v1/bookings/unlock` | POST | Unlock offer (free) |
-| `/api/v1/bookings/book` | POST | Book flight |
-| `/api/v1/agents/setup-payment` | POST | Setup Stripe payment |
-| `/api/v1/agents/me` | GET | Agent profile |
+| `/agents/register` | POST | Create developer account, get API key |
+| `/agents/setup-payment` | POST | Attach Stripe payment method (`payment_method_id` or `token`) |
+| `/agents/top-up` | POST | Fund prepaid developer balance |
+| `/agents/me` | GET | Developer profile and balance |
+| `/flights/search` | POST | Search flights through the public API (consumes prepaid balance) |
+| `/flights/locations/{query}` | GET | Resolve city/airport codes |
+| `/flights/providers` | GET | Inspect provider mix |
 
-**Base URL:** `https://api.letsfg.co`
+**Base URL:** `https://letsfg.co/developers/api/v1`
 
-**Interactive docs:** [api.letsfg.co/docs](https://api.letsfg.co/docs)
+**Interactive docs:** [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
+
+See also: [Public API overview](api-guide.md), [Onboarding and Billing](api-onboarding.md), and [Search and Results](api-search.md).
