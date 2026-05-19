@@ -25,8 +25,8 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 | `letsfg search <origin> <dest> <date>` | Search flights (free, runs 180+ local connectors) |
 | `letsfg system-info` | Show system resources & concurrency tier |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
-| `letsfg unlock <offer_id>` | Unlock offer details (free) |
-| `letsfg book <offer_id>` | Book the flight (free after unlock) |
+| `letsfg unlock <offer_id>` | Unlock offer details (payment required) |
+| `letsfg book <offer_id>` | Book the flight after unlock |
 | `letsfg setup-payment` | Set up Stripe payment method |
 | `letsfg me` | View profile & usage stats |
 
@@ -134,7 +134,7 @@ RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
 OFFER_ID=$(echo "$RESULTS" | jq -r '.offers[0].id')
 echo "Best offer: $OFFER_ID"
 
-# Unlock (free)
+# Unlock
 letsfg unlock "$OFFER_ID"
 
 # Book
@@ -143,6 +143,8 @@ letsfg book "$OFFER_ID" \
   --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
   --email john.doe@example.com
 ```
+
+Unlock pricing and payment mechanics follow the live public contract in Swagger.
 
 !!! warning "Real Passenger Details Required"
     Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.
@@ -177,7 +179,7 @@ The code expires in 15 minutes. Once verified, a new API key is issued and your 
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_API_KEY` | Your agent API key (for cloud search, unlock, book) |
-| `LETSFG_BASE_URL` | API URL override (default: `https://api.letsfg.co`) |
+| `LETSFG_API_KEY` | Your developer API key (for public search, account actions, unlock, and book) |
+| `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co/developers`) |
 | `LETSFG_MAX_BROWSERS` | Max concurrent browser instances for local search (1–32). Auto-detected from RAM if not set. |
 | `LETSFG_BROWSER_VISIBLE` | Set to `1` to show browser windows for debugging |

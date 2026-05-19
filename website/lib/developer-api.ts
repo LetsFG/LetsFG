@@ -1,11 +1,14 @@
 import type { NextRequest } from 'next/server'
 
+import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from './letsfg-api'
+
 const API_BASE =
   process.env.LETSFG_DEVELOPER_API_URL ||
   (process.env.NODE_ENV === 'development'
     ? 'http://127.0.0.1:8080'
-    : process.env.LETSFG_API_URL || 'https://api.letsfg.co')
+    : getLetsfgApiBase())
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
+const DEVELOPER_API_TIMEOUT_MS = 60_000
 
 export async function developerApiFetch(
   path: string,
@@ -15,9 +18,13 @@ export async function developerApiFetch(
     body?: unknown
   } = {},
 ) {
-  const headers = new Headers({ Accept: 'application/json' })
+  const websiteApiKey = process.env.LETSFG_WEBSITE_API_KEY?.trim()
+  const headers = new Headers(withLetsfgWebsiteApiHeaders({ Accept: 'application/json' }))
   if (init.apiKey) {
     headers.set('X-API-Key', init.apiKey)
+    if (websiteApiKey) {
+      headers.set('Authorization', `Bearer ${websiteApiKey}`)
+    }
   }
 
   let body: string | undefined
@@ -31,7 +38,7 @@ export async function developerApiFetch(
     headers,
     body,
     cache: 'no-store',
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(DEVELOPER_API_TIMEOUT_MS),
   })
 
   const text = await response.text()

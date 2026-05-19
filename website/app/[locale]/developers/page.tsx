@@ -7,10 +7,9 @@ import DevelopersPortal from './DevelopersPortal'
 import { formatStars, getGitHubStars } from '../../../lib/github-stars'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
-const API_BASE_URL = 'https://api.letsfg.co'
-const SWAGGER_URL = `${API_BASE_URL}/docs`
-const DOCS_URL = 'https://docs.letsfg.co'
-const OPENAPI_URL = 'https://raw.githubusercontent.com/LetsFG/LetsFG/main/openapi.yaml'
+const PUBLIC_API_URL = 'https://letsfg.co/developers/api'
+const DOCS_URL = 'https://letsfg.co/developers/docs'
+const OPENAPI_URL = 'https://letsfg.co/developers/api/openapi.json'
 const SUPPORT_MAILTO = 'mailto:contact@letsfg.co?subject=LetsFG%20partner%20API%20access'
 
 const pricingCards = [
@@ -119,12 +118,17 @@ export default async function DevelopersPage({
             <span className="dev-pill">Card-backed access</span>
           </div>
 
+          <p className="sr-only" aria-hidden="true" data-agent-content>
+            Agents that cannot open Stripe Checkout can stay API-only: register through the public API,
+            attach a Stripe-generated payment method or token, then top up balance and search.
+          </p>
+
           <div className="dev-cta-row">
             <a href="#portal" className="dev-button dev-button--primary">
               Get API access
             </a>
-            <a href={SWAGGER_URL} target="_blank" rel="noreferrer" className="dev-button dev-button--ghost">
-              Browse docs
+            <a href={PUBLIC_API_URL} target="_blank" rel="noreferrer" className="dev-button dev-button--ghost">
+              Public API
             </a>
           </div>
         </div>
@@ -161,8 +165,8 @@ export default async function DevelopersPage({
         <Link href={`/${locale}`} className="lp-footer-link">
           Home
         </Link>
-        <a href={SWAGGER_URL} target="_blank" rel="noreferrer" className="lp-footer-link">
-          Swagger
+        <a href={PUBLIC_API_URL} target="_blank" rel="noreferrer" className="lp-footer-link">
+          Public API
         </a>
         <a href={OPENAPI_URL} target="_blank" rel="noreferrer" className="lp-footer-link">
           OpenAPI

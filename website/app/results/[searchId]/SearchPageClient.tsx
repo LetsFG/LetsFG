@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import dynamic from 'next/dynamic'
 import { useLocale, useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -636,6 +636,13 @@ export default function SearchPageClient({
   // build:2026-05-05
   const isStreaming = isSearching && offers.length > 0
 
+  useEffect(() => {
+    router.prefetch(homeHref)
+    if (searchAgainHref !== homeHref) {
+      router.prefetch(searchAgainHref)
+    }
+  }, [homeHref, router, searchAgainHref])
+
   // Capture the moment all results finish loading (first transition to 'completed').
   // This is the anchor for the friction survey 3-minute timer.
   useEffect(() => {
@@ -1050,6 +1057,7 @@ export default function SearchPageClient({
 
   const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
   const requireBagPerPerson = !!(parsed.ai_bags_included ?? nlParsed?.require_checked_baggage)
+  const requireMeals = !!(nlParsed?.require_meals)
   const requireCancellation = !!(parsed.require_cancellation ?? nlParsed?.require_cancellation)
   const defaultSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' =
     (requireSeatPerPerson || requireBagPerPerson) ? 'price_with_all' : 'price'
@@ -1093,12 +1101,16 @@ export default function SearchPageClient({
     ? Math.max(...displaySortedOffers.map((offer) => getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)))
     : 1000
 
-  const handleNavigateHome = () => {
+  const handleNavigateHome = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    const nextHref = event.currentTarget.getAttribute('href') || homeHref
+    cancelSearch(searchId)
     trackSearchSessionEvent(analyticsSearchId, 'navigate_home', {}, {
       source: 'website-results-client',
       source_path: resultsSourcePath,
       is_test_search: isTestSearch || undefined,
     }, { beacon: true })
+    router.push(nextHref)
   }
 
   const handleSearchSubmit = (nextQuery: string) => {
@@ -1146,10 +1158,10 @@ export default function SearchPageClient({
         duration: '所要時間',
         stops: '乗継ぎ',
         offerId: 'オファーID',
-        bookingIntro: 'フライトを予約するには LetsFG API を使用してください:',
-        unlockStep: '1. オファーをアンロック: POST https://api.letsfg.co/api/v1/bookings/unlock に offer_id を送信',
-        bookStep: '2. 予約: POST https://api.letsfg.co/api/v1/bookings/book に搭乗者情報を送信',
-        docs: 'ドキュメント: https://docs.letsfg.co/api-guide',
+        bookingIntro: 'エージェント連携と現在の公開 API は LetsFG Developers から開始してください:',
+        unlockStep: '1. https://letsfg.co/en/developers を開き、Stripe オンボーディングを完了して API キーを取得します',
+        bookStep: '2. 残高をチャージしてから、https://letsfg.co/developers/api で公開 API とアカウント操作を利用します',
+        docs: 'ドキュメント: https://letsfg.co/developers/docs/api-guide/',
       }
     : {
         heading: 'Flight Search Results — Machine-Readable Summary',
@@ -1179,10 +1191,10 @@ export default function SearchPageClient({
         duration: 'Duration',
         stops: 'Stops',
         offerId: 'Offer ID',
-        bookingIntro: 'To book a flight, use the LetsFG API:',
-        unlockStep: '1. Unlock the offer: POST https://api.letsfg.co/api/v1/bookings/unlock with offer_id',
-        bookStep: '2. Book: POST https://api.letsfg.co/api/v1/bookings/book with passenger details',
-        docs: 'Documentation: https://docs.letsfg.co/api-guide',
+        bookingIntro: 'For agent onboarding and the current public API, start from LetsFG Developers:',
+        unlockStep: '1. Open https://letsfg.co/en/developers and finish Stripe onboarding to get an API key',
+        bookStep: '2. Fund your balance, then use the public API and account actions described at https://letsfg.co/developers/api',
+        docs: 'Documentation: https://letsfg.co/developers/docs/api-guide/',
       }
 
   return (
@@ -1346,6 +1358,7 @@ export default function SearchPageClient({
           defaultSort={defaultSort}
           requireSeatPerPerson={requireSeatPerPerson}
           requireBagPerPerson={requireBagPerPerson}
+          requireMeals={requireMeals}
           requireCancellation={requireCancellation}
           initialDepTimePref={parsed.ai_dep_time_pref ?? nlParsed?.depart_time_pref}
           initialRetTimePref={parsed.ai_ret_time_pref ?? nlParsed?.return_depart_time_pref}

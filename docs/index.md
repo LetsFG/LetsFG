@@ -3,96 +3,133 @@ hide:
   - toc
 ---
 
-# LetsFG
+<section class="docs-hero">
+  <div class="docs-hero-inner">
+    <p class="docs-kicker">Official LetsFG documentation</p>
+    <h1>Start with free local connector search. Move to the prepaid public API only when you need managed cloud access.</h1>
+    <p class="docs-lead">LetsFG now has a clean split. If you cloned the repo or installed the SDK, search locally right away. If you want account-managed website API access, use the developer surface on letsfg.co, attach Stripe, top up balance, and then search with your developer key.</p>
+    <div class="docs-command"><span class="docs-command-prompt">$</span> pip install letsfg</div>
+    <div class="docs-action-row">
+      <a href="getting-started/" class="docs-button docs-button--primary">Get started</a>
+      <a href="api-guide/" class="docs-button docs-button--ghost">Public API guide</a>
+      <a href="https://letsfg.co/developers/api/docs" class="docs-button docs-button--ghost" target="_blank">Swagger</a>
+      <a href="https://letsfg.co/en/developers" class="docs-button docs-button--ghost" target="_blank">Developers page</a>
+    </div>
+    <div class="docs-chip-row">
+      <span class="docs-chip">200+ local connectors</span>
+      <span class="docs-chip">Canonical API at letsfg.co/developers/api</span>
+      <span class="docs-chip">Prepaid public search</span>
+      <span class="docs-chip">CLI, SDK, and MCP</span>
+    </div>
+  </div>
+</section>
 
-**Flight search & booking for AI agents and developers.**
-400+ airlines, 200 direct airline connectors, virtual interlining — straight from the terminal.
+## Pick your lane
 
-<div class="install-cmd"><span class="prompt">$</span> pip install letsfg</div>
+<div class="docs-mode-grid">
+  <article class="docs-mode-card">
+    <p class="docs-card-kicker">Local mode</p>
+    <h2>Search immediately after install</h2>
+    <p>Use this path if you installed the SDK or cloned the repo. The default CLI and local Python helpers run connectors on your machine and stay free.</p>
+    <ul class="docs-check-list">
+      <li><code>letsfg search</code> and <code>search_local()</code> work without signup</li>
+      <li>Local telemetry can still report analytics in the background</li>
+      <li>Best for prototyping, connector debugging, and broad local sweeps</li>
+    </ul>
+    <a href="getting-started/#option-a-free-local-search" class="docs-text-link">Go to local setup</a>
+  </article>
 
-<div class="hero-actions">
-<a href="getting-started/" class="btn-primary">Get started</a>
-<a href="api-guide/" class="btn-ghost">API guide</a>
-<a href="https://api.letsfg.co/docs" class="btn-ghost" target="_blank">Swagger ↗</a>
-<a href="https://smithery.ai/server/letsfg-mcp" class="btn-ghost" target="_blank">Smithery ↗</a>
+  <article class="docs-mode-card">
+    <p class="docs-card-kicker">Public developer API</p>
+    <h2>Use the website-owned contract</h2>
+    <p>Use this when you want managed cloud search, billing controls, the public OpenAPI contract, or hosted onboarding through letsfg.co.</p>
+    <ul class="docs-check-list">
+      <li>Register first and keep the returned <code>X-API-Key</code></li>
+      <li>Attach a Stripe payment method for browserless or hosted onboarding</li>
+      <li>Fund prepaid balance before flight search is enabled</li>
+    </ul>
+    <a href="api-guide/" class="docs-text-link">Go to public API guide</a>
+  </article>
 </div>
 
----
-
-<div class="cards-grid">
-
-<a class="card" href="getting-started/">
-<span class="card-icon">🚀</span>
-<strong>Quickstart</strong>
-<p>Install and search in one command — no API key needed. Or register for full 400+ airline access.</p>
-</a>
-
-<a class="card" href="api-guide/">
-<span class="card-icon">⚡</span>
-<strong>API Guide</strong>
-<p>Search results, error handling, workflows, unlock mechanics.</p>
-</a>
-
-<a class="card" href="agent-guide/">
-<span class="card-icon">🤖</span>
-<strong>AI Agent Guide</strong>
-<p>Architecture, preference scoring, rate limits, price tracking.</p>
-</a>
-
-<a class="card" href="cli-reference/">
-<span class="card-icon">⌨️</span>
-<strong>CLI Reference</strong>
-<p>Commands, flags, cabin codes — full terminal reference.</p>
-</a>
-
-<a class="card" href="architecture-guide/">
-<span class="card-icon">🏗️</span>
-<strong>Architecture Guide</strong>
-<p>Parallel execution, failure isolation, caching, browser concurrency, performance optimization.</p>
-</a>
-
-<a class="card" href="tutorials/">
-<span class="card-icon">📚</span>
-<strong>Tutorials</strong>
-<p>Python & JS integration patterns, concurrent search, building travel assistants.</p>
-</a>
-
-<a class="card" href="packages/">
-<span class="card-icon">📦</span>
-<strong>Packages & SDKs</strong>
-<p>Python SDK, JavaScript SDK, MCP Server for Claude & Cursor.</p>
-</a>
-
-<a class="card" href="https://api.letsfg.co/docs" target="_blank">
-<span class="card-icon">📄</span>
-<strong>OpenAPI Reference</strong>
-<p>Interactive Swagger docs — try every endpoint in your browser.</p>
-</a>
-
+<div class="docs-callout">
+  <strong>Important:</strong> the public developer API is not anonymous search. Search requests are rejected until the developer account has an API key, a payment method, and funded prepaid balance.
 </div>
 
----
+## Public API onboarding
 
-## Two ways to use
-
-| | **Local Only** (no API key) | **With API Key** (recommended) |
-|---|---|---|
-| Install | `pip install letsfg` | `pip install letsfg` |
-| Setup | Nothing | `letsfg register --email you@example.com` |
-| Airlines | 200 via local connectors | 200 local + 400+ via GDS/NDC |
-| Price | Free | Free — star GitHub repo for access |
-| Coverage | LCCs + major carriers with public APIs | Full global coverage including premium carriers |
-
-## How it works
-
-<div class="flow">
-<span class="flow-step">Search <small>free</small></span>
-<span class="flow-arrow">→</span>
-<span class="flow-step">Unlock <small>free</small></span>
-<span class="flow-arrow">→</span>
-<span class="flow-step">Book <small>free</small></span>
+<div class="docs-step-strip">
+  <span class="docs-step">1. Register</span>
+  <span class="docs-step-arrow">/</span>
+  <span class="docs-step">2. Attach Stripe payment</span>
+  <span class="docs-step-arrow">/</span>
+  <span class="docs-step">3. Top up balance</span>
+  <span class="docs-step-arrow">/</span>
+  <span class="docs-step">4. Search</span>
+  <span class="docs-step-arrow">/</span>
+  <span class="docs-step">5. Check account state</span>
 </div>
 
-1. **Search** — real-time offers with price, airlines, duration, stopovers. Free and unlimited.
-2. **Unlock** — confirms the live price with the airline, reserves for 30 min. Free with GitHub star.
-3. **Book** — creates real PNR. E-ticket sent to passenger email. Free after unlock.
+The canonical public surfaces are:
+
+- API root: [letsfg.co/developers/api](https://letsfg.co/developers/api)
+- OpenAPI JSON: [letsfg.co/developers/api/openapi.json](https://letsfg.co/developers/api/openapi.json)
+- Swagger UI: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
+
+## Start from the right page
+
+<div class="docs-resource-grid">
+  <a class="docs-resource-card" href="getting-started/">
+    <p class="docs-card-kicker">Start</p>
+    <h3>Getting started</h3>
+    <p>Install once, choose the correct mode, and run the first search without mixing local and public flows.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-guide/">
+    <p class="docs-card-kicker">Contract</p>
+    <h3>Public API overview</h3>
+    <p>See the canonical URLs, the paid search lifecycle, and the exact pages to follow for onboarding, search, and errors.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-onboarding/">
+    <p class="docs-card-kicker">Billing</p>
+    <h3>Onboarding and billing</h3>
+    <p>Register, attach Stripe, top up prepaid balance, open the billing portal, and rotate keys safely.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-search/">
+    <p class="docs-card-kicker">Search</p>
+    <h3>Search and results</h3>
+    <p>Resolve locations, build search payloads, understand passenger IDs, and store the fields you actually need.</p>
+  </a>
+
+  <a class="docs-resource-card" href="api-errors/">
+    <p class="docs-card-kicker">Ops</p>
+    <h3>Errors and limits</h3>
+    <p>Map account state to 401, 402, 403, 409, and 429 responses before you ship the paid API flow.</p>
+  </a>
+
+  <a class="docs-resource-card" href="openapi/">
+    <p class="docs-card-kicker">Schema</p>
+    <h3>OpenAPI and Swagger</h3>
+    <p>Use the website-owned machine-readable schema instead of the old raw repository copy.</p>
+  </a>
+
+  <a class="docs-resource-card" href="packages/">
+    <p class="docs-card-kicker">Tooling</p>
+    <h3>Packages and SDKs</h3>
+    <p>See what ships in the Python SDK, JS SDK, local MCP server, and remote MCP endpoint without mixing their search modes.</p>
+  </a>
+
+  <a class="docs-resource-card" href="agent-guide/">
+    <p class="docs-card-kicker">Agents</p>
+    <h3>AI agent guide</h3>
+    <p>Build agents that use local search for cheap exploration and the public API when managed cloud access matters.</p>
+  </a>
+
+  <a class="docs-resource-card" href="cli-reference/">
+    <p class="docs-card-kicker">CLI</p>
+    <h3>CLI reference</h3>
+    <p>Check command flags, environment variables, and how the CLI maps to local and public flows.</p>
+  </a>
+</div>

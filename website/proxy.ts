@@ -30,6 +30,32 @@ function isNonLocalePath(pathname: string): boolean {
   )
 }
 
+function resolveRequestHost(req: NextRequest) {
+  return (
+    req.headers.get('x-forwarded-host')?.split(',')[0]?.trim().toLowerCase() ||
+    req.headers.get('host')?.split(',')[0]?.trim().toLowerCase() ||
+    req.nextUrl.host.toLowerCase()
+  )
+}
+
+function redirectLegacyDocsHost(req: NextRequest) {
+  const host = resolveRequestHost(req)
+  if (host !== 'docs.letsfg.co') {
+    return null
+  }
+
+  const target = req.nextUrl.clone()
+  target.protocol = 'https'
+  target.host = 'letsfg.co'
+
+  const suffix = req.nextUrl.pathname === '/' ? '' : req.nextUrl.pathname
+  target.pathname = suffix.startsWith('/developers/docs')
+    ? suffix
+    : `/developers/docs${suffix}`
+
+  return NextResponse.redirect(target, 308)
+}
+
 function setRateLimitHeaders(
   res: NextResponse,
   pathname: string,
@@ -75,6 +101,11 @@ function tooManyRequestsResponse(
 
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
+
+  const legacyDocsRedirect = redirectLegacyDocsHost(req)
+  if (legacyDocsRedirect) {
+    return legacyDocsRedirect
+  }
 
   // If someone hits a locale-prefixed path to results/book (e.g. /en/results?q=...),
   // strip the locale prefix and redirect to the canonical non-prefixed URL.
@@ -149,5 +180,20 @@ export default function proxy(req: NextRequest) {
 export const config = {
   // Match root, locale-prefixed paths, and key app pages (results, book, api).
   // Do NOT match /_next/*, static files.
-  matcher: ['/', '/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)/:path*', '/results/:path*', '/book/:path*', '/probe/:path*', '/api/:path*'],
+  matcher: [
+    {
+      source: '/:path*',
+      has: [{ type: 'header', key: 'host', value: 'docs\\.letsfg\\.co' }],
+    },
+    {
+      source: '/:path*',
+      has: [{ type: 'header', key: 'x-forwarded-host', value: 'docs\\.letsfg\\.co' }],
+    },
+    '/',
+    '/(en|pl|de|es|fr|it|pt|nl|sq|hr|sv|ja|zh)/:path*',
+    '/results/:path*',
+    '/book/:path*',
+    '/probe/:path*',
+    '/api/:path*',
+  ],
 }

@@ -15,11 +15,14 @@ LetsFG scans every airline, OTA, and flight website simultaneously and returns t
 4. Results include price, airline, duration, and offer IDs for booking
 
 ### Option 2: Use the API directly
-- API Base URL: https://api.letsfg.co
-- Search: POST /api/v1/flights/search
-- Unlock: POST /api/v1/bookings/unlock
-- Book: POST /api/v1/bookings/book
-- Full docs: https://docs.letsfg.co/api-guide
+- Developer API root: https://letsfg.co/developers/api
+- REST base: https://letsfg.co/developers/api/v1
+- Search: POST https://letsfg.co/developers/api/v1/flights/search
+- Unlock: POST https://letsfg.co/developers/api/v1/bookings/unlock
+- Book: POST https://letsfg.co/developers/api/v1/bookings/book
+- Swagger: https://letsfg.co/developers/api/docs
+- OpenAPI: https://letsfg.co/developers/api/openapi.json
+- MCP: https://letsfg.co/developers/api/mcp
 
 ## Understanding Results Pages
 
@@ -51,7 +54,7 @@ This section contains:
 2. Unlock → POST /api/v1/bookings/unlock with offer_id (confirms price)
 3. Book → POST /api/v1/bookings/book with passenger details
 
-Unlock and book require API key. Get one at: https://docs.letsfg.co/getting-started
+Unlock and book require a public developer API key. Register, attach a Stripe payment method or token, and top up prepaid balance at: https://letsfg.co/developers
 
 ## Pricing
 
@@ -61,6 +64,6 @@ Unlock and book require API key. Get one at: https://docs.letsfg.co/getting-star
 
 ## Contact
 
-- Documentation: https://docs.letsfg.co
+- Developer docs: https://letsfg.co/developers/api/docs
 - GitHub: https://github.com/LetsFG/LetsFG
 - API Status: https://status.letsfg.co
