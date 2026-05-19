@@ -2349,7 +2349,7 @@ export default function ResultsPanel({
     {pickFeedbackVote && pickFeedbackPopupVisible && (
       <BestPickFeedbackPopup
         vote={pickFeedbackVote}
-        searchId={analyticsSearchId}
+        searchId={analyticsSearchId ?? null}
         isTestSearch={isTestSearch}
         onClose={() => setPickFeedbackPopupVisible(false)}
       />
