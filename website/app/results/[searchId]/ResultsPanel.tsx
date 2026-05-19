@@ -918,6 +918,7 @@ export default function ResultsPanel({
   const [visibleCount, setVisibleCount] = useState(20)
   const [isUnlocked, setIsUnlocked] = useState(false)
   const [revealedSources, setRevealedSources] = useState<Record<string, string>>({})
+  const [pickFeedbackVote, setPickFeedbackVote] = useState<'thumbs_up' | 'thumbs_down' | null>(null)
   const restoredGeminiOfferIdsRef = useRef<string | null>(null)
   const [geminiJustification, setGeminiJustification] = useState<GeminiJustificationState | 'loading' | null>(() => {
     // Keep the initial render deterministic across server and client.
@@ -1861,6 +1862,46 @@ export default function ResultsPanel({
                         {profileLabel && <span className="rf-pick-label">· {t(profileLabel as Parameters<typeof t>[0])}</span>}
                       </span>
                       {isSearching && <span className="rf-pick-searching" aria-label="Searching" />}
+                      {!isSearching && (
+                        <span className="rf-pick-feedback-btns" aria-label="Rate this pick">
+                          {pickFeedbackVote ? (
+                            <span className="rf-pick-fb-thanks" aria-live="polite">✓</span>
+                          ) : (
+                            <>
+                              <button
+                                className="rf-pick-fb-btn rf-pick-fb-btn--up"
+                                type="button"
+                                aria-label="Good pick"
+                                onClick={() => {
+                                  setPickFeedbackVote('thumbs_up')
+                                  trackSearchSessionEvent(analyticsSearchId, 'best_pick_feedback', {
+                                    experiment_id: 'exp_best-pick-feedback-v1',
+                                    response_key: 'thumbs_up',
+                                  }, {
+                                    source: 'website-results',
+                                    is_test_search: isTestSearch || undefined,
+                                  })
+                                }}
+                              >👍</button>
+                              <button
+                                className="rf-pick-fb-btn rf-pick-fb-btn--down"
+                                type="button"
+                                aria-label="Bad pick"
+                                onClick={() => {
+                                  setPickFeedbackVote('thumbs_down')
+                                  trackSearchSessionEvent(analyticsSearchId, 'best_pick_feedback', {
+                                    experiment_id: 'exp_best-pick-feedback-v1',
+                                    response_key: 'thumbs_down',
+                                  }, {
+                                    source: 'website-results',
+                                    is_test_search: isTestSearch || undefined,
+                                  })
+                                }}
+                              >👎</button>
+                            </>
+                          )}
+                        </span>
+                      )}
                     </div>
                     <p className="rf-concierge-headline">
                       {typeof geminiJustification === 'object' && geminiJustification?.title

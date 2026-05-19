@@ -5722,6 +5722,39 @@ body:has(.res-page) {
   to { transform: rotate(360deg); }
 }
 
+/* Feedback thumbs buttons in the pick header */
+.rf-pick-feedback-btns {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.rf-pick-fb-btn {
+  background: none;
+  border: none;
+  padding: 2px 3px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0.45;
+  border-radius: 4px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.rf-pick-fb-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.rf-pick-fb-thanks {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4caf50;
+  padding: 0 3px;
+}
+
 .rf-concierge-headline {
   margin: 0 0 10px;
   font-size: 1.42rem;
