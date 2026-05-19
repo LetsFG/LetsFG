@@ -18,7 +18,7 @@ let cacheExpiresAt = 0
 let inFlightRates: Promise<FxRateTable> | null = null
 
 function buildFrankfurterRatesUrl() {
-  const url = new URL('/rates', `${FRANKFURTER_API_BASE}/`)
+  const url = new URL('rates', `${FRANKFURTER_API_BASE}/`)
   url.searchParams.set('base', 'EUR')
   url.searchParams.set('quotes', SUPPORTED_QUOTES.join(','))
   return url.toString()
@@ -87,7 +87,7 @@ export async function getLiveFxRates(): Promise<FxRateTable> {
       return rates
     })
     .catch((error) => {
-      console.error('Failed to refresh live FX rates:', error)
+      console.warn('Failed to refresh live FX rates; using fallback rates instead.', error)
       if (cachedRates) {
         return cachedRates
       }

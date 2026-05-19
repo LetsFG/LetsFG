@@ -20,6 +20,12 @@ TARGET_SOURCE_HANDLERS = {
     "aircairo_direct": "_extract_aircairo_checkout_details",
     "aireuropa_direct": "_extract_generic_visible_checkout_details",
     "spicejet_direct": "_extract_generic_visible_checkout_details",
+    "serpapi_google": "_extract_google_checkout_details",
+    "skyscanner_meta": "_extract_generic_visible_checkout_details",
+    "momondo_meta": "_extract_generic_visible_checkout_details",
+    "kayak_meta": "_extract_generic_visible_checkout_details",
+    "cheapflights_meta": "_extract_generic_visible_checkout_details",
+    "wego_meta": "_extract_generic_visible_checkout_details",
 }
 
 DEFAULT_GENERIC_SOURCES = (
@@ -154,6 +160,182 @@ AIRASIA_PERSISTED_CHECKOUT_STORAGE = {
         }
     )
 }
+
+VUELING_SELECT_FLIGHT_HTML = """
+<html>
+    <head><title>Select your flight - Vueling</title></head>
+    <body>
+        <button class="btn--outline-secondary btn--price" onclick="document.getElementById('bundles').style.display='block'">
+            SELECT FLIGHT FOR 68 EUR €68
+        </button>
+        <button class="btn--outline-secondary btn--price">SELECT FLIGHT FOR 100 EUR €100</button>
+        <div id="bundles" style="display:none">
+            <div class="vy-card-bundle vy-card-bundle--verticalpadding">
+                <div class="vy-card-bundle_header-title">FLY LIGHT Travel with essentials</div>
+                <section class="vy-card-bundle_body">
+                    <ul>
+                        <li>1 underseat cabin bag Max. 40x30x20 cm</li>
+                        <li>Check-in available 24 hours in advance</li>
+                        <li>You can add extras later on</li>
+                    </ul>
+                </section>
+                <button>+ SELECT BUNDLE €0 per person</button>
+            </div>
+            <div class="vy-card-bundle vy-card-bundle--featured">
+                <div class="vy-card-bundle_header-title">FLY GRANDE A more complete trip</div>
+                <section class="vy-card-bundle_body">
+                    <ul>
+                        <li>1 underseat cabin bag Max. 40x30x20 cm</li>
+                        <li>1 checked bag (25 kg)</li>
+                        <li>Choose exclusive seats</li>
+                        <li>Changes and cancellation</li>
+                        <li>Priority at the airport</li>
+                    </ul>
+                </section>
+                <button>+ SELECT BUNDLE BY +119,00 € PER PERSON €119.00 per person on top of the ticket price</button>
+            </div>
+        </div>
+    </body>
+</html>
+"""
+
+GENERIC_DISCOVERY_HTML = """
+<html>
+    <head><title>UnknownAir options</title></head>
+    <body>
+        <div>Customize your trip</div>
+        <button id="services-tab" role="tab" aria-controls="services-panel" aria-selected="false"
+            onclick="document.getElementById('services-panel').style.display='block'">
+            Onboard services
+        </button>
+        <button id="protect-tab" role="tab" aria-controls="protect-panel" aria-selected="false"
+            onclick="document.getElementById('protect-panel').style.display='block'">
+            Travel protection
+        </button>
+        <div id="services-panel" style="display:none">
+            <div>Fresh meal available on board</div>
+            <div>Wi-Fi available during the flight</div>
+        </div>
+        <div id="protect-panel" style="display:none">
+            <div>Travel insurance available during checkout</div>
+        </div>
+    </body>
+</html>
+"""
+
+GENERIC_DISCOVERY_MULTIHOP_START_HTML = """
+<html>
+    <head><title>UnknownAir booking</title></head>
+    <body>
+        <div>Manage your booking</div>
+        <a href="https://letsfg.test/service-options">Travel extras</a>
+    </body>
+</html>
+"""
+
+GENERIC_DISCOVERY_MULTIHOP_OPTIONS_HTML = """
+<html>
+    <head><title>UnknownAir service options</title></head>
+    <body>
+        <div>Customize your trip</div>
+        <button id="meal-tab" role="tab" aria-controls="meal-panel" aria-selected="false"
+            onclick="document.getElementById('meal-panel').style.display='block'">
+            Meal options
+        </button>
+        <button id="wifi-tab" role="tab" aria-controls="wifi-panel" aria-selected="false"
+            onclick="document.getElementById('wifi-panel').style.display='block'">
+            Wi-Fi pass
+        </button>
+        <button id="insurance-tab" role="tab" aria-controls="insurance-panel" aria-selected="false"
+            onclick="document.getElementById('insurance-panel').style.display='block'">
+            Coverage options
+        </button>
+        <div id="meal-panel" style="display:none">Hot meal available on board</div>
+        <div id="wifi-panel" style="display:none">Travel Wi-Fi available during the flight</div>
+        <div id="insurance-panel" style="display:none">Travel insurance available during checkout</div>
+    </body>
+</html>
+"""
+
+BOOKING_HOLDINGS_DISCOVERY_START_HTML = """
+<html>
+    <head><title>Momondo booking</title></head>
+    <body>
+        <div>Review your flight</div>
+        <a href="https://www.momondo.com/packages">Packages</a>
+        <a href="https://www.momondo.com/book/extras">Travel extras</a>
+    </body>
+</html>
+"""
+
+BOOKING_HOLDINGS_DISCOVERY_PACKAGES_HTML = """
+<html>
+    <head><title>Momondo packages</title></head>
+    <body>
+        <a href="https://www.momondo.com/packages/search">Search for packages</a>
+        <a href="https://play.google.com/store/apps/details?id=com.momondo.flightsearch">Get it on Google Play</a>
+    </body>
+</html>
+"""
+
+BOOKING_HOLDINGS_DISCOVERY_EXTRAS_HTML = """
+<html>
+    <head><title>Momondo extras</title></head>
+    <body>
+        <div>Customize your trip</div>
+        <button id="meal-tab" role="tab" aria-controls="meal-panel" aria-selected="false"
+            onclick="document.getElementById('meal-panel').style.display='block'">
+            Meal options
+        </button>
+        <button id="wifi-tab" role="tab" aria-controls="wifi-panel" aria-selected="false"
+            onclick="document.getElementById('wifi-panel').style.display='block'">
+            Wi-Fi pass
+        </button>
+        <button id="insurance-tab" role="tab" aria-controls="insurance-panel" aria-selected="false"
+            onclick="document.getElementById('insurance-panel').style.display='block'">
+            Coverage options
+        </button>
+        <div id="meal-panel" style="display:none">Hot meal available on board</div>
+        <div id="wifi-panel" style="display:none">Travel Wi-Fi available during the flight</div>
+        <div id="insurance-panel" style="display:none">Travel insurance available during checkout</div>
+    </body>
+</html>
+"""
+
+BOOKING_HOLDINGS_INTERSTITIAL_HTML = """
+<html>
+    <head><title>Sending you to book</title></head>
+    <body>
+        <div>Sending you to book</div>
+        <script>
+            setTimeout(() => {
+                window.location.href = 'https://partner.example.com/checkout';
+            }, 300);
+        </script>
+    </body>
+</html>
+"""
+
+BOOKING_HOLDINGS_PARTNER_HTML = """
+<html>
+    <head><title>Partner checkout</title></head>
+    <body>
+        <div>London LON Barcelona BCN Jun 18</div>
+        <div>Cancellation protection</div>
+        <div>Travel insurance available during checkout</div>
+    </body>
+</html>
+"""
+
+BOOKING_HOLDINGS_FORBIDDEN_HTML = """
+<html>
+    <head><title>Page not found (403) | momondo</title></head>
+    <body>
+        <div>Sorry, this page isn't available.</div>
+        <div>403 forbidden</div>
+    </body>
+</html>
+"""
 
 
 class CheckoutEngineConfigTest(unittest.TestCase):
@@ -382,6 +564,196 @@ class AirAsiaCheckoutDetailsExtractionTest(unittest.IsolatedAsyncioTestCase):
                     details["seat_selection_observation"],
                     "No visible seat-selection price surfaced on the reachable AirAsia guest-details/payment path.",
                 )
+
+
+class VuelingBundleExtractionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_generic_checkout_extractor_opens_vueling_bundle_cards(self) -> None:
+        engine = GenericCheckoutEngine()
+        config = AIRLINE_CONFIGS["vueling_direct"]
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.route(
+                "https://tickets.vueling.com/booking/selectFlight",
+                lambda route: route.fulfill(status=200, content_type="text/html", body=VUELING_SELECT_FLIGHT_HTML),
+            )
+            await page.goto("https://tickets.vueling.com/booking/selectFlight")
+
+            details = await engine._extract_generic_visible_checkout_details(
+                page,
+                config,
+                offer={"price": 67.99, "currency": "EUR"},
+                default_currency="EUR",
+            )
+            await browser.close()
+
+        self.assertEqual(details["checkout_page"], "extras")
+        self.assertEqual(details["conditions"]["fare_family"], "FLY LIGHT")
+        self.assertEqual(
+            details["conditions"]["cabin_bag"],
+            "included - 1 underseat cabin bag Max. 40x30x20 cm",
+        )
+        self.assertNotIn("seat", details["conditions"])
+        self.assertIn("Changes and cancellation", details["conditions"]["fare_bundle_upgrades"])
+
+        packages = details["available_add_ons"]["packages"]
+        self.assertEqual(packages[0]["label"], "FLY LIGHT")
+        self.assertTrue(packages[0]["included"])
+        self.assertEqual(packages[0]["amount"], 0.0)
+        self.assertEqual(packages[1]["label"], "FLY GRANDE")
+        self.assertEqual(packages[1]["amount"], 119.0)
+        self.assertTrue(any(bundle["selected"] and bundle["label"] == "FLY LIGHT" for bundle in details["fare_bundle_options"]))
+
+
+class GenericDiscoveryExtractionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_generic_checkout_discovery_opens_unknown_service_panels(self) -> None:
+        engine = GenericCheckoutEngine()
+        config = AIRLINE_CONFIGS["ryanair_direct"]
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.route(
+                "https://letsfg.test/unknown-options",
+                lambda route: route.fulfill(status=200, content_type="text/html", body=GENERIC_DISCOVERY_HTML),
+            )
+            await page.goto("https://letsfg.test/unknown-options")
+
+            details = await engine._extract_generic_visible_checkout_details(
+                page,
+                config,
+                offer={"price": 55.0, "currency": "EUR"},
+                default_currency="EUR",
+            )
+            await browser.close()
+
+        self.assertEqual(details["checkout_page"], "extras")
+        self.assertIn("generic_discovery_observation", details)
+        self.assertTrue(any("meal" in item["label"].lower() for item in details["available_add_ons"]["meals"]))
+        self.assertTrue(any("wi-fi" in item["label"].lower() or "wifi" in item["label"].lower() for item in details["available_add_ons"]["wifi"]))
+        self.assertTrue(any("insurance" in item["label"].lower() for item in details["available_add_ons"]["insurance"]))
+
+    async def test_generic_checkout_discovery_handles_cross_page_unknown_services(self) -> None:
+        engine = GenericCheckoutEngine()
+        config = AIRLINE_CONFIGS["ryanair_direct"]
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+
+            await page.route(
+                "https://letsfg.test/**",
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="text/html",
+                    body=(
+                        GENERIC_DISCOVERY_MULTIHOP_OPTIONS_HTML
+                        if route.request.url.endswith("/service-options")
+                        else GENERIC_DISCOVERY_MULTIHOP_START_HTML
+                    ),
+                ),
+            )
+            await page.goto("https://letsfg.test/start")
+
+            details = await engine._extract_generic_visible_checkout_details(
+                page,
+                config,
+                offer={"price": 55.0, "currency": "EUR"},
+                default_currency="EUR",
+            )
+            await browser.close()
+
+        self.assertEqual(details["resolved_booking_url"], "https://letsfg.test/service-options")
+        self.assertIn("generic_discovery_observation", details)
+        self.assertTrue(any("meal" in item["label"].lower() for item in details["available_add_ons"]["meals"]))
+        self.assertTrue(any("wi-fi" in item["label"].lower() or "wifi" in item["label"].lower() for item in details["available_add_ons"]["wifi"]))
+        self.assertTrue(any("insurance" in item["label"].lower() for item in details["available_add_ons"]["insurance"]))
+        self.assertGreaterEqual(len(details.get("generic_discovery_trace") or []), 2)
+
+    async def test_generic_checkout_discovery_skips_booking_holdings_package_detours(self) -> None:
+        engine = GenericCheckoutEngine()
+        config = AIRLINE_CONFIGS["momondo_meta"]
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+
+            await page.route(
+                "https://www.momondo.com/**",
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="text/html",
+                    body=(
+                        BOOKING_HOLDINGS_DISCOVERY_PACKAGES_HTML
+                        if route.request.url.endswith("/packages") or route.request.url.endswith("/packages/search")
+                        else BOOKING_HOLDINGS_DISCOVERY_EXTRAS_HTML
+                        if route.request.url.endswith("/book/extras")
+                        else BOOKING_HOLDINGS_DISCOVERY_START_HTML
+                    ),
+                ),
+            )
+            await page.goto("https://www.momondo.com/book/flight?demo=1")
+
+            details = await engine._extract_generic_visible_checkout_details(
+                page,
+                config,
+                offer={"price": 55.0, "currency": "EUR"},
+                default_currency="EUR",
+            )
+            await browser.close()
+
+        self.assertEqual(details["resolved_booking_url"], "https://www.momondo.com/book/extras")
+        self.assertTrue(any("travel extras" in str(item.get("action") or "").lower() for item in details.get("generic_discovery_trace") or []))
+        self.assertFalse(any("package" in str(item.get("action") or "").lower() for item in details.get("generic_discovery_trace") or []))
+        self.assertTrue(any("meal" in item["label"].lower() for item in details["available_add_ons"]["meals"]))
+        self.assertTrue(any("wi-fi" in item["label"].lower() or "wifi" in item["label"].lower() for item in details["available_add_ons"]["wifi"]))
+        self.assertTrue(any("insurance" in item["label"].lower() for item in details["available_add_ons"]["insurance"]))
+
+
+class BookingHoldingsHandoffSettleTest(unittest.IsolatedAsyncioTestCase):
+    async def test_probe_waits_through_booking_holdings_interstitial(self) -> None:
+        engine = GenericCheckoutEngine()
+        config = AIRLINE_CONFIGS["momondo_meta"]
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.route(
+                "https://www.momondo.com/**",
+                lambda route: route.fulfill(status=200, content_type="text/html", body=BOOKING_HOLDINGS_INTERSTITIAL_HTML),
+            )
+            await page.route(
+                "https://partner.example.com/**",
+                lambda route: route.fulfill(status=200, content_type="text/html", body=BOOKING_HOLDINGS_PARTNER_HTML),
+            )
+            await page.goto("https://www.momondo.com/book/flight?demo=1")
+
+            await engine._settle_meta_booking_handoff(page, config)
+            snapshot = await engine._snapshot_checkout_page(page)
+            final_url = page.url
+            await browser.close()
+
+        self.assertEqual(final_url, "https://partner.example.com/checkout")
+        self.assertIn("cancellation protection", str(snapshot.get("body_snippet") or "").lower())
+
+    async def test_booking_holdings_forbidden_page_requests_headed_retry(self) -> None:
+        engine = GenericCheckoutEngine()
+        config = AIRLINE_CONFIGS["momondo_meta"]
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.route(
+                "https://www.momondo.com/**",
+                lambda route: route.fulfill(status=200, content_type="text/html", body=BOOKING_HOLDINGS_FORBIDDEN_HTML),
+            )
+            await page.goto("https://www.momondo.com/book/flight?demo=403")
+
+            should_retry = await engine._should_retry_meta_probe_headed(page, config)
+            await browser.close()
+
+        self.assertTrue(should_retry)
 
 
 if __name__ == "__main__":

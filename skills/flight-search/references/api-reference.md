@@ -2,7 +2,7 @@
 
 Full endpoint details for the LetsFG flight search and booking API.
 
-**Base URL:** `https://api.letsfg.co`
+**Base URL:** `https://letsfg.co/developers/api/v1`
 
 ## Authentication
 
@@ -240,8 +240,8 @@ POST /api/v1/bookings/book
 
 | Endpoint | URL |
 |----------|-----|
-| OpenAPI/Swagger | https://api.letsfg.co/docs |
-| Agent discovery | https://api.letsfg.co/.well-known/ai-plugin.json |
-| Agent manifest | https://api.letsfg.co/.well-known/agent.json |
-| LLM instructions | https://api.letsfg.co/llms.txt |
-| MCP (Streamable HTTP) | https://api.letsfg.co/mcp |
+| OpenAPI/Swagger | https://letsfg.co/developers/api/docs |
+| Agent discovery | https://letsfg.co/developers/api/.well-known/ai-plugin.json |
+| Agent manifest | https://letsfg.co/developers/api/.well-known/agent.json |
+| LLM instructions | https://letsfg.co/developers/api/llms.txt |
+| MCP (Streamable HTTP) | https://letsfg.co/developers/api/mcp |

@@ -108,3 +108,33 @@ test('applyVertexIntent prefers AI dates and cabin when Gemini provides them', (
   assert.equal(applied.adults, 2)
   assert.equal(applied.aiIntent.ai_passenger_context, 'couple')
 })
+
+test('applyVertexIntent preserves special occasion purposes from Gemini intent', () => {
+  const parsed = parseNLQuery('BOD to DTM 2026-06-03 return 2026-06-11, as a couple, cheapest option')
+
+  const ai: VertexCityResult = {
+    origin_city: 'Bordeaux',
+    destination_city: 'Dortmund',
+    via_city: null,
+    passengers: 2,
+    cabin_class: null,
+    direct_only: null,
+    sort_by: 'price',
+    depart_after: null,
+    depart_before: null,
+    bags_included: null,
+    trip_purposes: ['special_occasion'],
+    trip_purpose: 'special_occasion',
+    dep_time_pref: null,
+    ret_time_pref: null,
+    passenger_context: 'couple',
+    is_round_trip: true,
+    departure_date: '2026-06-03',
+    return_date: '2026-06-11',
+  }
+
+  const applied = applyVertexIntent(parsed, ai, parsed.adults || 1)
+
+  assert.deepEqual(applied.aiIntent.ai_trip_purposes, ['special_occasion'])
+  assert.equal(applied.aiIntent.ai_trip_purpose, 'special_occasion')
+})

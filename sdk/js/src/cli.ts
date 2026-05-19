@@ -375,7 +375,7 @@ Commands:
 Options:
   --json, -j       Output raw JSON
   --api-key, -k    API key (or set LETSFG_API_KEY)
-  --base-url       API URL (default: https://api.letsfg.co)
+  --base-url       API URL (default: https://letsfg.co/developers)
 
 Examples:
   letsfg register --name my-agent --email me@example.com

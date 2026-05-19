@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { RankedOffer, RankOffer, RankingContext } from '../../lib/rankOffers'
 import { normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
+import { getOfferDetailPromptNotes } from '../../../lib/offer-details'
+import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../lib/letsfg-api'
 import { updateGeminiJustification } from '../../../lib/results-cache'
 import { normalizeTripPurposes } from '../../lib/trip-purpose'
 
@@ -45,65 +47,6 @@ interface RankResponseBody {
   hero: string
   runners: string[]
   offer_ids: string[]
-}
-
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>
-    }
-  }>
-}
-
-import { execSync } from 'child_process'
-
-// ── Auth helpers ──────────────────────────────────────────────────────────
-
-// In-memory token cache — avoids calling `gcloud auth print-access-token`
-// on every request (3 rapid calls per search session would each shell out).
-let _cachedToken: string | null = null
-let _tokenExpiresAt = 0  // unix ms
-
-/** Try to get a GCP access token from the Cloud Run metadata server. */
-async function getGcpAccessToken(): Promise<string | null> {
-  // Serve from cache if still valid (with 60s safety buffer)
-  if (_cachedToken && Date.now() < _tokenExpiresAt - 60_000) return _cachedToken
-
-  // 1. Cloud Run metadata server (production) — also returns expiry
-  try {
-    const r = await fetch(
-      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',
-      {
-        headers: { 'Metadata-Flavor': 'Google' },
-        signal: AbortSignal.timeout(1_500),
-      },
-    )
-    if (r.ok) {
-      const j = await r.json() as { access_token?: string; expires_in?: number }
-      if (j.access_token) {
-        _cachedToken = j.access_token
-        _tokenExpiresAt = Date.now() + (j.expires_in ?? 3600) * 1000
-        return _cachedToken
-      }
-    }
-  } catch { /* not on GCP */ }
-
-  // 2. Local dev: gcloud CLI application default credentials
-  try {
-    const token = execSync('gcloud auth print-access-token --quiet', {
-      timeout: 5_000,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],  // suppress stderr cross-platform
-    }).trim()
-    if (token.startsWith('ya29.')) {
-      _cachedToken = token
-      // gcloud tokens are valid for ~1 hour; cache for 55 min
-      _tokenExpiresAt = Date.now() + 55 * 60 * 1000
-      return _cachedToken
-    }
-  } catch { /* gcloud not available or not authed */ }
-
-  return null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -184,14 +127,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const origin = req.headers.get('origin') ?? ''
   if (!ALLOWED_ORIGIN_RE.test(origin)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-  }
-
-  // Resolve auth: Vertex AI (Cloud Run metadata) → GEMINI_API_KEY (local dev)
-  const gcpToken = await getGcpAccessToken()
-  const geminiApiKey = process.env.GEMINI_API_KEY
-
-  if (!gcpToken && !geminiApiKey) {
-    return NextResponse.json({ error: 'no_auth' }, { status: 503 })
   }
 
   let body: RankRequestBody
@@ -299,8 +234,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .filter((v, i, a) => a.indexOf(v) === i)
     .join(' / ')
   const aircraftLine = heroAircraft ? `\n- Aircraft: ${heroAircraft}` : ''
+  const heroDetailNotes = getOfferDetailPromptNotes(h)
+  const heroDetailBlock = heroDetailNotes.length > 0
+    ? `\n- FARE DETAILS FROM SEARCH DATA:\n${heroDetailNotes.map((note) => `  • ${note}`).join('\n')}`
+    : ''
   const prefs = [
     context.requireBag ? 'needs checked bag' : '',
+    context.requireMeals ? 'cares about meal / food availability' : '',
+    context.requireCancellation ? 'cares about refund or change flexibility' : '',
     context.preferQuickFlight ? 'wants shortest possible flight time' : '',
     context.preferDirect && !noDirectsAvailable ? 'asked for direct flights (none found yet — fewer stops is better)' : '',
     noDirectsAvailable ? 'asked for direct flights — none exist on this route' : '',
@@ -323,6 +264,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const roDispBag = fxConvert(roBd.bag, ro.currency, roDispCur)
     const roBagNote = ro.ancillaries?.checked_bag?.included === true ? ' (bag incl)' : (requireBag && roDispBag > 0) ? ` (+${roDispBag} ${roDispCur} bag add-on)` : ''
     const roSeatNote = ro.ancillaries?.seat_selection?.included === true ? ' (seat incl)' : ''
+    const roDetailNotes = getOfferDetailPromptNotes(ro).join('; ') || 'none shown'
     const roRetDep = (ro.inbound as { departure_time?: string } | undefined)?.departure_time
     const roRetNote = roRetDep ? ` | return departs ${fmtMins(roRetDep)}` : ''
     return (
@@ -331,6 +273,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       `${ro.stops === 0 ? 'direct' : `${ro.stops} stop(s)`}, ` +
       `${fmtDur(ro.duration_minutes)}, ` +
       `departs ${fmtMins(ro.departure_time)} → arrives ${fmtMins(ro.arrival_time)}${roRetNote} ` +
+      `| fare details: ${roDetailNotes} ` +
       `| tradeoffs: ${r.tradeoffs.join('; ') || 'none'} ` +
       `| positives: ${r.heroFacts.slice(0, 2).join('; ') || 'similar value'}`
     )
@@ -354,8 +297,11 @@ The user asked for direct flights. Search is complete and there are no direct fl
 ⚠️ CRITICAL FARE FACT CHECK:
 - Cabin class is NOT provided in this prompt data.
 - You MUST NOT mention economy, premium economy, business class, first class, coach, or any cabin label anywhere.
-- Refundability/flexibility is ONLY known when it is explicitly stated in the provided reasons or tradeoffs.
-- If refundability is not explicitly stated there, do NOT call the fare refundable, flexible, cancellable, or changeable.`
+- Refundability/flexibility is ONLY known when it is explicitly stated in the provided reasons, tradeoffs, or fare details block.
+- Meals/food are ONLY known when they are explicitly stated in the reasons, tradeoffs, or fare details block.
+- Wi-Fi, power/USB, refreshments, or in-flight entertainment are ONLY known when they are explicitly stated in the reasons, tradeoffs, or fare details block.
+- Insurance or lounge access are ONLY known when they are explicitly stated in the reasons, tradeoffs, or fare details block.
+- If a detail is not explicitly stated there, do NOT call the fare refundable, flexible, cancellable, changeable, meal-included, refreshment-included, Wi-Fi-enabled, power-equipped, entertainment-equipped, insured, or lounge-included.`
 
   // ── Nearby-airport fallback context ────────────────────────────────────
   // When the user typed a city without a commercial airport (Pretoria, The
@@ -403,7 +349,7 @@ ${searchBreadthBlock}
 - ${FLIGHT_LABELS[0]} | ${h.origin} → ${h.destination}
 - Outbound: departs ${fmtMins(h.departure_time)}, arrives ${fmtMins(h.arrival_time)} | ${fmtDur(h.duration_minutes)} | ${stopsLabel}${h.inbound?.departure_time ? `\n- Return: departs ${fmtMins(h.inbound.departure_time)} from destination` : ''}
 - PRICE BREAKDOWN:
-${priceBreakdownBlock}${savingsLine}${aircraftLine}
+${priceBreakdownBlock}${savingsLine}${aircraftLine}${heroDetailBlock}
 
 NOTES ON THE BREAKDOWN:
 - The LetsFG fee is a small platform service charge (like a booking fee). Do NOT dwell on it — it is normal and unremarkable.
@@ -445,96 +391,37 @@ Return ONLY valid JSON, no markdown, no code blocks:
 {"title": "...", "hero": "...", "runners": ["...", "..."]}`
 
   try {
-    // Vertex AI (Cloud Run): project sms-caller, location global, gemini-2.5-flash-lite
-    const url = gcpToken
-      ? 'https://aiplatform.googleapis.com/v1/projects/sms-caller/locations/global/publishers/google/models/gemini-2.5-flash-lite:generateContent'
-      : `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiApiKey}`
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (gcpToken) headers['Authorization'] = `Bearer ${gcpToken}`
-
-    const geminiBody = JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: 2000,
-        temperature: 0.75,
-      },
+    const rankResp = await fetch(`${getLetsfgApiBase()}/api/v1/flights/rank-copy`, {
+      method: 'POST',
+      headers: withLetsfgWebsiteApiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        prompt,
+        offer_ids: topOffers.map((entry) => entry.offer.id),
+        hero_stops: h.stops,
+      }),
+      signal: AbortSignal.timeout(25_000),
     })
 
-    // Single retry on 429 (rate limit) or 5xx — with a 2s backoff
-    let geminiResp = await fetch(url, {
-      method: 'POST', headers, body: geminiBody,
-      signal: AbortSignal.timeout(20_000),
-    })
-    if (!geminiResp.ok && (geminiResp.status === 429 || geminiResp.status >= 500)) {
-      // On 429, invalidate cached token in case it's a quota-tied stale token
-      if (geminiResp.status === 429) {
-        _cachedToken = null
-        _tokenExpiresAt = 0
-      }
-      await new Promise(r => setTimeout(r, 2000))
-      // Refresh token for retry
-      const retryToken = await getGcpAccessToken()
-      const retryHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (retryToken) retryHeaders['Authorization'] = `Bearer ${retryToken}`
-      const retryUrl = retryToken
-        ? 'https://aiplatform.googleapis.com/v1/projects/sms-caller/locations/global/publishers/google/models/gemini-2.5-flash-lite:generateContent'
-        : `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiApiKey}`
-      geminiResp = await fetch(retryUrl, {
-        method: 'POST', headers: retryHeaders, body: geminiBody,
-        signal: AbortSignal.timeout(20_000),
-      })
-    }
-
-    if (!geminiResp.ok) {
-      const errText = await geminiResp.text().catch(() => '')
-      console.error(`[rank] Gemini error ${geminiResp.status}:`, errText.slice(0, 300))
+    if (!rankResp.ok) {
+      const errText = await rankResp.text().catch(() => '')
+      console.error(`[rank] backend rank error ${rankResp.status}:`, errText.slice(0, 300))
       return NextResponse.json({ error: 'gemini_error' }, { status: 502 })
     }
 
-    const data = await geminiResp.json() as GeminiResponse
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-
-    // Extract JSON — handle any wrapping Gemini might add
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.error('[rank] No JSON in Gemini response:', rawText.slice(0, 200))
-      return NextResponse.json({ error: 'parse_error' }, { status: 502 })
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]) as { title?: string; hero?: string; runners?: unknown[] }
+    const parsed = await rankResp.json() as Partial<RankResponseBody>
     if (typeof parsed.hero !== 'string' || parsed.hero.length < 10) {
       return NextResponse.json({ error: 'invalid_response' }, { status: 502 })
     }
 
-    const scrubDirectClaims = (text: string): string => {
-      if (heroIsDirect) return text
-      // Hard safety net: if Gemini still writes direct claims for a non-direct hero,
-      // rewrite those tokens to accurate wording tied to stop count.
-      return text
-        .replace(/\bnon[-\s]?stop\b/gi, `${h.stops} stop${h.stops > 1 ? 's' : ''}`)
-        .replace(/\bdirect\b/gi, `${h.stops} stop${h.stops > 1 ? 's' : ''}`)
-    }
-
-    const scrubCabinClaims = (text: string): string => text
-      .replace(/\bbusiness[-\s]?class\b/gi, 'flight')
-      .replace(/\bpremium\s+economy\b/gi, 'flight')
-      .replace(/\beconomy[-\s]?class\b/gi, 'flight')
-      .replace(/\bfirst[-\s]?class\b/gi, 'flight')
-      .replace(/\bcoach\b/gi, 'flight')
-      .replace(/\bcabin\s+class\b/gi, 'fare')
-      .replace(/\s{2,}/g, ' ')
-      .trim()
-
-    const scrubClaims = (text: string): string => scrubCabinClaims(scrubDirectClaims(text))
-
     const result: RankResponseBody = {
-      title: typeof parsed.title === 'string' && parsed.title.length > 3 ? scrubClaims(parsed.title.trim()) : undefined,
-      hero: scrubClaims(parsed.hero.trim()),
+      title: typeof parsed.title === 'string' && parsed.title.length > 3 ? parsed.title.trim() : undefined,
+      hero: parsed.hero.trim(),
       runners: Array.isArray(parsed.runners)
-        ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => scrubClaims(r.trim()))
+        ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => r.trim())
         : [],
-      offer_ids: topOffers.map((entry) => entry.offer.id),
+      offer_ids: Array.isArray(parsed.offer_ids)
+        ? parsed.offer_ids.filter((offerId): offerId is string => typeof offerId === 'string')
+        : topOffers.map((entry) => entry.offer.id),
     }
 
     // Persist to server-side cache so any user with the shared link gets this text.

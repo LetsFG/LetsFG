@@ -371,7 +371,7 @@ Every command supports `--json` for machine-readable output.
 | Variable | Description |
 |----------|-------------|
 | `LETSFG_API_KEY` | Your agent API key |
-| `LETSFG_BASE_URL` | API URL (default: `https://api.letsfg.co`) |
+| `LETSFG_BASE_URL` | API URL (default: `https://letsfg.co/developers`) |
 | `LETSFG_MAX_BROWSERS` | Max concurrent browser instances (1–32). Auto-detected from RAM if not set. |
 
 ## Performance Tuning

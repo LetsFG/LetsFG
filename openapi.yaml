@@ -30,7 +30,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://api.letsfg.co
+  - url: https://letsfg.co/developers/api/v1
     description: Production
 
 security:

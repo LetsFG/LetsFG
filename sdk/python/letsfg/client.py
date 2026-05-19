@@ -56,7 +56,7 @@ from letsfg.models import (
     UnlockResult,
 )
 
-DEFAULT_BASE_URL = "https://api.letsfg.co"
+DEFAULT_BASE_URL = "https://letsfg.co/developers"
 
 _log = logging.getLogger(__name__)
 

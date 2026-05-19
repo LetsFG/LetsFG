@@ -9,7 +9,7 @@ import { getLetsfgAnalyticsApiBase, getLetsfgApiBase, withLetsfgWebsiteApiHeader
  * Stripe webhook receiver. Every event is signature-verified before processing.
  *
  * Register this URL in the Stripe Dashboard:
- *   https://letsfg-website-qryvus4jia-ew.a.run.app/api/checkout/webhook
+ *   https://letsfg.co/api/checkout/webhook
  *
  * Required events to subscribe to in the dashboard:
  *   - checkout.session.completed
@@ -18,9 +18,8 @@ import { getLetsfgAnalyticsApiBase, getLetsfgApiBase, withLetsfgWebsiteApiHeader
  * Set STRIPE_WEBHOOK_SECRET to the signing secret shown on the endpoint page.
  * For local testing:  stripe listen --forward-to localhost:3000/api/checkout/webhook
  *
- * In test mode (sk_test_...) this webhook also handles monitor activation, because
- * the monitor checkout session is created by the website (not the backend) so the
- * backend's own webhook never fires for it.
+ * This webhook also handles monitor activation, because the public callback now lands
+ * on the website and then forwards the paid monitor metadata to the backend.
  */
 
 // Must run on Node.js to access the raw request body for signature verification.
@@ -30,8 +29,6 @@ const ANALYTICS_API_BASE = getLetsfgAnalyticsApiBase()
 
 const API_BASE = getLetsfgApiBase()
 const WEBSITE_API_KEY = process.env.LETSFG_WEBSITE_API_KEY || ''
-
-const IS_TEST_MODE = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
 
 /**
  * Fire the payment_verified analytics event from the server side.
@@ -130,9 +127,10 @@ export async function POST(req: NextRequest) {
 
           if (monitorId) {
             // ── Monitor payment ───────────────────────────────────────────────
-            // In test mode the website created this Stripe session (not the backend),
-            // so the backend's own webhook never fires. Activate the monitor here.
-            if (IS_TEST_MODE && WEBSITE_API_KEY) {
+            // The public Stripe webhook now lands on the website, so activate the
+            // monitor here in all environments. The backend record-payment endpoint
+            // is idempotent, so repeated calls are safe.
+            if (WEBSITE_API_KEY) {
               const amountUsd = session.amount_total != null ? session.amount_total / 100 : 0
               try {
                 const activateResp = await fetch(
@@ -160,8 +158,6 @@ export async function POST(req: NextRequest) {
                 console.error('[webhook] record-payment threw:', err)
               }
             }
-            // In production, the backend's own webhook handles monitor activation.
-            // Nothing to do here for monitor payments in live mode.
             console.log('[webhook] Monitor payment confirmed:', { monitorId, sessionId: session.id })
           } else {
             // ── Regular (unlock/book) payment — track analytics ───────────────

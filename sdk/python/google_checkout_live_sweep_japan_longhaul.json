@@ -1,0 +1,212 @@
+[
+  {
+    "route": "LHR->HND",
+    "date": "2026-06-24",
+    "seller": "CheckNfly",
+    "seller_price": 1130.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://checknfly.co.uk/flights/passenger_details?sid=4c8278d3-6258-4c32-a675-53b00d648834%5Eab35cd12-4be1-4fab-b9a3-1d4d16b0c475",
+    "checkout_page": "passengers",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "JFK->HND",
+    "date": "2026-06-24",
+    "seller": "China Airlines airline",
+    "seller_price": 638.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://bookingportal.china-airlines.com/eRetailPortal/Booking.svc/Booking/Search",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "2 free checked bags",
+        "text": "2 free checked bags",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "CDG->NRT",
+    "date": "2026-06-24",
+    "seller": "lastminute.com",
+    "seller_price": 745.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.lastminute.com/msr/route/gfs?Adult=1&PointOfSaleCountry=FR&DisplayedPrice=744.79&DisplayedPriceCurrency=EUR&UserLanguage=fr&UserCurrency=EUR&TripType=RoundTrip&Slice1=1,2&Slice2=3,4&Cabin1=Economy&Carrier1=EY&DepartureDate1=2026-06-24&Origin1=CDG&Destination1=AUH&BookingCode1=T&FlightNumber1=32&Cabin2=Economy&Carrier2=EY&DepartureDate2=2026-06-24&Origin2=AUH&Destination2=NRT&BookingCode2=T&FlightNumber2=800&Cabin3=Economy&Carrier3=EY&DepartureDate3=2026-06-28&Origin3=NRT&Destination3=AUH&BookingCode3=T&FlightNumber3=801&Cabin4=Economy&Carrier4=EY&DepartureDate4=2026-06-29&Origin4=AUH&Destination4=CDG&BookingCode4=T&FlightNumber4=31&ReferralId=GOOG_GFH_42",
+    "checkout_page": "blocked",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "FRA->HND",
+    "date": "2026-06-24",
+    "seller": "China Southern airline",
+    "seller_price": 1060.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://oversea.csair.com/tk/eu/en/book/flights?ref=googleflights&p=100&m=1&t=FRA-HND-20260624-20260628&rc=GGSS01&utm_source=googleflights_eu&utm_medium=metasearch",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "2 free checked bags",
+        "text": "2 free checked bags",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "LAX->NRT",
+    "date": "2026-06-24",
+    "seller": "FlightHub",
+    "seller_price": 1566.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.flighthub.com/checkout/gdeeplink?Adult=1&PointOfSaleCountry=PL&DisplayedPrice=1822.72&DisplayedPriceCurrency=USD&UserLanguage=en&TripType=RoundTrip&Slice1=1,2&Slice2=3,4&Cabin1=Economy&Carrier1=OZ&DepartureDate1=2026-06-24&Origin1=LAX&Destination1=ICN&BookingCode1=K&FlightNumber1=203&Cabin2=Economy&Carrier2=OZ&DepartureDate2=2026-06-26&Origin2=ICN&Destination2=NRT&BookingCode2=K&FlightNumber2=102&Cabin3=Economy&Carrier3=KE&DepartureDate3=2026-06-28&Origin3=NRT&Destination3=ICN&BookingCode3=K&FlightNumber3=712&Cabin4=Economy&Carrier4=OZ&DepartureDate4=2026-06-28&Origin4=ICN&Destination4=LAX&BookingCode4=Q&FlightNumber4=204&t=1779135020&sig=AcuPjesfome8HMRjA8j_dK2DhsVrBkXE8tgntdMMDAV5LzXw5cwC5qPNPKMFLRlUwlSuIXz9Yrj_h9mHuWdLlMmUZaOLDh7Y0uerxRQhnvwwnnSlmwYsADrhchln5FEC5_EyigwI9Es7Lh1CIUHaOuhteJ6hlaOKaDDg-FSN-1Zm1ppsrQyQInqXGGVCjBWW0jz-KFek8qBN-AXMVLzL7I1SD8W4FpsIcagvjNKnyKNKQQsIHSw_PGVUzErTnwP2X5Cv4OHQQm8H2OrYssQDbOgVcb9vpvtzCChZOhPFdVW_l1O_eDZWOvnjBQxm2aNUmJhvC5XgLRJnXBuFR0dIVo5fni9jg1XBdr4WMb8g9TaQjXc_9GuwFFyu1byyz_WttEj0frXRgnVoIQcbStfGIA14Vsb2dRDXYeodNiUYIBJN_PRSBw13FlK0ACr6wIsDyDF99DH_B95ECjn8gB1VtclIxzJ_lSBvok4Axj3Ii5MDqtB4CNfkvpgk4j14yBCTF55GZNM%3D&ReferralId=TEMP1",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "2 free checked bags",
+        "text": "2 free checked bags",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  }
+]

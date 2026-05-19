@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "npm run test && next build",
+    "build": "npm run test && next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "test": "npm run test:locations && npm run test:city-pair-matrix && npm run test:round-trip-detection && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:checkout-unlock-experiment && npm run test:user-currency && npm run test:mixed-currency-rendering && npm run test:results-rerun-state && npm run test:results-query-fallback && npm run test:results-expired-cache-state && npm run test:results-expired-response-state && npm run test:google-comparison && npm run test:booking-url-repair && npm run test:pfp-quality-gate && npm run test:pfp-normalizer && npm run test:pfp-ingest && npm run test:pfp-distribution-service && npm run test:pfp-flight-page && npm run test:pfp-json-ld && npm run test:pfp-seo-head && npm run test:pfp-sitemap && npm run test:pfp-tracker && npm run test:pfp-experiment-context && npm run test:pfp-cron-cleanup && npm run test:pfp-integration",

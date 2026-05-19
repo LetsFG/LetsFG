@@ -378,7 +378,7 @@ export async function searchLocal(
 
 // ── Client ────────────────────────────────────────────────────────────────
 
-const DEFAULT_BASE_URL = 'https://api.letsfg.co';
+const DEFAULT_BASE_URL = 'https://letsfg.co/developers';
 
 export class LetsFG {
   private apiKey: string;

@@ -61,7 +61,7 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
 [![npm](https://img.shields.io/npm/v/letsfg-mcp?label=npm%20%28MCP%29)](https://www.npmjs.com/package/letsfg-mcp)
-[![Connector Health](https://api.letsfg.co/api/v1/analytics/connectors/health/badge)](https://api.letsfg.co/health/connectors)
+[![Connector Health](https://letsfg.co/developers/api/v1/analytics/connectors/health/badge)](https://letsfg.co/developers/api/v1/analytics/connectors/health)
 [![smithery badge](https://smithery.ai/badge/letsfg)](https://smithery.ai/servers/letsfg)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -219,6 +219,8 @@ letsfg book off_xxx \
 
 **That's it — search works immediately, no API key needed.** 200+ connectors covering 400+ airlines run locally.
 
+If you cloned the repo or run the SDK locally, stay on this path. You do not need to register for the paid public developer API to use local connectors, and local searches can still feed analytics and telemetry.
+
 <details>
 <summary>Add API key for unlock/book</summary>
 
@@ -285,7 +287,7 @@ for offer in result.offers[:5]:
 | **Python SDK + CLI** | `pip install letsfg` | SDK + CLI + 200+ local connectors (400+ airlines) |
 | **MCP Server** | `npx letsfg-mcp` | Claude, Cursor, Windsurf — no API key needed |
 | **JS/TS SDK** | `npm install -g letsfg` | SDK + CLI |
-| **Remote MCP** | `https://api.letsfg.co/mcp` | No install (API key required) |
+| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | No install (API key required) |
 | **Agent Skill** | `npx skills add LetsFG/LetsFG` | Install flight search skill for any AI agent ([skills.sh](https://skills.sh)) |
 | **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install |
 
@@ -381,7 +383,7 @@ Search a city code and LetsFG automatically searches all airports in that city. 
 
 <div align="center">
 
-**[letsfg.co](https://letsfg.co)** · **[Documentation](https://api.letsfg.co/docs)** · **[Connector Health](https://api.letsfg.co/health/connectors)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Instagram](https://www.instagram.com/letsfg_)** · **[TikTok](https://www.tiktok.com/@letsfg_)** · **[X](https://x.com/LetsFG_)**
+**[letsfg.co](https://letsfg.co)** · **[API Docs](https://letsfg.co/developers/api/docs)** · **[Connector Health](https://letsfg.co/developers/api/v1/analytics/connectors/health)** · **[PyPI](https://pypi.org/project/letsfg/)** · **[npm](https://www.npmjs.com/package/letsfg-mcp)** · **[Smithery](https://smithery.ai/servers/letsfg)** · **[Instagram](https://www.instagram.com/letsfg_)** · **[TikTok](https://www.tiktok.com/@letsfg_)** · **[X](https://x.com/LetsFG_)**
 
 *Open source · MIT License · Made with ❤️ by travelers, for travelers*
 

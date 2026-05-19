@@ -33,3 +33,16 @@ test('return departure preference counts as enough round-trip context to skip tr
   assert.equal(hasTripTypeContext({ return_depart_time_pref: 'morning' }), true)
   assert.equal(hasTripTypeContext({}), false)
 })
+
+test('special occasion prompts couple-style party-size chips', () => {
+  const spec = buildPartySizeQuestionSpec({
+    trip_purpose: 'special_occasion',
+    trip_purposes: ['special_occasion'],
+  })
+
+  assert.equal(spec.questionKey, 'pax_q')
+  assert.deepEqual(
+    spec.chips.map((chip) => chip.englishKey),
+    ['Partner', 'Two of us', 'Family', 'Small group'],
+  )
+})

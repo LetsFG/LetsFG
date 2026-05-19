@@ -5,7 +5,7 @@ Thanks for your interest in contributing! 🚀
 ## Quick Links
 
 - **GitHub:** https://github.com/LetsFG/LetsFG
-- **API Docs:** https://api.letsfg.co/docs
+- **API Docs:** https://letsfg.co/developers/api/docs
 - **npm (JS SDK):** https://www.npmjs.com/package/letsfg
 - **npm (MCP):** https://www.npmjs.com/package/letsfg-mcp
 - **PyPI:** https://pypi.org/project/letsfg/
@@ -18,7 +18,7 @@ Thanks for your interest in contributing! 🚀
 
 ## Before You PR
 
-- Test locally with your own API key (run `letsfg register` — see the [README](README.md#cli) or [API docs](https://api.letsfg.co/docs))
+- Test locally with your own API key (run `letsfg register` — see the [README](README.md#cli) or [API docs](https://letsfg.co/developers/api/docs))
 - Run the relevant SDK tests (see below)
 - Keep PRs focused — one thing per PR
 - Describe **what** you changed and **why**

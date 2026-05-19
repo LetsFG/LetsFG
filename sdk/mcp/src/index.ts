@@ -29,7 +29,7 @@ import { spawn } from 'child_process';
 
 // ── Config ──────────────────────────────────────────────────────────────
 
-const BASE_URL = (process.env.LETSFG_BASE_URL || process.env.BOOSTEDTRAVEL_BASE_URL || 'https://api.letsfg.co').replace(/\/$/, '');
+const BASE_URL = (process.env.LETSFG_BASE_URL || process.env.BOOSTEDTRAVEL_BASE_URL || 'https://letsfg.co/developers').replace(/\/$/, '');
 const API_KEY = process.env.LETSFG_API_KEY || process.env.BOOSTEDTRAVEL_API_KEY || '';
 const PYTHON = process.env.LETSFG_PYTHON || process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
 const VERSION = '1.2.1';

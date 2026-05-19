@@ -13,6 +13,7 @@ import {
 } from '../../../lib/display-price'
 import { computeFlightTimeContext, extractFlightClockMinutes, formatFlightDateCompact, formatFlightTime } from '../../../lib/flight-datetime'
 import { formatGoogleFlightsSavings, getGoogleFlightsSavingsAmount, normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
+import { getOfferDetailBadges } from '../../../lib/offer-details'
 import { trackSearchSessionEvent } from '../../../lib/search-session-analytics'
 import { formatCurrencyAmount } from '../../../lib/user-currency'
 import {
@@ -73,6 +74,7 @@ interface OfferAncillaries {
 interface OfferConditions {
   refund_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
   change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+  [key: string]: string | undefined
 }
 
 interface FlightOffer {
@@ -685,6 +687,7 @@ interface Props {
   defaultSort?: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' | 'duration'
   requireSeatPerPerson?: boolean
   requireBagPerPerson?: boolean
+  requireMeals?: boolean
   requireCancellation?: boolean
   initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
   initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
@@ -824,6 +827,7 @@ export default function ResultsPanel({
   defaultSort,
   requireSeatPerPerson: _requireSeatPerPerson = false,
   requireBagPerPerson = false,
+  requireMeals = false,
   requireCancellation = false,
   initialDepTimePref,
   initialRetTimePref,
@@ -1138,6 +1142,7 @@ export default function ResultsPanel({
         departAfterMins: initialDepartAfterMins,
         departBeforeMins: initialDepartBeforeMins,
         requireBag: requireBagPerPerson,
+        requireMeals,
         requireCancellation,
         preferredAirline,
         preferQuickFlight,
@@ -1223,7 +1228,7 @@ export default function ResultsPanel({
       }
     }
     return list
-  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, fxRates, travelerCount, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, primaryTripPurpose, rankingTripPurposes, preferredAirline, requireBagPerPerson, viaIata])
+  }, [allOffers, stopsFilter, airlinesFilter, amenityFilters, priceRange, depRange, retRange, durationRange, sort, currency, fxRates, travelerCount, initialDepTimePref, initialRetTimePref, initialArrTimePref, tripContext, primaryTripPurpose, rankingTripPurposes, preferredAirline, requireBagPerPerson, requireMeals, viaIata])
 
   const visibleOffers = useMemo(() => displayOffers.slice(0, visibleCount), [displayOffers, visibleCount])
 
@@ -1262,6 +1267,7 @@ export default function ResultsPanel({
       retTimePref: initialRetTimePref,
       arrivalTimePref: initialArrTimePref,
       requireBag: requireBagPerPerson,
+      requireMeals,
       requireCancellation,
       preferredAirline,
       preferQuickFlight,
@@ -1278,7 +1284,7 @@ export default function ResultsPanel({
       if (ranked) return { ...ranked, rank: idx + 1 }
       return { offer: o, rank: idx + 1, score: 0, breakdown: {} as RankedOffer<FlightOffer>['breakdown'], heroFacts: [], tradeoffs: [] }
     })
-  }, [displayOffers, currency, fxRates, travelerCount, tripContext, primaryTripPurpose, rankingTripPurposes, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, requireCancellation, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
+  }, [displayOffers, currency, fxRates, travelerCount, tripContext, primaryTripPurpose, rankingTripPurposes, initialDepTimePref, initialRetTimePref, initialArrTimePref, requireBagPerPerson, requireMeals, requireCancellation, preferredAirline, preferQuickFlight, preferCheapest, maxStops])
 
   const currentTopOfferIds = useMemo(
     () => globalRankTopThree.map((rankedOffer) => getOfferInstanceKey(rankedOffer.offer)).join(','),
@@ -1335,6 +1341,7 @@ export default function ResultsPanel({
             stops: r.offer.stops,
             google_flights_price: r.offer.google_flights_price,
             ancillaries: r.offer.ancillaries,
+            conditions: r.offer.conditions,
             segments: r.offer.segments,
             inbound: r.offer.inbound ? { departure_time: r.offer.inbound.departure_time } : undefined,
           },
@@ -1353,6 +1360,8 @@ export default function ResultsPanel({
           retTimePref: initialRetTimePref,
           arrivalTimePref: initialArrTimePref,
           requireBag: requireBagPerPerson,
+          requireMeals,
+          requireCancellation,
           preferredAirline,
           preferQuickFlight,
           preferCheapest,
@@ -1404,6 +1413,8 @@ export default function ResultsPanel({
     initialRetTimePref,
     initialArrTimePref,
     requireBagPerPerson,
+    requireMeals,
+    requireCancellation,
     preferredAirline,
     preferQuickFlight,
     preferCheapest,
@@ -1799,6 +1810,15 @@ export default function ResultsPanel({
                   ? t('seatSelectionFee', { price: fmtOfferPrice(seatSelection!.price!, seatSelection!.currency || offer.currency, currency, locale, fxRates) })
                   : null,
             ].filter((value): value is string => Boolean(value))
+            const offerDetailBadges = getOfferDetailBadges(offer)
+            const summaryBadges = [
+              ...offerDetailBadges,
+              ...ancillaryBadges.map((label, badgeIndex) => ({
+                key: `ancillary_${badgeIndex}`,
+                label,
+                tone: 'neutral' as const,
+              })),
+            ].slice(0, 5)
             const sourceLabel = revealedSources[offerKey]
             const outboundCtx = computeFlightTimeContext(offer.departure_time, offer.arrival_time, offer.duration_minutes)
             const inboundCtx = offer.inbound
@@ -1908,9 +1928,20 @@ export default function ResultsPanel({
                   </div>
                 )}
               <div className={`rf-card${isHero ? ' rf-card--hero' : ''}${isRunnerUp ? ' rf-card--runner' : ''}${!isHero && !isRunnerUp ? ' rf-card--list' : ''}${isExpanded ? ' rf-card--expanded' : ''}${newOfferIds?.has(offerKey) ? ' rf-card--new' : ''}`}>
-                {googleFlightsSavingsLabel && (
+                {(googleFlightsSavingsLabel || summaryBadges.length > 0) && (
                   <div className="rf-card-badges">
-                    <span className="rf-card-badge rf-card-badge--savings">{googleFlightsSavingsLabel}</span>
+                    {googleFlightsSavingsLabel && (
+                      <span className="rf-card-badge rf-card-badge--savings">{googleFlightsSavingsLabel}</span>
+                    )}
+                    {summaryBadges.map((badge) => (
+                      <span
+                        key={badge.key}
+                        className={`rf-card-badge rf-card-badge--detail-${badge.tone}`}
+                        title={badge.label}
+                      >
+                        {badge.label}
+                      </span>
+                    ))}
                   </div>
                 )}
                 {!isUnlocked && (

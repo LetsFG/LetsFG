@@ -38,7 +38,7 @@ $20–50 cheaper than travel websites.
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://api.letsfg.co/mcp",
+      "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }
@@ -295,7 +295,7 @@ Load only when needed:
 
 ## Links
 
-- **API Docs:** https://api.letsfg.co/docs
+- **API Docs:** https://letsfg.co/developers/api/docs
 - **GitHub:** https://github.com/LetsFG/LetsFG
 - **PyPI:** https://pypi.org/project/letsfg/
 - **npm SDK:** https://www.npmjs.com/package/letsfg

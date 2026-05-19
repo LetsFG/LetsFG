@@ -1,4 +1,4 @@
-﻿// Shared NL query parser — used by /api/search and the SSR /results?q= page
+// Shared NL query parser — used by /api/search and the SSR /results?q= page
 // Handles: EN, DE, ES, FR, IT, NL, PL, PT, SQ (Albanian), HR (Croatian), SV (Swedish)
 // Also handles: filler words, typos via accent-stripping, ordinals, DD/MM/YYYY, relative dates
 
@@ -2467,6 +2467,7 @@ export interface ParsedQuery {
   cabin?: 'M' | 'W' | 'C' | 'F'   // M=economy, W=premium economy, C=business, F=first
   stops?: number                     // 0 = direct/nonstop only
   failed_origin_raw?: string         // raw text that didn't resolve to an airport
+  same_route?: boolean               // true when both route sides resolved to the same airport/city and we need destination clarification
   failed_destination_raw?: string
   origin_candidates?: Array<{ code: string; name: string }>      // top fuzzy matches when origin failed (for disambiguation chips)
   destination_candidates?: Array<{ code: string; name: string }> // top fuzzy matches when destination failed
@@ -3485,6 +3486,18 @@ function extractTripPurpose(text: string): ParsedQuery['trip_purpose'] {
     /\b(?:medeni\s+mjesec|romantično\s+putovanje|bračno\s+putovanje)\b/.test(t) ||                 // HR
     /\b(?:muaja\s+e\s+mjaltit|udh[eë]tim\s+romantik)\b/.test(t)                                    // SQ
   ) return 'honeymoon'
+
+  // ── Special occasion / celebration ────────────────────────────────────────
+  if (
+    /\b(?:special\s+occasion|birthday\s+(?:trip|holiday|vacation|getaway)|celebration\s+(?:trip|holiday|vacation|getaway)|proposal\s+(?:trip|getaway)|engagement\s+(?:trip|holiday)|surprise\s+(?:trip|getaway)|celebrating\s+(?:a\s+)?(?:birthday|engagement|proposal|special\s+occasion))\b/.test(t) ||
+    /\b(?:besonderer\s+anlass|geburtstags(?:reise|urlaub)|feier(?:reise|urlaub)?|verlobungs(?:reise|urlaub)|antrags(?:reise|trip))\b/.test(t) ||
+    /\b(?:ocasion\s+especial|cumplea[nñ]os\s+(?:viaje|escapada|vacaciones)|viaje\s+de\s+celebracion|viaje\s+de\s+compromiso|viaje\s+de\s+pedida)\b/.test(t) ||
+    /\b(?:occasion\s+speciale|anniversaire\s+(?:voyage|escapade|vacances)|voyage\s+de\s+celebration|voyage\s+de\s+fiancailles|demande\s+en\s+mariage)\b/.test(t) ||
+    /\b(?:occasione\s+speciale|compleanno\s+(?:viaggio|vacanza)|viaggio\s+di\s+celebrazione|viaggio\s+di\s+fidanzamento|proposta\s+di\s+matrimonio)\b/.test(t) ||
+    /\b(?:bijzondere\s+gelegenheid|verjaardags(?:reis|vakantie)|feest(?:reis|vakantie)|verlovings(?:reis|vakantie)|aanzoek(?:reis|trip))\b/.test(t) ||
+    /\b(?:specjalna\s+okazja|urodzinow(?:y|a)\s+(?:wyjazd|urlop)|wyjazd\s+na\s+urodziny|wyjazd\s+z\s+okazji\s+zar[eę]czyn|podr[oó][zż]\s+na\s+specjaln[aą]\s+okazj[eę])\b/.test(t) ||
+    /\b(?:ocasiao\s+especial|aniversario\s+(?:viagem|ferias)|viagem\s+de\s+celebracao|viagem\s+de\s+noivado|pedido\s+de\s+casamento)\b/.test(t)
+  ) return 'special_occasion'
 
   // ── Business / work ─────────────────────────────────────────────────────────
   if (
@@ -4918,6 +4931,18 @@ export function parseNLQuery(query: string): ParsedQuery {
     }
   }
 
+  // Same-airport routes are not valid searches. Keep the origin, clear the
+  // destination, and preserve the raw destination token so the convo flow can
+  // replace it in-place instead of appending a second "to ..." clause.
+  if (result.origin && result.destination && result.origin === result.destination && !result.anywhere_destination) {
+    const sameRouteDestinationRaw = destStr || result.destination_name || result.destination
+    delete result.destination
+    delete result.destination_name
+    delete result.destination_candidates
+    if (sameRouteDestinationRaw) result.failed_destination_raw = sameRouteDestinationRaw
+    result.same_route = true
+  }
+
   // ── 3. Date extraction helper ────────────────────────────────────────────
   function extractDate(text: string): string | undefined {
     const t = text.trim()
@@ -5778,12 +5803,9 @@ export function parseNLQuery(query: string): ParsedQuery {
     }
   }
 
-  // ── 17. Purpose → cabin upgrade hints ─────────────────────────────────────
-  // Honeymoon / business trip → suggest business class if no cabin set
-  if (!result.cabin) {
-    if (result.trip_purpose === 'honeymoon') result.cabin = 'C' // business as a romantic upgrade hint
-    // (business trip — leave cabin undefined; let user decide, but prefer_direct is already set)
-  }
+  // ── 17. Purpose-only hints stop at purpose ────────────────────────────────
+  // Honeymoon / special occasion inform ranking profiles, but they are not an
+  // explicit cabin preference. Keep cabin undefined unless the user said it.
 
   // ── 18. Hard vs soft stop inference ─────────────────────────────────────
   // If prefer_direct is set but stops=0 not yet set, don't override user's filter.
@@ -5798,3 +5820,5 @@ export function parseNLQuery(query: string): ParsedQuery {
 
   return result
 }
+
+

@@ -78,7 +78,7 @@ New Programmatic Flight Pages feature code goes in:
 
 LetsFG is an agent-native flight search & booking platform. This public repository contains the SDKs, 180+ local airline connectors, and documentation. The backend API runs on Cloud Run and is in a separate private repository.
 
-**API Base URL:** `https://api.letsfg.co`
+**API Base URL:** `https://letsfg.co/developers/api/v1`
 
 ## Repository Structure
 
@@ -249,10 +249,12 @@ npm publish
 
 ## API Endpoints
 
+Public developer onboarding and search docs are served from `https://letsfg.co/developers/api/docs` with base `https://letsfg.co/developers/api/v1`.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/agents/register` | Register for an API key |
-| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method (required for booking) |
+| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method for browserless public onboarding |
 | `GET`  | `/api/v1/agents/me` | Agent profile + usage stats |
 | `POST` | `/api/v1/agents/link-github` | Star repo for free access |
 | `POST` | `/api/v1/flights/search` | Search flights (cloud providers) |
@@ -268,7 +270,7 @@ npm publish
 
 ## Links
 
-- **API Docs:** https://api.letsfg.co/docs
+- **API Docs:** https://letsfg.co/developers/api/docs
 - **PyPI:** https://pypi.org/project/letsfg/
 - **npm SDK:** https://www.npmjs.com/package/letsfg
 - **npm MCP:** https://www.npmjs.com/package/letsfg-mcp

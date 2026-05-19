@@ -1,0 +1,565 @@
+[
+  {
+    "route": "BCN->ATH",
+    "date": "2026-06-22",
+    "seller": "Vueling airline",
+    "seller_price": 68.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://tickets.vueling.com/booking/selectFlight",
+    "checkout_page": "extras",
+    "categories": [
+      "baggage",
+      "packages"
+    ],
+    "fare_bundle_labels": [
+      "FLY LIGHT",
+      "FLY",
+      "FLY GRANDE"
+    ],
+    "conditions": {
+      "fare_family": "FLY LIGHT",
+      "fare_bundle": "FLY LIGHT",
+      "fare_bundle_description": "Travel with essentials",
+      "fare_bundle_benefits": "1 underseat cabin bag Max. 40x30x20 cm; Check-in available 24 hours in advance",
+      "cabin_bag": "included - 1 underseat cabin bag Max. 40x30x20 cm",
+      "fare_bundle_upgrades": "FLY (+72.00 EUR): 1 underseat cabin bag Max. 40x30x20 cm; Choose your luggage 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm 1 checked bag (25 kg) (+€32,00); Choose standard seats; Check-in available immediately; 15% more tier points | FLY GRANDE (+162.00 EUR): 1 underseat cabin bag Max. 40x30x20 cm; 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm; 1 checked bag (25 kg); Choose exclusive seats; Changes and cancellation; Priority at the airport; Check-in available immediately; 25% more tier points"
+    },
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": [
+      {
+        "label": "FLY LIGHT",
+        "fare_family": "FLY LIGHT",
+        "summary": "Travel with essentials",
+        "benefits": [
+          "1 underseat cabin bag Max. 40x30x20 cm",
+          "Check-in available 24 hours in advance"
+        ],
+        "currency": "EUR",
+        "amount": 0.0,
+        "included": true,
+        "type": "package",
+        "description": "Travel with essentials; 1 underseat cabin bag Max. 40x30x20 cm; Check-in available 24 hours in advance",
+        "text": "FLY LIGHT Travel with essentials 1 underseat cabin bag Max. 40x30x20 cm Check-in available 24 hours in advance You can add extras later on + SELECT BUNDLE €0 per person Ticket price per person €191,99",
+        "selected": true
+      },
+      {
+        "label": "FLY",
+        "fare_family": "FLY",
+        "summary": "Select the luggage you want to bring",
+        "benefits": [
+          "1 underseat cabin bag Max. 40x30x20 cm",
+          "Choose your luggage 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm 1 checked bag (25 kg) (+€32,00)",
+          "Choose standard seats",
+          "Check-in available immediately",
+          "15% more tier points"
+        ],
+        "currency": "EUR",
+        "amount": 72.0,
+        "included": false,
+        "type": "package",
+        "description": "Select the luggage you want to bring; 1 underseat cabin bag Max. 40x30x20 cm; Choose your luggage 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm 1 checked bag (25 kg) (+€32,00); Choose standard seats; Check-in available immediately; 15% more tier points",
+        "text": "FLY Select the luggage you want to bring 1 underseat cabin bag Max. 40x30x20 cm Choose your luggage 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm 1 checked bag (25 kg) (+€32,00) Choose standard seats Check-in available immediately 15% more tier points + SELECT BUNDLE BY +72,00 € PER PERSON €72.00 per person on top of the ticket price",
+        "selected": false
+      },
+      {
+        "label": "FLY GRANDE",
+        "fare_family": "FLY GRANDE",
+        "summary": "A more complete trip",
+        "benefits": [
+          "1 underseat cabin bag Max. 40x30x20 cm",
+          "1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm",
+          "1 checked bag (25 kg)",
+          "Choose exclusive seats",
+          "Changes and cancellation",
+          "Priority at the airport",
+          "Check-in available immediately",
+          "25% more tier points"
+        ],
+        "currency": "EUR",
+        "amount": 162.0,
+        "included": false,
+        "type": "package",
+        "description": "A more complete trip; 1 underseat cabin bag Max. 40x30x20 cm; 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm; 1 checked bag (25 kg); Choose exclusive seats; Changes and cancellation; Priority at the airport; Check-in available immediately; 25% more tier points",
+        "text": "Only during the booking process FLY GRANDE A more complete trip 1 underseat cabin bag Max. 40x30x20 cm 1 piece of luggage in the overhead locker Max. 10 kg and 55x40x20 cm 1 checked bag (25 kg) Choose exclusive seats Changes and cancellation Priority at the airport Check-in available immediately 25% more tier points + SELECT BUNDLE BY +162,00 € PER PERSON €162.00 per person on top of the ticket price",
+        "selected": false
+      }
+    ],
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": "Vueling fare bundles were opened from the selected-flight page and parsed from the live booking surface.",
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "KUL->NRT",
+    "date": "2026-06-21",
+    "seller": "Vietjet airline",
+    "seller_price": 459.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.vietjetair.com/en/select-flight",
+    "checkout_page": "passengers",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "LHR->JFK",
+    "date": "2026-06-18",
+    "seller": "British Airways airline",
+    "seller_price": 902.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.google.com/travel/flights/booking?tfs=CBwQAho_EgoyMDI2LTA2LTE4Ih8KA0xIUhIKMjAyNi0wNi0xOBoDSkZLKgJCQTIDMTc1agcIARIDTEhScgcIARIDSkZLGj8SCjIwMjYtMDYtMjIiHwoDSkZLEgoyMDI2LTA2LTIyGgNMSFIqAkFBMgMxMDBqBwgBEgNKRktyBwgBEgNMSFJAAUgBcAGCAQsI____________AZgBAQ&tfu=CmxDalJJVkVFd2FXcDRhRmswVVd0QlFVaHlkRkZDUnkwdExTMHRMUzB0TFdWcVpXb3lOa0ZCUVVGQlIyOU1WVFJ6UWxKU2RVdEJFZ1ZCUVRFd01Cb0xDUE8vQlJBQ0dnTkZWVkk0SEhDTnRBWT0SAggAIgYKATESATA&hl=en&curr=EUR",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage",
+      "seat_selection"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag: ()",
+        "text": "1st checked bag: €162 (£140)",
+        "currency": "EUR",
+        "amount": 162,
+        "included": false,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "2 free checked bags",
+        "text": "2 free checked bags",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "CGK->DPS",
+    "date": "2026-06-24",
+    "seller": "Lion airline",
+    "seller_price": 167.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.lionair.co.id/",
+    "checkout_page": "passengers",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "MEX->CUN",
+    "date": "2026-06-20",
+    "seller": "Despegar",
+    "seller_price": 115.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.despegar.com.mx/shop/flights/results/generate?Adult=1&PointOfSaleCountry=MX&DisplayedPrice=2305&DisplayedPriceCurrency=MXN&UserLanguage=en&TripType=RoundTrip&Slice1=1&Slice2=2&Cabin1=Economy&Carrier1=AM&DepartureDate1=2026-06-20&DepartureTime1=17:55&ArrivalDate1=2026-06-20&ArrivalTime1=21:28&Origin1=MEX&Destination1=CUN&BookingCode1=V&FlightNumber1=560&Cabin2=Economy&Carrier2=AM&DepartureDate2=2026-06-24&DepartureTime2=11:27&ArrivalDate2=2026-06-24&ArrivalTime2=12:55&Origin2=CUN&Destination2=MEX&BookingCode2=V&FlightNumber2=523&t=1779127234&sig=AXDzI-FVHpk_vkjuIqqoHavkaL9OKoaJo_Ga6Ri_i-Etzm48JWtNl6s-bges80dFwi1tbhBsDvPva4c91znDDuyvlJNYC2vivuifaXLR7vdVe9ilVIIszAx55yiozE3rOUd-tPdPpGY_CDRkGMRkfyYbj9a71YWXECFFJ7JU4EROljjWwk7wBzBEThwyUOAX2bt2XO7WiOUrwNzbpnxHOKMd48k6t1IKQ9wO6qaLuyXMUWBWrAuga5gEcddIAhzZ6zixCkMZhDx8_Sq9-rIwZno9BnUPqWu7osr7uRv4iuD39-eR1Z_6-csrMxP5nWfEqYmULMsWu_qajNXir-5v-rd_eMQvVNf_XM_z4e6oxPQT4uRQrZyU-WSl4lf4hKXw8n-tV7vKgIjrzd5BFteTYja4sKj3CDxEYYfpGgH8ehdq2o4BoesVGOtC4ZPWT3EOlX2c_r54GEq6VDPMO7zu1-krbJJArh5BPiq-1K5DRTvDj1Ad3XIyU6RDaM9MnlYsukgPBJ0%3D&ReferralId=GOOG_GFS_712&refererEvent=google-gfs&clt_n=gf&clt_pr=V&clt_cc=MX&clt_c=MX-V-GoogleFlights&clt_rut=MEX_CUN_AM_CUN_MEX_AM",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "FCO->LHR",
+    "date": "2026-06-19",
+    "seller": "martiGO",
+    "seller_price": 358.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.martigo.pl/service/flight?Adult=1&Child=0&Infant=0&PointOfSaleCountry=IT&DisplayedPrice=357.51&DisplayedPriceCurrency=EUR&UserLanguage=pl&UserCurrency=PLN&TripType=Return&ValidatingCarrier=BA&Slice1=1&Slice2=2,3&Cabin1=Economy&Carrier1=BA&DepartureDate1=2026-06-19&Origin1=FCO&Destination1=LHR&BookingCode1=O&FlightNumber1=561&Cabin2=Economy&Carrier2=BA&DepartureDate2=2026-06-23&Origin2=LHR&Destination2=MAD&BookingCode2=N&FlightNumber2=7059&Cabin3=Economy&Carrier3=IB&DepartureDate3=2026-06-23&Origin3=MAD&Destination3=FCO&BookingCode3=N&FlightNumber3=657&ReferralId=GOOG_GFS_712",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "BEY->CDG",
+    "date": "2026-06-25",
+    "seller": "MEA airline",
+    "seller_price": 1027.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.mea.com.lb/english/plan-and-book/book-a-trip?AFT=v6EPPNv7FsdCuvALZaD8P4w&A=1&C=0&I=0&CC=E&F=BEY&T=CDG&D=2026-06-25&R=2026-06-29&RT=1&TS=2026-05-18+18:01:12&CUR=USD&utm_source=google&utm_medium=microsite&utm_campaign=google_deeplinks&utm_term&utm_content&Digest=863D1EC9950F36CE31C7C3828F588ADC",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag up to 23 kg free",
+        "text": "1st checked bag up to 23 kg free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "MAD->BCN",
+    "date": "2026-06-23",
+    "seller": "martiGO",
+    "seller_price": 242.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.martigo.pl/service/flight?Adult=1&Child=0&Infant=0&PointOfSaleCountry=ES&DisplayedPrice=241.99&DisplayedPriceCurrency=EUR&UserLanguage=pl&UserCurrency=PLN&TripType=Return&ValidatingCarrier=IB&Slice1=1&Slice2=2&Cabin1=Economy&Carrier1=IB&DepartureDate1=2026-06-23&Origin1=MAD&Destination1=BCN&BookingCode1=Q&FlightNumber1=427&Cabin2=Economy&Carrier2=IB&DepartureDate2=2026-06-27&Origin2=BCN&Destination2=MAD&BookingCode2=L&FlightNumber2=418&ReferralId=GOOG_GFS_712",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage",
+      "meals",
+      "seat_selection"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": [
+      {
+        "label": "Free meal service",
+        "text": "Free meal service",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "meals"
+      }
+    ],
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "DOH->LHR",
+    "date": "2026-06-24",
+    "seller": "martiGO",
+    "seller_price": 799.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.martigo.pl/service/flight?Adult=1&Child=0&Infant=0&PointOfSaleCountry=QA&DisplayedPrice=3400&DisplayedPriceCurrency=QAR&UserLanguage=pl&UserCurrency=PLN&TripType=Return&ValidatingCarrier=EY&Slice1=1,2&Slice2=3,4&Cabin1=Economy&Carrier1=EY&DepartureDate1=2026-06-24&Origin1=DOH&Destination1=AUH&BookingCode1=Q&FlightNumber1=664&Cabin2=Economy&Carrier2=EY&DepartureDate2=2026-06-24&Origin2=AUH&Destination2=LHR&BookingCode2=Q&FlightNumber2=63&Cabin3=Economy&Carrier3=EY&DepartureDate3=2026-06-28&Origin3=LHR&Destination3=AUH&BookingCode3=Q&FlightNumber3=64&Cabin4=Economy&Carrier4=EY&DepartureDate4=2026-06-29&Origin4=AUH&Destination4=DOH&BookingCode4=Q&FlightNumber4=663&ReferralId=GOOG_GFS_712",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "DXB->LHR",
+    "date": "2026-06-24",
+    "seller": "martiGO",
+    "seller_price": 564.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.martigo.pl/service/flight?Adult=1&Child=0&Infant=0&PointOfSaleCountry=AE&DisplayedPrice=2410&DisplayedPriceCurrency=AED&UserLanguage=pl&UserCurrency=PLN&TripType=Return&ValidatingCarrier=RJ&Slice1=1,2&Slice2=3,4&Cabin1=Economy&Carrier1=RJ&DepartureDate1=2026-06-24&Origin1=DXB&Destination1=AMM&BookingCode1=O&FlightNumber1=613&Cabin2=Economy&Carrier2=RJ&DepartureDate2=2026-06-24&Origin2=AMM&Destination2=LHR&BookingCode2=O&FlightNumber2=111&Cabin3=Economy&Carrier3=RJ&DepartureDate3=2026-06-28&Origin3=LHR&Destination3=AMM&BookingCode3=P&FlightNumber3=112&Cabin4=Economy&Carrier4=RJ&DepartureDate4=2026-06-29&Origin4=AMM&Destination4=DXB&BookingCode4=P&FlightNumber4=610&ReferralId=GOOG_GFS_712",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag free",
+        "text": "1st checked bag free",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "SIN->BKK",
+    "date": "2026-06-24",
+    "seller": "Scoot airline",
+    "seller_price": 219.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://booking.flyscoot.com/book/flight/return/SIN/2026-06-24/BKK/BKK/2026-06-28/SIN?adult=1&child=0&infant=0&orgToken=VEUtiuQY/mW09sQ6I0betQ%3D%3D&utm_source=GoogleFlights&utm_medium=Referral&utm_campaign=GoogleFlights_deeplink",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  },
+  {
+    "route": "JFK->LAX",
+    "date": "2026-06-24",
+    "seller": "Delta, Delta Main Basic",
+    "seller_price": 496.0,
+    "seller_currency": "EUR",
+    "resolved_booking_url": "https://www.delta.com/flight-search/search?cabin=BASIC-ECONOMY&paxCount=1&price=576.79&tripType=roundTrip&exitCountry=US&currencyCd=USD&fareBasis=TAWQA0BQ:UAVGA0BQ&vendorRedirectFlag=true&vendorID=Google&itinSegment%5B0%5D=0:E:JFK:LAX:DL:771:JUN:24:2026:06P&itinSegment%5B1%5D=1:E:LAX:JFK:DL:676:JUN:28:2026:10P&numOfSegments=2&mkcpgn=MS_GFSR_DESK_DOM_TR_DL_140414_GFSDESK_PL",
+    "checkout_page": "payment",
+    "categories": [
+      "baggage",
+      "seat_selection"
+    ],
+    "fare_bundle_labels": [],
+    "conditions": null,
+    "meals": null,
+    "wifi": null,
+    "insurance": null,
+    "priority": null,
+    "lounge": null,
+    "baggage": [
+      {
+        "label": "1 free carry-on",
+        "text": "1 free carry-on",
+        "currency": "EUR",
+        "amount": null,
+        "included": true,
+        "type": "baggage"
+      },
+      {
+        "label": "1st checked bag: ()",
+        "text": "1st checked bag: €78 ($90)",
+        "currency": "EUR",
+        "amount": 78,
+        "included": false,
+        "type": "baggage"
+      }
+    ],
+    "packages": null,
+    "generic_discovery_observation": null,
+    "vueling_bundle_observation": null,
+    "status": "ok",
+    "source": "serpapi_google_ota"
+  }
+]
