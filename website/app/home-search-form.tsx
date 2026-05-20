@@ -4,7 +4,7 @@ import { FormEvent, useState, useRef, useEffect, useCallback, KeyboardEvent, sta
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { findBestMatch, getAirportName, normalizeForSearch, AIRPORTS, Airport, searchAirports } from './airports'
+import { findBestMatch, getAirportName, Airport, searchAirports } from './airports'
 import { findNearestAirport } from './lib/nearby-airports'
 import {
   CURRENCY_CHANGE_EVENT,
@@ -139,109 +139,6 @@ const ANCILLARY_KEYWORDS: Record<string, string[]> = {
   sq: ['me bagazh', 'me zgjedhje vendi', 'vetëm bagazh dore'],
 }
 
-// Month names by locale
-const MONTH_NAMES: Record<string, string[]> = {
-  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
-  pl: ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'],
-  de: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
-  es: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
-  fr: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
-  it: ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'],
-  pt: ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'],
-  nl: ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'],
-  sv: ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'],
-  hr: ['siječnja', 'veljače', 'ožujka', 'travnja', 'svibnja', 'lipnja', 'srpnja', 'kolovoza', 'rujna', 'listopada', 'studenoga', 'prosinca'],
-  sq: ['janar', 'shkurt', 'mars', 'prill', 'maj', 'qershor', 'korrik', 'gusht', 'shtator', 'tetor', 'nëntor', 'dhjetor'],
-}
-
-// Ordinal suffixes for English
-function getOrdinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return n + (s[(v - 20) % 10] || s[v] || s[0])
-}
-
-// Generate a dynamic date suggestion based on current date
-function generateDateSuggestion(locale: string, isReturn: boolean = false): string {
-  const now = new Date()
-  // Random offset: 7-60 days for outbound, +3-14 days for return
-  const baseOffset = isReturn ? 3 : 7
-  const randomOffset = Math.floor(Math.random() * (isReturn ? 12 : 54)) + baseOffset
-  const targetDate = new Date(now.getTime() + randomOffset * 24 * 60 * 60 * 1000)
-  
-  const day = targetDate.getDate()
-  const month = targetDate.getMonth()
-  const months = MONTH_NAMES[locale] || MONTH_NAMES.en
-  const monthName = months[month]
-  
-  // Format varies by locale
-  switch (locale) {
-    case 'en':
-      return `on ${monthName} ${getOrdinal(day)}`
-    case 'pl':
-      return `${day} ${monthName}`
-    case 'de':
-      return `am ${day}. ${monthName}`
-    case 'es':
-      return `el ${day} de ${monthName}`
-    case 'fr':
-      return `le ${day} ${monthName}`
-    case 'it':
-      return `il ${day} ${monthName}`
-    case 'pt':
-      return `${day} de ${monthName}`
-    case 'nl':
-      return `op ${day} ${monthName}`
-    case 'sv':
-      return `den ${day} ${monthName}`
-    case 'hr':
-      return `${day}. ${monthName}`
-    case 'sq':
-      return `më ${day} ${monthName}`
-    default:
-      return `on ${monthName} ${getOrdinal(day)}`
-  }
-}
-
-// Generate return date suggestion
-function generateReturnSuggestion(locale: string): string {
-  const returnWord = (RETURN_KEYWORDS[locale] || RETURN_KEYWORDS.en)[0]
-  const dateSuggestion = generateDateSuggestion(locale, true)
-  return `, ${returnWord} ${dateSuggestion}`
-}
-
-// Generate direct flight suggestion
-function generateDirectSuggestion(locale: string): string {
-  const directWord = (DIRECT_KEYWORDS[locale] || DIRECT_KEYWORDS.en)[0]
-  return `, ${directWord}`
-}
-
-// Generate class suggestion
-function generateClassSuggestion(locale: string): string {
-  const classes = CLASS_KEYWORDS[locale] || CLASS_KEYWORDS.en
-  // Randomly pick business or economy
-  const classWord = Math.random() > 0.5 ? classes[0] : classes[1]
-  return `, ${classWord}`
-}
-
-// Generate time filter suggestion
-function generateTimeSuggestion(locale: string): string {
-  const times = TIME_KEYWORDS[locale] || TIME_KEYWORDS.en
-  const timeOptions: Record<string, string> = {
-    en: ['morning departure', 'afternoon flight', 'evening departure', 'departing after 2pm', 'leaving before noon'][Math.floor(Math.random() * 5)],
-    pl: ['wylot rano', 'lot popołudniowy', 'wylot wieczorem', 'wylot po 14:00'][Math.floor(Math.random() * 4)],
-    de: ['morgens abflug', 'nachmittags', 'abends abflug', 'abflug nach 14 Uhr'][Math.floor(Math.random() * 4)],
-    es: ['salida por la mañana', 'vuelo de tarde', 'salida por la noche'][Math.floor(Math.random() * 3)],
-    fr: ['départ le matin', 'vol l\'après-midi', 'départ le soir'][Math.floor(Math.random() * 3)],
-    it: ['partenza di mattina', 'volo pomeridiano', 'partenza di sera'][Math.floor(Math.random() * 3)],
-    pt: ['partida de manhã', 'voo à tarde', 'partida à noite'][Math.floor(Math.random() * 3)],
-    nl: ['ochtend vertrek', 'middag vlucht', 'avond vertrek'][Math.floor(Math.random() * 3)],
-    sv: ['avgång på morgonen', 'eftermiddagsflyg', 'kvällsavgång'][Math.floor(Math.random() * 3)],
-    hr: ['polazak ujutro', 'popodnevni let', 'večernji polazak'][Math.floor(Math.random() * 3)],
-    sq: ['nisje në mëngjes', 'fluturim pasdite', 'nisje në mbrëmje'][Math.floor(Math.random() * 3)],
-  }
-  return `, ${timeOptions[locale] || timeOptions.en}`
-}
 
 type GeminiClarificationResponse = {
   follow_up_questions?: GeminiClarificationQuestion[] | null
@@ -433,279 +330,6 @@ function parseQuery(query: string, locale: string): ParsedQuery {
   }
 }
 
-function getSuggestion(query: string, locale: string): string {
-  if (!query || query.length < 2) return ''
-  
-  const parsed = parseQuery(query, locale)
-  const toWord = (TO_KEYWORDS[locale] || TO_KEYWORDS.en)[0]
-  
-  // Helper to get airport name completion
-  const getNameCompletion = (input: string, airport: Airport): string => {
-    const fullName = getAirportName(airport, locale)
-    const normalizedInput = normalizeForSearch(input)
-    const normalizedFull = normalizeForSearch(fullName)
-    
-    if (!normalizedFull.startsWith(normalizedInput) || normalizedInput.length >= normalizedFull.length) {
-      return ''
-    }
-    
-    let completionStart = input.length
-    let matchedSoFar = 0
-    for (let i = 0; i < fullName.length && matchedSoFar < input.length; i++) {
-      const fullChar = normalizeForSearch(fullName[i])
-      const inputChar = normalizeForSearch(input[matchedSoFar])
-      if (fullChar === inputChar) {
-        matchedSoFar++
-        completionStart = i + 1
-      }
-    }
-    
-    return fullName.slice(completionStart)
-  }
-  
-  // Helper to get trailing partial word from query (after last space/comma)
-  const getTrailingPartial = (): string => {
-    const trimmed = query.trimEnd()
-    const lastSep = Math.max(trimmed.lastIndexOf(' '), trimmed.lastIndexOf(','))
-    if (lastSep === -1) return trimmed.toLowerCase()
-    return trimmed.slice(lastSep + 1).trim().toLowerCase()
-  }
-  
-  // Helper to find keyword completion - checks if partial is prefix of any keyword
-  const getKeywordCompletion = (partial: string, keywords: string[]): string | null => {
-    if (!partial || partial.length < 2) return null
-    const lowerPartial = partial.toLowerCase()
-    for (const kw of keywords) {
-      if (kw.toLowerCase().startsWith(lowerPartial) && kw.toLowerCase() !== lowerPartial) {
-        return kw.slice(partial.length)
-      }
-    }
-    return null
-  }
-  
-  // Stage 1: Just typing origin (no "to" yet)
-  if (!parsed.toKeyword && parsed.origin) {
-    const match = findBestMatch(parsed.origin, locale)
-    if (match) {
-      const completion = getNameCompletion(parsed.origin, match)
-      if (completion) {
-        return completion + ' ' + toWord + ' ...'
-      }
-    }
-    return ''
-  }
-  
-  // Stage 2: Has "to" but no destination yet
-  if (parsed.toKeyword && !parsed.destination) {
-    return ' ...'
-  }
-  
-  // Stage 3+: Has "to" and destination (possibly partial)
-  if (parsed.toKeyword && parsed.destination) {
-    // If user is typing "anywhere" / "wherever" / etc — confirm the open-search intent
-    const anywhereRe = /^(?:anywhere|wherever|any(?:\s+(?:destination|place|airport|country))?|surprise\s*me)/i
-    if (anywhereRe.test(parsed.destination.trim())) {
-      return ''
-    }
-
-    // Only do airport matching while destination is still being typed (no date yet)
-    if (!parsed.hasOutboundDate) {
-      const match = findBestMatch(parsed.destination, locale)
-      if (match) {
-        const completion = getNameCompletion(parsed.destination, match)
-        if (completion) {
-          // Suggest rest of destination + outbound date
-          return completion + ' ' + generateDateSuggestion(locale)
-        }
-      }
-    }
-    
-    // Stage 4: Need outbound date
-    if (!parsed.hasOutboundDate) {
-      return ' ' + generateDateSuggestion(locale)
-    }
-    
-    // Stage 5: Have outbound date, suggest return or trip duration
-    if (parsed.hasOutboundDate && !parsed.hasReturnKeyword && !parsed.hasReturnDate) {
-      const trailing = getTrailingPartial()
-      const returnKeywords = RETURN_KEYWORDS[locale] || RETURN_KEYWORDS.en
-      const completion = getKeywordCompletion(trailing, returnKeywords)
-      if (completion !== null) {
-        // User is typing return keyword - complete it + add date
-        const returnDate = generateReturnSuggestion(locale)
-        // returnDate is like ", returning on May 5th" - extract just the date part
-        const dateMatch = returnDate.match(/\d+/)
-        if (dateMatch) {
-          const months = MONTH_NAMES[locale] || MONTH_NAMES.en
-          const futureDate = new Date()
-          futureDate.setDate(futureDate.getDate() + 7 + Math.floor(Math.random() * 54) + 3 + Math.floor(Math.random() * 12))
-          const month = months[futureDate.getMonth()]
-          const day = futureDate.getDate()
-          return completion + ' ' + month + ' ' + day
-        }
-        return completion
-      }
-      // Check if query ends with comma or space (ready for return keyword or trip duration)
-      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
-      if (endsWithSep) {
-        // Alternate between suggesting a return date and a trip duration range
-        if (Math.random() < 0.4) {
-          // Suggest trip duration style: "for 7-10 days"
-          const durSuggestion = generateTripDurationSuggestion(locale)
-          const trimmed = durSuggestion.replace(/^[,\s]+/, '')
-          return (query.endsWith(', ') || query.endsWith(' ')) ? trimmed : ' ' + trimmed
-        }
-        // Suggest full return phrase but without leading comma/space
-        const returnKw = returnKeywords[0]
-        const months = MONTH_NAMES[locale] || MONTH_NAMES.en
-        const futureDate = new Date()
-        futureDate.setDate(futureDate.getDate() + 7 + Math.floor(Math.random() * 54) + 3 + Math.floor(Math.random() * 12))
-        const month = months[futureDate.getMonth()]
-        const day = futureDate.getDate()
-        if (query.endsWith(', ') || query.endsWith(' ')) {
-          return returnKw + ' ' + month + ' ' + day
-        }
-        return ' ' + returnKw + ' ' + month + ' ' + day
-      }
-      return generateReturnSuggestion(locale)
-    }
-    
-    // Stage 6: Have return, suggest direct (or complete partial direct keyword)
-    if ((parsed.hasReturnDate || parsed.hasReturnKeyword) && !parsed.hasDirectKeyword) {
-      const trailing = getTrailingPartial()
-      const directKeywords = DIRECT_KEYWORDS[locale] || DIRECT_KEYWORDS.en
-      const completion = getKeywordCompletion(trailing, directKeywords)
-      if (completion !== null) {
-        return completion
-      }
-      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
-      if (endsWithSep) {
-        const directKw = directKeywords[0]
-        if (query.endsWith(', ') || query.endsWith(' ')) {
-          return directKw
-        }
-        return ' ' + directKw
-      }
-      return generateDirectSuggestion(locale)
-    }
-    
-    // Stage 7: Have direct, suggest class (or complete partial class keyword)
-    if (parsed.hasDirectKeyword && !parsed.hasClassKeyword) {
-      const trailing = getTrailingPartial()
-      const classKeywords = CLASS_KEYWORDS[locale] || CLASS_KEYWORDS.en
-      const completion = getKeywordCompletion(trailing, classKeywords)
-      if (completion !== null) {
-        return completion
-      }
-      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
-      if (endsWithSep) {
-        const classKw = classKeywords[Math.floor(Math.random() * classKeywords.length)]
-        if (query.endsWith(', ') || query.endsWith(' ')) {
-          return classKw
-        }
-        return ' ' + classKw
-      }
-      return generateClassSuggestion(locale)
-    }
-    
-    // Stage 8: Have class, suggest time (or complete partial time keyword)
-    if (parsed.hasClassKeyword && !parsed.hasTimeKeyword) {
-      const trailing = getTrailingPartial()
-      const timeKeywords = TIME_KEYWORDS[locale] || TIME_KEYWORDS.en
-      const completion = getKeywordCompletion(trailing, timeKeywords)
-      if (completion !== null) {
-        return completion
-      }
-      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
-      if (endsWithSep) {
-        const timeKw = timeKeywords[Math.floor(Math.random() * timeKeywords.length)]
-        if (query.endsWith(', ') || query.endsWith(' ')) {
-          return timeKw
-        }
-        return ' ' + timeKw
-      }
-      return generateTimeSuggestion(locale)
-    }
-
-    // Stage 9: Have time (or direct/class filled), suggest passenger context if missing
-    const hasEnoughContext = parsed.hasReturnDate || parsed.hasReturnKeyword || parsed.hasTripDuration
-    if (hasEnoughContext && !parsed.hasPassengerKeyword) {
-      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
-      if (endsWithSep) {
-        return generatePassengerSuggestion(locale)
-      }
-    }
-
-    // Stage 10: Have passengers, suggest ancillaries if missing
-    if (parsed.hasPassengerKeyword && !parsed.hasAncillaryKeyword) {
-      const endsWithSep = query.endsWith(',') || query.endsWith(', ') || query.endsWith(' ')
-      if (endsWithSep) {
-        return generateAncillarySuggestion(locale)
-      }
-    }
-  }
-  
-  return ''
-}
-
-// Trip duration suffix suggestions for ghost text
-// Used after a date is typed: "... for 14 days" or "... for 7-10 days"
-function generateTripDurationSuggestion(locale: string): string {
-  const examples: Record<string, string[]> = {
-    en: [', for 7 days', ', for 10-14 days', ', for 2 weeks', ', back 14-18 days later'],
-    pl: [', na 7 dni', ', na 10-14 dni', ', na 2 tygodnie'],
-    de: [', für 7 Tage', ', für 10-14 Tage', ', für 2 Wochen'],
-    es: [', por 7 días', ', por 10-14 días', ', por 2 semanas'],
-    fr: [', pour 7 jours', ', pour 10-14 jours', ', pour 2 semaines'],
-    it: [', per 7 giorni', ', per 10-14 giorni', ', per 2 settimane'],
-    pt: [', por 7 dias', ', por 10-14 dias', ', por 2 semanas'],
-    nl: [', voor 7 dagen', ', voor 10-14 dagen', ', voor 2 weken'],
-    sv: [', i 7 dagar', ', i 10-14 dagar', ', i 2 veckor'],
-    hr: [', za 7 dana', ', za 10-14 dana'],
-    sq: [', për 7 ditë', ', për 10-14 ditë'],
-  }
-  const list = examples[locale] || examples.en
-  return list[Math.floor(Math.random() * list.length)]
-}
-
-// Passenger context ghost-text suggestions
-function generatePassengerSuggestion(locale: string): string {
-  const examples: Record<string, string[]> = {
-    en: ['with 2 adults', 'for a family', 'as a couple', 'solo', 'with kids'],
-    pl: ['dla 2 dorosłych', 'dla rodziny', 'jako para', 'samotnie', 'z dziećmi'],
-    de: ['für 2 Erwachsene', 'für die Familie', 'als Paar', 'alleine', 'mit Kindern'],
-    es: ['para 2 adultos', 'para la familia', 'en pareja', 'solo', 'con niños'],
-    fr: ['pour 2 adultes', 'en famille', 'en couple', 'seul', 'avec enfants'],
-    it: ['per 2 adulti', 'in famiglia', 'in coppia', 'da solo', 'con bambini'],
-    pt: ['para 2 adultos', 'em família', 'a dois', 'sozinho', 'com crianças'],
-    nl: ['voor 2 volwassenen', 'met gezin', 'als koppel', 'alleen', 'met kinderen'],
-    sv: ['för 2 vuxna', 'med familj', 'som par', 'ensam', 'med barn'],
-    hr: ['za 2 odrasle', 's obitelji', 'kao par', 'sam', 's djecom'],
-    sq: ['për 2 të rritur', 'me familje', 'si çift', 'vetëm', 'me fëmijë'],
-  }
-  const list = examples[locale] || examples.en
-  return list[Math.floor(Math.random() * list.length)]
-}
-
-// Ancillary ghost-text suggestions
-function generateAncillarySuggestion(locale: string): string {
-  const examples: Record<string, string[]> = {
-    en: ['with checked baggage', 'with seat selection', 'refundable', 'carry-on only', 'with meals'],
-    pl: ['z bagażem rejestrowanym', 'z wyborem miejsca', 'z możliwością zwrotu', 'tylko bagaż podręczny'],
-    de: ['mit Gepäck', 'mit Sitzplatzwahl', 'erstattungsfähig', 'nur Handgepäck'],
-    es: ['con equipaje facturado', 'con selección de asiento', 'reembolsable', 'solo equipaje de mano'],
-    fr: ['avec bagages enregistrés', 'avec choix de siège', 'remboursable', 'bagage cabine uniquement'],
-    it: ['con bagaglio registrato', 'con scelta del posto', 'rimborsabile', 'solo bagaglio a mano'],
-    pt: ['com bagagem despachada', 'com seleção de assento', 'reembolsável', 'só bagagem de mão'],
-    nl: ['met ruimbagage', 'met stoelkeuze', 'restitueerbaar', 'alleen handbagage'],
-    sv: ['med incheckat bagage', 'med platsval', 'återbetalningsbar', 'bara handbagage'],
-    hr: ['s predanom prtljagom', 's odabirom sjedišta', 'povratna karta', 'samo ručna prtljaga'],
-    sq: ['me bagazh të kontrolluar', 'me zgjedhje vendi', 'i rimbursueshëm', 'vetëm bagazh dore'],
-  }
-  const list = examples[locale] || examples.en
-  return list[Math.floor(Math.random() * list.length)]
-}
-
 // Determine which slot the user is currently filling and return top airport suggestions
 function computeDropdown(query: string, locale: string): { airports: Airport[]; slot: 'origin' | 'destination' } {
   if (!query || query.length < 2) return { airports: [], slot: 'origin' }
@@ -865,7 +489,6 @@ export default function HomeSearchForm({
   const [query, setQuery] = useState(normalizedInitialQuery || normalizedDetectedOrigin)
   const [prefCurrency, setPrefCurrency] = useState<CurrencyCode>(initialCurrency)
   const [suggestion, setSuggestion] = useState('')
-  const [inputScrollLeft, setInputScrollLeft] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [dropdownItems, setDropdownItems] = useState<Airport[]>([])
   const [dropdownSlot, setDropdownSlot] = useState<'origin' | 'destination'>('origin')
@@ -928,14 +551,6 @@ export default function HomeSearchForm({
       window.removeEventListener('mousemove', onMouseMove)
       el.removeEventListener('click', onClick, true)
     }
-  }, [])
-
-  useEffect(() => {
-    const input = inputRef.current
-    if (!input) return
-    const onScroll = () => setInputScrollLeft(input.scrollLeft)
-    input.addEventListener('scroll', onScroll)
-    return () => input.removeEventListener('scroll', onScroll)
   }, [])
 
   useEffect(() => {
@@ -1406,7 +1021,7 @@ export default function HomeSearchForm({
       params.set('launch', token)
     }
     setIsLoading(true)
-    router.push(`/results/pending?${params.toString()}`)
+    window.location.assign(`/results/pending?${params.toString()}`)
   }, [locale, prefCurrency, probeMode, router])
 
   // When the user picks a date from the clarification strip, replace the ambiguous
@@ -1512,15 +1127,14 @@ export default function HomeSearchForm({
     return () => { if (queryTimerRef.current) clearTimeout(queryTimerRef.current) }
   }, [inputValue])
 
-  // Suggestion updates when query settles
+  // Suggestion updates when autoPrefill state changes (typing suggestions removed — caused lag)
   useEffect(() => {
     if (autoPrefillPristine) {
       setSuggestion(buildAutoPrefillGhostSuffix(locale, heroPlaceholder))
       return
     }
-
-    setSuggestion(getSuggestion(query, locale))
-  }, [autoPrefillPristine, heroPlaceholder, locale, query])
+    setSuggestion('')
+  }, [autoPrefillPristine, heroPlaceholder, locale])
 
   // Dropdown updates debounced + deferred via startTransition so typing is never blocked
   useEffect(() => {
@@ -1665,7 +1279,7 @@ export default function HomeSearchForm({
             />
             {suggestion && (
               <span className="lp-sf-ghost" aria-hidden="true">
-                <span className="lp-sf-ghost-inner" style={{ transform: `translateX(-${inputScrollLeft}px)` }}>
+                <span className="lp-sf-ghost-inner">
                   <span className="lp-sf-ghost-hidden">{inputValue}</span>
                   <span className="lp-sf-ghost-suggestion">{suggestion}</span>
                 </span>
