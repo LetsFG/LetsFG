@@ -18,10 +18,30 @@ Thanks for your interest in contributing! 🚀
 
 ## Before You PR
 
-- Test locally with your own API key (run `letsfg register` — see the [README](README.md#cli) or [API docs](https://letsfg.co/developers/api/docs))
-- Run the relevant SDK tests (see below)
+- Test locally and run the relevant SDK tests (see [docs/TESTING.md](docs/TESTING.md) for the full testing guide)
 - Keep PRs focused — one thing per PR
 - Describe **what** you changed and **why**
+
+## Testing & Definition of Done
+
+**Every PR that adds or modifies behavior must include tests.** No exceptions.
+
+See **[docs/TESTING.md](docs/TESTING.md)** for the complete guide, including:
+- The three-tier test taxonomy (Tier-1 deterministic → Tier-2 live smoke → Tier-3 prod synthetic)
+- How to add a connector parsing test and fixture
+- How to register a Tier-2 test route
+- The Red-Green-Refactor mandate
+
+### Quick reference
+
+```bash
+# Tier-1 — must be green before merge
+cd website && npm run test:critical        # website critical-path
+cd sdk/python && pytest tests/ -m "not live"  # connector parsing
+
+# Tier-2 — live smoke for changed connectors (non-blocking)
+python connectors/tests/smoke_harness.py ryanair_direct
+```
 
 ## Development Setup
 
