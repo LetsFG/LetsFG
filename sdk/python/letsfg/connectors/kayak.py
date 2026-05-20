@@ -203,6 +203,10 @@ class KayakConnectorClient:
                     owner_airline=o.owner_airline,
                     booking_url=o.booking_url, is_locked=False,
                     source=o.source, source_tier=o.source_tier,
+                    conditions={
+                        'outbound_booking_url': o.booking_url,
+                        'inbound_booking_url': i.booking_url,
+                    },
                 ))
         combos.sort(key=lambda c: c.price)
         return combos[:20]

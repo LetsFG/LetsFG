@@ -1563,8 +1563,22 @@ export default function ResultsPanel({
     }
 
     try {
-      const res = await fetch(`/api/unlock-status?searchId=${encodeURIComponent(searchId)}`, {
+      // Read any stored unlock token (written by the checkout page after promo/payment).
+      // Pass it as a URL param — CDNs may strip custom request headers.
+      let storedToken: string | null = null
+      for (const storage of [window.localStorage, window.sessionStorage]) {
+        try {
+          const val = storage.getItem(`lfg_unlock_token:${searchId}`)
+          if (val) { storedToken = val; break }
+        } catch (_) {}
+      }
+      const statusParams = new URLSearchParams({ searchId })
+      if (storedToken) {
+        statusParams.set('unlockToken', storedToken)
+      }
+      const res = await fetch(`/api/unlock-status?${statusParams.toString()}`, {
         cache: 'no-store',
+        credentials: 'same-origin',
       })
       if (!res.ok) return
       const data = await res.json() as { unlocked?: boolean }
