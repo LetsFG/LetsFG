@@ -1,0 +1,123 @@
+name: Connector Smoke (Tier-2, non-blocking)
+
+# Triggers only when connector files change. Runs a targeted live smoke search
+# for ONLY the changed connectors — not the entire fleet.
+# This workflow is intentionally non-blocking: CI result is always "pass";
+# failures surface as job summaries and Telegram alerts (see dispatchAlert).
+
+on:
+  push:
+    branches: [main, feat/**]
+    paths:
+      - "connectors/**"
+      - "sdk/python/letsfg/connectors/**"
+  pull_request:
+    paths:
+      - "connectors/**"
+      - "sdk/python/letsfg/connectors/**"
+  schedule:
+    # Nightly at 03:00 UTC — run all fast-mode connectors
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      connectors:
+        description: "Space-separated source tags (e.g. ryanair_direct kiwi_connector) or '--all-fast-mode'"
+        required: false
+        default: "--all-fast-mode"
+
+jobs:
+  smoke:
+    name: Connector smoke
+    runs-on: ubuntu-latest
+    # Always "pass" — failures are advisory only (scrapers are inherently flaky)
+    continue-on-error: true
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for git diff against base branch
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet httpx airportsdata playwright curl_cffi
+          playwright install chromium --with-deps 2>/dev/null || true
+
+      - name: Determine which connectors to smoke
+        id: targets
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "tags=--all-fast-mode" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tags=${{ github.event.inputs.connectors }}" >> "$GITHUB_OUTPUT"
+          else
+            # PR / push: smoke only changed connectors
+            BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+            CHANGED=$(git diff --name-only "${BASE}...${GITHUB_SHA}" \
+              | grep -E 'connectors/[^/]+\.py$' \
+              | sed 's|.*/||; s|\.py$||' \
+              | sort -u || true)
+            if [ -z "$CHANGED" ]; then
+              echo "No connector files changed — nothing to smoke."
+              echo "tags=" >> "$GITHUB_OUTPUT"
+            else
+              # Map file stems to source tags via test_routes.py keys
+              TAGS=$(python3 - <<'PYEOF'
+import sys
+sys.path.insert(0, ".")
+sys.path.insert(0, "sdk/python")
+try:
+    from connectors.test_routes import ROUTES
+    known = set(ROUTES.keys())
+except Exception as e:
+    print(f"# Warning: could not load ROUTES: {e}", file=sys.stderr)
+    known = set()
+
+changed_stems = """$CHANGED""".split()
+# Heuristic: file stem → possible source tags (try common suffixes)
+found = set()
+for stem in changed_stems:
+    for suffix in ("_direct", "_meta", "_ota", "_connector", ""):
+        candidate = stem + suffix
+        if candidate in known:
+            found.add(candidate)
+            break
+    else:
+        # Try the bare stem as a partial match (e.g. "ryanair" → "ryanair_direct")
+        for tag in known:
+            if tag.startswith(stem):
+                found.add(tag)
+
+if found:
+    print(" ".join(sorted(found)))
+else:
+    print("--all-fast-mode")
+PYEOF
+)
+              echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Run smoke harness
+        if: steps.targets.outputs.tags != ''
+        id: smoke
+        run: |
+          python connectors/tests/smoke_harness.py ${{ steps.targets.outputs.tags }} \
+            | tee smoke_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        if: always() && steps.targets.outputs.tags != ''
+        run: |
+          echo "## Connector Smoke Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Targets:** \`${{ steps.targets.outputs.tags }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          cat smoke_output.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output)" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
