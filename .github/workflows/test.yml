@@ -1,0 +1,67 @@
+name: CI Tests (Tier-1 gate)
+
+# Tier-1 deterministic merge gate. The `website-critical` job is the hard gate:
+# make it a required status check in branch protection so no regression to the
+# 6-link value chain reaches production. See website/tests/CRITICAL.md.
+#
+# The `python-deterministic` job is currently non-blocking (continue-on-error)
+# until Phase 1C triages the connector tests and marks the live (network/browser)
+# ones with the `live` pytest marker. Once triaged, remove continue-on-error to
+# make it required. Live connector coverage is handled separately, per-changed
+# connector, by connector-smoke.yml (Tier-2).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  website-critical:
+    name: Website critical-path (Tier-1, required)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Critical-path tests (npm run test:critical)
+        run: npm run test:critical
+      - name: Type-check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+  python-deterministic:
+    name: Python deterministic tests (Tier-1, hardening in Phase 1C)
+    runs-on: ubuntu-latest
+    # TODO(Phase 1C): once connector tests are triaged + live ones marked,
+    # remove continue-on-error to make this a required gate.
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package + pytest
+        run: |
+          pip install -e .
+          pip install pytest
+      - name: Deterministic tests (pytest -m "not live")
+        run: pytest -m "not live"

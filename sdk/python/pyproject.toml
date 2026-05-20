@@ -65,6 +65,12 @@ Repository = "https://github.com/LetsFG/LetsFG"
 Issues = "https://github.com/LetsFG/LetsFG/issues"
 "API Reference" = "https://letsfg.co/developers/api/openapi.json"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: test performs real network or browser calls. Excluded from the deterministic Tier-1 gate (`pytest -m \"not live\"`); run nightly / on demand. See connectors/tests/smoke_harness.py for targeted live coverage.",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["letsfg"]
 
