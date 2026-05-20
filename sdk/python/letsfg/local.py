@@ -30,13 +30,37 @@ _REGISTER_URL = "https://letsfg.co/api/offer/register-local"
 _LETSFG_HOST = "letsfg.co"
 
 
-def _fire_telemetry(source: str) -> None:
+def _build_telemetry_payload(
+    source: str,
+    search_count: int,
+    result_count: int,
+    duration_ms: int,
+) -> dict:
+    """Build the enriched telemetry payload dict."""
+    from letsfg import __version__ as _sdk_version  # type: ignore[attr-defined]
+    client_type = (source or "python-sdk").strip() or "python-sdk"
+    return {
+        "source": client_type,
+        "search_count": search_count,
+        "result_count": result_count,
+        "duration_ms": duration_ms,
+        "sdk_version": _sdk_version,
+    }
+
+
+def _fire_telemetry(
+    source: str,
+    search_count: int = 1,
+    result_count: int = 0,
+    duration_ms: int = 0,
+) -> None:
     """Best-effort telemetry — never raises, never blocks the caller."""
     if os.environ.get("LETSFG_NO_TELEMETRY"):
         return
     try:
-        client_type = (source or "python-sdk").strip() or "python-sdk"
-        body = json.dumps({"source": client_type}).encode()
+        payload = _build_telemetry_payload(source, search_count, result_count, duration_ms)
+        client_type = payload["source"]
+        body = json.dumps(payload).encode()
         req = _Req(_TELEMETRY_URL, data=body,
                    headers={
                        "Content-Type": "application/json",
@@ -166,24 +190,36 @@ async def search_local(
         include_global=include_global,
     )
 
+    import time as _time
+    _t0 = _time.monotonic()
     resp = await multi_provider.search_flights(req, mode=mode)
+    _duration_ms = int((_time.monotonic() - _t0) * 1000)
+
+    result_data = resp.model_dump(mode="json")
+    _result_count = len(result_data.get("offers", []))
 
     # Fire-and-forget telemetry so the backend can count local searches.
     # Runs in a thread to avoid blocking the event loop. Never raises.
     source = os.environ.get("LETSFG_TELEMETRY_SOURCE", "python-sdk")
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _fire_telemetry, source)
-
-    resp_dict = resp.model_dump(mode="json")
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(
+        None,
+        lambda: _fire_telemetry(
+            source=source,
+            search_count=1,
+            result_count=_result_count,
+            duration_ms=_duration_ms,
+        ),
+    )
 
     # Register offers with the website so each gets an offer_ref (encrypted
     # snapshot) and a payment_token UUID.  The SDK user gets an unlock_url
     # per offer — opening it in a browser lets them pay and unlock the booking
     # link without needing a full backend integration.
-    raw_offers: list[dict] = resp_dict.get("offers", [])
+    raw_offers: list[dict] = result_data.get("offers", [])
     if raw_offers:
-        search_id: str | None = resp_dict.get("search_id") or None
-        token_map = await asyncio.get_event_loop().run_in_executor(
+        search_id: str | None = result_data.get("search_id") or None
+        token_map = await asyncio.get_running_loop().run_in_executor(
             None, _sync_register_offers, raw_offers, search_id
         )
         if token_map:
@@ -201,7 +237,7 @@ async def search_local(
                             f"?ref={offer_ref}&pt={pt}"
                         )
 
-    return resp_dict
+    return result_data
 
 
 # ── Location name → IATA code mapping (for local resolve_location) ────────

@@ -1,3 +1,5 @@
+import { buildRecommendationQualityPayload } from './recommendation-quality.ts'
+
 export interface SearchSessionEventPayload {
   type: string
   at?: string
@@ -168,6 +170,86 @@ export function trackSearchSession(payload: SearchSessionPayload, options: Track
     keepalive: options.keepalive ?? options.beacon ?? false,
     cache: 'no-store',
   }).catch(() => {})
+}
+
+// ─── Growth model event builders ─────────────────────────────────────────────
+
+export interface OfferSelectedEventData {
+  offer_id: string
+  position: number
+  is_top3: boolean
+  time_to_select_ms: number
+  scroll_depth_at_select: number
+}
+
+export interface OfferSelectedInput {
+  offer_id: string
+  position: number
+  results_viewed_at: string | null
+  scroll_depth_pct: number
+}
+
+export function buildOfferSelectedEventData(input: OfferSelectedInput): OfferSelectedEventData {
+  const time_to_select_ms = input.results_viewed_at
+    ? Math.max(0, Date.now() - new Date(input.results_viewed_at).getTime())
+    : 0
+
+  return {
+    offer_id: input.offer_id,
+    position: input.position,
+    is_top3: input.position <= 3,
+    time_to_select_ms,
+    scroll_depth_at_select: input.scroll_depth_pct,
+  }
+}
+
+export interface RecommendationQualityEventData {
+  search_id: string
+  result_count: number
+  connector_count: number
+  top3_present: boolean
+  price_vs_google_pct: number | null
+  quality_score: number
+  has_direct_flight: boolean
+  min_stops: number
+  carrier_diversity: number
+}
+
+export interface RecommendationQualityInput {
+  search_id: string
+  result_count: number
+  connector_count: number
+  has_direct_flight: boolean
+  min_stops: number
+  carrier_diversity: number
+  cheapest_price: number | null
+  google_flights_price: number | null
+  search_duration_ms: number
+}
+
+export function buildRecommendationQualityEventData(
+  input: RecommendationQualityInput,
+): RecommendationQualityEventData {
+  return buildRecommendationQualityPayload(input)
+}
+
+export interface ReturnVisitEventData {
+  days_since_last_search: number
+  prior_search_count: number
+}
+
+export function buildReturnVisitEventData(data: ReturnVisitEventData): ReturnVisitEventData {
+  return data
+}
+
+export interface OfferSharedEventData {
+  offer_id: string
+  position: number
+  share_method: 'copy_link' | 'native_share'
+}
+
+export function buildOfferSharedEventData(data: OfferSharedEventData): OfferSharedEventData {
+  return data
 }
 
 export function trackSearchSessionEvent(
