@@ -6,6 +6,7 @@ import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../
 import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
+import { PFP_ACQUISITION_COOKIE, buildAcquisitionSearchPayload } from '../../../../lib/pfp/analytics/pfp-acquisition.ts'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -302,6 +303,31 @@ export async function GET(
     if (data.status === 'completed' && normalized.length > 0) {
       cacheOffers(trustedOffers, searchId)
 
+      // Fire-and-forget PFP ingest — never blocks the search response.
+      // rawOffers uses the Python SDK format that normalizer.ts expects.
+      if (process.env.DATABASE_URL && rawOffers.length >= 5 && data.origin && data.destination) {
+        Promise.all([
+          import('../../../../lib/pfp/ingest/trigger.ts'),
+          import('../../../../lib/pfp/db/neon-adapter.ts'),
+        ]).then(([{ triggerPfpIngest }, { getNeonAdapter }]) =>
+          triggerPfpIngest({
+            session_id: searchId,
+            origin: data.origin,
+            destination: data.destination,
+            origin_city: data.origin_name || data.origin,
+            dest_city: data.destination_name || data.destination,
+            currency: data.currency || 'EUR',
+            offers: rawOffers,
+            searched_at: new Date().toISOString(),
+          }, getNeonAdapter())
+        ).catch(() => {})
+      }
+
+      const pfpCookieRaw = request.cookies.get(PFP_ACQUISITION_COOKIE)?.value
+      const pfpCtx = pfpCookieRaw
+        ? { source: 'pfp_organic' as const, route: decodeURIComponent(pfpCookieRaw) }
+        : null
+
       await upsertSearchSessionServer({
         search_id: analyticsSearchId,
         session_uid: getSessionUid(request) || undefined,
@@ -310,6 +336,7 @@ export async function GET(
         source: 'website-results-api',
         source_path: analyticsSourcePath,
         status: 'completed',
+        ...buildAcquisitionSearchPayload(pfpCtx),
         results_count: normalized.length,
         cheapest_price: cheapestPrice,
         google_flights_price: googleFlightsPrice,

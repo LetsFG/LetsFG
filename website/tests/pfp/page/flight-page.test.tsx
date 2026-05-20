@@ -3119,3 +3119,287 @@ test('[related-routes] section shows price when median_price and currency are pr
   assert.ok(html.includes('210'), 'median price 210 should appear in related routes section')
   assert.ok(html.includes('EUR'), 'currency EUR should appear in related routes section')
 })
+
+// ─── LLM RATIONALE section ───────────────────────────────────────────────────
+
+const LLM_RATIONALE_DATA: RouteDistributionData = {
+  ...BASE_DATA,
+  llm_rationale: {
+    value_proposition: 'GDN → BCN is a budget-friendly short-haul route dominated by Ryanair and Wizz Air.',
+    best_for: ['Weekend city-breakers', 'Price-sensitive leisure travelers', 'Students'],
+    booking_tips: 'Book 4–6 weeks ahead for the best prices; avoid peak summer departure slots.',
+    price_context: 'At a median of EUR 368, this route prices 30% below the European short-haul average.',
+    model: 'claude-haiku-4-5',
+    generated_at: '2026-05-05T10:05:00Z',
+  },
+}
+
+test('[llm-rationale] section renders when data.llm_rationale is present', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  assert.ok(
+    html.includes('data-testid="llm-rationale-section"'),
+    'llm-rationale-section should render when llm_rationale is present',
+  )
+})
+
+test('[llm-rationale] section does not render when data.llm_rationale is absent', () => {
+  const html = renderToStaticMarkup(<FlightPage data={BASE_DATA} />)
+  assert.ok(
+    !html.includes('data-testid="llm-rationale-section"'),
+    'llm-rationale-section should NOT render when llm_rationale is absent',
+  )
+})
+
+test('[llm-rationale] value_proposition appears in the section', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  assert.ok(
+    html.includes('data-testid="rationale-value-proposition"'),
+    'rationale-value-proposition element should render',
+  )
+  assert.ok(
+    html.includes('budget-friendly short-haul route'),
+    'value_proposition text should appear',
+  )
+})
+
+test('[llm-rationale] best_for list renders all items', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  assert.ok(html.includes('data-testid="rationale-best-for"'), 'rationale-best-for element should render')
+  assert.ok(html.includes('Weekend city-breakers'), 'first best_for item should appear')
+  assert.ok(html.includes('Price-sensitive leisure travelers'), 'second best_for item should appear')
+  assert.ok(html.includes('Students'), 'third best_for item should appear')
+})
+
+test('[llm-rationale] booking_tips appear in the section', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  assert.ok(html.includes('data-testid="rationale-booking-tips"'), 'rationale-booking-tips element should render')
+  assert.ok(html.includes('Book 4–6 weeks ahead'), 'booking_tips text should appear')
+})
+
+test('[llm-rationale] price_context appears in the section', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  assert.ok(html.includes('data-testid="rationale-price-context"'), 'rationale-price-context element should render')
+  assert.ok(html.includes('30% below the European short-haul average'), 'price_context text should appear')
+})
+
+test('[llm-rationale] model attribution appears', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  assert.ok(html.includes('data-testid="rationale-attribution"'), 'rationale-attribution element should render')
+  assert.ok(html.includes('claude-haiku-4-5'), 'model name should appear in attribution')
+})
+
+test('[llm-rationale] section appears before price-distribution section', () => {
+  const html = renderToStaticMarkup(<FlightPage data={LLM_RATIONALE_DATA} />)
+  const rationalePos = html.indexOf('data-testid="llm-rationale-section"')
+  const priceDistPos = html.indexOf('data-testid="price-distribution-section"')
+  assert.ok(rationalePos !== -1, 'llm-rationale-section should be present')
+  assert.ok(priceDistPos !== -1, 'price-distribution-section should be present')
+  assert.ok(rationalePos < priceDistPos, 'llm-rationale-section should appear before price-distribution-section')
+})
+
+// ─── OFFER HIGHLIGHTS section ─────────────────────────────────────────────────
+
+const OFFER_HIGHLIGHTS_DATA: RouteDistributionData = {
+  ...BASE_DATA,
+  offer_highlights: [
+    {
+      carrier: 'FR',
+      carrier_name: 'Ryanair',
+      best_price: 89,
+      currency: 'EUR',
+      duration_min_minutes: 175,
+      duration_max_minutes: 195,
+      direct_available: true,
+      min_stops: 0,
+      departure_time_bucket: 'morning',
+      offer_count: 30,
+      cabin_class: 'economy',
+      bags_carry_on_price: 0,
+      bags_checked_price: 25,
+      seat_price: 10,
+      bags_included: true,
+      refund_policy: 'not_allowed',
+      best_booking_channel: 'Ryanair (direct)',
+    },
+    {
+      carrier: 'W6',
+      carrier_name: 'Wizz Air',
+      best_price: 110,
+      currency: 'EUR',
+      duration_min_minutes: 180,
+      duration_max_minutes: 200,
+      direct_available: true,
+      min_stops: 0,
+      departure_time_bucket: 'afternoon',
+      offer_count: 25,
+      cabin_class: 'economy',
+      bags_carry_on_price: null,
+      bags_checked_price: null,
+      seat_price: null,
+      bags_included: false,
+      refund_policy: null,
+      best_booking_channel: 'Wizz Air (direct)',
+    },
+  ],
+}
+
+test('[offer-highlights] section renders when data.offer_highlights is populated', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(
+    html.includes('data-testid="offer-highlights-section"'),
+    'offer-highlights-section should render when offer_highlights is populated',
+  )
+})
+
+test('[offer-highlights] section does not render when data.offer_highlights is absent', () => {
+  const html = renderToStaticMarkup(<FlightPage data={BASE_DATA} />)
+  assert.ok(
+    !html.includes('data-testid="offer-highlights-section"'),
+    'offer-highlights-section should NOT render when offer_highlights is absent',
+  )
+})
+
+test('[offer-highlights] section does not render when data.offer_highlights is empty', () => {
+  const html = renderToStaticMarkup(<FlightPage data={{ ...BASE_DATA, offer_highlights: [] }} />)
+  assert.ok(
+    !html.includes('data-testid="offer-highlights-section"'),
+    'offer-highlights-section should NOT render when offer_highlights is empty array',
+  )
+})
+
+test('[offer-highlights] renders a card for each carrier', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-card-FR"'), 'card for FR should render')
+  assert.ok(html.includes('data-testid="highlight-card-W6"'), 'card for W6 should render')
+})
+
+test('[offer-highlights] carrier name appears in each card', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('Ryanair'), 'Ryanair carrier name should appear')
+  assert.ok(html.includes('Wizz Air'), 'Wizz Air carrier name should appear')
+})
+
+test('[offer-highlights] best price appears in each card', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('89'), 'best price 89 for FR should appear')
+  assert.ok(html.includes('110'), 'best price 110 for W6 should appear')
+})
+
+test('[offer-highlights] duration range appears in each card', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-duration-FR"'), 'duration element for FR should render')
+  assert.ok(html.includes('2h 55m'), 'FR min duration 175 min should display as 2h 55m')
+})
+
+test('[offer-highlights] direct availability appears', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-stops-FR"'), 'stops element for FR should render')
+  assert.ok(html.includes('Direct'), 'direct label should appear when direct_available is true')
+})
+
+test('[offer-highlights] departure time bucket label appears', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-departure-FR"'), 'departure element for FR should render')
+  assert.ok(html.includes('Morning'), 'morning departure time label should appear')
+})
+
+test('[offer-highlights] amenity info renders for carrier with data', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-bags-FR"'), 'bags element for FR should render')
+  assert.ok(html.includes('Included'), 'bags_included=true should show as Included')
+})
+
+test('[offer-highlights] n/a renders when amenity data absent', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-bags-W6"'), 'bags element for W6 should render')
+})
+
+test('[offer-highlights] booking channel appears', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  assert.ok(html.includes('data-testid="highlight-channel-FR"'), 'channel element for FR should render')
+  assert.ok(html.includes('Ryanair (direct)'), 'best_booking_channel should appear')
+})
+
+test('[offer-highlights] section appears before price-distribution', () => {
+  const html = renderToStaticMarkup(<FlightPage data={OFFER_HIGHLIGHTS_DATA} />)
+  const highlightsPos = html.indexOf('data-testid="offer-highlights-section"')
+  const priceDistPos = html.indexOf('data-testid="price-distribution-section"')
+  assert.ok(highlightsPos !== -1, 'offer-highlights-section should be present')
+  assert.ok(priceDistPos !== -1, 'price-distribution-section should be present')
+  assert.ok(highlightsPos < priceDistPos, 'offer-highlights-section should appear before price-distribution-section')
+})
+
+// ─── AMENITY SUMMARY section ──────────────────────────────────────────────────
+
+const AMENITY_SUMMARY_DATA: RouteDistributionData = {
+  ...BASE_DATA,
+  amenity_summary: {
+    rows: [
+      { carrier: 'FR', carrier_name: 'Ryanair', carry_on: 0, checked_bag: 25, seat_selection: 10, currency: 'EUR' },
+      { carrier: 'W6', carrier_name: 'Wizz Air', carry_on: 15, checked_bag: 30, seat_selection: null, currency: 'EUR' },
+      { carrier: 'LO', carrier_name: 'LOT Polish Airlines', carry_on: null, checked_bag: null, seat_selection: null, currency: 'EUR' },
+    ],
+    currency: 'EUR',
+    captured_at: '2026-05-05T10:00:00Z',
+  },
+}
+
+test('[amenity-summary] section renders when data.amenity_summary is present', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(
+    html.includes('data-testid="amenity-summary-section"'),
+    'amenity-summary-section should render when amenity_summary is present',
+  )
+})
+
+test('[amenity-summary] section does not render when data.amenity_summary is absent', () => {
+  const html = renderToStaticMarkup(<FlightPage data={BASE_DATA} />)
+  assert.ok(
+    !html.includes('data-testid="amenity-summary-section"'),
+    'amenity-summary-section should NOT render when amenity_summary is absent',
+  )
+})
+
+test('[amenity-summary] renders a row per carrier', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(html.includes('data-testid="amenity-row-FR"'), 'row for FR should render')
+  assert.ok(html.includes('data-testid="amenity-row-W6"'), 'row for W6 should render')
+  assert.ok(html.includes('data-testid="amenity-row-LO"'), 'row for LO should render')
+})
+
+test('[amenity-summary] carrier names appear in the table', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(html.includes('Ryanair'), 'Ryanair carrier name should appear')
+  assert.ok(html.includes('Wizz Air'), 'Wizz Air carrier name should appear')
+  assert.ok(html.includes('LOT Polish Airlines'), 'LOT Polish Airlines carrier name should appear')
+})
+
+test('[amenity-summary] price=0 shows as Included', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(html.includes('Included'), 'carry_on=0 should display as "Included"')
+})
+
+test('[amenity-summary] numeric price appears with currency', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(html.includes('25'), 'checked_bag price 25 for FR should appear')
+  assert.ok(html.includes('15'), 'carry_on price 15 for W6 should appear')
+})
+
+test('[amenity-summary] null price shows as n/a', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(html.includes('n/a'), 'null amenity prices should display as n/a')
+})
+
+test('[amenity-summary] section appears before price-distribution', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  const amenityPos = html.indexOf('data-testid="amenity-summary-section"')
+  const priceDistPos = html.indexOf('data-testid="price-distribution-section"')
+  assert.ok(amenityPos !== -1, 'amenity-summary-section should be present')
+  assert.ok(priceDistPos !== -1, 'price-distribution-section should be present')
+  assert.ok(amenityPos < priceDistPos, 'amenity-summary-section should appear before price-distribution-section')
+})
+
+test('[amenity-summary] disclaimer note renders', () => {
+  const html = renderToStaticMarkup(<FlightPage data={AMENITY_SUMMARY_DATA} />)
+  assert.ok(html.includes('data-testid="amenity-note"'), 'amenity-note disclaimer should render')
+})

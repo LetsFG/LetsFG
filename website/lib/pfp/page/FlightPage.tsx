@@ -8,18 +8,23 @@
  * Sections (top to bottom):
  *  1. SEO HEAD (placeholder — metadata exported separately for Next.js App Router)
  *  2. HERO — H1 + TLDR + stats row + PRIMARY CTA + banners
- *  3. PRICE DISTRIBUTION — histogram (high/medium) or range bar (low)
- *  4. HIDDEN FEES — fee table (when available) + variance insight
- *  5. CARRIER COMPARISON — guarded: >= 2 carriers
- *  6. CONNECTOR COMPARISON — guarded: >= 2 connectors
- *  7. KEY FACTS — 3 self-contained GEO sentences
- *  8. FAQ — 5 dynamic questions with real data values
- *  9. SECONDARY CTA — search link + share button + social proof
- * 10. SNAPSHOT HISTORY — collapsible <details>
+ *  3. LLM RATIONALE — AI-generated route context (optional, when ANTHROPIC_API_KEY set)
+ *  4. OFFER HIGHLIGHTS — per-carrier best offers with duration/stops/amenities (optional)
+ *  5. AMENITY SUMMARY — bags/seat pricing table per carrier (optional)
+ *  6. PRICE DISTRIBUTION — histogram (high/medium) or range bar (low)
+ *  7. HIDDEN FEES — fee table (when available) + variance insight
+ *  8. CARRIER COMPARISON — guarded: >= 2 carriers
+ *  9. CONNECTOR COMPARISON — guarded: >= 2 connectors
+ * 10. KEY FACTS — 3 self-contained GEO sentences
+ * 11. FAQ — 5 dynamic questions with real data values
+ * 12. SECONDARY CTA — search link + share button + social proof
+ * 13. SNAPSHOT HISTORY — collapsible <details>
  */
 
 import type { ReactNode } from 'react'
-import type { RouteDistributionData, HistogramBucket } from '../types/route-distribution.types.ts'
+import type {
+  RouteDistributionData, HistogramBucket, OfferHighlight, AmenityRow, DepartureTimeBucket,
+} from '../types/route-distribution.types.ts'
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -152,7 +157,86 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         )}
       </section>
 
-      {/* ── 3. PRICE DISTRIBUTION ─────────────────────────────────────────── */}
+      {/* ── 3. LLM RATIONALE ──────────────────────────────────────────────── */}
+      {data.llm_rationale && (
+        <section data-testid="llm-rationale-section" aria-labelledby="rationale-h2">
+          <h2 id="rationale-h2">About {origin_city} → {dest_city} flights</h2>
+          <p data-testid="rationale-value-proposition">{data.llm_rationale.value_proposition}</p>
+
+          {data.llm_rationale.best_for.length > 0 && (
+            <div data-testid="rationale-best-for">
+              <strong>Best for:</strong>
+              <ul>
+                {data.llm_rationale.best_for.map((profile, i) => (
+                  <li key={i}>{profile}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <p data-testid="rationale-booking-tips">
+            <strong>Booking tip:</strong> {data.llm_rationale.booking_tips}
+          </p>
+          <p data-testid="rationale-price-context">{data.llm_rationale.price_context}</p>
+
+          <small data-testid="rationale-attribution">
+            AI-generated analysis · {data.llm_rationale.model} · Updated {_fmtRelativeDate(data.llm_rationale.generated_at)}
+          </small>
+        </section>
+      )}
+
+      {/* ── 4. OFFER HIGHLIGHTS ───────────────────────────────────────────── */}
+      {data.offer_highlights && data.offer_highlights.length > 0 && (
+        <section data-testid="offer-highlights-section" aria-labelledby="highlights-h2">
+          <h2 id="highlights-h2">Best offers by airline on {origin_city} → {dest_city}</h2>
+          <p data-testid="highlights-intro">
+            Representative best offers per airline from our most recent search session —
+            {' '}{total_offers_analyzed} offers analyzed across {data.offer_highlights.length} airline{data.offer_highlights.length !== 1 ? 's' : ''}.
+          </p>
+          <div data-testid="offer-highlights-grid">
+            {data.offer_highlights.map((h) => (
+              <OfferHighlightCard key={h.carrier} highlight={h} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── 5. AMENITY SUMMARY ────────────────────────────────────────────── */}
+      {data.amenity_summary && data.amenity_summary.rows.length > 0 && (
+        <section data-testid="amenity-summary-section" aria-labelledby="amenity-h2">
+          <h2 id="amenity-h2">Baggage &amp; ancillary fees — {origin_city} to {dest_city}</h2>
+          <p data-testid="amenity-intro">
+            Per-carrier fee data captured by LetsFG connectors. Prices shown are as reported
+            by the airline's own booking flow or OTA for the cheapest available fare.
+          </p>
+          <table data-testid="amenity-table">
+            <caption>Carry-on, checked bag, and seat selection fees per carrier</caption>
+            <thead>
+              <tr>
+                <th scope="col">Airline</th>
+                <th scope="col">Carry-on</th>
+                <th scope="col">Checked bag</th>
+                <th scope="col">Seat selection</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.amenity_summary.rows.map((row) => (
+                <tr key={row.carrier} data-testid={`amenity-row-${row.carrier}`}>
+                  <td>{row.carrier_name}</td>
+                  <td>{_fmtAmenityPrice(row.carry_on, data.amenity_summary!.currency)}</td>
+                  <td>{_fmtAmenityPrice(row.checked_bag, data.amenity_summary!.currency)}</td>
+                  <td>{_fmtAmenityPrice(row.seat_selection, data.amenity_summary!.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <small data-testid="amenity-note">
+            Fee data captured by LetsFG connectors. Prices may vary by fare class and booking time.
+          </small>
+        </section>
+      )}
+
+      {/* ── 6. PRICE DISTRIBUTION ─────────────────────────────────────────── */}
       <section data-testid="price-distribution-section" aria-labelledby="price-dist-h2">
         <h2 id="price-dist-h2">
           How much do flights from {origin_city} to {dest_city} cost?
@@ -207,7 +291,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         )}
       </section>
 
-      {/* ── 4. HIDDEN FEES BREAKDOWN ──────────────────────────────────────── */}
+      {/* ── 7. HIDDEN FEES BREAKDOWN ──────────────────────────────────────── */}
       <section data-testid="fee-analysis-section" aria-labelledby="fee-h2">
         <h2 id="fee-h2">What hidden fees do {origin_city} to {dest_city} flights charge?</h2>
 
@@ -367,7 +451,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </a>
       </section>
 
-      {/* ── 5. CARRIER COMPARISON (guard: >= 2 carriers) ──────────────────── */}
+      {/* ── 8. CARRIER COMPARISON (guard: >= 2 carriers) ──────────────────── */}
       {carrier_summary.length >= 2 && (
         <section data-testid="carrier-comparison-section" aria-labelledby="carrier-h2">
           <h2 id="carrier-h2">Which airline is cheapest from {origin_city} to {dest_city}?</h2>
@@ -403,7 +487,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </section>
       )}
 
-      {/* ── 6. CONNECTOR COMPARISON (guard: >= 2 connectors) ──────────────── */}
+      {/* ── 9. CONNECTOR COMPARISON (guard: >= 2 connectors) ──────────────── */}
       {connector_comparison.length >= 2 && (
         <section data-testid="connector-comparison-section" aria-labelledby="connector-h2">
           <h2 id="connector-h2">Where did our agents find the best prices?</h2>
@@ -452,7 +536,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </section>
       )}
 
-      {/* ── 7. KEY FACTS ────────────────────────────────────────────────────── */}
+      {/* ── 10. KEY FACTS ───────────────────────────────────────────────────── */}
       <section data-testid="key-facts-section" aria-labelledby="key-facts-h2">
         <h2 id="key-facts-h2">Key facts: {origin_city} to {dest_city} flights</h2>
         <ul data-testid="key-facts-list">
@@ -462,7 +546,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </ul>
       </section>
 
-      {/* ── 8. RELATED ROUTES (internal linking, only when data is provided) ── */}
+      {/* ── 11. RELATED ROUTES (internal linking, only when data is provided) ── */}
       {data.related_routes && data.related_routes.length > 0 && (
         <nav data-testid="related-routes-section" aria-label={`More flights from ${origin_city}`}>
           <h2 id="related-routes-h2">More flights from {origin_city}</h2>
@@ -484,7 +568,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </nav>
       )}
 
-      {/* ── 9. FAQ ──────────────────────────────────────────────────────────── */}
+      {/* ── 12. FAQ ─────────────────────────────────────────────────────────── */}
       <section data-testid="faq-section" aria-labelledby="faq-h2">
         <h2 id="faq-h2">Frequently asked questions</h2>
         <dl>
@@ -497,7 +581,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </dl>
       </section>
 
-      {/* ── 10. SECONDARY CTA BLOCK ──────────────────────────────────────────── */}
+      {/* ── 13. SECONDARY CTA BLOCK ──────────────────────────────────────────── */}
       <section data-testid="secondary-cta-section" aria-labelledby="secondary-cta-h2">
         <h2 id="secondary-cta-h2">
           {price_distribution.is_bimodal
@@ -528,7 +612,7 @@ export function FlightPage({ data, experimentVariant = 'A' }: FlightPageProps) {
         </p>
       </section>
 
-      {/* ── 11. SNAPSHOT HISTORY (collapsible, default closed) ──────────────── */}
+      {/* ── 14. SNAPSHOT HISTORY (collapsible, default closed) ──────────────── */}
       {session_count >= 3 && (
         <section data-testid="snapshot-history-section" aria-labelledby="history-h2">
           <h2 id="history-h2">Search history for this route</h2>
@@ -825,6 +909,93 @@ export function buildFaqItems(data: RouteDistributionData): Array<{ q: string; a
       </>,
     },
   ]
+}
+
+/** Format minutes as "Xh Ym" (e.g. 175 → "2h 55m"). */
+function _fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return h > 0 && m > 0 ? `${h}h ${m}m` : h > 0 ? `${h}h` : `${m}m`
+}
+
+/** Human-readable label for a departure time bucket. */
+function _fmtDepartureTime(bucket: DepartureTimeBucket): string {
+  const MAP: Record<DepartureTimeBucket, string> = {
+    early_morning: 'Early morning',
+    morning: 'Morning',
+    afternoon: 'Afternoon',
+    evening: 'Evening',
+    night: 'Night',
+    varies: 'Varies',
+  }
+  return MAP[bucket] ?? bucket
+}
+
+/** Format an amenity price: null → "n/a", 0 → "Included", N → "CUR N". */
+function _fmtAmenityPrice(price: number | null, currency: string): ReactNode {
+  if (price === null) return <span title="Fee data not available">n/a</span>
+  if (price === 0) return <span>Included</span>
+  return <span>{currency} {price}</span>
+}
+
+// ─── OfferHighlightCard sub-component ────────────────────────────────────────
+
+function OfferHighlightCard({ highlight: h }: { highlight: OfferHighlight }) {
+  const durationMin = _fmtDuration(h.duration_min_minutes)
+  const durationMax = h.duration_max_minutes !== h.duration_min_minutes
+    ? _fmtDuration(h.duration_max_minutes)
+    : null
+
+  return (
+    <div data-testid={`highlight-card-${h.carrier}`} data-carrier={h.carrier}>
+      <div data-testid={`highlight-carrier-${h.carrier}`}>
+        <strong>{h.carrier_name}</strong>
+      </div>
+
+      <div data-testid={`highlight-price-${h.carrier}`}>
+        <span>from {h.currency} {Math.round(h.best_price)}</span>
+        <small>{h.offer_count} offer{h.offer_count !== 1 ? 's' : ''} analyzed</small>
+      </div>
+
+      <div data-testid={`highlight-duration-${h.carrier}`}>
+        {durationMax ? `${durationMin}–${durationMax}` : durationMin}
+      </div>
+
+      <div data-testid={`highlight-stops-${h.carrier}`}>
+        {h.direct_available
+          ? 'Direct'
+          : h.min_stops === 1 ? '1 stop' : `${h.min_stops} stops`}
+      </div>
+
+      <div data-testid={`highlight-departure-${h.carrier}`}>
+        {_fmtDepartureTime(h.departure_time_bucket)}
+      </div>
+
+      <div data-testid={`highlight-bags-${h.carrier}`}>
+        {h.bags_included
+          ? <span>Included</span>
+          : h.bags_carry_on_price !== null
+            ? <span>Carry-on: {h.currency} {h.bags_carry_on_price}</span>
+            : <span title="Bag fee data not available">n/a</span>}
+        {h.bags_checked_price !== null && !h.bags_included && (
+          <span> · Checked: {h.currency} {h.bags_checked_price}</span>
+        )}
+      </div>
+
+      {h.refund_policy && (
+        <div data-testid={`highlight-refund-${h.carrier}`}>
+          {h.refund_policy === 'allowed' ? 'Refundable'
+            : h.refund_policy === 'allowed_with_fee' ? 'Refundable (fee)'
+            : h.refund_policy === 'not_allowed' ? 'Non-refundable'
+            : null}
+        </div>
+      )}
+
+      <div data-testid={`highlight-channel-${h.carrier}`}>
+        <small>Best via: {h.best_booking_channel}</small>
+      </div>
+    </div>
+  )
 }
 
 /** Format ISO date as a human-readable relative string (e.g., "3 days ago"). */

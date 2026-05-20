@@ -16,6 +16,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { FlightPage } from '../../../../lib/pfp/page/FlightPage.tsx'
+import { SetPfpAcquisitionCookie } from '../../../../lib/pfp/page/SetPfpAcquisitionCookie.tsx'
 import { SUPPORTED_LOCALES } from '../../../../lib/pfp/seo/FlightPageSEOHead.tsx'
 import type { RouteDistributionData } from '../../../../lib/pfp/types/route-distribution.types.ts'
 
@@ -23,26 +24,31 @@ import type { RouteDistributionData } from '../../../../lib/pfp/types/route-dist
 
 export const revalidate = 86400
 
-// ─── Static params (populated from DB in Session 5/6) ────────────────────────
+// ─── Static params ────────────────────────────────────────────────────────────
 
 export async function generateStaticParams(): Promise<{ route: string }[]> {
-  // Returns [] until the DB layer is wired up (Session 5/6).
-  // When connected, will read all routes with page_status IN ('published', 'noindex')
-  // from flight_routes and return their slugs.
-  return []
+  if (!process.env.DATABASE_URL) return []
+  try {
+    const { getNeonAdapter } = await import('../../../../lib/pfp/db/neon-adapter.ts')
+    const routes = await getNeonAdapter().getPublishedRoutes()
+    return routes.map(r => ({ route: r.slug }))
+  } catch {
+    return []
+  }
 }
 
-// ─── Data fetching (stub — real implementation in Session 5/6) ───────────────
+// ─── Data fetching ────────────────────────────────────────────────────────────
 
 async function fetchRouteSnapshot(
   routeSlug: string,
 ): Promise<RouteDistributionData | null> {
-  // Placeholder. Will be replaced with:
-  //   const db = getDb()
-  //   return db.getRouteDistributionSnapshot(routeSlug)
-  // where routeSlug is e.g. 'gdn-bcn'
-  void routeSlug
-  return null
+  if (!process.env.DATABASE_URL) return null
+  try {
+    const { getNeonAdapter } = await import('../../../../lib/pfp/db/neon-adapter.ts')
+    return await getNeonAdapter().getRouteDistributionSnapshot(routeSlug)
+  } catch {
+    return null
+  }
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
@@ -141,5 +147,10 @@ export default async function FlightRoutePage({
   // No snapshot yet → 404. Will return real data once DB is wired (Session 5/6).
   if (data === null) notFound()
 
-  return <FlightPage data={data} />
+  return (
+    <>
+      <SetPfpAcquisitionCookie routeSlug={route} />
+      <FlightPage data={data} />
+    </>
+  )
 }

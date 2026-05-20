@@ -57,6 +57,12 @@ export interface SearchSessionPayload {
   other_costs?: number
   results_preview?: SearchSessionOfferPreview[]
   event?: SearchSessionEventPayload
+  /** PFP acquisition: 'pfp_organic' when the search was triggered from a flight page. */
+  acquisition_source?: string
+  /** The route slug of the PFP page that sourced this search (e.g. 'gdn-bcn'). */
+  acquisition_route?: string
+  /** Acquisition channel label: 'pfp' for Programmatic Flight Pages. */
+  acquisition_channel?: string
 }
 
 interface TrackOptions {

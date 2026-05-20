@@ -5,3 +5,4 @@ Allow: /
 # API docs: https://api.letsfg.co/docs
 
 Sitemap: https://letsfg.co/sitemap.xml
+Sitemap: https://letsfg.co/sitemap-flights.xml

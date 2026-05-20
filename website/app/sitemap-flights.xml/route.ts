@@ -18,11 +18,13 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 3600 // 1 hour
 
 async function fetchRoutes(): Promise<SitemapRoute[]> {
-  // Stub — real implementation wired in Session 5/6.
-  // Will query: SELECT slug, page_status, staleness, session_count, snapshot_computed_at
-  //             FROM flight_routes
-  //             WHERE page_status IN ('published', 'noindex')
-  return []
+  if (!process.env.DATABASE_URL) return []
+  try {
+    const { getNeonAdapter } = await import('../../lib/pfp/db/neon-adapter.ts')
+    return await getNeonAdapter().getPublishedRoutes()
+  } catch {
+    return []
+  }
 }
 
 export async function GET(): Promise<NextResponse> {

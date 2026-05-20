@@ -265,6 +265,30 @@ export interface RouteDistributionData {
    * Populated by the ingest pipeline from top co-searched routes.
    */
   related_routes?: RelatedRoute[]
+
+  // ── Rich offer data (Session 8+) ─────────────────────────────────────────────
+  /**
+   * Representative best offers per carrier — shown as offer cards on the page,
+   * giving visitors results-page-level detail without storing individual offers.
+   * Absent when offers lacked duration/stops data (rare edge case).
+   */
+  offer_highlights?: OfferHighlight[]
+
+  /**
+   * AI-generated route analysis framed for general visitors (not the specific
+   * searcher who triggered page creation). Absent when ANTHROPIC_API_KEY is
+   * not configured or the API call failed.
+   */
+  llm_rationale?: LlmRationale
+
+  /**
+   * Per-carrier amenity pricing table.
+   * Absent when no connector in the session exposed bag/seat pricing.
+   */
+  amenity_summary?: AmenitySummary
+
+  /** PFP acquisition analytics. Populated by growth-ops cron, absent on first publish. */
+  acquisition_meta?: PfpAcquisitionMeta
 }
 
 export interface SessionSnapshot {
@@ -285,4 +309,140 @@ export interface RelatedRoute {
   /** Median price from the related route's snapshot, if available. */
   median_price?: number
   currency?: string
+}
+
+// ─── Offer highlights ─────────────────────────────────────────────────────────
+
+/**
+ * Departure time bucket — coarse classification so pages aren't tied to a
+ * specific departure time from one search session.
+ */
+export type DepartureTimeBucket = 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'varies'
+
+/**
+ * Representative best-offer data for one carrier on this route.
+ *
+ * Built from the raw offers at ingest time and stored in full_snapshot_json.
+ * Shown on the flight page instead of a bare carrier-name table, giving
+ * visitors offer-level detail (duration, stops, amenities) without storing
+ * individually identifiable offer data.
+ */
+export interface OfferHighlight {
+  /** Carrier IATA code, e.g. 'FR'. */
+  carrier: string
+  /** Human-readable airline name, e.g. 'Ryanair'. */
+  carrier_name: string
+  /** Lowest price seen for this carrier (normalized to page currency). */
+  best_price: number
+  /** ISO 4217 currency code matching best_price. */
+  currency: string
+  /** Minimum outbound duration in minutes across this carrier's offers. */
+  duration_min_minutes: number
+  /** Maximum outbound duration in minutes across this carrier's offers. */
+  duration_max_minutes: number
+  /** Whether any of this carrier's offers are direct (0 stops). */
+  direct_available: boolean
+  /** Minimum number of stops seen across this carrier's offers. */
+  min_stops: number
+  /** Coarse departure time classification for the cheapest offer. */
+  departure_time_bucket: DepartureTimeBucket
+  /** Number of offers analyzed for this carrier. */
+  offer_count: number
+  /** Cabin class of the best-price offer. */
+  cabin_class: string
+  /** Carry-on / cabin bag fee. null = not available from this carrier's connectors. */
+  bags_carry_on_price: number | null
+  /** First checked-bag fee. null = not available. */
+  bags_checked_price: number | null
+  /** Seat selection fee. null = not available. */
+  seat_price: number | null
+  /**
+   * True when bags_carry_on_price === 0 or bags_checked_price === 0,
+   * meaning the connector explicitly reported the fee as included.
+   */
+  bags_included: boolean
+  /** Refund policy. null = connector didn't expose this. */
+  refund_policy: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown' | null
+  /** Best connector to book through for this carrier (display name). */
+  best_booking_channel: string
+}
+
+// ─── LLM rationale ───────────────────────────────────────────────────────────
+
+/**
+ * AI-generated contextual analysis of the route's fare landscape.
+ *
+ * Written once at ingest time, stored in full_snapshot_json. Framed for a
+ * general visitor — NOT personalized to the specific searcher who triggered
+ * the page creation.
+ */
+export interface LlmRationale {
+  /**
+   * 1–2 sentence value proposition for the route.
+   * Example: "GDN → BCN is a budget-friendly short-haul route dominated by
+   * Ryanair and Wizz Air, typically pricing 30–50% below European average."
+   */
+  value_proposition: string
+  /**
+   * 2–3 traveler profiles that will find this route most useful.
+   * Example: ["Weekend city-breakers", "Price-sensitive leisure travelers"]
+   */
+  best_for: string[]
+  /**
+   * 1–2 sentence actionable booking tips derived from the distribution data.
+   * Must reference actual price points or patterns in the data.
+   */
+  booking_tips: string
+  /**
+   * 1 sentence comparing this route's price level to broader market context.
+   * Must be data-grounded (reference p50 or range).
+   */
+  price_context: string
+  /** Model that generated this rationale, e.g. 'claude-haiku-4-5'. */
+  model: string
+  /** ISO 8601 timestamp when this rationale was generated. */
+  generated_at: string
+}
+
+// ─── Amenity summary ─────────────────────────────────────────────────────────
+
+/** Per-carrier amenity pricing row for the amenities table. */
+export interface AmenityRow {
+  carrier: string
+  carrier_name: string
+  /** Carry-on price. null = connector didn't expose. 0 = included in fare. */
+  carry_on: number | null
+  /** Checked bag price. null = not available. 0 = included. */
+  checked_bag: number | null
+  /** Seat selection price. null = not available. 0 = included. */
+  seat_selection: number | null
+  /** ISO 4217 currency for the prices. */
+  currency: string
+}
+
+/**
+ * Structured amenity pricing across all carriers that reported fee data.
+ * Only present when at least one carrier exposed bag/seat pricing.
+ */
+export interface AmenitySummary {
+  rows: AmenityRow[]
+  currency: string
+  /** ISO 8601 timestamp of the session this data comes from. */
+  captured_at: string
+}
+
+// ─── Acquisition metadata ────────────────────────────────────────────────────
+
+/**
+ * Analytics metadata added to RouteDistributionData for tracking PFP as an
+ * acquisition channel. Populated from the growth model and analytics pipeline.
+ * Optional — absent on first publish, updated by growth-ops cron.
+ */
+export interface PfpAcquisitionMeta {
+  /** Total searches that were triggered by clicking the CTA on this page. */
+  total_searches_from_page: number
+  /** Click-through rate: searches / page_views (0.0–1.0). */
+  search_ctr: number
+  /** ISO 8601 date of the last time these stats were computed. */
+  last_computed_at: string
 }

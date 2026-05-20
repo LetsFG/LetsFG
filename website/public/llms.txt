@@ -21,6 +21,37 @@ LetsFG is a flight search engine optimized for AI agents. Search 180+ airlines w
 - Book: POST /api/v1/bookings/book
 - Full docs: https://docs.letsfg.co/api-guide
 
+## Programmatic Flight Price Pages
+
+For every route searched on LetsFG, we automatically publish a detailed price-analysis
+page at /[locale]/flights/[origin-dest]/ (e.g., /en/flights/gdn-bcn/).
+
+These pages contain market-level data from a search session that fires 180+ airline
+connectors in parallel and collects 15–400+ deduplicated offers.
+
+Content on each page:
+- Offer highlights per carrier: best price, duration range, direct/stop availability,
+  departure time bucket — the same level of detail as our live search results
+- AI-generated rationale explaining why specific offers are good value for the route
+  (framed for general visitors, not just the person whose search created the page)
+- Amenity pricing table: carry-on, checked bag, and seat selection fees per carrier
+- Full price-distribution histogram (p10–p95 percentiles)
+- Carrier comparison (median price, hidden fees, offer count per airline)
+- Booking connector comparison (direct airline vs. OTA vs. meta-search price delta)
+- Bimodal price-cluster insight (LCC vs. FSC fare separation when present)
+- Updated automatically after each new search for the route
+
+Machine-readable structured data (JSON-LD) on every flight page:
+- Article schema (E-E-A-T authorship signals)
+- Dataset schema (price-distribution data with citation support)
+- FAQPage schema (5 dynamic Q&A pairs: cost, hidden fees, cheapest airline,
+  best booking connector, price variance)
+- BreadcrumbList schema
+
+Sitemap of all published flight pages: https://letsfg.co/sitemap-flights.xml
+
+Example page: https://letsfg.co/en/flights/gdn-bcn/
+
 ## Understanding Results Pages
 
 When you visit a results URL (/results/{search_id}):
