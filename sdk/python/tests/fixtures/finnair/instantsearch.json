@@ -1,0 +1,32 @@
+{
+  "prices": {
+    "HEL": {
+      "LHR": {
+        "currency": "EUR",
+        "travelClassPrices": [
+          {
+            "price": 149.0,
+            "travelClass": "Economy",
+            "fromDate": "2026-06-15",
+            "toDate": "2026-06-15",
+            "tripType": "oneway"
+          },
+          {
+            "price": 0.0,
+            "travelClass": "Economy",
+            "fromDate": "2026-06-16",
+            "toDate": "2026-06-16",
+            "tripType": "oneway"
+          },
+          {
+            "price": 395.0,
+            "travelClass": "Business",
+            "fromDate": "2026-06-15",
+            "toDate": "2026-06-15",
+            "tripType": "oneway"
+          }
+        ]
+      }
+    }
+  }
+}

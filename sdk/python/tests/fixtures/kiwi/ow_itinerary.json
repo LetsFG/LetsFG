@@ -1,0 +1,40 @@
+{
+  "id": "kiwi_test_ow_001",
+  "price": {"amount": 35.50},
+  "sector": {
+    "sectorSegments": [
+      {
+        "segment": {
+          "carrier": {"code": "FR", "name": "Ryanair"},
+          "operatingCarrier": {"code": "FR", "name": "Ryanair"},
+          "code": "1234",
+          "source": {
+            "localTime": "2026-06-15T08:00:00",
+            "station": {"code": "DUB", "city": {"name": "Dublin"}}
+          },
+          "destination": {
+            "localTime": "2026-06-15T09:05:00",
+            "station": {"code": "STN", "city": {"name": "London"}}
+          },
+          "duration": 3900,
+          "cabinClass": "ECONOMY"
+        }
+      }
+    ],
+    "duration": 3900
+  },
+  "travelHack": {"isVirtualInterlining": false, "isThrowawayTicket": false, "isTrueHiddenCity": false},
+  "bookingOptions": {
+    "edges": [
+      {"node": {"bookingUrl": "https://www.kiwi.com/en/search/results/dublin/london/2026-06-15/no-return?sortBy=price"}}
+    ]
+  },
+  "bagsInfo": {
+    "includedHandBags": 1,
+    "includedCheckedBags": 0,
+    "handBagTiers": [],
+    "checkedBagTiers": [
+      {"tierPrice": {"amount": 25.0}}
+    ]
+  }
+}
