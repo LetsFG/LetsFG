@@ -106,22 +106,21 @@ function getUnlockTokenStorageKey(searchId: string) {
 
 function readStoredUnlockToken(searchId: string | null): string | null {
   if (!searchId) return null
-
-  try {
-    return window.localStorage.getItem(getUnlockTokenStorageKey(searchId))
-  } catch (_) {
-    return null
+  const key = getUnlockTokenStorageKey(searchId)
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      const val = storage.getItem(key)
+      if (val) return val
+    } catch (_) {}
   }
+  return null
 }
 
 function persistUnlockToken(searchId: string | null, unlockToken: string | undefined) {
   if (!searchId || !unlockToken) return
-
-  try {
-    window.localStorage.setItem(getUnlockTokenStorageKey(searchId), unlockToken)
-  } catch (_) {
-    // Ignore storage failures and keep the in-memory flow working.
-  }
+  const key = getUnlockTokenStorageKey(searchId)
+  try { window.localStorage.setItem(key, unlockToken) } catch (_) {}
+  try { window.sessionStorage.setItem(key, unlockToken) } catch (_) {}
 }
 
 async function fetchLatestOfferRef(searchId: string, offerId: string, isTestSearch: boolean): Promise<string | null> {
@@ -323,6 +322,9 @@ export default function CheckoutPanel({
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([])
   const [bookingLinkStatus, setBookingLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const bookingLinkTrackedRef = useRef(false)
+  // In-memory fallback for the unlock token — covers environments where
+  // localStorage is blocked (strict private browsing, security extensions).
+  const pendingUnlockTokenRef = useRef<string | null>(null)
   const splitBookingLegs = useMemo<SplitBookingLeg[]>(() => {
     if (tripBreakdown.length <= 1 || (!offer.is_combo && bookingOptions.length === 0)) {
       return []
@@ -345,6 +347,9 @@ export default function CheckoutPanel({
   const isUnlocked = step.type === 'unlocked'
   const isLoading = step.type === 'checking' || step.type === 'verifying-payment'
   const showShareOption = false
+
+  const [promoCode, setPromoCode] = useState('')
+  const [promoStatus, setPromoStatus] = useState<'idle' | 'applying' | 'used' | 'not-found'>('idle')
 
   // Mark that user visited checkout so results page can detect a "back from checkout" return
   useEffect(() => {
@@ -387,10 +392,14 @@ export default function CheckoutPanel({
   const checkUnlockStatus = useCallback(async (): Promise<boolean> => {
     if (!searchId) return false
 
-    const unlockToken = readStoredUnlockToken(searchId)
+    const unlockToken = readStoredUnlockToken(searchId) ?? pendingUnlockTokenRef.current
+    const statusParams = new URLSearchParams({ searchId })
+    if (unlockToken) {
+      statusParams.set('unlockToken', unlockToken)
+    }
 
     try {
-      const res = await fetch(`/api/unlock-status?searchId=${encodeURIComponent(searchId)}`, {
+      const res = await fetch(`/api/unlock-status?${statusParams.toString()}`, {
         cache: 'no-store',
         credentials: 'same-origin',
         headers: unlockToken ? { [UNLOCK_TOKEN_HEADER_NAME]: unlockToken } : undefined,
@@ -411,7 +420,7 @@ export default function CheckoutPanel({
 
     setBookingLinkStatus('loading')
     try {
-      const unlockToken = readStoredUnlockToken(searchId)
+      const unlockToken = readStoredUnlockToken(searchId) ?? pendingUnlockTokenRef.current
       // Resolve offer_ref: use the one on the offer, or fetch a fresh one if missing.
       let resolvedOfferRef = offer.offer_ref || offerRef || undefined
       if (!resolvedOfferRef) {
@@ -445,6 +454,11 @@ export default function CheckoutPanel({
       if (resolvedOfferRef) {
         params.set('ref', resolvedOfferRef)
       }
+      // Pass the token as a URL param as well — CDNs (e.g. Fastly) may strip
+      // custom request headers before they reach the Next.js route handler.
+      if (unlockToken) {
+        params.set('unlockToken', unlockToken)
+      }
       let res = await fetch(
         `/api/offer/${encodeURIComponent(offer.id)}?${params.toString()}`,
         {
@@ -464,6 +478,9 @@ export default function CheckoutPanel({
           })
           appendProbeParam(retryParams, isTestSearch)
           retryParams.set('ref', latestOfferRef)
+          if (unlockToken) {
+            retryParams.set('unlockToken', unlockToken)
+          }
           res = await fetch(
             `/api/offer/${encodeURIComponent(offer.id)}?${retryParams.toString()}`,
             {
@@ -727,6 +744,39 @@ export default function CheckoutPanel({
       setStep({ type: 'locked' })
     }
   }, [analyticsSearchId, checkoutSourcePath, fee, isTestSearch, offer, searchId])
+
+  const handleApplyPromo = useCallback(async () => {
+    if (!promoCode.trim() || !searchId) return
+    setPromoStatus('applying')
+    try {
+      const res = await fetch('/api/checkout/apply-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ code: promoCode.trim(), searchId }),
+      })
+      const data = await res.json() as { unlocked?: boolean; unlockToken?: string }
+      if (res.ok && data.unlocked) {
+        pendingUnlockTokenRef.current = data.unlockToken ?? null
+        persistUnlockToken(searchId, data.unlockToken)
+        setStep({ type: 'unlocked', via: 'payment' })
+        trackSearchSessionEvent(analyticsSearchId, 'promo_code_applied', {
+          offer_id: offer.id,
+        }, {
+          source: 'website-checkout',
+          source_path: checkoutSourcePath,
+          is_test_search: isTestSearch || undefined,
+        })
+        await loadUnlockedBookingLink()
+      } else if (res.status === 410) {
+        setPromoStatus('used')
+      } else {
+        setPromoStatus('not-found')
+      }
+    } catch (_) {
+      setPromoStatus('not-found')
+    }
+  }, [analyticsSearchId, checkoutSourcePath, isTestSearch, loadUnlockedBookingLink, offer.id, promoCode, searchId])
 
   return (
     <div className="ck-page">
@@ -1106,6 +1156,37 @@ export default function CheckoutPanel({
                 ))}
 
               </>
+            )}
+
+            {/* Promo code — shown when locked and not loading */}
+            {!isUnlocked && !isLoading && (
+              <div className="ck-promo-row">
+                <div className="ck-promo-fields">
+                  <input
+                    className="ck-promo-input"
+                    type="text"
+                    placeholder="Promo code"
+                    value={promoCode}
+                    onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoStatus('idle') }}
+                    disabled={promoStatus === 'applying'}
+                    maxLength={32}
+                    aria-label="Promo code"
+                  />
+                  <button
+                    className="ck-promo-btn"
+                    onClick={handleApplyPromo}
+                    disabled={!promoCode.trim() || promoStatus === 'applying'}
+                  >
+                    {promoStatus === 'applying' ? <><span className="ck-spinner ck-spinner--sm" aria-hidden="true" />Applying</> : 'Apply'}
+                  </button>
+                </div>
+                {promoStatus === 'used' && (
+                  <p className="ck-promo-msg ck-promo-msg--error">This code has already been used.</p>
+                )}
+                {promoStatus === 'not-found' && (
+                  <p className="ck-promo-msg ck-promo-msg--error">Invalid promo code.</p>
+                )}
+              </div>
             )}
 
             <div className="ck-guarantee-row">

@@ -1186,7 +1186,64 @@ function buildBookingOptions(
     || (typeof raw.source === 'string' && raw.source.startsWith('combo:'))
 
   if (!isCombo) {
-    return undefined
+    // Special case: Kayak/Momondo/Cheapflights combined round-trips are built by
+    // combining two separate one-way searches (_combine_rt). These have inbound set
+    // but source='kayak_meta'/'momondo_meta' — treat as virtual combo so the user
+    // gets two separate booking links (one per leg) instead of one wrong one-way URL.
+    const isBookingHoldingsCombinedRt = (
+      typeof raw.source === 'string'
+      && /(kayak_meta|momondo_meta|cheapflights_meta)/.test(raw.source)
+      && raw.inbound != null
+      && tripBreakdown != null
+    )
+    if (!isBookingHoldingsCombinedRt) {
+      return undefined
+    }
+
+    const outboundLeg = tripBreakdown.find((l) => l.leg === 'outbound')
+    const inboundLeg = tripBreakdown.find((l) => l.leg === 'inbound')
+    if (!outboundLeg || !inboundLeg) return undefined
+
+    const obDate = outboundLeg.departure_time?.slice(0, 10)
+    const ibDate = inboundLeg.departure_time?.slice(0, 10)
+    // Reject sentinel/invalid dates (year 2000 fallback from _parse_dt)
+    if (!obDate || obDate < '2020-01-01' || !ibDate || ibDate < '2020-01-01') return undefined
+
+    // Use stored booking URLs if available (from conditions), otherwise generate
+    const kayakBase = 'https://www.kayak.com/flights'
+    const obUrl = (typeof conditions.outbound_booking_url === 'string' && conditions.outbound_booking_url)
+      ? conditions.outbound_booking_url
+      : `${kayakBase}/${outboundLeg.origin}-${outboundLeg.destination}/${obDate}`
+    const ibUrl = (typeof conditions.inbound_booking_url === 'string' && conditions.inbound_booking_url)
+      ? conditions.inbound_booking_url
+      : `${kayakBase}/${inboundLeg.origin}-${inboundLeg.destination}/${ibDate}`
+
+    return [
+      {
+        leg: 'outbound',
+        airline: outboundLeg.airline,
+        airline_code: outboundLeg.airline_code,
+        booking_url: obUrl,
+        price: outboundLeg.price,
+        currency: outboundLeg.currency,
+        origin: outboundLeg.origin,
+        destination: outboundLeg.destination,
+        departure_time: outboundLeg.departure_time,
+        arrival_time: outboundLeg.arrival_time,
+      },
+      {
+        leg: 'inbound',
+        airline: inboundLeg.airline,
+        airline_code: inboundLeg.airline_code,
+        booking_url: ibUrl,
+        price: inboundLeg.price,
+        currency: inboundLeg.currency,
+        origin: inboundLeg.origin,
+        destination: inboundLeg.destination,
+        departure_time: inboundLeg.departure_time,
+        arrival_time: inboundLeg.arrival_time,
+      },
+    ]
   }
 
   const options: TrustedBookingOption[] = []
@@ -1421,7 +1478,8 @@ export function normalizeTrustedOffer(raw: any, idx: number): TrustedOffer {
   const bookingOptions = buildBookingOptions(raw, tripBreakdown)
   const isCombo = Boolean(
     raw.conditions?.combo_type === 'virtual_interlining'
-    || (typeof raw.source === 'string' && raw.source.startsWith('combo:')),
+    || (typeof raw.source === 'string' && raw.source.startsWith('combo:'))
+    || (bookingOptions != null && bookingOptions.length > 0),
   )
 
   return hydrateTrustedOffer({
