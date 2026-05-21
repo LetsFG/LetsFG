@@ -43,6 +43,12 @@ test('buildShareSlug collapses consecutive hyphens', () => {
   assert.ok(!slug.includes('--'), `no consecutive hyphens: ${slug}`)
 })
 
+test('buildShareSlug returns empty string when either label is empty', () => {
+  assert.equal(buildShareSlug('', 'Tokyo'), '')
+  assert.equal(buildShareSlug('London', ''), '')
+  assert.equal(buildShareSlug('', ''), '')
+})
+
 // ── generateShareUrl ──────────────────────────────────────────────────────────
 
 test('generateShareUrl includes searchId in the path', () => {
@@ -71,6 +77,12 @@ test('generateShareUrl without siteUrl defaults to letsfg.co', () => {
   assert.ok(url.startsWith('https://letsfg.co'), `expected letsfg.co prefix: ${url}`)
 })
 
+test('generateShareUrl encodes path-traversal characters in searchId', () => {
+  const url = generateShareUrl('../../admin')
+  assert.ok(!url.includes('/../'), `path traversal must not appear unencoded: ${url}`)
+  assert.ok(url.includes('%2F'), `slashes must be percent-encoded: ${url}`)
+})
+
 // ── isValidShareId ────────────────────────────────────────────────────────────
 
 test('isValidShareId accepts ws_xxx format', () => {
@@ -97,6 +109,23 @@ test('isValidShareId rejects non-string values', () => {
 
 test('isValidShareId rejects strings with spaces', () => {
   assert.equal(isValidShareId('ws abc'), false)
+})
+
+test('isValidShareId rejects path-traversal strings', () => {
+  assert.equal(isValidShareId('../../admin'), false)
+  assert.equal(isValidShareId('ws_abc/payload'), false)
+})
+
+test('isValidShareId rejects injection payloads', () => {
+  assert.equal(isValidShareId('"><script>alert(1)</script>'), false)
+})
+
+test('isValidShareId rejects strings over 256 chars', () => {
+  assert.equal(isValidShareId('a'.repeat(257)), false)
+})
+
+test('isValidShareId accepts hyphenated IDs', () => {
+  assert.equal(isValidShareId('ws-abc-123'), true)
 })
 
 // ── extractShareSource ────────────────────────────────────────────────────────
@@ -128,6 +157,16 @@ test('extractShareSource reads from plain object', () => {
 
 test('extractShareSource returns null for empty ref', () => {
   const params = new URLSearchParams('ref=')
+  assert.equal(extractShareSource(params), null)
+})
+
+test('extractShareSource rejects injection payloads in ref param', () => {
+  const params = new URLSearchParams('ref="><script>alert(1)</script>')
+  assert.equal(extractShareSource(params), null)
+})
+
+test('extractShareSource rejects path-traversal ref param', () => {
+  const params = new URLSearchParams('ref=../../admin')
   assert.equal(extractShareSource(params), null)
 })
 

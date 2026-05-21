@@ -1,14 +1,10 @@
 name: CI Tests (Tier-1 gate)
 
-# Tier-1 deterministic merge gate. The `website-critical` job is the hard gate:
-# make it a required status check in branch protection so no regression to the
-# 6-link value chain reaches production. See website/tests/CRITICAL.md.
-#
-# The `python-deterministic` job is currently non-blocking (continue-on-error)
-# until Phase 1C triages the connector tests and marks the live (network/browser)
-# ones with the `live` pytest marker. Once triaged, remove continue-on-error to
-# make it required. Live connector coverage is handled separately, per-changed
-# connector, by connector-smoke.yml (Tier-2).
+# Tier-1 deterministic merge gate.
+# Both jobs are required status checks — enable them in branch protection.
+# website-critical guards the 6-link value chain (see website/tests/CRITICAL.md).
+# python-deterministic guards connector parsing; browser/network tests are marked
+# @pytest.mark.live and excluded here — covered by connector-smoke.yml (Tier-2).
 
 on:
   pull_request:
@@ -46,11 +42,8 @@ jobs:
         run: npx tsc --noEmit
 
   python-deterministic:
-    name: Python deterministic tests (Tier-1, hardening in Phase 1C)
+    name: Python deterministic tests (Tier-1, required)
     runs-on: ubuntu-latest
-    # TODO(Phase 1C): once connector tests are triaged + live ones marked,
-    # remove continue-on-error to make this a required gate.
-    continue-on-error: true
     defaults:
       run:
         working-directory: sdk/python

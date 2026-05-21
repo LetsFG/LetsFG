@@ -13,8 +13,10 @@ const DEFAULT_SITE_URL = 'https://letsfg.co'
 /**
  * Converts two place labels into a URL-safe kebab-case slug separated by "-to-".
  * Example: ("London Heathrow", "Tokyo Narita") → "london-heathrow-to-tokyo-narita"
+ * Returns empty string if either label is empty.
  */
 export function buildShareSlug(fromLabel: string, toLabel: string): string {
+  if (!fromLabel || !toLabel) return ''
   return `${slugify(fromLabel)}-to-${slugify(toLabel)}`
 }
 
@@ -22,7 +24,7 @@ function slugify(label: string): string {
   return label
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // strip diacritics
+    .replace(/[\u0300-\u036f]/g, '') // strip diacritics
     .replace(/[^a-z0-9\s-]/g, '')   // remove non-alphanumeric
     .trim()
     .replace(/\s+/g, '-')           // spaces → hyphens
@@ -47,21 +49,27 @@ export interface GenerateShareUrlOptions {
  */
 export function generateShareUrl(searchId: string, options?: GenerateShareUrlOptions): string {
   const base = (options?.siteUrl ?? DEFAULT_SITE_URL).replace(/\/$/, '')
-  const slug =
-    options?.fromLabel && options?.toLabel
-      ? `/${buildShareSlug(options.fromLabel, options.toLabel)}`
-      : ''
-  return `${base}/results/${searchId}${slug}`
+  const safeId = encodeURIComponent(searchId)
+  const slugPart = options?.fromLabel && options?.toLabel
+    ? `/${buildShareSlug(options.fromLabel, options.toLabel)}`
+    : ''
+  return `${base}/results/${safeId}${slugPart}`
 }
 
 // ── isValidShareId ────────────────────────────────────────────────────────────
 
 /**
- * Returns true if value is a non-empty string with no whitespace,
- * suitable for use as a search session share ID.
+ * Returns true if value is a safe search session share ID:
+ * non-empty, max 256 chars, only alphanumeric / underscore / hyphen.
+ * Rejects path chars (/ .) and injection payloads.
  */
 export function isValidShareId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && !/\s/.test(value)
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 256 &&
+    /^[a-zA-Z0-9_-]+$/.test(value)
+  )
 }
 
 // ── extractShareSource ────────────────────────────────────────────────────────
@@ -82,10 +90,10 @@ export function extractShareSource(
     params instanceof URLSearchParams ? params.get(key) : params[key]
 
   const ref = get('ref')
-  if (ref && ref.length > 0) return ref
+  if (ref && isValidShareId(ref)) return ref
 
   const sid = get('source_search_id')
-  if (sid && sid.length > 0) return sid
+  if (sid && isValidShareId(sid)) return sid
 
   return null
 }
