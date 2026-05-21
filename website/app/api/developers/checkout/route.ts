@@ -27,12 +27,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  // Forward the caller's agent API key to the backend (required by require_api_key)
+  const callerApiKey = req.headers.get('x-api-key') ?? ''
+
   try {
     const upstream = await fetch(
       `${API_BASE}/api/v1/developers/checkout/create-session`,
       {
         method: 'POST',
-        headers: withLetsfgWebsiteApiHeaders({ 'Content-Type': 'application/json' }),
+        headers: withLetsfgWebsiteApiHeaders({
+          'Content-Type': 'application/json',
+          ...(callerApiKey ? { 'X-API-Key': callerApiKey } : {}),
+        }),
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(15_000),
       },
