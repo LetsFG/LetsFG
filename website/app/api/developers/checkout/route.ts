@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
+import { getLetsfgApiBase } from '../../../../lib/letsfg-api'
 
 const API_BASE = getLetsfgApiBase()
 
@@ -18,6 +18,10 @@ const API_BASE = getLetsfgApiBase()
  * After payment, Stripe redirects to the backend success handler which
  * writes payment_token → booking_url to Firestore.
  * Then poll /api/developers/payment-verify?token={payment_token} as usual.
+ *
+ * Auth: caller provides their agent API key as X-API-Key.
+ * The proxy uses Authorization: Bearer {LETSFG_WEBSITE_API_KEY} to satisfy
+ * the backend's direct-host guard, while forwarding X-API-Key for agent auth.
  */
 export async function POST(req: NextRequest) {
   let body: unknown
@@ -27,18 +31,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  // Forward the caller's agent API key to the backend (required by require_api_key)
+  // Caller's agent API key — forwarded as X-API-Key for backend require_api_key
   const callerApiKey = req.headers.get('x-api-key') ?? ''
+  // Internal website key — sent as Bearer to satisfy the direct-host guard
+  const websiteApiKey = process.env.LETSFG_WEBSITE_API_KEY?.trim() ?? ''
+
+  const upstreamHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(callerApiKey ? { 'X-API-Key': callerApiKey } : {}),
+    ...(websiteApiKey ? { 'Authorization': `Bearer ${websiteApiKey}` } : {}),
+  }
 
   try {
     const upstream = await fetch(
       `${API_BASE}/api/v1/developers/checkout/create-session`,
       {
         method: 'POST',
-        headers: withLetsfgWebsiteApiHeaders({
-          'Content-Type': 'application/json',
-          ...(callerApiKey ? { 'X-API-Key': callerApiKey } : {}),
-        }),
+        headers: upstreamHeaders,
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(15_000),
       },
