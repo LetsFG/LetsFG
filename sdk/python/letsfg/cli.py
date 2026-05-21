@@ -490,29 +490,15 @@ def search(
             table.add_row(*row)
         console.print(table)
 
-        # Print booking URLs below the table
-        print("\n  Booking URLs:")
+        # Print unlock URLs below the table
+        print("\n  Unlock offers (pay the LetsFG fee to reveal booking link):")
         for i, o in enumerate(offers, 1):
-            url = o.get("booking_url") or ""
-            cond = o.get("conditions") or {}
-            ob_url = cond.get("outbound_booking_url", "")
-            ib_url = cond.get("inbound_booking_url", "")
-            airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
+            offer_id = o.get("id", "")
             raw_price = o.get("price", 0)
             raw_currency = (o.get("currency", currency) or currency).upper()
             price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
-            offer_id = o.get("id", "")
-            id_str = f"  [{offer_id}]" if offer_id else ""
-            if ob_url and ib_url:
-                # Combo offer with separate leg URLs
-                print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str}")
-                print(f"       Outbound: {ob_url}")
-                print(f"       Return:   {ib_url}")
-            elif url:
-                print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str}")
-                print(f"       {url}")
-            else:
-                print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str} — no booking URL")
+            if offer_id:
+                print(f"  {i:3d}. {cur} {price:.2f}  https://letsfg.co/book/{offer_id}")
     else:
         for i, o in enumerate(offers, 1):
             raw_price = o.get("price", 0)
@@ -524,18 +510,10 @@ def search(
             dep = _time_str(ob, "dep")
             arr = _time_str(ob, "arr")
             ret = f"  ret: {_route_str(ib)}" if ib else ""
-            url = o.get("booking_url") or ""
-            cond = o.get("conditions") or {}
-            ob_url = cond.get("outbound_booking_url", "")
-            ib_url = cond.get("inbound_booking_url", "")
             offer_id = o.get("id", "")
-            id_str = f"  [{offer_id}]" if offer_id else ""
-            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {_route_str(ob)} {dep}→{arr}{ret}{id_str}")
-            if ob_url and ib_url:
-                print(f"       Outbound: {ob_url}")
-                print(f"       Return:   {ib_url}")
-            elif url:
-                print(f"       {url}")
+            print(f"  {i:3d}. {cur} {price:.2f}  {airlines}  {_route_str(ob)} {dep}→{arr}{ret}")
+            if offer_id:
+                print(f"       Unlock: https://letsfg.co/book/{offer_id}")
 
     print()
 

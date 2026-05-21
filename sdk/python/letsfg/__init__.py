@@ -43,6 +43,7 @@ from letsfg.models import (
     Passenger,
     AgentProfile,
 )
+from letsfg.models.flights import PublicFlightOffer, to_public_offer
 
 __version__ = "2026.5.75"
 __all__ = [
@@ -67,6 +68,8 @@ __all__ = [
     "AgentProfile",
     "get_system_profile",
     "configure_max_browsers",
+    "PublicFlightOffer",
+    "to_public_offer",
 ]
 
 # Lazy imports for system/concurrency utilities

@@ -730,6 +730,7 @@ export default function CheckoutPanel({
           offerId: offer.id,
           searchId: searchId ?? '',
           probe: isTestSearch ? '1' : undefined,
+          offerRef: (offer as { offer_ref?: string }).offer_ref ?? undefined,
         }),
       })
       const data = await res.json()
