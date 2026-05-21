@@ -7,6 +7,7 @@ import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
+import { PFP_ACQUISITION_COOKIE, buildAcquisitionSearchPayload } from '../../../../lib/pfp/analytics/pfp-acquisition'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
@@ -451,6 +452,13 @@ export async function GET(
     if (data.status === 'completed' && normalized.length > 0) {
       cacheOffers(trustedOffers, searchId)
 
+      // Read PFP acquisition cookie to attribute searches that came from a flight page
+      const pfpCookieRaw = request.cookies.get(PFP_ACQUISITION_COOKIE)?.value
+      const pfpCtx = pfpCookieRaw
+        ? { source: 'pfp_organic' as const, route: decodeURIComponent(pfpCookieRaw) }
+        : null
+      const acquisitionPayload = buildAcquisitionSearchPayload(pfpCtx)
+
       await upsertSearchSessionServer({
         search_id: analyticsSearchId,
         query: typeof data.query === 'string' ? data.query : undefined,
@@ -482,6 +490,7 @@ export async function GET(
           stops: offer.stops,
           duration_minutes: offer.duration_minutes,
         })),
+        ...acquisitionPayload,
         event: {
           type: 'results_materialized',
           at: new Date().toISOString(),

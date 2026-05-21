@@ -17,12 +17,17 @@ import { notFound } from 'next/navigation'
 
 import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 import { FlightPage } from '../../../../lib/pfp/page/FlightPage'
+import { SetPfpAcquisitionCookie } from '../../../../lib/pfp/page/SetPfpAcquisitionCookie'
 import { SUPPORTED_LOCALES } from '../../../../lib/pfp/seo/FlightPageSEOHead'
 import type { RouteDistributionData } from '../../../../lib/pfp/types/route-distribution.types.ts'
 
-// ─── ISR ──────────────────────────────────────────────────────────────────────
+// ─── Rendering ────────────────────────────────────────────────────────────────
+// The root layout reads headers() for locale detection, which opts the entire
+// route tree into dynamic rendering. We declare force-dynamic here to be
+// explicit; the backend fetch in fetchRouteSnapshot still uses
+// next: { revalidate: 86400 } so data is cached server-side for 24 h.
 
-export const revalidate = 86400
+export const dynamic = 'force-dynamic'
 
 // ─── API base ─────────────────────────────────────────────────────────────────
 
@@ -163,5 +168,12 @@ export default async function FlightRoutePage({
   // No snapshot yet → 404. Will return real data once DB is wired (Session 5/6).
   if (data === null) notFound()
 
-  return <FlightPage data={data} />
+  const routeSlug = `${data.origin_iata.toLowerCase()}-${data.dest_iata.toLowerCase()}`
+
+  return (
+    <>
+      <SetPfpAcquisitionCookie routeSlug={routeSlug} />
+      <FlightPage data={data} />
+    </>
+  )
 }

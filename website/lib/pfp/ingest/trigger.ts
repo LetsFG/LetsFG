@@ -3,8 +3,9 @@
  *
  * Called from app/api/results/[searchId]/route.ts once FSW reports `completed`.
  * Normalizes raw FSW offers, computes the RouteDistributionData distribution,
- * runs the ContentQualityGate, and POSTs the result to the backend API where
- * it is persisted in Firestore for ISR page rendering.
+ * runs the ContentQualityGate, enriches with offer highlights + LLM rationale +
+ * amenity summary, and POSTs the result to the backend API where it is
+ * persisted in Firestore for ISR page rendering.
  *
  * SAFETY GUARANTEES:
  *   - Never throws (all errors caught internally, logged as warnings).
@@ -16,6 +17,8 @@ import { normalizeSession, computeSessionStats } from './normalizer.ts'
 import type { RawSearchPayload } from './normalizer.ts'
 import { getRouteDistributionData } from '../distribution/distribution-service.ts'
 import { ContentQualityGate } from '../quality/content-quality-gate.ts'
+import { buildOfferHighlights, buildAmenitySummary } from './offer-highlights.ts'
+import { generateLlmRationale } from './llm-rationale.ts'
 import { getLetsfgAnalyticsApiBase } from '../../letsfg-api'
 
 const API_BASE = getLetsfgAnalyticsApiBase()
@@ -87,7 +90,26 @@ export async function triggerPfpIngest(input: PfpTriggerInput): Promise<void> {
       },
     )
 
-    // ── 4. POST to backend ────────────────────────────────────────────────────
+    // ── 4. Enrich snapshot: offer highlights, amenity summary, LLM rationale ─
+    const offerHighlights = buildOfferHighlights(session.offers, currency)
+    if (offerHighlights.length > 0) {
+      snapshot.offer_highlights = offerHighlights
+    }
+
+    const amenitySummary = buildAmenitySummary(session.offers, currency)
+    if (amenitySummary) {
+      snapshot.amenity_summary = amenitySummary
+    }
+
+    // LLM rationale is generated last (async, external call). On failure it
+    // returns null and the POST continues without it — the page renders fine
+    // without the rationale section.
+    const llmRationale = await generateLlmRationale(snapshot)
+    if (llmRationale) {
+      snapshot.llm_rationale = llmRationale
+    }
+
+    // ── 5. POST to backend ────────────────────────────────────────────────────
     const websiteApiKey = process.env.LETSFG_WEBSITE_API_KEY || ''
     await fetch(`${API_BASE}/api/v1/flights/pfp/ingest`, {
       method: 'POST',
@@ -107,7 +129,7 @@ export async function triggerPfpIngest(input: PfpTriggerInput): Promise<void> {
         session_id: searchId,
         snapshot,
       }),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(15_000),
     })
   } catch (err) {
     // Never surface errors to the caller — this is a background operation

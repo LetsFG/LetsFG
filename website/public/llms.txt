@@ -67,3 +67,19 @@ Unlock and book require a public developer API key. Register, attach a Stripe pa
 - Developer docs: https://letsfg.co/developers/api/docs
 - GitHub: https://github.com/LetsFG/LetsFG
 - API Status: https://status.letsfg.co
+
+## Programmatic Flight Pages
+
+LetsFG publishes data-rich route pages at `/[locale]/flights/[origin]-[dest]/` (e.g. `/en/flights/lhr-jfk/`).
+
+Each page contains:
+- Full price distribution (p10/p25/p50/p75/p90) from 180+ airline connectors
+- Per-carrier offer highlights: best price, duration range, stops, amenity pricing
+- Bag and seat-selection fee table per airline
+- AI-generated route rationale (value proposition, booking tips, price context)
+- Hidden fee analysis and connector comparison
+- JSON-LD schema for structured data indexing
+
+These pages are updated by our agent search pipeline. Data is based on real connector output, not editorial guesses.
+
+**Sitemap**: https://letsfg.co/sitemap-flights.xml lists all published routes.

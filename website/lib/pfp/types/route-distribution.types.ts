@@ -265,6 +265,16 @@ export interface RouteDistributionData {
    * Populated by the ingest pipeline from top co-searched routes.
    */
   related_routes?: RelatedRoute[]
+
+  // ── Enriched highlights (computed at ingest time) ───────────────────────────
+  /** Per-carrier offer highlights with amenity pricing. */
+  offer_highlights?: OfferHighlight[]
+  /** AI-generated route rationale from Vertex AI Gemini. */
+  llm_rationale?: LlmRationale
+  /** Amenity pricing table built from offers with fee data. */
+  amenity_summary?: AmenitySummary
+  /** PFP acquisition stats — how many searches came from this page. */
+  acquisition_meta?: PfpAcquisitionMeta
 }
 
 export interface SessionSnapshot {
@@ -285,4 +295,114 @@ export interface RelatedRoute {
   /** Median price from the related route's snapshot, if available. */
   median_price?: number
   currency?: string
+}
+
+// ─── Offer highlights ─────────────────────────────────────────────────────────
+
+/**
+ * Coarse departure-time bucket.
+ * Derived from the first segment's scheduled departure hour (local airport timezone
+ * is ignored — wall-clock hour from the ISO datetime is used for simplicity).
+ */
+export type DepartureTimeBucket =
+  | 'early_morning'  // 00:00–05:59
+  | 'morning'        // 06:00–11:59
+  | 'afternoon'      // 12:00–17:59
+  | 'evening'        // 18:00–20:59
+  | 'night'          // 21:00–23:59
+  | 'varies'         // multiple departures across the day, or data unavailable
+
+/** Aggregate best-deal summary for one airline operating this route. */
+export interface OfferHighlight {
+  /** Airline IATA code. */
+  carrier: string
+  /** Display name for the carrier. */
+  carrier_name: string
+  /** Cheapest offer found for this carrier (in distribution currency). */
+  best_price: number
+  /** ISO 4217 currency code. */
+  currency: string
+  /** Shortest itinerary duration in minutes (0 when unavailable). */
+  duration_min_minutes: number
+  /** Longest itinerary duration in minutes (0 when unavailable). */
+  duration_max_minutes: number
+  /** Whether at least one direct (non-stop) flight was found. */
+  direct_available: boolean
+  /** Minimum number of stopovers across this carrier's offers. */
+  min_stops: number
+  /** Coarse departure-time bucket from the cheapest offer's first segment. */
+  departure_time_bucket: DepartureTimeBucket
+  /** Number of offers from this carrier in the session. */
+  offer_count: number
+  /** Cabin class from cheapest offer (e.g., 'economy', 'business'). */
+  cabin_class: string
+  /** Carry-on bag add-on price; null when unknown or included in all fares. */
+  bags_carry_on_price: number | null
+  /** First checked-bag add-on price; null when unknown or included in all fares. */
+  bags_checked_price: number | null
+  /** Seat-selection add-on price; null when unknown or included. */
+  seat_price: number | null
+  /** True when any bag is included for free in the cheapest offer. */
+  bags_included: boolean
+  /** Refund policy from cheapest offer, or null when unknown. */
+  refund_policy: 'allowed' | 'allowed_with_fee' | 'not_allowed' | null
+  /** Human-readable display name of the booking channel (connector) for the cheapest offer. */
+  best_booking_channel: string
+}
+
+// ─── LLM-generated route rationale ───────────────────────────────────────────
+
+/** AI-generated editorial rationale for a route, produced by Vertex AI Gemini. */
+export interface LlmRationale {
+  /** 1-2 sentence summary of the value of this route for a general traveller. */
+  value_proposition: string
+  /** Short list of traveller types this route suits best (e.g., ['budget traveller', 'weekend tripper']). */
+  best_for: string[]
+  /** 1-2 sentences of actionable booking advice citing the actual price distribution. */
+  booking_tips: string
+  /** 1 sentence on how prices here compare to typical similar-distance routes. */
+  price_context: string
+  /** Gemini model that produced this rationale (e.g., 'gemini-2.5-flash-lite'). */
+  model: string
+  /** ISO 8601 datetime when this rationale was generated. */
+  generated_at: string
+}
+
+// ─── Amenity summary ──────────────────────────────────────────────────────────
+
+/** Amenity pricing row for one carrier. */
+export interface AmenityRow {
+  /** Airline IATA code. */
+  carrier: string
+  /** Display name for the carrier. */
+  carrier_name: string
+  /** Carry-on bag add-on price, or null when not applicable / unknown. */
+  carry_on: number | null
+  /** First checked-bag add-on price, or null when not applicable / unknown. */
+  checked_bag: number | null
+  /** Seat-selection fee, or null when not applicable / unknown. */
+  seat_selection: number | null
+  /** ISO 4217 currency code. */
+  currency: string
+}
+
+/** Full amenity pricing table, one row per carrier that exposed fee data. */
+export interface AmenitySummary {
+  rows: AmenityRow[]
+  /** ISO 4217 currency code (matches rows). */
+  currency: string
+  /** ISO 8601 datetime when this summary was built. */
+  captured_at: string
+}
+
+// ─── PFP acquisition meta ─────────────────────────────────────────────────────
+
+/** Aggregate acquisition stats for one route page (populated by analytics pipeline). */
+export interface PfpAcquisitionMeta {
+  /** Total number of searches attributed to this page's acquisition cookie. */
+  total_searches_from_page: number
+  /** Click-through rate: fraction of page visitors who performed a search (0.0–1.0). */
+  search_ctr: number
+  /** ISO 8601 datetime when this aggregate was last recomputed. */
+  last_computed_at: string
 }
