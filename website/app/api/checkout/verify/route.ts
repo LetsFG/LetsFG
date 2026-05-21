@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStripeForSession } from '../../../../lib/stripe'
+import { getStripe } from '../../../../lib/stripe'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { setUnlockCookie } from '../../../../lib/unlock-cookie'
 import { createUnlockToken } from '../../../../lib/unlock-token'
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const stripe = getStripeForSession(stripeSessionId)
+    const stripe = getStripe()
     const session = await stripe.checkout.sessions.retrieve(stripeSessionId)
 
     if (session.mode !== 'payment' || session.status !== 'complete') {

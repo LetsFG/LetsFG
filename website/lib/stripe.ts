@@ -8,7 +8,6 @@
 import Stripe from 'stripe'
 
 let _stripe: Stripe | null = null
-let _testStripe: Stripe | null = null
 let _monitorStripe: Stripe | null = null
 
 export function getStripe(): Stripe {
@@ -18,25 +17,6 @@ export function getStripe(): Stripe {
     _stripe = new Stripe(key)
   }
   return _stripe
-}
-
-export function getTestStripe(): Stripe {
-  if (!_testStripe) {
-    const key = process.env.STRIPE_TEST_SECRET_KEY
-    if (!key) throw new Error('STRIPE_TEST_SECRET_KEY environment variable is not set')
-    _testStripe = new Stripe(key)
-  }
-  return _testStripe
-}
-
-/** Returns test Stripe client for test offers (offerId starts with 'test_'), live otherwise. */
-export function getStripeForOffer(offerId: string): Stripe {
-  return offerId.startsWith('test_') ? getTestStripe() : getStripe()
-}
-
-/** Returns test Stripe client for test sessions (cs_test_...), live otherwise. */
-export function getStripeForSession(sessionId: string): Stripe {
-  return sessionId.startsWith('cs_test_') ? getTestStripe() : getStripe()
 }
 
 /**
