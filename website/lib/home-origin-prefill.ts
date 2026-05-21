@@ -107,7 +107,7 @@ function readClientIpCandidates(headers: HeaderLike): string[] {
 
 const HOME_ORIGIN_TO_WORDS: Record<string, string> = {
   en: 'to', pl: 'do', de: 'nach', es: 'a', fr: 'vers', it: 'a', pt: 'para',
-  nl: 'naar', sv: 'till', hr: 'u', sq: 'në', zh: 'to', ja: 'to',
+      nl: 'naar', sv: 'till', hr: 'u', sq: 'në', zh: '至', ja: 'へ',
 }
 
 function toHomeOriginLabel(code: string, locale: string, name: string | undefined, city: string | undefined): string {

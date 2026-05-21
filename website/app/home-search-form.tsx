@@ -47,6 +47,8 @@ const TO_KEYWORDS: Record<string, string[]> = {
   sv: ['till'],
   hr: ['u', 'za'],
   sq: ['në', 'drejt'],
+  zh: ['至', '到'],
+  ja: ['へ', 'ゆき'],
 }
 
 // Return keywords
