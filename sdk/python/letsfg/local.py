@@ -27,6 +27,8 @@ from letsfg.models.flights import FlightSearchRequest
 logger = logging.getLogger(__name__)
 
 _TELEMETRY_URL = "https://letsfg.co/developers/api/v1/analytics/stats/record-local-search"
+_REGISTER_URL = "https://letsfg.co/api/offer/register-local"
+_LETSFG_HOST = "letsfg.co"
 
 
 def _fire_telemetry(source: str) -> None:
@@ -46,6 +48,47 @@ def _fire_telemetry(source: str) -> None:
         urlopen(req, timeout=3)
     except Exception:
         pass
+
+
+def _sync_register_offers(raw_offers: list[dict], search_id: str | None) -> dict[str, dict]:
+    """
+    POST offers to the website's register-local endpoint, receive back
+    ``{offer_ref, payment_token}`` per offer.
+
+    Returns a mapping of ``offer_id → {offer_ref, payment_token}``.
+    Silently returns empty dict on any network/server error so callers never
+    need to handle exceptions from this function.
+    """
+    if not raw_offers:
+        return {}
+    try:
+        payload = json.dumps({
+            "offers": raw_offers,
+            **({"search_id": search_id} if search_id else {}),
+        }).encode()
+        req = _Req(
+            _REGISTER_URL,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "letsfg-local/1.0",
+            },
+            method="POST",
+        )
+        with urlopen(req, timeout=8) as resp:
+            data: dict = json.loads(resp.read())
+        registered: list[dict] = data.get("registered") or []
+        return {
+            entry["offer_id"]: {
+                "offer_ref": entry.get("offer_ref", ""),
+                "payment_token": entry.get("payment_token", ""),
+            }
+            for entry in registered
+            if entry.get("offer_id")
+        }
+    except Exception as exc:
+        logger.debug("[register-local] skipped: %s", exc)
+        return {}
 
 
 async def search_local(
@@ -111,7 +154,34 @@ async def search_local(
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _fire_telemetry, source)
 
-    return resp.model_dump(mode="json")
+    resp_dict = resp.model_dump(mode="json")
+
+    # Register offers with the website so each gets an offer_ref (encrypted
+    # snapshot) and a payment_token UUID.  The SDK user gets an unlock_url
+    # per offer — opening it in a browser lets them pay and unlock the booking
+    # link without needing a full backend integration.
+    raw_offers: list[dict] = resp_dict.get("offers", [])
+    if raw_offers:
+        search_id: str | None = resp_dict.get("search_id") or None
+        token_map = await asyncio.get_event_loop().run_in_executor(
+            None, _sync_register_offers, raw_offers, search_id
+        )
+        if token_map:
+            for offer in raw_offers:
+                oid = offer.get("id", "")
+                reg = token_map.get(oid)
+                if reg:
+                    offer_ref = reg.get("offer_ref", "")
+                    pt = reg.get("payment_token", "")
+                    offer["offer_ref"] = offer_ref
+                    offer["payment_token"] = pt
+                    if offer_ref and pt:
+                        offer["unlock_url"] = (
+                            f"https://{_LETSFG_HOST}/book/{oid}"
+                            f"?ref={offer_ref}&pt={pt}"
+                        )
+
+    return resp_dict
 
 
 # ── Location name → IATA code mapping (for local resolve_location) ────────

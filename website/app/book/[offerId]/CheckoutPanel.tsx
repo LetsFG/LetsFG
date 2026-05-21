@@ -24,6 +24,7 @@ interface Props {
   trackingSearchId: string | null
   isTestSearch: boolean
   offerRef: string | null
+  paymentToken: string | null
   displayCurrency?: string
   fxRates?: FxRateTable
 }
@@ -243,6 +244,7 @@ export default function CheckoutPanel({
   trackingSearchId,
   isTestSearch,
   offerRef,
+  paymentToken,
   displayCurrency: displayCurrencyProp,
   fxRates,
 }: Props) {
@@ -730,6 +732,8 @@ export default function CheckoutPanel({
           offerId: offer.id,
           searchId: searchId ?? '',
           probe: isTestSearch ? '1' : undefined,
+          ...(offerRef ? { offerRef } : {}),
+          ...(paymentToken ? { paymentToken } : {}),
         }),
       })
       const data = await res.json()

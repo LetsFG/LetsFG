@@ -522,7 +522,13 @@ def search(
                 print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str}")
                 print(f"       {url}")
             else:
-                print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str} — no booking URL")
+                unlock = o.get("unlock_url", "")
+                pt = o.get("payment_token", "")
+                print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str}")
+                if unlock:
+                    print(f"       Unlock: {unlock}")
+                    if pt:
+                        print(f"       Poll after payment: GET https://letsfg.co/api/developers/payment-verify?token={pt}")
     else:
         for i, o in enumerate(offers, 1):
             raw_price = o.get("price", 0)
@@ -546,6 +552,13 @@ def search(
                 print(f"       Return:   {ib_url}")
             elif url:
                 print(f"       {url}")
+            else:
+                unlock = o.get("unlock_url", "")
+                pt = o.get("payment_token", "")
+                if unlock:
+                    print(f"       Unlock: {unlock}")
+                    if pt:
+                        print(f"       Poll after payment: GET https://letsfg.co/api/developers/payment-verify?token={pt}")
 
     print()
 

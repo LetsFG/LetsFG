@@ -135,12 +135,13 @@ export default async function BookPage({
   searchParams,
 }: {
   params: Promise<{ offerId: string }>
-  searchParams: Promise<{ from?: string | string[]; ref?: string | string[]; probe?: string | string[]; cur?: string | string[] }>
+  searchParams: Promise<{ from?: string | string[]; ref?: string | string[]; probe?: string | string[]; cur?: string | string[]; pt?: string | string[] }>
 }) {
   const { offerId } = await params
-  const { from, ref, probe, cur } = await searchParams
+  const { from, ref, probe, cur, pt } = await searchParams
   const resolvedFrom = firstQueryValue(from)
   const resolvedRef = firstQueryValue(ref)
+  const resolvedPaymentToken = firstQueryValue(pt)
   const isProbe = isProbeModeValue(firstQueryValue(probe))
   const trackingSearchId = getTrackingSearchId(resolvedFrom, isProbe)
   const offer = await getOffer(offerId, resolvedFrom, resolvedRef, isProbe)
@@ -236,6 +237,7 @@ export default async function BookPage({
         trackingSearchId={trackingSearchId ?? null}
         isTestSearch={isProbe}
         offerRef={resolvedRef ?? null}
+        paymentToken={resolvedPaymentToken ?? null}
         backHref={backHref}
         displayCurrency={displayCurrency}
         fxRates={fxRates}

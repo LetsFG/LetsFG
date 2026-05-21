@@ -3,9 +3,11 @@ import { getStripe } from '../../../../lib/stripe'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { setUnlockCookie } from '../../../../lib/unlock-cookie'
 import { createUnlockToken } from '../../../../lib/unlock-token'
-import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
+import { getTrustedOffer } from '../../../../lib/trusted-offer'
+import { getLetsfgAnalyticsApiBase, getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
 const ANALYTICS_API_BASE = getLetsfgAnalyticsApiBase()
+const API_BASE = getLetsfgApiBase()
 
 /**
  * POST /api/checkout/verify
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const offerId = session.metadata?.offer_id ?? ''
+    const paymentToken = session.metadata?.payment_token
     const revenue = session.amount_total != null ? session.amount_total / 100 : undefined
     const revenueCurrency = session.currency?.toUpperCase() || undefined
 
@@ -89,9 +92,70 @@ export async function POST(req: NextRequest) {
       signal: AbortSignal.timeout(8000),
     }).catch((err) => console.warn('[verify] analytics tracking failed:', err))
 
+    // If a payment_token is in the session metadata, the checkout was initiated by the
+    // SDK. Resolve the booking URL from the offer snapshot in the success URL and store
+    // it in Firestore so the SDK can retrieve it by polling /api/developers/payment-verify.
+    if (paymentToken) {
+      void resolveAndStorePaymentToken(paymentToken, offerId, searchId, session.success_url)
+    }
+
     return response
   } catch (err) {
     console.error('[checkout] verify error:', err)
     return NextResponse.json({ unlocked: false, error: 'Stripe error' }, { status: 500 })
+  }
+}
+
+/**
+ * Resolve the booking URL from the offer snapshot embedded in the Stripe success URL,
+ * then write {payment_token → booking_url} to Firestore via the backend.
+ * Fire-and-forget: failures are logged but never block the verify response.
+ */
+async function resolveAndStorePaymentToken(
+  paymentToken: string,
+  offerId: string,
+  searchId: string,
+  successUrl: string | null,
+): Promise<void> {
+  try {
+    // Parse the offer_ref from the success URL — it was embedded by create-session.
+    let offerRef: string | null = null
+    if (successUrl) {
+      try {
+        offerRef = new URL(successUrl).searchParams.get('ref')
+      } catch {
+        // Malformed URL — proceed without offer_ref.
+      }
+    }
+
+    const trustedOffer = await getTrustedOffer(offerId, searchId, offerRef)
+    const bookingUrl = trustedOffer?.booking_url
+    if (!bookingUrl) {
+      console.warn('[verify] payment_token present but could not resolve booking_url for offer', offerId)
+      return
+    }
+
+    const res = await fetch(`${API_BASE}/api/v1/payment-tokens/store`, {
+      method: 'POST',
+      headers: withLetsfgWebsiteApiHeaders({
+        'Content-Type': 'application/json',
+        'User-Agent': 'LetsFG Verify/1.0',
+      }),
+      body: JSON.stringify({
+        payment_token: paymentToken,
+        booking_url: bookingUrl,
+        offer_id: offerId,
+        ttl: 3600,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    })
+
+    if (!res.ok) {
+      console.error('[verify] payment_token store failed:', res.status, await res.text().catch(() => ''))
+    } else {
+      console.log('[verify] payment_token stored for offer', offerId)
+    }
+  } catch (err) {
+    console.error('[verify] resolveAndStorePaymentToken threw:', err)
   }
 }

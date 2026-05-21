@@ -282,3 +282,97 @@ class FlightSearchResponse(BaseModel):
         default="Search is free. Booking is free. No hidden fees.",
         description="Pricing transparency for agents",
     )
+
+
+# ── Public offer (SDK-facing, no sensitive booking data) ─────────────────────
+
+#: IATA codes of well-known low-cost carriers — used to mask the owner airline
+#: until the user pays on the website.
+LCC_IATA: frozenset[str] = frozenset({
+    "FR", "W6", "W4", "W9", "U2", "RK", "EI", "DY", "N0", "VY", "V7",
+    "LS", "HV", "PC", "XQ", "WN", "B6", "NK", "F9", "G4", "AK", "FZ",
+    "G9", "6E", "5J",
+})
+
+
+def get_airline_category(iata: str) -> str:
+    """Return ``'lcc'`` for low-cost carriers, ``'fsc'`` for full-service."""
+    return "lcc" if iata.upper() in LCC_IATA else "fsc"
+
+
+def _strip_sensitive_conditions(conditions: dict) -> dict:
+    """Keep only publicly-safe condition keys."""
+    _SAFE_KEYS = {"refund_before_departure", "change_before_departure"}
+    return {k: v for k, v in conditions.items() if k in _SAFE_KEYS}
+
+
+class PublicFlightOffer(BaseModel):
+    """
+    A masked flight offer returned to SDK callers before unlock.
+
+    Sensitive fields (exact booking URL, full airline name) are hidden until
+    the user pays on the website.  After payment the SDK can call
+    ``GET /api/developers/payment-verify?token={payment_token}`` every ~5 s
+    for up to 60 s to retrieve the booking URL.
+    """
+
+    id: str
+    price: float
+    currency: str = "EUR"
+    price_formatted: str = ""
+    owner_airline: str = ""
+    airlines: list[str] = Field(default_factory=list)
+    origin: str = ""
+    destination: str = ""
+    outbound: Optional[Any] = None
+    inbound: Optional[Any] = None
+    conditions: dict[str, str] = Field(default_factory=dict)
+    unlock_url: str = Field(
+        "",
+        description=(
+            "Open this URL in a browser to pay and unlock the booking link. "
+            "After payment, poll the payment-verify endpoint with ``payment_token``."
+        ),
+    )
+    payment_token: str = Field(
+        "",
+        description=(
+            "Poll ``GET https://letsfg.co/api/developers/payment-verify?token=<value>`` "
+            "every 5 seconds (up to ~60 s) after the user completes payment.  "
+            "Returns ``{verified: true, booking_url: '...'}`` when ready."
+        ),
+    )
+
+
+def to_public_offer(
+    offer: FlightOffer,
+    *,
+    unlock_url: str = "",
+    payment_token: str = "",
+) -> PublicFlightOffer:
+    """Convert a raw ``FlightOffer`` to a ``PublicFlightOffer`` safe for SDK output."""
+    origin = (
+        offer.outbound.segments[0].origin
+        if offer.outbound and offer.outbound.segments
+        else ""
+    )
+    destination = (
+        offer.outbound.segments[-1].destination
+        if offer.outbound and offer.outbound.segments
+        else ""
+    )
+    return PublicFlightOffer(
+        id=offer.id,
+        price=offer.price,
+        currency=offer.currency,
+        price_formatted=offer.price_formatted,
+        owner_airline=offer.owner_airline,
+        airlines=list(offer.airlines),
+        origin=origin,
+        destination=destination,
+        outbound=offer.outbound,
+        inbound=offer.inbound,
+        conditions=_strip_sensitive_conditions(dict(offer.conditions)),
+        unlock_url=unlock_url,
+        payment_token=payment_token,
+    )

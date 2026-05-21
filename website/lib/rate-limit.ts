@@ -66,6 +66,13 @@ const API_POLICY: RateLimitPolicy = {
   refillPerMinute: 180,
 }
 
+// 12 requests per minute — covers one complete SDK polling cycle (12 × 5-second polls).
+const PAYMENT_VERIFY_POLICY: RateLimitPolicy = {
+  name: 'payment-verify',
+  capacity: 12,
+  refillPerMinute: 12,
+}
+
 let checksSincePrune = 0
 
 declare global {
@@ -108,6 +115,7 @@ export function getRateLimitPolicy(
   env: Record<string, string | undefined> = process.env,
 ): RateLimitPolicy | null {
   if (pathname.startsWith('/api/checkout/webhook')) return null
+  if (pathname.startsWith('/api/developers/payment-verify')) return withEnvOverrides(PAYMENT_VERIFY_POLICY, 'PAYMENT_VERIFY', env)
   if (pathname === '/api/search') return withEnvOverrides(SEARCH_POLICY, 'SEARCH', env)
   if (pathname.startsWith('/api/results/')) return withEnvOverrides(RESULTS_POLICY, 'RESULTS', env)
   if (pathname.startsWith('/api/offer/')) return withEnvOverrides(OFFER_POLICY, 'OFFER', env)

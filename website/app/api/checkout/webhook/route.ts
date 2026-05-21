@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { getStripe } from '../../../../lib/stripe'
+import { getTrustedOffer } from '../../../../lib/trusted-offer'
 import { getLetsfgAnalyticsApiBase, getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
 /**
@@ -93,6 +94,59 @@ async function trackPaymentVerified(session: Stripe.Checkout.Session) {
   }
 }
 
+/**
+ * Resolve the booking URL from the offer snapshot embedded in the Stripe success URL,
+ * then store {payment_token → booking_url} in Firestore via the backend.
+ * Called from both the webhook (authoritative) and verify (browser-tab path).
+ */
+async function resolveAndStorePaymentToken(
+  paymentToken: string,
+  offerId: string,
+  searchId: string,
+  successUrl: string | null,
+): Promise<void> {
+  try {
+    let offerRef: string | null = null
+    if (successUrl) {
+      try {
+        offerRef = new URL(successUrl).searchParams.get('ref')
+      } catch {
+        // Malformed URL — proceed without offer_ref.
+      }
+    }
+
+    const trustedOffer = await getTrustedOffer(offerId, searchId || null, offerRef)
+    const bookingUrl = trustedOffer?.booking_url
+    if (!bookingUrl) {
+      console.warn('[webhook] payment_token present but could not resolve booking_url for offer', offerId)
+      return
+    }
+
+    const res = await fetch(`${API_BASE}/api/v1/payment-tokens/store`, {
+      method: 'POST',
+      headers: withLetsfgWebsiteApiHeaders({
+        'Content-Type': 'application/json',
+        'User-Agent': 'LetsFG Webhook/1.0',
+      }),
+      body: JSON.stringify({
+        payment_token: paymentToken,
+        booking_url: bookingUrl,
+        offer_id: offerId,
+        ttl: 3600,
+      }),
+      signal: AbortSignal.timeout(8_000),
+    })
+
+    if (!res.ok) {
+      console.error('[webhook] payment_token store failed:', res.status, await res.text().catch(() => ''))
+    } else {
+      console.log('[webhook] payment_token stored for offer', offerId)
+    }
+  } catch (err) {
+    console.error('[webhook] resolveAndStorePaymentToken threw:', err)
+  }
+}
+
 export async function POST(req: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   if (!webhookSecret) {
@@ -170,6 +224,21 @@ export async function POST(req: NextRequest) {
               currency: session.currency,
             })
             await trackPaymentVerified(session)
+
+            // If a payment_token is present, this was an SDK-initiated checkout.
+            // Resolve the booking URL from the offer snapshot and write it to
+            // Firestore so the SDK can retrieve it via GET /api/developers/payment-verify.
+            // This is the authoritative path — it runs even when the browser tab is
+            // closed before the verify endpoint is called.
+            const paymentToken = session.metadata?.payment_token
+            if (paymentToken) {
+              await resolveAndStorePaymentToken(
+                paymentToken,
+                session.metadata?.offer_id ?? '',
+                session.metadata?.search_id ?? '',
+                session.success_url ?? null,
+              )
+            }
           }
         }
         break
