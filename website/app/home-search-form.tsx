@@ -389,8 +389,8 @@ const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
   pl: ' do Tokio w przyszłym miesiącu, najtańsza opcja, tylko bezpośrednie, wyjazd służbowy, muszę dolecieć do 15:00…',
 }
 
-const LS_KEY_HOME_ORIGIN_PREFILL = 'lfg_home_origin_prefill_v2'
-const SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED = 'lfg_home_origin_ip_lookup_attempted_v3'
+const lsKeyHomeOriginPrefill = (locale: string) => `lfg_home_origin_prefill_v3_${locale}`
+const ssKeyHomeOriginIpLookupAttempted = (locale: string) => `lfg_home_origin_ip_lookup_attempted_v4_${locale}`
 
 function buildAutoPrefillGhostSuffix(locale: string, placeholder: string, prefill?: string): string {
   const cleaned = placeholder.replace(/^try:\s*/i, '').trim()
@@ -587,7 +587,7 @@ export default function HomeSearchForm({
     if (!normalizedOrigin) return
 
     try {
-      localStorage.setItem(LS_KEY_HOME_ORIGIN_PREFILL, normalizedOrigin)
+      localStorage.setItem(lsKeyHomeOriginPrefill(locale), normalizedOrigin)
     } catch {
       // Ignore storage failures in private mode.
     }
@@ -597,7 +597,7 @@ export default function HomeSearchForm({
     if (normalizedInitialQuery || normalizedDetectedOrigin || autoPrefillOrigin) return
 
     try {
-      const cachedOrigin = localStorage.getItem(LS_KEY_HOME_ORIGIN_PREFILL)?.trim() || ''
+      const cachedOrigin = localStorage.getItem(lsKeyHomeOriginPrefill(locale))?.trim() || ''
       if (cachedOrigin && !userEditedAutoPrefillRef.current) {
         const currentValue = inputRef.current?.value.trim() ?? ''
         if (currentValue) return
@@ -608,8 +608,8 @@ export default function HomeSearchForm({
         return
       }
 
-      if (sessionStorage.getItem(SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED)) return
-      sessionStorage.setItem(SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED, '1')
+      if (sessionStorage.getItem(ssKeyHomeOriginIpLookupAttempted(locale))) return
+      sessionStorage.setItem(ssKeyHomeOriginIpLookupAttempted(locale), '1')
     } catch {
       // Ignore storage failures in private mode.
     }
@@ -633,7 +633,7 @@ export default function HomeSearchForm({
       if (currentValue) return
 
       try {
-        localStorage.setItem(LS_KEY_HOME_ORIGIN_PREFILL, detectedOrigin)
+        localStorage.setItem(lsKeyHomeOriginPrefill(locale), detectedOrigin)
       } catch {
         // Ignore storage failures in private mode.
       }
