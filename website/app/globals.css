@@ -9835,6 +9835,141 @@ body:has(.res-page) {
   line-height: 1.45;
 }
 
+/* ── Confirmation header ───────────────────────────────────────────── */
+.ck-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
+  border: 1.5px solid #86efac;
+  border-radius: 16px;
+}
+
+.ck-confirm-check {
+  width: 34px;
+  height: 34px;
+  background: #16a34a;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.ck-confirm-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ck-confirm-route {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #166534;
+}
+
+.ck-confirm-saving {
+  font-size: 0.8rem;
+  color: #166534;
+  opacity: 0.85;
+}
+
+/* ── Flight card compact row + toggle ──────────────────────────────── */
+.ck-flight-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 4px;
+  border-top: 1px solid rgba(20, 45, 60, 0.07);
+  flex-wrap: wrap;
+}
+
+.ck-flight-compact-route {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #142d3c;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.01em;
+}
+
+.ck-flight-compact-dates {
+  font-size: 0.78rem;
+  color: rgba(20, 45, 60, 0.5);
+  font-weight: 500;
+  flex: 1;
+}
+
+.ck-flight-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(20, 45, 60, 0.18);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.55);
+  cursor: pointer;
+  transition: border-color 0.14s, color 0.14s;
+  white-space: nowrap;
+}
+
+.ck-flight-toggle:hover {
+  border-color: rgba(20, 45, 60, 0.4);
+  color: #142d3c;
+}
+
+/* ── Primary CTA section (above checkout card) ─────────────────────── */
+.ck-cta-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(20, 45, 60, 0.08);
+  box-shadow: 0 2px 12px rgba(10, 30, 50, 0.07);
+  padding: 18px 22px;
+}
+
+/* Risk-reversal guarantee strip */
+.ck-risk-reversal {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 12px;
+  background: rgba(22, 163, 74, 0.06);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  color: #166534;
+  line-height: 1.45;
+}
+
+.ck-risk-reversal svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #16a34a;
+}
+
+/* Promo toggle link */
+.ck-promo-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: rgba(20, 45, 60, 0.45);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.14s;
+}
+
+.ck-promo-toggle:hover {
+  color: #0a4d68;
+}
+
 .ck-leg-breakdown {
   display: flex;
   flex-direction: column;
