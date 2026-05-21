@@ -111,25 +111,21 @@ const HOME_ORIGIN_TO_WORDS: Record<string, string> = {
 }
 
 function toHomeOriginLabel(code: string, locale: string, name: string | undefined, city: string | undefined): string {
-  const normalizedCity = city?.trim()
-
-  const cityName = normalizedCity || (() => {
-    const airportMatch = findBestMatch(code, locale)
-    if (airportMatch) {
-      return getAirportName(airportMatch, locale)
-        .replace(/\bInternational\b/gi, '')
-        .replace(/\bAirport\b/gi, '')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-    }
-    return name
-      ?.replace(/\bInternational\b/gi, '')
-      ?.replace(/\bAirport\b/gi, '')
-      ?.replace(/\s{2,}/g, ' ')
-      ?.trim() || code
-  })()
-
   const toWord = HOME_ORIGIN_TO_WORDS[locale] ?? HOME_ORIGIN_TO_WORDS.en
+
+  // Curated locale-aware name takes priority (en:'Gdansk', de:'Danzig', pl:'Gdańsk')
+  const airportMatch = findBestMatch(code, locale)
+  if (airportMatch) {
+    return `${getAirportName(airportMatch, locale)} ${toWord}`
+  }
+
+  // Fall back to raw OurAirports city name, then stripped airport name
+  const cityName = city?.trim() || name
+    ?.replace(/\bInternational\b/gi, '')
+    ?.replace(/\bAirport\b/gi, '')
+    ?.replace(/\s{2,}/g, ' ')
+    ?.trim() || code
+
   return `${cityName} ${toWord}`
 }
 
