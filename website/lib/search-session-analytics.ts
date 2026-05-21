@@ -62,6 +62,9 @@ export interface SearchSessionPayload {
   utm_medium?: string
   utm_campaign?: string
   utm_term?: string
+  acquisition_source?: string
+  acquisition_route?: string
+  acquisition_channel?: string
 }
 
 export interface ClarificationSearchSessionContext extends Omit<
