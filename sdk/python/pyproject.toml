@@ -47,6 +47,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
 all = [
     "nodriver>=0.38",
     "patchright>=1.0",
