@@ -105,21 +105,32 @@ function readClientIpCandidates(headers: HeaderLike): string[] {
     .filter(Boolean)
 }
 
+const HOME_ORIGIN_TO_WORDS: Record<string, string> = {
+  en: 'to', pl: 'do', de: 'nach', es: 'a', fr: 'vers', it: 'a', pt: 'para',
+  nl: 'naar', sv: 'till', hr: 'u', sq: 'në', zh: 'to', ja: 'to',
+}
+
 function toHomeOriginLabel(code: string, locale: string, name: string | undefined, city: string | undefined): string {
-  const airportMatch = findBestMatch(code, locale)
-  if (airportMatch) {
-    return getAirportName(airportMatch, locale)
-  }
-
   const normalizedCity = city?.trim()
-  if (normalizedCity) return normalizedCity
 
-  const normalizedName = name
-    ?.replace(/\bInternational\b/gi, '')
-    ?.replace(/\bAirport\b/gi, '')
-    ?.replace(/\s{2,}/g, ' ')
-    ?.trim()
-  return normalizedName || code
+  const cityName = normalizedCity || (() => {
+    const airportMatch = findBestMatch(code, locale)
+    if (airportMatch) {
+      return getAirportName(airportMatch, locale)
+        .replace(/\bInternational\b/gi, '')
+        .replace(/\bAirport\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    }
+    return name
+      ?.replace(/\bInternational\b/gi, '')
+      ?.replace(/\bAirport\b/gi, '')
+      ?.replace(/\s{2,}/g, ' ')
+      ?.trim() || code
+  })()
+
+  const toWord = HOME_ORIGIN_TO_WORDS[locale] ?? HOME_ORIGIN_TO_WORDS.en
+  return `${cityName} ${toWord}`
 }
 
 function lookupGeoIp(clientIp: string): GeoIpLookup {
