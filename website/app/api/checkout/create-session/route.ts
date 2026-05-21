@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
 
   const isProbe = isProbeModeValue(probe)
 
-  if (!offerId || !searchId) {
+  // searchId is optional for SDK-originated flows where the offer is identified by offerRef alone.
+  if (!offerId || (!searchId && !offerRef)) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const successUrl = new URL(`/book/${offerId}`, origin)
-    successUrl.searchParams.set('from', searchId)
+    if (searchId) successUrl.searchParams.set('from', searchId)
     appendProbeParam(successUrl.searchParams, isProbe)
     // Embed offer snapshot so any Cloud Run instance can reconstruct the offer.
     if (freshOfferRef) {
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     const successUrlWithSession = `${successUrl.toString()}&stripe_session={CHECKOUT_SESSION_ID}`
 
     const cancelUrl = new URL(`/book/${offerId}`, origin)
-    cancelUrl.searchParams.set('from', searchId)
+    if (searchId) cancelUrl.searchParams.set('from', searchId)
     appendProbeParam(cancelUrl.searchParams, isProbe)
 
     const stripe = getStripe()
