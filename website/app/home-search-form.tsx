@@ -391,7 +391,7 @@ const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
   pl: ' do Tokio w przyszłym miesiącu, najtańsza opcja, tylko bezpośrednie, wyjazd służbowy, muszę dolecieć do 15:00…',
 }
 
-const lsKeyHomeOriginPrefill = (locale: string) => `lfg_home_origin_prefill_v3_${locale}`
+const lsKeyHomeOriginPrefill = (locale: string) => `lfg_home_origin_prefill_v4_${locale}`
 const ssKeyHomeOriginIpLookupAttempted = (locale: string) => `lfg_home_origin_ip_lookup_attempted_v4_${locale}`
 
 function buildAutoPrefillGhostSuffix(locale: string, placeholder: string, prefill?: string): string {
