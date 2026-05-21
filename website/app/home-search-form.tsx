@@ -418,25 +418,21 @@ function resolveAutoPrefillOriginFromCoordinates(lat: number, lon: number, local
   const nearest = findNearestAirport(lat, lon)
   if (!nearest) return ''
 
-  const city = nearest.ci?.trim()
-
-  const cityName = city || (() => {
-    const airportMatch = findBestMatch(nearest.c, locale)
-    if (airportMatch) {
-      return getAirportName(airportMatch, locale)
-        .replace(/\bInternational\b/gi, '')
-        .replace(/\bAirport\b/gi, '')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-    }
-    return nearest.n
-      ?.replace(/\bInternational\b/gi, '')
-      ?.replace(/\bAirport\b/gi, '')
-      ?.replace(/\s{2,}/g, ' ')
-      ?.trim() || nearest.c
-  })()
-
   const toWord = (TO_KEYWORDS[locale] || TO_KEYWORDS.en)[0]
+
+  // Curated locale-aware name takes priority (en:'Gdansk', de:'Danzig', pl:'Gdańsk')
+  const airportMatch = findBestMatch(nearest.c, locale)
+  if (airportMatch) {
+    return `${getAirportName(airportMatch, locale)} ${toWord}`
+  }
+
+  // Fall back to raw OurAirports city name, then stripped airport name
+  const cityName = nearest.ci?.trim() || nearest.n
+    ?.replace(/\bInternational\b/gi, '')
+    ?.replace(/\bAirport\b/gi, '')
+    ?.replace(/\s{2,}/g, ' ')
+    ?.trim() || nearest.c
+
   return `${cityName} ${toWord}`
 }
 
