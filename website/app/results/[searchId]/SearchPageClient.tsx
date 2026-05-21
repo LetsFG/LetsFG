@@ -680,7 +680,13 @@ export default function SearchPageClient({
       const currentUrl = new URL(window.location.href)
       const nextUrl = new URL(activeResultsPath, currentUrl.origin)
       if (currentUrl.pathname === nextUrl.pathname && currentUrl.search === nextUrl.search) return
-      window.history.replaceState(null, '', nextUrl.toString())
+      // Use the un-patched History prototype method to update the URL bar without
+      // triggering a Next.js App Router navigation. Next.js monkey-patches
+      // window.history.replaceState at the instance level and fires a router
+      // event on pathname changes, which causes a spurious soft navigation and
+      // loading.tsx flash (the "black screen + reload" bug when the slug is
+      // added to the URL path on first hydration).
+      History.prototype.replaceState.call(window.history, null, '', nextUrl.toString())
     } catch (_) {
       // Ignore browsers that reject history writes.
     }
