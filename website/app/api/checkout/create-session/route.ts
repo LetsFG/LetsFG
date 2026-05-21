@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getStripe, toStripeAmount } from '../../../../lib/stripe'
+import { getStripeForOffer, toStripeAmount } from '../../../../lib/stripe'
 import { calculateFee } from '../../../../lib/pricing'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { getTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (searchId) cancelUrl.searchParams.set('from', searchId)
     appendProbeParam(cancelUrl.searchParams, isProbe)
 
-    const stripe = getStripe()
+    const stripe = getStripeForOffer(offerId)
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [
