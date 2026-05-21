@@ -389,17 +389,24 @@ const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
   pl: ' do Tokio w przyszłym miesiącu, najtańsza opcja, tylko bezpośrednie, wyjazd służbowy, muszę dolecieć do 15:00…',
 }
 
-const LS_KEY_HOME_ORIGIN_PREFILL = 'lfg_home_origin_prefill'
-const SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED = 'lfg_home_origin_ip_lookup_attempted_v2'
+const LS_KEY_HOME_ORIGIN_PREFILL = 'lfg_home_origin_prefill_v2'
+const SS_KEY_HOME_ORIGIN_IP_LOOKUP_ATTEMPTED = 'lfg_home_origin_ip_lookup_attempted_v3'
 
-function buildAutoPrefillGhostSuffix(locale: string, placeholder: string): string {
+function buildAutoPrefillGhostSuffix(locale: string, placeholder: string, prefill?: string): string {
   const cleaned = placeholder.replace(/^try:\s*/i, '').trim()
   const toWords = TO_KEYWORDS[locale] || TO_KEYWORDS.en
   const lower = cleaned.toLowerCase()
+  const prefillLower = (prefill || '').trim().toLowerCase()
 
   for (const toWord of toWords) {
-    const idx = lower.indexOf(` ${toWord.toLowerCase()} `)
+    const toWordLower = toWord.toLowerCase()
+    const idx = lower.indexOf(` ${toWordLower} `)
     if (idx >= 0) {
+      // If the prefill already ends with the "to" keyword, skip it in the ghost suffix
+      // so we don't display "Gdansk to to Tokyo..." — just "Gdansk to Tokyo..."
+      if (prefillLower.endsWith(` ${toWordLower}`) || prefillLower === toWordLower) {
+        return cleaned.slice(idx + 1 + toWordLower.length)
+      }
       return cleaned.slice(idx)
     }
   }
@@ -411,20 +418,26 @@ function resolveAutoPrefillOriginFromCoordinates(lat: number, lon: number, local
   const nearest = findNearestAirport(lat, lon)
   if (!nearest) return ''
 
-  const airportMatch = findBestMatch(nearest.c, locale)
-  if (airportMatch) {
-    return getAirportName(airportMatch, locale)
-  }
-
   const city = nearest.ci?.trim()
-  if (city) return city
 
-  const name = nearest.n
-    ?.replace(/\bInternational\b/gi, '')
-    ?.replace(/\bAirport\b/gi, '')
-    ?.replace(/\s{2,}/g, ' ')
-    ?.trim()
-  return name || nearest.c
+  const cityName = city || (() => {
+    const airportMatch = findBestMatch(nearest.c, locale)
+    if (airportMatch) {
+      return getAirportName(airportMatch, locale)
+        .replace(/\bInternational\b/gi, '')
+        .replace(/\bAirport\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    }
+    return nearest.n
+      ?.replace(/\bInternational\b/gi, '')
+      ?.replace(/\bAirport\b/gi, '')
+      ?.replace(/\s{2,}/g, ' ')
+      ?.trim() || nearest.c
+  })()
+
+  const toWord = (TO_KEYWORDS[locale] || TO_KEYWORDS.en)[0]
+  return `${cityName} ${toWord}`
 }
 
 async function loadPassiveIpCoordinates(signal: AbortSignal): Promise<{ latitude: number; longitude: number } | null> {
@@ -734,7 +747,7 @@ export default function HomeSearchForm({
         q: typeof question.question === 'string' && question.question.trim() ? question.question.trim() : topic,
         chips,
         freeHint: typeof question.free_hint === 'string' && question.free_hint.trim() ? question.free_hint.trim() : undefined,
-        multiChoice: question.multi_choice === true,
+        multiChoice: question.multi_choice === true && topic !== 'trip_purpose',
         isEssential: question.is_essential === true,
       })
       seenTopics.add(topic)
@@ -815,8 +828,6 @@ export default function HomeSearchForm({
     'with a colleague': 'with a colleague',
     'with family': 'travelling with family',
     // Trip purpose
-    'sun & relax': 'beach holiday',
-    'city exploring': 'city break',
     'business': 'business trip',
     'special occasion': 'special occasion',
     'adventure': 'adventure trip',
@@ -1130,7 +1141,7 @@ export default function HomeSearchForm({
   // Suggestion updates when autoPrefill state changes (typing suggestions removed — caused lag)
   useEffect(() => {
     if (autoPrefillPristine) {
-      setSuggestion(buildAutoPrefillGhostSuffix(locale, heroPlaceholder))
+      setSuggestion(buildAutoPrefillGhostSuffix(locale, heroPlaceholder, autoPrefillOrigin))
       return
     }
     setSuggestion('')
