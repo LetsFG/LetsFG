@@ -32,7 +32,8 @@
     ],
     "6-measure-improve": [
       { "script": "test:pfp-ingest", "file": "tests/pfp/offer-ingest.test.ts" },
-      { "script": "test:pfp-integration", "file": "tests/pfp/integration.test.ts" }
+      { "script": "test:pfp-integration", "file": "tests/pfp/integration.test.ts" },
+      { "script": "test:share-link", "file": "tests/share-link.test.ts" }
     ]
   },
   "expected_on_pfp_merge": [
