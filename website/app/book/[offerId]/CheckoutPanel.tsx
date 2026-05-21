@@ -106,22 +106,21 @@ function getUnlockTokenStorageKey(searchId: string) {
 
 function readStoredUnlockToken(searchId: string | null): string | null {
   if (!searchId) return null
-
-  try {
-    return window.localStorage.getItem(getUnlockTokenStorageKey(searchId))
-  } catch (_) {
-    return null
+  const key = getUnlockTokenStorageKey(searchId)
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      const val = storage.getItem(key)
+      if (val) return val
+    } catch (_) {}
   }
+  return null
 }
 
 function persistUnlockToken(searchId: string | null, unlockToken: string | undefined) {
   if (!searchId || !unlockToken) return
-
-  try {
-    window.localStorage.setItem(getUnlockTokenStorageKey(searchId), unlockToken)
-  } catch (_) {
-    // Ignore storage failures and keep the in-memory flow working.
-  }
+  const key = getUnlockTokenStorageKey(searchId)
+  try { window.localStorage.setItem(key, unlockToken) } catch (_) {}
+  try { window.sessionStorage.setItem(key, unlockToken) } catch (_) {}
 }
 
 async function fetchLatestOfferRef(searchId: string, offerId: string, isTestSearch: boolean): Promise<string | null> {
@@ -162,6 +161,15 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" width="18" height="18" aria-hidden="true">
       <path d="M4 10l4.5 4.5L16 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ShieldIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" width="15" height="15" aria-hidden="true">
+      <path d="M10 2L3 5v5c0 4.15 2.98 7.63 7 8.93C14.02 17.63 17 14.15 17 10V5l-7-3z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -247,6 +255,8 @@ export default function CheckoutPanel({
   const displayPrice = convertCurrencyAmount(offer.price, offer.currency, displayCurrency, fxRates)
   const fee = calculateFee(offer.price, offer.currency)
   const displayFee = convertCurrencyAmount(fee, offer.currency, displayCurrency, fxRates)
+  const totalWithFee = Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))
+  const savingsVsSkyscanner = Math.round(convertCurrencyAmount(offer.price * 1.10, offer.currency, displayCurrency, fxRates)) - totalWithFee
   const tripBreakdown = useMemo<TripBreakdownLeg[]>(() => {
     if (offer.trip_breakdown?.length) {
       return offer.trip_breakdown
@@ -323,6 +333,9 @@ export default function CheckoutPanel({
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([])
   const [bookingLinkStatus, setBookingLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const bookingLinkTrackedRef = useRef(false)
+  // In-memory fallback for the unlock token — covers environments where
+  // localStorage is blocked (strict private browsing, security extensions).
+  const pendingUnlockTokenRef = useRef<string | null>(null)
   const splitBookingLegs = useMemo<SplitBookingLeg[]>(() => {
     if (tripBreakdown.length <= 1 || (!offer.is_combo && bookingOptions.length === 0)) {
       return []
@@ -345,6 +358,11 @@ export default function CheckoutPanel({
   const isUnlocked = step.type === 'unlocked'
   const isLoading = step.type === 'checking' || step.type === 'verifying-payment'
   const showShareOption = false
+
+  const [promoCode, setPromoCode] = useState('')
+  const [promoStatus, setPromoStatus] = useState<'idle' | 'applying' | 'used' | 'not-found'>('idle')
+  const [showFlightDetails, setShowFlightDetails] = useState(false)
+  const [showPromo, setShowPromo] = useState(false)
 
   // Mark that user visited checkout so results page can detect a "back from checkout" return
   useEffect(() => {
@@ -387,10 +405,14 @@ export default function CheckoutPanel({
   const checkUnlockStatus = useCallback(async (): Promise<boolean> => {
     if (!searchId) return false
 
-    const unlockToken = readStoredUnlockToken(searchId)
+    const unlockToken = readStoredUnlockToken(searchId) ?? pendingUnlockTokenRef.current
+    const statusParams = new URLSearchParams({ searchId })
+    if (unlockToken) {
+      statusParams.set('unlockToken', unlockToken)
+    }
 
     try {
-      const res = await fetch(`/api/unlock-status?searchId=${encodeURIComponent(searchId)}`, {
+      const res = await fetch(`/api/unlock-status?${statusParams.toString()}`, {
         cache: 'no-store',
         credentials: 'same-origin',
         headers: unlockToken ? { [UNLOCK_TOKEN_HEADER_NAME]: unlockToken } : undefined,
@@ -411,7 +433,7 @@ export default function CheckoutPanel({
 
     setBookingLinkStatus('loading')
     try {
-      const unlockToken = readStoredUnlockToken(searchId)
+      const unlockToken = readStoredUnlockToken(searchId) ?? pendingUnlockTokenRef.current
       // Resolve offer_ref: use the one on the offer, or fetch a fresh one if missing.
       let resolvedOfferRef = offer.offer_ref || offerRef || undefined
       if (!resolvedOfferRef) {
@@ -445,6 +467,11 @@ export default function CheckoutPanel({
       if (resolvedOfferRef) {
         params.set('ref', resolvedOfferRef)
       }
+      // Pass the token as a URL param as well — CDNs (e.g. Fastly) may strip
+      // custom request headers before they reach the Next.js route handler.
+      if (unlockToken) {
+        params.set('unlockToken', unlockToken)
+      }
       let res = await fetch(
         `/api/offer/${encodeURIComponent(offer.id)}?${params.toString()}`,
         {
@@ -464,6 +491,9 @@ export default function CheckoutPanel({
           })
           appendProbeParam(retryParams, isTestSearch)
           retryParams.set('ref', latestOfferRef)
+          if (unlockToken) {
+            retryParams.set('unlockToken', unlockToken)
+          }
           res = await fetch(
             `/api/offer/${encodeURIComponent(offer.id)}?${retryParams.toString()}`,
             {
@@ -728,9 +758,57 @@ export default function CheckoutPanel({
     }
   }, [analyticsSearchId, checkoutSourcePath, fee, isTestSearch, offer, searchId])
 
+  const handleApplyPromo = useCallback(async () => {
+    if (!promoCode.trim() || !searchId) return
+    setPromoStatus('applying')
+    try {
+      const res = await fetch('/api/checkout/apply-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ code: promoCode.trim(), searchId }),
+      })
+      const data = await res.json() as { unlocked?: boolean; unlockToken?: string }
+      if (res.ok && data.unlocked) {
+        pendingUnlockTokenRef.current = data.unlockToken ?? null
+        persistUnlockToken(searchId, data.unlockToken)
+        setStep({ type: 'unlocked', via: 'payment' })
+        trackSearchSessionEvent(analyticsSearchId, 'promo_code_applied', {
+          offer_id: offer.id,
+        }, {
+          source: 'website-checkout',
+          source_path: checkoutSourcePath,
+          is_test_search: isTestSearch || undefined,
+        })
+        await loadUnlockedBookingLink()
+      } else if (res.status === 410) {
+        setPromoStatus('used')
+      } else {
+        setPromoStatus('not-found')
+      }
+    } catch (_) {
+      setPromoStatus('not-found')
+    }
+  }, [analyticsSearchId, checkoutSourcePath, isTestSearch, loadUnlockedBookingLink, offer.id, promoCode, searchId])
+
   return (
     <div className="ck-page">
       <div className="ck-inner">
+
+        {/* ── Confirmation header ─────────────────────────────────────────── */}
+        <div className="ck-confirm-header">
+          <div className="ck-confirm-check"><CheckIcon /></div>
+          <div className="ck-confirm-copy">
+            <span className="ck-confirm-route">
+              {offer.origin} → {offer.destination}
+            </span>
+            {savingsVsSkyscanner > 0 && (
+              <span className="ck-confirm-saving">
+                ~{displayCurrency}{savingsVsSkyscanner} cheaper than Skyscanner
+              </span>
+            )}
+          </div>
+        </div>
 
         {/* ── Flight summary card ─────────────────────────────────────────── */}
         <div className="ck-flight-card">
@@ -741,12 +819,26 @@ export default function CheckoutPanel({
               <span className="ck-airline-cabin">Economy class</span>
             </div>
             <div className="ck-flight-price-badge">
-              <span className="ck-flight-price">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))}</span>
+              <span className="ck-flight-price">{displayCurrency}{totalWithFee}</span>
               <span className="ck-flight-price-label">{t('perPerson')}</span>
             </div>
           </div>
 
-          <div className="ck-flight-routes">
+          <div className="ck-flight-compact">
+            <span className="ck-flight-compact-route">
+              {(summaryLegs[0]?.origin ?? offer.origin)} → {(summaryLegs[summaryLegs.length - 1]?.destination ?? offer.destination)}
+            </span>
+            <span className="ck-flight-compact-dates">{summaryDates.join(' · ')}</span>
+            <button
+              className="ck-flight-toggle"
+              onClick={() => setShowFlightDetails(v => !v)}
+              aria-expanded={showFlightDetails}
+            >
+              {showFlightDetails ? 'Hide ↑' : 'Details ↓'}
+            </button>
+          </div>
+
+          {showFlightDetails && <><div className="ck-flight-routes">
             {summaryLegs.map((leg) => {
               const stops = getLegStops(leg)
               const durationLabel = leg.duration_minutes > 0 ? fmtDuration(leg.duration_minutes) : '--'
@@ -817,6 +909,7 @@ export default function CheckoutPanel({
             <span className="ck-meta-dot">·</span>
             <span>{t('economy')}</span>
           </div>
+          </>}
         </div>
 
         {/* ── Unlocked success banner ─────────────────────────────────────── */}
@@ -848,19 +941,49 @@ export default function CheckoutPanel({
           </div>
         )}
 
-        {/* Countdown timer — sticky below flight card, variant B only */}
-        {countdownVariant === 'countdown' && (
-          <CheckoutCountdown
-            isUnlocked={isUnlocked}
-            onExpired={() => {
-              // Redirect back to search results if we have a searchId, otherwise home
-              if (searchId) {
-                window.location.href = `/results/${encodeURIComponent(searchId)}`
-              } else {
-                window.location.href = homeHref
-              }
-            }}
-          />
+        {/* ── Primary CTA section (shown when locked) ────────────────────── */}
+        {!isLoading && !isUnlocked && (
+          <div className="ck-cta-section">
+            <div className="ck-guarantee-row">
+              <span className="ck-guarantee-item">
+                <CheckIcon /> {t('rawAirlinePrice')}
+              </span>
+              <span className="ck-guarantee-item">
+                <CheckIcon /> {t('secureCheckout')}
+              </span>
+              <span className="ck-guarantee-item">
+                <CheckIcon /> {t('noHiddenFees')}
+              </span>
+            </div>
+            <button
+              className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
+              onClick={handlePay}
+              disabled={step.type === 'paying'}
+            >
+              {step.type === 'paying' ? (
+                <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
+              ) : (
+                <><LockIcon />{t('unlockBookingLink')} · {fmtFee(displayFee, displayCurrency)}</>
+              )}
+            </button>
+            {countdownVariant === 'countdown' && (
+              <CheckoutCountdown
+                isUnlocked={isUnlocked}
+                onExpired={() => {
+                  if (searchId) {
+                    window.location.href = `/results/${encodeURIComponent(searchId)}`
+                  } else {
+                    window.location.href = homeHref
+                  }
+                }}
+              />
+            )}
+            <div className="ck-fee-note">{t('oneTimeUnlocksAll')}</div>
+            <div className="ck-risk-reversal">
+              <ShieldIcon />
+              <span>{t('refundGuarantee')}</span>
+            </div>
+          </div>
         )}
 
         {/* ── Checkout card ───────────────────────────────────────────────── */}
@@ -879,18 +1002,18 @@ export default function CheckoutPanel({
               </div>
               <div className="ck-price-row ck-price-row--total">
                 <span className="ck-price-label">{t('total')}</span>
-                <span className="ck-price-value">{displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))}</span>
+                <span className="ck-price-value">{displayCurrency}{totalWithFee}</span>
               </div>
             </div>
 
             {/* ── Comparison: what you'd pay elsewhere ────────────────── */}
             <div className="ck-elsewhere">
-              <div className="ck-elsewhere-heading">What you'd pay on popular travel sites</div>
+              <div className="ck-elsewhere-heading">Compare with other sites</div>
               <div className="ck-elsewhere-rows">
                 {([
-                  ['Popular flight aggregator', 1.10],
-                  ['Leading booking platform',  1.17],
-                  ['Full-service travel site',  1.24],
+                  ['Skyscanner',   1.10],
+                  ['Expedia',      1.17],
+                  ['Booking.com',  1.24],
                 ] as [string, number][]).map(([label, factor]) => (
                   <div className="ck-elsewhere-row" key={label}>
                     <span className="ck-elsewhere-site">{label}</span>
@@ -904,38 +1027,19 @@ export default function CheckoutPanel({
                     <svg viewBox="0 0 20 20" fill="none" width="13" height="13" aria-hidden="true">
                       <path d="M4 10l4.5 4.5L16 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    LetsFG total
+                    {t('yourPrice')}
                   </span>
                   <span className="ck-elsewhere-price ck-elsewhere-price--ours">
-                    {displayCurrency}{Math.round(convertCurrencyAmount(withFee(offer.price, offer.currency), offer.currency, displayCurrency, fxRates))}
+                    {displayCurrency}{totalWithFee}
                   </span>
                 </div>
               </div>
-              <p className="ck-elsewhere-note">
-                Travel sites typically add demand-based markups, add OTA fees on top, or just don't have everything. LetsFG compares the prices from ALL the websites in the world — scanning both your favourite sites and those you didn't even know existed.
-              </p>
+              <p className="ck-elsewhere-note">{t('whyBetterNote')}</p>
             </div>
 
             {splitBookingLegs.length > 0 ? (
               /* ── Split booking: per-leg action cards ── */
               <>
-                {!isUnlocked && !isLoading && (
-                  <div className="ck-fee-note">{t('oneTimeUnlocksAll')}</div>
-                )}
-                {/* Single unlock button — shown only when locked */}
-                {!isLoading && !isUnlocked && (
-                  <button
-                    className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
-                    onClick={handlePay}
-                    disabled={step.type === 'paying'}
-                  >
-                    {step.type === 'paying' ? (
-                      <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
-                    ) : (
-                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(displayFee, displayCurrency)}</>
-                    )}
-                  </button>
-                )}
                 <div className="ck-book-actions">
                   {splitBookingLegs.map((leg) => {
                     const legPrice = typeof leg.price === 'number' ? leg.price : null
@@ -1009,12 +1113,7 @@ export default function CheckoutPanel({
                   </div>
                 )}
 
-                {!isUnlocked && !isLoading && (
-                  <div className="ck-fee-note">{t('oneTimeUnlocksAll')}</div>
-                )}
-
-                {!isLoading && (isUnlocked ? (
-                  /* Unlocked: show actual booking links */
+                {!isLoading && isUnlocked && (
                   bookingOptions.length > 0 ? (
                     <div className="ck-book-actions">
                       {bookingOptions.map((option) => (
@@ -1090,35 +1189,47 @@ export default function CheckoutPanel({
                       </button>
                     )
                   )
-                ) : (
-                  /* Locked: single Stripe checkout button */
-                  <button
-                    className={`ck-book-btn ck-book-btn--active${step.type === 'paying' ? ' ck-pay-btn--loading' : ''}`}
-                    onClick={handlePay}
-                    disabled={step.type === 'paying'}
-                  >
-                    {step.type === 'paying' ? (
-                      <><span className="ck-spinner" aria-hidden="true" />{t('processing')}</>
-                    ) : (
-                      <><LockIcon />{t('unlockBookingLink')} · {fmtFee(displayFee, displayCurrency)}</>
-                    )}
-                  </button>
-                ))}
+                )}
 
               </>
             )}
 
-            <div className="ck-guarantee-row">
-              <span className="ck-guarantee-item">
-                <CheckIcon /> {t('rawAirlinePrice')}
-              </span>
-              <span className="ck-guarantee-item">
-                <CheckIcon /> {t('secureCheckout')}
-              </span>
-              <span className="ck-guarantee-item">
-                <CheckIcon /> {t('noHiddenFees')}
-              </span>
-            </div>
+            {/* Promo code — collapsed behind toggle when locked */}
+            {!isUnlocked && !isLoading && (
+              showPromo ? (
+                <div className="ck-promo-row">
+                  <div className="ck-promo-fields">
+                    <input
+                      className="ck-promo-input"
+                      type="text"
+                      placeholder="Promo code"
+                      value={promoCode}
+                      onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoStatus('idle') }}
+                      disabled={promoStatus === 'applying'}
+                      maxLength={32}
+                      aria-label="Promo code"
+                    />
+                    <button
+                      className="ck-promo-btn"
+                      onClick={handleApplyPromo}
+                      disabled={!promoCode.trim() || promoStatus === 'applying'}
+                    >
+                      {promoStatus === 'applying' ? <><span className="ck-spinner ck-spinner--sm" aria-hidden="true" />Applying</> : 'Apply'}
+                    </button>
+                  </div>
+                  {promoStatus === 'used' && (
+                    <p className="ck-promo-msg ck-promo-msg--error">This code has already been used.</p>
+                  )}
+                  {promoStatus === 'not-found' && (
+                    <p className="ck-promo-msg ck-promo-msg--error">Invalid promo code.</p>
+                  )}
+                </div>
+              ) : (
+                <button className="ck-promo-toggle" onClick={() => setShowPromo(true)}>
+                  {t('promoToggle')}
+                </button>
+              )
+            )}
           </div>
         </div>
 
