@@ -7437,6 +7437,27 @@ body:has(.res-page) {
     gap: 8px;
   }
 
+  .lp-topbar-side .lp-globe-btn,
+  .lp-topbar-side .lp-currency-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .lp-topbar-side .lp-gh-btn {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .lp-topbar-side .lp-gh-btn.lp-gh-btn--stars {
+    width: auto;
+    height: 36px;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 0.82rem;
+  }
+
   .lp-nav {
     grid-column: 1 / -1;
     order: 3;
@@ -7488,7 +7509,7 @@ body:has(.res-page) {
   }
 
   .lp-sf-frame {
-    padding: 8px 8px 8px 20px;
+    padding: 8px 10px 8px 20px;
   }
 
   .lp-sf-disclosure {
@@ -7502,8 +7523,8 @@ body:has(.res-page) {
   }
 
   .lp-sf-button {
-    width: 50px;
-    height: 50px;
+    width: 46px;
+    height: 46px;
     box-shadow: 0 6px 16px rgba(245, 120, 0, 0.26);
   }
 
