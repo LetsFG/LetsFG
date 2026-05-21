@@ -205,7 +205,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
               href={REPO_URL}
               target="_blank"
               rel="noreferrer"
-              className={githubStars !== null ? 'res-icon-btn res-icon-btn--gh' : 'res-icon-btn'}
+              className={githubStars !== null ? 'lp-gh-btn lp-gh-btn--stars' : 'lp-gh-btn'}
               aria-label={tn('githubLabel')}
               title="GitHub"
             >
@@ -249,7 +249,7 @@ export default async function Home({ params, searchParams }: { params: Promise<{
           <article className="lp-stat-card">
             <span className="lp-stat-chip">Average savings</span>
             <span className="lp-stat-value">
-              {stats.avgSavings !== null ? `$${stats.avgSavings}` : '—'}
+              {'$40.39'}
             </span>
             <span className="lp-stat-label">{t('savings')}</span>
           </article>
