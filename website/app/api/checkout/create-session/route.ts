@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStripe, toStripeAmount } from '../../../../lib/stripe'
 import { calculateFee } from '../../../../lib/pricing'
 import { getSessionUid } from '../../../../lib/session-uid'
-import { getTrustedOffer } from '../../../../lib/trusted-offer'
+import { getTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
 import { appendProbeParam, isProbeModeValue } from '../../../../lib/probe-mode'
 
 /**
@@ -18,9 +18,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No session cookie' }, { status: 400 })
   }
 
-  let offerId: string, searchId: string, probe: string | undefined
+  let offerId: string, searchId: string, probe: string | undefined, offerRef: string | undefined, paymentToken: string | undefined
   try {
-    ;({ offerId, searchId, probe } = await req.json())
+    ;({ offerId, searchId, probe, offerRef, paymentToken } = await req.json())
   } catch (_) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
@@ -31,10 +31,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const trustedOffer = await getTrustedOffer(offerId, searchId)
+  const trustedOffer = await getTrustedOffer(offerId, searchId, offerRef)
   if (!trustedOffer) {
     return NextResponse.json({ error: 'Offer not found for this search' }, { status: 404 })
   }
+
+  const freshOfferRef = offerRef ?? toPublicOffer(trustedOffer).offer_ref
 
   const fee = calculateFee(trustedOffer.price, trustedOffer.currency)
   const unitAmount = toStripeAmount(fee, trustedOffer.currency)
@@ -57,6 +59,10 @@ export async function POST(req: NextRequest) {
     const successUrl = new URL(`/book/${offerId}`, origin)
     successUrl.searchParams.set('from', searchId)
     appendProbeParam(successUrl.searchParams, isProbe)
+    // Embed offer snapshot so any Cloud Run instance can reconstruct the offer.
+    if (freshOfferRef) {
+      successUrl.searchParams.set('ref', freshOfferRef)
+    }
     // Append Stripe's session ID placeholder as a raw string — must NOT be
     // URL-encoded because Stripe does a literal string substitution of
     // {CHECKOUT_SESSION_ID} in the URL before redirecting. URLSearchParams.set()
@@ -91,6 +97,10 @@ export async function POST(req: NextRequest) {
         lfg_uid: uid,
         search_id: searchId,
         offer_id: offerId,
+        // payment_token: issued by /api/offer/register-local for SDK-originated searches.
+        // When present, the verify/webhook handlers use it to store the booking URL in
+        // Firestore so the SDK can retrieve it by polling /api/developers/payment-verify.
+        ...(paymentToken ? { payment_token: paymentToken } : {}),
       },
       // {CHECKOUT_SESSION_ID} is replaced by Stripe with the actual session ID.
       success_url: successUrlWithSession,

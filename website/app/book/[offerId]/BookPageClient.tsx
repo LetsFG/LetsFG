@@ -14,6 +14,7 @@ interface Props {
   trackingSearchId: string | null
   isTestSearch: boolean
   offerRef: string | null
+  paymentToken: string | null
   backHref: string
   displayCurrency?: string
   fxRates?: FxRateTable
@@ -26,6 +27,7 @@ export default function BookPageClient({
   trackingSearchId,
   isTestSearch,
   offerRef,
+  paymentToken,
   backHref,
   displayCurrency,
   fxRates,
@@ -60,6 +62,7 @@ export default function BookPageClient({
         trackingSearchId={trackingSearchId}
         isTestSearch={isTestSearch}
         offerRef={offerRef}
+        paymentToken={paymentToken}
         displayCurrency={displayCurrency}
         fxRates={fxRates}
       />
