@@ -22,7 +22,27 @@ from datetime import date
 from urllib.request import Request as _Req, urlopen
 from urllib.error import URLError
 
-from letsfg.models.flights import FlightSearchRequest
+from letsfg.models.flights import FlightSearchRequest, get_airline_category, to_public_offer
+
+_REGISTER_URL = "https://letsfg.co/api/offer/register-local"
+
+
+def _sync_register_offers(raw_offers: list[dict], search_id: str) -> dict[str, str]:
+    """Synchronously POST raw offers to register endpoint. Returns {offer_id: offer_ref}."""
+    if os.environ.get("LETSFG_NO_REGISTRATION"):
+        return {}
+    try:
+        payload = json.dumps({"search_id": search_id, "offers": raw_offers}).encode()
+        req = _Req(
+            _REGISTER_URL, data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "letsfg-sdk/1.0"},
+            method="POST",
+        )
+        with urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        return {item["offer_id"]: item["offer_ref"] for item in data.get("registered", [])}
+    except Exception:
+        return {}
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +66,27 @@ def _fire_telemetry(source: str) -> None:
         urlopen(req, timeout=3)
     except Exception:
         pass
+
+
+def _mask_airlines_summary(summary_list: list[dict]) -> list[dict]:
+    """Merge airlines_summary entries by category, keeping cheapest price per category."""
+    by_category: dict[str, dict] = {}
+    for s in summary_list:
+        cat = get_airline_category(s.get("airline_code", ""))
+        if cat not in by_category:
+            by_category[cat] = {**s, "airline_code": cat, "airline_name": cat}
+        else:
+            existing = by_category[cat]
+            if s.get("cheapest_price", float("inf")) < existing.get("cheapest_price", float("inf")):
+                by_category[cat] = {
+                    **s,
+                    "airline_code": cat,
+                    "airline_name": cat,
+                    "offer_count": existing.get("offer_count", 0) + s.get("offer_count", 0),
+                }
+            else:
+                existing["offer_count"] = existing.get("offer_count", 0) + s.get("offer_count", 0)
+    return list(by_category.values())
 
 
 async def search_local(
@@ -107,7 +148,39 @@ async def search_local(
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _fire_telemetry, source)
 
-    return resp.model_dump(mode="json")
+    # Build masked offers — avoid double serialization by excluding offers from the root dump
+    public_offers = [to_public_offer(o).model_dump(mode="json") for o in resp.offers]
+    raw = resp.model_dump(mode="json", exclude={"offers"})
+    raw["offers"] = public_offers
+    raw.pop("source_tiers", None)
+    raw.pop("offer_request_id", None)
+    raw.pop("passenger_ids", None)
+    raw["airlines_summary"] = _mask_airlines_summary(raw.get("airlines_summary", []))
+
+    # Register offers with the hosted backend so checkout can resolve booking URLs.
+    # Best-effort: runs in thread with 5 s timeout. Failure just means no ?ref= in unlock_url.
+    search_id = raw.get("search_id") or f"locs_{os.urandom(4).hex()}"
+    raw["search_id"] = search_id
+    raw_unmasked = [o.model_dump(mode="json") for o in resp.offers]
+    loop = asyncio.get_event_loop()
+    refs_future = loop.run_in_executor(None, _sync_register_offers, raw_unmasked, search_id)
+
+    # Await registration so we can embed offer_refs in unlock URLs before returning
+    try:
+        offer_refs: dict[str, str] = await asyncio.wait_for(
+            asyncio.wrap_future(refs_future), timeout=5.0
+        )
+    except Exception:
+        offer_refs = {}
+
+    if offer_refs:
+        for offer_dict in public_offers:
+            oid = offer_dict.get("id", "")
+            ref = offer_refs.get(oid)
+            if ref:
+                offer_dict["unlock_url"] = f"https://letsfg.co/book/{oid}?ref={ref}"
+
+    return raw
 
 
 # ── Location name → IATA code mapping (for local resolve_location) ────────

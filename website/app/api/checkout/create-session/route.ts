@@ -18,9 +18,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No session cookie' }, { status: 400 })
   }
 
-  let offerId: string, searchId: string, probe: string | undefined
+  let offerId: string, searchId: string, probe: string | undefined, offerRef: string | undefined
   try {
-    ;({ offerId, searchId, probe } = await req.json())
+    ;({ offerId, searchId, probe, offerRef } = await req.json())
   } catch (_) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const trustedOffer = await getTrustedOffer(offerId, searchId)
+  const trustedOffer = await getTrustedOffer(offerId, searchId, offerRef)
   if (!trustedOffer) {
     return NextResponse.json({ error: 'Offer not found for this search' }, { status: 404 })
   }
@@ -53,9 +53,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Encode a fresh offer snapshot so the success URL is self-contained even on a
+  // different Cloud Run instance (process-local offer cache doesn't cross instances).
+  const { toPublicOffer: _toPublicOffer } = await import('../../../../lib/trusted-offer')
+  const freshOfferRef = offerRef ?? _toPublicOffer(trustedOffer).offer_ref
+
   try {
     const successUrl = new URL(`/book/${offerId}`, origin)
     successUrl.searchParams.set('from', searchId)
+    if (freshOfferRef) {
+      successUrl.searchParams.set('ref', freshOfferRef)
+    }
     appendProbeParam(successUrl.searchParams, isProbe)
     // Append Stripe's session ID placeholder as a raw string — must NOT be
     // URL-encoded because Stripe does a literal string substitution of
