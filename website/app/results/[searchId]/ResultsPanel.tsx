@@ -1161,7 +1161,7 @@ export default function ResultsPanel({
         preferDirect: maxStops === 0,
       }
       const listWithDisplayPrice = list.map(o => ({ ...o, displayPrice: getOfferDisplayTotalPrice(o, currency, fxRates) }))
-      const ranked = rankOffers(listWithDisplayPrice, rctx)
+      const ranked = rankOffers(listWithDisplayPrice, rctx, { skipDedup: true })
 
       // Pick top-3 that are genuinely different propositions (different departure
       // time slot or different stop count). This prevents showing the same flight
@@ -1752,7 +1752,7 @@ export default function ResultsPanel({
         <div className={`rf-bar${isSearching ? ' rf-bar--searching' : ''}`}>
           <div className="rf-bar-meta">
             <span className="rf-bar-count">
-              {displayOffers.length === 1 ? t('flightSingular', { count: 1 }) : t('flightPlural', { count: displayOffers.length })}
+              {allOffers.length === 1 ? t('flightSingular', { count: 1 }) : t('flightPlural', { count: allOffers.length })}
             </span>
             {isSearching ? (
               <SearchProgressBarInline progress={progress} />
