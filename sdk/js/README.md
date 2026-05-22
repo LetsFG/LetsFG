@@ -1,11 +1,20 @@
 # LetsFG — Your AI agent just learned to book flights. (Node.js)
 
-**200 airlines. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for AI agents.
-
-> **Don't want to install anything?** [**Try it on Messenger**](https://m.me/61579557368989) — search flights instantly, no setup needed.
+**200+ airline connectors. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for AI agents.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![npm](https://img.shields.io/npm/v/letsfg)](https://www.npmjs.com/package/letsfg)
+
+## Three ways to use LetsFG
+
+| | **Local** (this SDK) | **letsfg.co** (website / agent API) | **Developer API** |
+|---|---|---|---|
+| **Search cost** | Free | Free | Prepaid credits |
+| **Booking URL** | 1% concierge fee (min $3) via letsfg.co | 1% concierge fee (min $3) via letsfg.co | Direct airline URL, no fee |
+| **Speed** | 1–15 min (local browsers) | Seconds | Seconds |
+| **Setup** | `npm install letsfg` | [letsfg.co](https://letsfg.co) | [letsfg.co/developers](https://letsfg.co/developers) |
+
+> **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
 
 > ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG) → register → unlimited access forever.** First 1,000 stars only.
 
@@ -176,7 +185,7 @@ Or set the `LETSFG_MAX_BROWSERS` environment variable globally.
 
 - **MCP Server**: `npx letsfg-mcp` — [npm](https://www.npmjs.com/package/letsfg-mcp)
 - **Python SDK + CLI**: `pip install letsfg` — [PyPI](https://pypi.org/project/letsfg/)
-- **Try without installing**: [Message us on Messenger](https://m.me/61579557368989)
+- **Try without installing**: [letsfg.co](https://letsfg.co) — search instantly in your browser
 - **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
 > ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** to unlock free access. First 1,000 stars only.

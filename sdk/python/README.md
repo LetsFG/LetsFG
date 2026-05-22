@@ -1,13 +1,20 @@
 # LetsFG — Your AI agent just learned to book flights.
 
-<!-- mcp-name: io.github.Efistoffeles/letsfg -->
-
-**200 airlines. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. 200 direct airline connectors run locally, plus enterprise GDS/NDC providers via cloud API.
-
-> **Don't want to install anything?** [**Try it on Messenger**](https://m.me/61579557368989) — search flights instantly, no setup needed.
+**200+ airline connectors. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
+
+## Three ways to use LetsFG
+
+| | **Local** (this SDK) | **letsfg.co** (website / agent API) | **Developer API** |
+|---|---|---|---|
+| **Search cost** | Free | Free | Prepaid credits |
+| **Booking URL** | 1% concierge fee (min $3) via letsfg.co | 1% concierge fee (min $3) via letsfg.co | Direct airline URL, no fee |
+| **Speed** | 1–15 min (local browsers) | Seconds | Seconds |
+| **Setup** | `pip install letsfg` | [letsfg.co](https://letsfg.co) | [letsfg.co/developers](https://letsfg.co/developers) |
+
+> **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
 
 ## Install
 
@@ -21,7 +28,7 @@ Search flights immediately — no account, no API key:
 letsfg search-local LHR BCN 2026-06-15
 ```
 
-That fires 200 airline connectors on your machine. **Free. Unlimited. Zero setup.**
+That fires 200+ airline connectors on your machine. **Search is free.** Booking links are delivered via the letsfg.co concierge flow (1% fee, min $3) — see [Unlocking offer results](#unlocking-offer-results) below.
 
 ```bash
 # Search using only Brazilian sites
@@ -279,7 +286,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Minimizing Unlock Costs
 
-Searching is **free and unlimited**. Unlock is also free. Strategy:
+Searching is **free and unlimited**. Unlock via the Developer API is also free; via the local/website path the concierge fee (1% of ticket price, min $3) applies once per offer. Strategy:
 
 ```python
 # Search multiple dates (free) — compare before unlocking
@@ -478,9 +485,9 @@ Priority: env var > explicit config/flag > auto-detect.
 
 ## How It Works
 
-1. **Search** — Free, unlimited. Returns real-time offers from 400+ airlines via NDC/GDS.
-2. **Unlock** — Confirms latest price with airline, reserves offer for 30 minutes.
-3. **Book** — FREE after unlock. Creates real airline reservation with PNR code.
+1. **Search** — Free. 200+ connectors fire on your machine and return real-time offers.
+2. **Unlock booking URL** — Pay the concierge fee (1% of ticket price, min $3) via letsfg.co to receive the direct airline booking link. Or use the [Developer API](https://letsfg.co/developers) (prepaid credits) for fee-free direct links.
+3. **Book** — Open the direct airline URL and complete the booking on the airline's own site.
 
 Prices are cheaper because we connect directly to airlines — no OTA markup.
 
@@ -490,7 +497,7 @@ Prices are cheaper because we connect directly to airlines — no OTA markup.
 
 - **MCP Server**: `npx letsfg-mcp` — [npm](https://www.npmjs.com/package/letsfg-mcp)
 - **JS/TS SDK**: `npm install letsfg` — [npm](https://www.npmjs.com/package/letsfg)
-- **Try without installing**: [Message us on Messenger](https://m.me/61579557368989)
+- **Try without installing**: [letsfg.co](https://letsfg.co) — search instantly in your browser
 - **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
 > ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** to unlock free access. First 1,000 stars only.
