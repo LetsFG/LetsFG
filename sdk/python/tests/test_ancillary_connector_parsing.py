@@ -6,7 +6,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SDK_PYTHON_ROOT = PROJECT_ROOT / "sdk" / "python"
-WORKSPACE_ROOT = PROJECT_ROOT.parent
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 if str(SDK_PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(SDK_PYTHON_ROOT))
 
@@ -152,7 +152,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(merged.get("inbound_checked_bag"), "included - 1 piece 20kg checked bag")
 
     def test_airasiax_parser_reads_saved_baggage_truth_from_response(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_airasiax_KUL-NRT_profile=d.json").read_text(encoding="utf-8"))
+        payload = json.loads((FIXTURES / "_airasiax_KUL-NRT_profile=d.json").read_text(encoding="utf-8"))
         req = FlightSearchRequest(origin="KUL", destination="NRT", date_from=_future_date(34), adults=1, currency="USD")
 
         client = AirAsiaXConnectorClient()
@@ -170,7 +170,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertFalse((offer.bags_price or {}).get("seat_selection"))
 
     def test_ita_parser_exposes_fare_family_ancillaries(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "webcon-backup" / "_ita_api_51.json").read_text(encoding="utf-8"))
+        payload = json.loads((FIXTURES / "webcon-backup" / "_ita_api_51.json").read_text(encoding="utf-8"))
         req = FlightSearchRequest(origin="FCO", destination="LHR", date_from=_future_date(35), adults=1)
 
         client = ITAAirwaysConnectorClient()
@@ -192,7 +192,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(rt_offer.bags_price.get("inbound_checked_bag"), 0.0)
 
     def test_mea_parser_keeps_all_fare_families_and_bags(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_mea_air_bounds.json").read_text(encoding="utf-8"))
+        payload = json.loads((FIXTURES / "_mea_air_bounds.json").read_text(encoding="utf-8"))
         req = FlightSearchRequest(origin="BEY", destination="CDG", date_from=_future_date(45), adults=1)
 
         client = MEAConnectorClient()
@@ -213,7 +213,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(rt_offer.bags_price.get("checked_bag"), 0.0)
 
     def test_aircairo_parser_reads_airboundgroups_and_preserves_metadata(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_tmp_aircairo_air_bounds.json").read_text(encoding="utf-8"))
+        payload = json.loads((FIXTURES / "_tmp_aircairo_air_bounds.json").read_text(encoding="utf-8"))
         req = FlightSearchRequest.model_construct(
             origin="CAI",
             destination="JED",
@@ -244,7 +244,7 @@ class AncillaryConnectorParsingTest(unittest.TestCase):
         self.assertEqual(rt_offer.bags_price.get("checked_bag"), 0.0)
 
     def test_aireuropa_parser_only_flags_nobag(self) -> None:
-        payload = json.loads((WORKSPACE_ROOT / "_aireuropa_flight_data.json").read_text(encoding="utf-8"))
+        payload = json.loads((FIXTURES / "aireuropa_mad_bcn.json").read_text(encoding="utf-8"))
         req = FlightSearchRequest(origin="MAD", destination="BCN", date_from=_future_date(60), adults=1)
 
         client = AirEuropaConnectorClient()

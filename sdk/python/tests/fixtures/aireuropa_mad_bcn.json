@@ -1,0 +1,56 @@
+{
+  "data": {
+    "airBoundGroups": [
+      {
+        "boundDetails": {
+          "duration": 5400,
+          "segments": [{ "flightId": "UX1001" }]
+        },
+        "airBounds": [
+          {
+            "fareFamilyCode": "NOBAG",
+            "prices": { "totalPrices": [{ "total": 5900, "currencyCode": "EUR" }] },
+            "availabilityDetails": [{ "flightId": "UX1001", "cabin": "economy" }]
+          },
+          {
+            "fareFamilyCode": "ECONOMY",
+            "prices": { "totalPrices": [{ "total": 8900, "currencyCode": "EUR" }] },
+            "availabilityDetails": [{ "flightId": "UX1001", "cabin": "economy" }]
+          },
+          {
+            "fareFamilyCode": "FLEX",
+            "prices": { "totalPrices": [{ "total": 12900, "currencyCode": "EUR" }] },
+            "availabilityDetails": [{ "flightId": "UX1001", "cabin": "economy" }]
+          },
+          {
+            "fareFamilyCode": "BUSINESS",
+            "prices": { "totalPrices": [{ "total": 22900, "currencyCode": "EUR" }] },
+            "availabilityDetails": [{ "flightId": "UX1001", "cabin": "business" }]
+          },
+          {
+            "fareFamilyCode": "BUSFLEX",
+            "prices": { "totalPrices": [{ "total": 28900, "currencyCode": "EUR" }] },
+            "availabilityDetails": [{ "flightId": "UX1001", "cabin": "business" }]
+          }
+        ]
+      }
+    ]
+  },
+  "dictionaries": {
+    "flight": {
+      "UX1001": {
+        "departure": { "locationCode": "MAD", "dateTime": "2026-06-10T07:00:00" },
+        "arrival": { "locationCode": "BCN", "dateTime": "2026-06-10T08:30:00" },
+        "marketingAirlineCode": "UX",
+        "marketingFlightNumber": "1001"
+      }
+    },
+    "fareFamilyWithServices": {
+      "NOBAG":    { "cabin": "economy" },
+      "ECONOMY":  { "cabin": "economy" },
+      "FLEX":     { "cabin": "economy" },
+      "BUSINESS": { "cabin": "business" },
+      "BUSFLEX":  { "cabin": "business" }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "data": {
+    "airBoundGroups": [
+      {
+        "boundDetails": {
+          "originLocationCode": "FCO",
+          "destinationLocationCode": "LHR",
+          "duration": 9000,
+          "segments": [{ "flightId": "AZ201" }]
+        },
+        "airBounds": [
+          {
+            "fareFamilyCode": "ECONOMY",
+            "airOffer": { "totalPrice": { "value": 18500, "currencyCode": "EUR" } },
+            "availabilityDetails": [{ "flightId": "AZ201", "cabin": "economy" }],
+            "services": [
+              { "serviceCode": "C0CCC1", "price": { "total": 7000, "currencyCode": "EUR" } },
+              { "serviceCode": "A0B5X",  "price": { "total": 1500, "currencyCode": "EUR" } }
+            ],
+            "fareConditionsCodes": []
+          },
+          {
+            "fareFamilyCode": "FLEX",
+            "airOffer": { "totalPrice": { "value": 32000, "currencyCode": "EUR" } },
+            "availabilityDetails": [{ "flightId": "AZ201", "cabin": "economy" }],
+            "services": [
+              { "serviceCode": "FBA23" }
+            ],
+            "fareConditionsCodes": []
+          }
+        ]
+      }
+    ]
+  },
+  "dictionaries": {
+    "flight": {
+      "AZ201": {
+        "departure": { "locationCode": "FCO", "dateTime": "2026-06-10T09:00:00" },
+        "arrival": { "locationCode": "LHR", "dateTime": "2026-06-10T11:15:00" },
+        "marketingAirlineCode": "AZ",
+        "marketingFlightNumber": "201"
+      }
+    },
+    "airline": { "AZ": "ITA Airways" },
+    "currency": { "EUR": { "decimalPlaces": 2 } },
+    "fareFamilyWithServices": {
+      "ECONOMY": { "cabin": "economy", "services": [] },
+      "FLEX":    { "cabin": "economy", "services": [] }
+    },
+    "service": {
+      "C0CCC1": {
+        "serviceDescriptions": [{ "content": "FIRST CHECKED BAG" }]
+      },
+      "A0B5X": {
+        "serviceDescriptions": [{ "content": "Standard seat" }]
+      },
+      "FBA23": {
+        "baggagePolicyDescriptions": [
+          {
+            "quantity": 1,
+            "baggageCharacteristics": [
+              {
+                "policyDetails": [
+                  { "type": "weight", "unit": "kilogram", "value": 23 }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "fareConditions": {}
+  }
+}

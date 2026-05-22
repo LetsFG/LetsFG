@@ -1,0 +1,84 @@
+{
+  "data": {
+    "airBoundGroups": [
+      {
+        "boundDetails": {
+          "duration": 8100,
+          "segments": [{ "flightId": "SM601" }]
+        },
+        "airBounds": [
+          {
+            "fareFamilyCode": "PROMO",
+            "airOffer": { "totalPrice": { "value": "99.00", "currencyCode": "USD" } },
+            "services": [{ "serviceCode": "BAG30KG" }],
+            "fareConditionsCodes": ["RC_NREF"],
+            "availabilityDetails": [{ "flightId": "SM601", "cabin": "economy" }]
+          },
+          {
+            "fareFamilyCode": "SPECIAL",
+            "airOffer": { "totalPrice": { "value": "129.00", "currencyCode": "USD" } },
+            "services": [{ "serviceCode": "BAG30KG" }],
+            "fareConditionsCodes": ["RC_NREF"],
+            "availabilityDetails": [{ "flightId": "SM601", "cabin": "economy" }]
+          },
+          {
+            "fareFamilyCode": "ECONOMY",
+            "airOffer": { "totalPrice": { "value": "159.00", "currencyCode": "USD" } },
+            "services": [{ "serviceCode": "BAG30KG" }],
+            "fareConditionsCodes": ["RC_FEE"],
+            "availabilityDetails": [{ "flightId": "SM601", "cabin": "economy" }]
+          },
+          {
+            "fareFamilyCode": "ECO FLEX",
+            "airOffer": { "totalPrice": { "value": "199.00", "currencyCode": "USD" } },
+            "services": [{ "serviceCode": "BAG30KG" }],
+            "fareConditionsCodes": ["RC_FEE"],
+            "availabilityDetails": [{ "flightId": "SM601", "cabin": "economy" }]
+          }
+        ]
+      }
+    ]
+  },
+  "dictionaries": {
+    "flight": {
+      "SM601": {
+        "marketingAirlineCode": "SM",
+        "marketingFlightNumber": "601",
+        "departure": { "locationCode": "CAI", "dateTime": "2026-04-21T06:00:00" },
+        "arrival": { "locationCode": "JED", "dateTime": "2026-04-21T08:15:00" }
+      }
+    },
+    "currency": {
+      "USD": { "decimalPlaces": 0 }
+    },
+    "fareFamilyWithServices": {
+      "PROMO": { "cabin": "economy" },
+      "SPECIAL": { "cabin": "economy" },
+      "ECONOMY": { "cabin": "economy" },
+      "ECO FLEX": { "cabin": "economy" }
+    },
+    "service": {
+      "BAG30KG": {
+        "serviceType": "freeCheckedBaggage",
+        "baggagePolicyDescriptions": [
+          { "type": "weight", "quantity": 30, "weightUnit": "kilogram" }
+        ]
+      }
+    },
+    "fareConditions": {
+      "RC_NREF": {
+        "category": "refund",
+        "details": [{ "isAllowed": false }]
+      },
+      "RC_FEE": {
+        "category": "refund",
+        "details": [
+          {
+            "isAllowed": true,
+            "penalty": { "price": { "total": "50.00", "currencyCode": "USD" } }
+          }
+        ]
+      }
+    }
+  }
+}
