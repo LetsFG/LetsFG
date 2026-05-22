@@ -1,0 +1,60 @@
+name: CI Tests (Tier-1 gate)
+
+# Tier-1 deterministic merge gate.
+# Both jobs are required status checks — enable them in branch protection.
+# website-critical guards the 6-link value chain (see website/tests/CRITICAL.md).
+# python-deterministic guards connector parsing; browser/network tests are marked
+# @pytest.mark.live and excluded here — covered by connector-smoke.yml (Tier-2).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  website-critical:
+    name: Website critical-path (Tier-1, required)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Critical-path tests (npm run test:critical)
+        run: npm run test:critical
+      - name: Type-check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+  python-deterministic:
+    name: Python deterministic tests (Tier-1, required)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package + pytest
+        run: |
+          pip install -e .
+          pip install pytest
+      - name: Deterministic tests (pytest -m "not live")
+        run: pytest -m "not live"

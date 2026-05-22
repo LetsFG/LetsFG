@@ -3,6 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
 from playwright.async_api import async_playwright
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -479,6 +480,7 @@ class CheckoutEngineConfigTest(unittest.TestCase):
         self.assertEqual(engine._checkout_step_for_page(checkout_page), "payment_page_reached")
 
 
+@pytest.mark.live
 class AirAsiaCheckoutDetailsExtractionTest(unittest.IsolatedAsyncioTestCase):
     async def _extract(self, source: str, html: str, session_storage: dict[str, str] | None = None) -> dict:
         engine = GenericCheckoutEngine()
@@ -566,6 +568,7 @@ class AirAsiaCheckoutDetailsExtractionTest(unittest.IsolatedAsyncioTestCase):
                 )
 
 
+@pytest.mark.live
 class VuelingBundleExtractionTest(unittest.IsolatedAsyncioTestCase):
     async def test_generic_checkout_extractor_opens_vueling_bundle_cards(self) -> None:
         engine = GenericCheckoutEngine()
@@ -606,6 +609,7 @@ class VuelingBundleExtractionTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(bundle["selected"] and bundle["label"] == "FLY LIGHT" for bundle in details["fare_bundle_options"]))
 
 
+@pytest.mark.live
 class GenericDiscoveryExtractionTest(unittest.IsolatedAsyncioTestCase):
     async def test_generic_checkout_discovery_opens_unknown_service_panels(self) -> None:
         engine = GenericCheckoutEngine()
@@ -711,6 +715,7 @@ class GenericDiscoveryExtractionTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("insurance" in item["label"].lower() for item in details["available_add_ons"]["insurance"]))
 
 
+@pytest.mark.live
 class BookingHoldingsHandoffSettleTest(unittest.IsolatedAsyncioTestCase):
     async def test_probe_waits_through_booking_holdings_interstitial(self) -> None:
         engine = GenericCheckoutEngine()
