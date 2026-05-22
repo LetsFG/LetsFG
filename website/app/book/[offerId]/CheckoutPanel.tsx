@@ -362,7 +362,7 @@ export default function CheckoutPanel({
   const showShareOption = false
 
   const [promoCode, setPromoCode] = useState('')
-  const [promoStatus, setPromoStatus] = useState<'idle' | 'applying' | 'used' | 'not-found'>('idle')
+  const [promoStatus, setPromoStatus] = useState<'idle' | 'applying' | 'used' | 'not-found' | 'error'>('idle')
   const [showFlightDetails, setShowFlightDetails] = useState(false)
   const [showPromo, setShowPromo] = useState(false)
 
@@ -763,7 +763,11 @@ export default function CheckoutPanel({
   }, [analyticsSearchId, checkoutSourcePath, fee, isTestSearch, offer, searchId])
 
   const handleApplyPromo = useCallback(async () => {
-    if (!promoCode.trim() || !searchId) return
+    if (!promoCode.trim()) return
+    if (!searchId) {
+      setPromoStatus('error')
+      return
+    }
     setPromoStatus('applying')
     try {
       const res = await fetch('/api/checkout/apply-promo', {
@@ -787,11 +791,25 @@ export default function CheckoutPanel({
         await loadUnlockedBookingLink()
       } else if (res.status === 410) {
         setPromoStatus('used')
-      } else {
+        trackSearchSessionEvent(analyticsSearchId, 'promo_code_failed', {
+          offer_id: offer.id, reason: 'used',
+        }, { source: 'website-checkout', source_path: checkoutSourcePath, is_test_search: isTestSearch || undefined })
+      } else if (res.status === 404) {
         setPromoStatus('not-found')
+        trackSearchSessionEvent(analyticsSearchId, 'promo_code_failed', {
+          offer_id: offer.id, reason: 'not-found',
+        }, { source: 'website-checkout', source_path: checkoutSourcePath, is_test_search: isTestSearch || undefined })
+      } else {
+        setPromoStatus('error')
+        trackSearchSessionEvent(analyticsSearchId, 'promo_code_failed', {
+          offer_id: offer.id, reason: `status-${res.status}`,
+        }, { source: 'website-checkout', source_path: checkoutSourcePath, is_test_search: isTestSearch || undefined })
       }
     } catch (_) {
-      setPromoStatus('not-found')
+      setPromoStatus('error')
+      trackSearchSessionEvent(analyticsSearchId, 'promo_code_failed', {
+        offer_id: offer.id, reason: 'network-error',
+      }, { source: 'website-checkout', source_path: checkoutSourcePath, is_test_search: isTestSearch || undefined })
     }
   }, [analyticsSearchId, checkoutSourcePath, isTestSearch, loadUnlockedBookingLink, offer.id, promoCode, searchId])
 
@@ -1226,6 +1244,9 @@ export default function CheckoutPanel({
                   )}
                   {promoStatus === 'not-found' && (
                     <p className="ck-promo-msg ck-promo-msg--error">Invalid promo code.</p>
+                  )}
+                  {promoStatus === 'error' && (
+                    <p className="ck-promo-msg ck-promo-msg--error">Something went wrong — please try again.</p>
                   )}
                 </div>
               ) : (
