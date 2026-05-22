@@ -462,7 +462,7 @@ export interface SearchPageClientProps {
   fxRates?: FxRateTable
   query: string
   parsed: ParsedQuery
-  initialStatus: 'searching' | 'completed' | 'expired'
+  initialStatus: 'searching' | 'completed' | 'expired' | 'error'
   initialProgress?: { checked: number; total: number; found: number; pending_connectors?: string[] }
   initialOffers: FlightOffer[]
   searchedAt?: string
@@ -610,6 +610,7 @@ export default function SearchPageClient({
 
   const isSearching = status === 'searching'
   const isExpired = status === 'expired'
+  const isError = status === 'error'
   // Streaming: still searching but partial offers have arrived — render the
   // exact same layout as the completed results page (sky bg, compact hero,
   // scrollable). Only the progress bar differs from the completed state.
@@ -1187,12 +1188,12 @@ export default function SearchPageClient({
       }
 
   return (
-    <main className={`res-page${isStreaming || status === 'completed' ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
-      <section className={`res-hero${isStreaming || status === 'completed' ? ' res-hero--results' : isSearching ? ' res-hero--searching' : ''}`}>
+    <main className={`res-page${isStreaming || status === 'completed' || isError ? ' res-page--completed' : isSearching ? ' res-page--searching' : ''}`}>
+      <section className={`res-hero${isStreaming || status === 'completed' || isError ? ' res-hero--results' : isSearching ? ' res-hero--searching' : ''}`}>
         <div className="res-hero-backdrop" aria-hidden="true" />
 
         <div className="res-hero-inner">
-          <div className={`res-topbar${isStreaming || status === 'completed' ? ' res-topbar--results' : isSearching ? ' res-topbar--searching' : ''}`}>
+          <div className={`res-topbar${isStreaming || status === 'completed' || isError ? ' res-topbar--results' : isSearching ? ' res-topbar--searching' : ''}`}>
             <Link href={homeHref} className="res-topbar-logo-link" aria-label="LetsFG home" onClick={handleNavigateHome}>
               <Image
                 src="/lfg_ban.png"
@@ -1218,7 +1219,7 @@ export default function SearchPageClient({
 
             <div className="res-topbar-actions">
               <GlobeButton inline />
-              <CurrencyButton inline behavior={isSearching ? 'rerun-search' : 'persist'} initialCurrency={displayCurrency} searchQuery={query} probeMode={isTestSearch} />
+              <CurrencyButton inline behavior="persist" initialCurrency={displayCurrency} searchQuery={query} probeMode={isTestSearch} />
               <a
                 href={REPO_URL}
                 target="_blank"
@@ -1232,7 +1233,7 @@ export default function SearchPageClient({
             </div>
           </div>
 
-          {status === 'completed' && (
+          {(status === 'completed' || isError) && (
             <div className="res-search-shell">
               <ResultsSearchForm initialQuery={query} initialCurrency={initialCurrency} onSearchSubmit={handleSearchSubmit} probeMode={isTestSearch} />
             </div>
@@ -1292,6 +1293,16 @@ export default function SearchPageClient({
                 </>
               )}
             </div>
+          ) : isError ? (
+            <div className="res-meta-bar">
+              <span className="res-meta-label">{t('searchFailed')}</span>
+              {routeLabel && (
+                <>
+                  <span className="res-meta-sep">·</span>
+                  <span className="res-meta-route">{routeLabel}</span>
+                </>
+              )}
+            </div>
           ) : (
             <div className="res-hero-copy">
               <p className="res-hero-kicker">{t('searchExpired')}</p>
@@ -1312,6 +1323,22 @@ export default function SearchPageClient({
               <div className="res-notice-text">
                 <p className="res-notice-title">{t('expiredNoticeTitle')}</p>
                 <p className="res-notice-sub">{t('expiredNoticeSub')}</p>
+              </div>
+              <Link href={searchAgainHref} className="res-notice-btn" onClick={handleNavigateHome}>{t('searchAgain')}</Link>
+            </div>
+          )}
+
+          {isError && (
+            <div className="res-notice-card res-notice-card--error">
+              <div className="res-notice-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 9v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="res-notice-text">
+                <p className="res-notice-title">{t('errorNoticeTitle')}</p>
+                <p className="res-notice-sub">{t('errorNoticeSub')}</p>
               </div>
               <Link href={searchAgainHref} className="res-notice-btn" onClick={handleNavigateHome}>{t('searchAgain')}</Link>
             </div>
