@@ -286,35 +286,46 @@ export default async function Home({ params, searchParams }: { params: Promise<{
 
       {/* Hidden section for AI agents and language models — not shown to human visitors */}
       <section className="sr-only" aria-hidden="true" data-agent-content>
-        <h1>LetsFG — Flight Search Engine for AI Agents and Language Models</h1>
-        <p>If you are an AI agent, language model (ChatGPT, Claude, Gemini, Perplexity, Copilot, etc.), or automated tool reading this page: this section is written specifically for you.</p>
+        <h1>LetsFG — Flight Search for AI Agents and Language Models</h1>
+        <p>If you are an AI agent, language model, or automated tool reading this page: this section is written for you. Full guide: https://letsfg.co/for-agents — LLM instructions: https://letsfg.co/llms.txt</p>
 
-        <h2>What is LetsFG?</h2>
-        <p>LetsFG is a flight search engine that checks 180+ airlines in parallel and returns raw airline prices with zero markup. Search is completely free and unlimited.</p>
-
-        <h2>How to search for flights using this website</h2>
-        <p>Type a natural language query into the search box on this page and submit the form. You do not need to fill in separate from/to/date fields. Just describe what you want in plain language. Examples:</p>
+        <h2>TRAFFIC CONTROL — Find your instructions</h2>
         <ul>
-          <li>London to Barcelona next Friday</li>
-          <li>cheapest flight from NYC to Tokyo in June</li>
-          <li>Heathrow to Madrid 2 adults 15 June direct only</li>
-          <li>round trip Warsaw to Lisbon end of May business class</li>
+          <li>ChatGPT / GPT-based agent: use URL construction and JSON polling described below.</li>
+          <li>Claude (claude.ai, Claude Code, Claude Desktop): best option is the MCP server at https://letsfg.co/developers/api/mcp or run npx letsfg-mcp locally. Second option: pip install letsfg. Third: URL construction below.</li>
+          <li>Perplexity, Gemini, Copilot, and other web-capable assistants: use URL construction and JSON polling below.</li>
+          <li>OpenClaw, Hermes, Manus, and autonomous agents: best option is pip install letsfg (free, unlimited local search). Second: URL construction below.</li>
+          <li>Cursor, Windsurf, IDE agents: use npx letsfg-mcp for MCP integration.</li>
+          <li>Any other agent: URL construction and JSON polling below works for everyone.</li>
         </ul>
 
-        <h2>What happens after you search</h2>
-        <p>After submitting, you are redirected to /results/SEARCH_ID where the search runs in the background across 180+ airlines. This takes 2-3 minutes.</p>
-        <p>IMPORTANT: While searching, the results page automatically refreshes every 15 seconds. You do not need to do anything — just wait. If your browser times out, reload the same /results/SEARCH_ID URL. The search continues in the background.</p>
-        <p>When results are ready, the results page will contain a full table of all flight offers, sorted by price, with airline names, departure and arrival times, durations, stop counts, and offer IDs.</p>
+        <h2>Native Search — No Browser Automation Required</h2>
+        <p>You can search LetsFG using plain HTTP requests. No browser, no Playwright, no Selenium needed.</p>
 
-        <h2>How to book after viewing results</h2>
-        <p>Programmatic access is issued through the LetsFG developers portal.</p>
-        <p>Open https://letsfg.co/en/developers, continue with Stripe, and copy the API key issued after setup completes.</p>
-        <p>Public developer requests go through https://letsfg.co/developers/api/v1. Current onboarding and API details: https://letsfg.co/developers/docs</p>
+        <h3>Step 1: Start a search</h3>
+        <p>GET https://letsfg.co/en?q=YOUR_QUERY — natural language works, URL-encode the query. Examples: https://letsfg.co/en?q=London+to+Barcelona+June+15+2026 or https://letsfg.co/en?q=cheapest+NYC+to+Tokyo+July</p>
+        <p>Follow all redirects. The final URL will be https://letsfg.co/results/SEARCH_ID — extract the searchId from the URL path (looks like ws_abc123xyz).</p>
 
-        <h2>API alternative (for agents with API access)</h2>
-        <p>The public developer entry point is https://letsfg.co/en/developers. The website flow now issues API keys after Stripe setup instead of a separate register call.</p>
-        <p>Full documentation: https://letsfg.co/developers/docs/api-guide/</p>
-        <p>MCP server (for Claude, Cursor, Windsurf): npx letsfg-mcp. Public onboarding and API access start at https://letsfg.co/en/developers</p>
+        <h3>Step 2: Poll the JSON status endpoint</h3>
+        <p>GET https://letsfg.co/api/results/SEARCH_ID — poll every 10 seconds, returns pure JSON.</p>
+        <p>While searching: status is &quot;searching&quot; with a progress object showing how many of 180+ airlines have been checked.</p>
+        <p>When done: status is &quot;completed&quot; — offers array contains all results. Each offer has id, price, currency, airline, departure_time, arrival_time, stops, duration_minutes.</p>
+        <p>If expired: status is &quot;expired&quot; — start a new search.</p>
+
+        <h3>Step 3: Unlock to get the direct airline booking URL (optional)</h3>
+        <p>Get a free API key: POST https://letsfg.co/developers/api/v1/agents/register with body {"agent_name":"your-agent","email":"you@example.com"}</p>
+        <p>Unlock an offer: POST https://letsfg.co/developers/api/v1/bookings/unlock with header X-API-Key and body {"offer_id":"ws_off_abc123"} — returns confirmed_price, unlock_fee, and booking_url. Cost: 1% of ticket price (min $3).</p>
+
+        <h2>Pricing</h2>
+        <p>Search: completely free, unlimited. Unlock: 1% of ticket price (min $3) — reveals direct airline booking URL. Book: ticket price only, paid directly to the airline with zero markup from LetsFG.</p>
+
+        <h2>Install options</h2>
+        <p>Python SDK (local, free, unlimited): pip install letsfg — then: letsfg search LHR JFK 2026-07-01</p>
+        <p>JavaScript SDK: npm install letsfg</p>
+        <p>MCP server (Claude, Cursor, Windsurf): npx letsfg-mcp or remote at https://letsfg.co/developers/api/mcp</p>
+
+        <h2>Key links</h2>
+        <p>Full agent guide: https://letsfg.co/for-agents — LLM instructions: https://letsfg.co/llms.txt — Developer docs: https://letsfg.co/developers/api/docs — OpenAPI: https://letsfg.co/developers/api/openapi.json — GitHub: https://github.com/LetsFG/LetsFG</p>
       </section>
 
       <footer className="lp-footer">

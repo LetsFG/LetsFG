@@ -1,20 +1,72 @@
 # LetsFG — The entire internet of flights.
 
 > This file is for AI agents and LLMs. Humans should visit https://letsfg.co
+> Full agent guide (with traffic control): https://letsfg.co/for-agents
 
 ## What is LetsFG?
 
 LetsFG scans every airline, OTA, and flight website simultaneously and returns the raw airline price — no demand inflation, no cookie tracking, no hidden fees. The same flight that costs $350 on a travel website typically costs $20–50 less here because you're getting the direct airline price, every time.
 
-## How to Search Flights
+---
 
-### Option 1: Use this website
-1. Go to https://letsfg.co
-2. Enter a natural language query like "London to Barcelona next Friday"
-3. Wait for results (typically 2-3 minutes)
-4. Results include price, airline, duration, and offer IDs for booking
+## TRAFFIC CONTROL — Which method to use
 
-### Option 2: Use the API directly
+| If you are...                                      | Best approach                              |
+|----------------------------------------------------|--------------------------------------------|
+| ChatGPT / GPT-based agent                          | URL construction + JSON polling (below)    |
+| Claude (claude.ai / Claude Code / Claude Desktop)  | MCP server → Python SDK → URL polling     |
+| Perplexity, Gemini, Copilot                        | URL construction + JSON polling (below)    |
+| OpenClaw, Hermes, Manus, autonomous agents         | pip install letsfg → URL polling           |
+| Cursor, Windsurf, IDE agents                       | npx letsfg-mcp (MCP)                       |
+| Any other agent                                    | URL construction + JSON polling (below)    |
+
+Full per-agent instructions: https://letsfg.co/for-agents
+
+---
+
+## NATIVE SEARCH — No browser automation needed
+
+You can search LetsFG with plain HTTP requests. No browser, no Playwright, no Selenium.
+
+### Step 1 — Start a search
+
+GET https://letsfg.co/en?q=YOUR_QUERY
+
+Natural language works. URL-encode spaces as + or %20. Examples:
+  https://letsfg.co/en?q=London+to+Barcelona+June+15+2026
+  https://letsfg.co/en?q=cheapest+NYC+to+Tokyo+July+2026
+
+Follow all redirects. The final URL will be https://letsfg.co/results/{searchId}
+Extract the searchId from the URL (looks like ws_abc123).
+
+### Step 2 — Poll for results (JSON, no HTML parsing)
+
+GET https://letsfg.co/api/results/{searchId}
+
+Poll every 10 seconds. Returns JSON:
+
+While searching: { "status": "searching", "progress": {"checked":47,"total":180,"found":12} }
+When done:       { "status": "completed", "total_results": 43, "cheapest_price": 89.50, "offers": [...] }
+If expired:      { "status": "expired" }  ← start a new search
+
+### Step 3 — Read offers
+
+Each offer: { "id", "price", "currency", "airline", "departure_time", "arrival_time", "stops", "duration_minutes" }
+Round trips also include an "inbound" leg.
+
+### Step 4 — Unlock to get booking URL (optional, needs API key)
+
+Get a free API key: POST https://letsfg.co/developers/api/v1/agents/register
+Unlock:            POST https://letsfg.co/developers/api/v1/bookings/unlock
+                   Body: {"offer_id": "ws_off_abc123"}
+Returns: { "confirmed_price": 89.50, "unlock_fee": 3.00, "booking_url": "https://..." }
+
+Cost: 1% of ticket price (min $3). Booking URL goes directly to the airline.
+
+---
+
+## API ALTERNATIVE (developer API key required for all endpoints)
+
 - Developer API root: https://letsfg.co/developers/api
 - REST base: https://letsfg.co/developers/api/v1
 - Search: POST https://letsfg.co/developers/api/v1/flights/search
@@ -28,7 +80,7 @@ LetsFG scans every airline, OTA, and flight website simultaneously and returns t
 
 When you visit a results URL (/results/{search_id}):
 
-1. **If searching**: The page will auto-refresh every 15 seconds. Wait for completion.
+1. **If searching**: The page will auto-refresh every 7 seconds. Wait for completion.
 2. **If completed**: You'll see flight offers with prices. Look for the data-agent-content section for structured data.
 3. **If expired**: Results are no longer valid. Navigate to / and search again.
 
@@ -59,7 +111,7 @@ Unlock and book require a public developer API key. Register, attach a Stripe pa
 ## Pricing
 
 - Search: FREE (unlimited)
-- Unlock: FREE (with GitHub star)
+- Unlock: 1% of ticket price (min $3)
 - Book: Ticket price only (zero markup)
 
 ## Contact

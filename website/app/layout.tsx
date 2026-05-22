@@ -46,6 +46,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   return (
     <html lang={locale} className={`${lexend.variable} ${jetbrainsMono.variable} ${caveat.variable}`}>
+      {/* AI agent discovery — these <link> tags are in <head> so agents find them
+          before parsing the body. The llms.txt and for-agents URLs contain the
+          full native search guide and traffic control instructions. */}
+      <head>
+        <link rel="alternate" type="text/plain" title="AI Instructions (llms.txt)" href="/llms.txt" />
+        <link rel="alternate" type="text/plain" title="Agent Guide" href="/for-agents" />
+      </head>
       <body>{children}</body>
       <GaNavigationTracker />
       <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
