@@ -53,14 +53,27 @@ export async function POST(req: NextRequest) {
     }
 
     const searchId = session.metadata?.search_id
-    if (!searchId) {
-      return NextResponse.json({ unlocked: false, error: 'Missing search ID' }, { status: 500 })
-    }
-
     const offerId = session.metadata?.offer_id ?? ''
     const paymentToken = session.metadata?.payment_token
     const revenue = session.amount_total != null ? session.amount_total / 100 : undefined
     const revenueCurrency = session.currency?.toUpperCase() || undefined
+
+    // Always store the booking URL for SDK-originated payments regardless of whether
+    // a searchId is present — the SDK polls /api/developers/payment-verify to retrieve it.
+    // This must run before the !searchId guard so SDK users aren't left with a paid but
+    // unresolved booking when the checkout was initiated without a website search context.
+    if (paymentToken) {
+      void resolveAndStorePaymentToken(paymentToken, offerId, searchId ?? '', session.success_url)
+    }
+
+    if (!searchId) {
+      // SDK-only flow: no website search context, booking URL stored via payment_token.
+      // Return unlocked:true so the website UI reflects the successful payment.
+      if (paymentToken) {
+        return NextResponse.json({ unlocked: true })
+      }
+      return NextResponse.json({ unlocked: false, error: 'Missing search ID' }, { status: 500 })
+    }
 
     const response = NextResponse.json({
       unlocked: true,
@@ -70,8 +83,6 @@ export async function POST(req: NextRequest) {
     setUnlockCookie(response, req, searchId)
 
     // Server-side analytics backup: fire payment_verified without blocking the response.
-    // This is the most reliable path — runs server-side, has all data, doesn't depend
-    // on the Stripe webhook firing or the client-side tracking completing.
     void fetch(`${ANALYTICS_API_BASE}/api/v1/analytics/search-sessions/upsert`, {
       method: 'POST',
       headers: withLetsfgWebsiteApiHeaders({
@@ -91,13 +102,6 @@ export async function POST(req: NextRequest) {
       }),
       signal: AbortSignal.timeout(8000),
     }).catch((err) => console.warn('[verify] analytics tracking failed:', err))
-
-    // If a payment_token is in the session metadata, the checkout was initiated by the
-    // SDK. Resolve the booking URL from the offer snapshot in the success URL and store
-    // it in Firestore so the SDK can retrieve it by polling /api/developers/payment-verify.
-    if (paymentToken) {
-      void resolveAndStorePaymentToken(paymentToken, offerId, searchId, session.success_url)
-    }
 
     return response
   } catch (err) {

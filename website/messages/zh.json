@@ -72,6 +72,10 @@
     "searchExpired": "搜索已过期",
     "expiredNoticeTitle": "搜索已过期",
     "expiredNoticeSub": "价格变化很快。重新搜索获取最新票价。",
+    "searchFailed": "搜索失败",
+    "errorNoticeTitle": "出现错误",
+    "errorNoticeSub": "发生了临时网络错误，请再试一次。",
+
     "searchAgain": "重新搜索",
     "checkingWebsites": "同时检查{total}个网站",
     "offersCount": "{count}个航班",

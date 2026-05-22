@@ -38,7 +38,7 @@ export interface FallbackNote {
 
 export interface SearchResult {
   search_id: string
-  status: 'searching' | 'completed' | 'expired'
+  status: 'searching' | 'completed' | 'expired' | 'error'
   query: string
   parsed: {
     origin?: string

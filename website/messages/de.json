@@ -72,6 +72,10 @@
     "searchExpired": "Suche abgelaufen",
     "expiredNoticeTitle": "Suche abgelaufen",
     "expiredNoticeSub": "Preise ändern sich schnell. Starte eine neue Suche für aktuelle Preise.",
+    "searchFailed": "Suche fehlgeschlagen",
+    "errorNoticeTitle": "Etwas ist schiefgelaufen",
+    "errorNoticeSub": "Ein vorübergehender Netzwerkfehler ist aufgetreten. Versuche es erneut.",
+
     "searchAgain": "Erneut suchen",
     "checkingWebsites": "{total} Websites werden gleichzeitig überprüft",
     "offersCount": "{count} Angebote",

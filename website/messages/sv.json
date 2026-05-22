@@ -72,6 +72,10 @@
     "searchExpired": "Sökning har gått ut",
     "expiredNoticeTitle": "Sökning har gått ut",
     "expiredNoticeSub": "Priserna förändras snabbt. Starta en ny sökning för aktuella priser.",
+    "searchFailed": "Sökningen misslyckades",
+    "errorNoticeTitle": "Något gick fel",
+    "errorNoticeSub": "Ett tillfälligt nätverksfel uppstod. Försök igen.",
+
     "searchAgain": "Sök igen",
     "checkingWebsites": "Kontrollerar {total} webbplatser parallellt",
     "offersCount": "{count} erbjudanden",
