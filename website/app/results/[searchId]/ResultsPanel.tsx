@@ -1344,6 +1344,8 @@ export default function ResultsPanel({
             price: r.offer.price,
             source: r.offer.source,
             currency: r.offer.currency,
+            display_price: getOfferDisplayTotalPrice(r.offer, currency, fxRates),
+            display_currency: currency,
             origin: r.offer.origin,
             destination: r.offer.destination,
             departure_time: r.offer.departure_time,
