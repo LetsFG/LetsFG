@@ -1219,7 +1219,7 @@ export default function SearchPageClient({
 
             <div className="res-topbar-actions">
               <GlobeButton inline />
-              <CurrencyButton inline behavior="persist" initialCurrency={displayCurrency} searchQuery={query} probeMode={isTestSearch} />
+              <CurrencyButton inline behavior="persist" initialCurrency={initialCurrency} searchQuery={query} probeMode={isTestSearch} />
               <a
                 href={REPO_URL}
                 target="_blank"
