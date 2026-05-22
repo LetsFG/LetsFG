@@ -973,7 +973,7 @@ export default function ResultsPanel({
   useEffect(() => {
     if (geminiJustification !== null || !searchId) return
     try {
-      const raw = localStorage.getItem(`gemini_${searchId}_${locale}_${currency}`)
+      const raw = localStorage.getItem(`gemini2_${searchId}_${locale}_${currency}`)
       if (!raw) return
       const cached = JSON.parse(raw) as {
         title?: string
@@ -1400,7 +1400,7 @@ export default function ResultsPanel({
           if (searchId && typeof window !== 'undefined') {
             try {
               localStorage.setItem(
-                `gemini_${searchId}_${locale}_${currency}`,
+                `gemini2_${searchId}_${locale}_${currency}`,
                 JSON.stringify({ ...result, offer_ids: offerIds, ts: Date.now(), display_currency: currency }),
               )
             } catch { /* ignore */ }
