@@ -202,8 +202,12 @@ export default function CurrencyButton({
     }
 
     persistCurrencyPreference(code)
-    setCurrent(code)
+    // Dispatch BEFORE setCurrent so this call wins the React batch: the event
+    // fires synchronously and the button's own onChange listener queues
+    // setCurrent(staleUrlCurrency). setCurrent(code) is queued after, so it
+    // wins last-write-wins and the button label shows the chosen currency.
     window.dispatchEvent(new CustomEvent(CURRENCY_CHANGE_EVENT))
+    setCurrent(code)
     setOpen(false)
 
     const nextUrl = buildCurrencyNavigationTarget(behavior, code, searchQuery, probeMode)
