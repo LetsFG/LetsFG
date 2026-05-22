@@ -18,6 +18,15 @@ export interface WebSearchParams {
   via_iata?: string
   min_layover_hours?: number
   max_layover_hours?: number
+  // Personalized ranking signals — derived from the user's NL query by
+  // the website's Gemini parser. FSW uses these to adjust scoring weights
+  // and preferred departure windows without hard-filtering anything out.
+  sort_by?: 'price' | 'duration'
+  depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  depart_after_mins?: number
+  depart_before_mins?: number
+  preferred_stops?: number
 }
 
 export interface WebSearchAnalyticsContext {
@@ -87,6 +96,13 @@ export async function startWebSearch(
       ...(params.via_iata ? { via_iata: params.via_iata } : {}),
       ...(params.min_layover_hours !== undefined ? { min_layover_hours: params.min_layover_hours } : {}),
       ...(params.max_layover_hours !== undefined ? { max_layover_hours: params.max_layover_hours } : {}),
+      // Personalized ranking signals
+      ...(params.sort_by ? { sort_by: params.sort_by } : {}),
+      ...(params.depart_time_pref ? { depart_time_pref: params.depart_time_pref } : {}),
+      ...(params.return_depart_time_pref ? { return_depart_time_pref: params.return_depart_time_pref } : {}),
+      ...(params.depart_after_mins !== undefined ? { depart_after_mins: params.depart_after_mins } : {}),
+      ...(params.depart_before_mins !== undefined ? { depart_before_mins: params.depart_before_mins } : {}),
+      ...(params.preferred_stops !== undefined ? { preferred_stops: params.preferred_stops } : {}),
     }),
     signal: AbortSignal.timeout(START_WEB_SEARCH_TIMEOUT_MS),
     cache: 'no-store',

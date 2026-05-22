@@ -3877,19 +3877,13 @@ body.lp-convo-open .lp-community {
 /* ─── Results page ───────────────────────────────────────────────────────── */
 
 /* Override the dark landing-page body background whenever a results page is
-   mounted. Kicks in as soon as loading.tsx renders (before page.tsx finishes),
-   preventing the black + orange/yellow blurred-dots flash on navigation. */
-body:has(.res-page) {
+   mounted. The results-scope div lives in results/layout.tsx which stays
+   mounted across ALL /results/** navigations (pending → loading → page),
+   so the body is white for the entire results flow with zero flash.
+   The res-page fallback covers direct navigations before hydration. */
+body:has(.res-page),
+body:has(.results-scope) {
   background: #ffffff;
-}
-
-/* results/layout.tsx uses className="results-body" — hard-codes white
-   background on the <body> itself so there's never a dark flash between
-   route transitions, even during the React Suspense gap before any
-   .res-page element reaches the DOM. */
-.results-body-wrap {
-  background: #ffffff;
-  color: #0f0f0f;
 }
 
 .res-page {
@@ -4613,6 +4607,12 @@ body:has(.res-page) {
   font-weight: 800;
   color: #142d3e;
   letter-spacing: -0.01em;
+}
+.rf-bar-count-total {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #6b8299;
+  letter-spacing: 0;
 }
 
 .rf-bar-from {

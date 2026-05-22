@@ -5,6 +5,7 @@ import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
+import { validateOfferBatch } from '../../../../lib/offer-validation'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
 import { PFP_ACQUISITION_COOKIE, buildAcquisitionSearchPayload } from '../../../../lib/pfp/analytics/pfp-acquisition'
@@ -425,6 +426,15 @@ export async function GET(
     const normalized = trustedOffers
       .map((offer) => toPublicOffer(offer))
       .filter((offer) => (offer.duration_minutes ?? 0) > 0)
+    // Pre-presentation validation: flag offers with suspect metadata (wrong
+    // duration, impossible time ordering, extreme price) and push them to the
+    // end of the list so valid results appear first.  Suspect offers are NOT
+    // dropped — they are kept in case the valid set is small.
+    const { valid: validOffers, suspect: suspectOffers } = validateOfferBatch(normalized)
+    const orderedOffers = [
+      ...validOffers,
+      ...suspectOffers.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
+    ]
     const cheapestPrice = normalized.length > 0
       ? Math.min(...normalized.map((offer) => getOfferKnownTotalPrice(offer)))
       : undefined
@@ -533,7 +543,8 @@ export async function GET(
         return_date: data.return_date || (typeof parsedContext.return_date === 'string' ? parsedContext.return_date : undefined),
         ...(meta?.fallback_notes ? { fallback_notes: meta.fallback_notes } : {}),
       },
-      offers: normalized,
+      offers: orderedOffers,
+      raw_offers_analyzed: rawOffers.length,
       total_results: normalized.length,
       cheapest_price: cheapestPrice,
       google_flights_price: googleFlightsPrice,
@@ -551,7 +562,7 @@ export async function GET(
               ? Math.min(170, Math.round(180 * (1 - Math.exp(-(data.elapsed_seconds || 0) / 25))))
               : Math.min(90, Math.round(180 * (1 - Math.exp(-(data.elapsed_seconds || 0) / 75)))),
             total: 180,
-            found: normalized.length,
+            found: rawOffers.length,
             pending_connectors: Array.isArray(data.pending_connectors) ? data.pending_connectors as string[] : undefined,
           }
         : undefined,

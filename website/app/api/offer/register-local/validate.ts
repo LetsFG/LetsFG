@@ -12,7 +12,7 @@
 const MAX_URL_LENGTH = 2048
 
 const PRIVATE_IP_RE =
-  /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|::1|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i
+  /^(localhost|0\.0\.0\.0|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|\[?::1\]?|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)/i
 
 const LETSFG_HOST_RE = /^(.*\.)?letsfg\.co$/i
 
@@ -43,6 +43,12 @@ export function validateLocalOfferBookingUrl(rawUrl: unknown): BookingUrlValidat
 
   if (PRIVATE_IP_RE.test(hostname)) {
     return { ok: false, reason: 'booking_url must not point to a private/local network address' }
+  }
+
+  // Reject bare hostnames with no TLD (e.g. "internalhost", "myservice").
+  // Real airline/OTA domains always contain at least one dot.
+  if (!hostname.includes('.')) {
+    return { ok: false, reason: 'booking_url must use a fully-qualified domain name' }
   }
 
   if (LETSFG_HOST_RE.test(hostname)) {

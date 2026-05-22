@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale } from 'next-intl'
@@ -39,6 +39,13 @@ function PendingResultsInner() {
     }
   }, [query])
 
+  // Tracks whether we've already kicked off a navigation to /results/[searchId].
+  // router.replace() updates the URL synchronously in the router context, which
+  // causes useSearchParams() to re-render — launchToken drops to '' and
+  // searchParamString changes, re-triggering this effect. Without the guard a
+  // second search would fire (producing the duplicate loading-screen bug).
+  const navigatedRef = useRef(false)
+
   useEffect(() => {
     router.prefetch(homeHref)
   }, [homeHref, router])
@@ -48,6 +55,9 @@ function PendingResultsInner() {
       router.replace(homeHref)
       return
     }
+
+    // Already navigated — the URL change triggered a re-run; bail out immediately.
+    if (navigatedRef.current) return
 
     let cancelled = false
     let activeToken = launchToken || createClientSearchHandoffToken()
@@ -80,7 +90,12 @@ function PendingResultsInner() {
           nextParams.set('_fss', result.fswSession)
         }
         clearClientSearchHandoff(activeToken)
-        router.replace(`/results/${result.searchId}?${nextParams.toString()}`)
+        // Set the guard BEFORE router.replace so that the URL change (which
+        // causes useSearchParams to re-render and this effect to re-run with
+        // launchToken='' and a new searchParamString) hits the early-return
+        // at the top of the effect and does not fire a second search.
+        navigatedRef.current = true
+        router.replace(`/results/${encodeURIComponent(result.searchId)}?${nextParams.toString()}`)
         return
       }
 

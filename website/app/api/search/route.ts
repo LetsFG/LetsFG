@@ -413,6 +413,15 @@ export async function POST(request: NextRequest) {
       ...(viaIata ? { via_iata: viaIata } : {}),
       ...(minLayoverHours !== undefined ? { min_layover_hours: minLayoverHours } : {}),
       ...(maxLayoverHours !== undefined ? { max_layover_hours: maxLayoverHours } : {}),
+      // Personalized ranking signals — from NL parser + Gemini vertexParse
+      ...(effectivePreferredSort ? { sort_by: effectivePreferredSort } : {}),
+      ...(effectiveDepartTimePref ? { depart_time_pref: effectiveDepartTimePref } : {}),
+      ...(effectiveReturnDepartTimePref ? { return_depart_time_pref: effectiveReturnDepartTimePref } : {}),
+      ...(effectiveDepartAfterMins !== undefined ? { depart_after_mins: effectiveDepartAfterMins } : {}),
+      ...(effectiveDepartBeforeMins !== undefined ? { depart_before_mins: effectiveDepartBeforeMins } : {}),
+      // Soft stops preference: 0 = user wants direct but we didn't hard-filter FSW
+      // so all offers still come back — just heavily deprioritised vs direct options.
+      ...(preferredStops !== undefined ? { preferred_stops: preferredStops } : {}),
     }, {
       query: typeof body.query === 'string' ? body.query : undefined,
       origin_name: originName,
