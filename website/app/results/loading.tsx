@@ -41,7 +41,7 @@ function LoadingInner() {
             </Link>
             <div className="res-topbar-actions">
               <GlobeButton inline />
-              <CurrencyButton inline behavior="rerun-search" initialCurrency={initialCurrency} searchQuery={query} probeMode={probeMode} />
+              <CurrencyButton inline behavior="persist" initialCurrency={initialCurrency} searchQuery={query} probeMode={probeMode} />
             </div>
           </div>
           <div className="res-search-shell">
