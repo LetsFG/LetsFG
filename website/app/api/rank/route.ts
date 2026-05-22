@@ -198,14 +198,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // add-on lines below but never folded into TOTAL — otherwise Gemini quotes a
   // different number than what the user sees on the card.
   const hBd = offerBreakdown(h.price, h.currency, hSource, h.ancillaries as FullAncillaries, false, false)
-  // Display currency: the user may be viewing prices in a different currency than
-  // the offer's native one. Convert each line so Gemini's copy matches the card.
-  const hDispCur = displayCurrency || h.currency
-  const dispTicket = fxConvert(hBd.ticket, h.currency, hDispCur)
+  // Display currency: prefer the client-computed display_price/display_currency (exact match
+  // to what the card shows). Fall back to backend fxConvert only when not provided.
+  const hOfferExt = h as RankOffer & { display_price?: number; display_currency?: string }
+  const hDispCur = hOfferExt.display_currency || displayCurrency || h.currency
   const dispFee = fxConvert(hBd.fee, h.currency, hDispCur)
   const dispBag = fxConvert(hBd.bag, h.currency, hDispCur)
   const dispSeat = fxConvert(hBd.seat, h.currency, hDispCur)
-  const hTotal = fxConvert(hBd.total, h.currency, hDispCur)
+  const hTotal = hOfferExt.display_price ?? fxConvert(hBd.total, h.currency, hDispCur)
+  const dispTicket = Math.round((hTotal - dispFee) * 100) / 100
   const normalizedGoogle = normalizeGoogleFlightsComparisonPrice(h.google_flights_price, context.travelerCount)
   const dispGoogle = normalizedGoogle ? fxConvert(normalizedGoogle, h.currency, hDispCur) : 0
   const savingsLine = dispGoogle && dispGoogle > hTotal + 8
@@ -259,8 +260,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const roSource = (ro as RankOffer & { source?: string }).source
     // Match the displayed card total (ticket + fee + included ancillaries only).
     const roBd = offerBreakdown(ro.price, ro.currency, roSource, ro.ancillaries as FullAncillaries, false, false)
-    const roDispCur = displayCurrency || ro.currency
-    const roDispTotal = fxConvert(roBd.total, ro.currency, roDispCur)
+    const roOfferExt = ro as RankOffer & { display_price?: number; display_currency?: string }
+    const roDispCur = roOfferExt.display_currency || displayCurrency || ro.currency
+    const roDispTotal = roOfferExt.display_price ?? fxConvert(roBd.total, ro.currency, roDispCur)
     const roDispBag = fxConvert(roBd.bag, ro.currency, roDispCur)
     const roBagNote = ro.ancillaries?.checked_bag?.included === true ? ' (bag incl)' : (requireBag && roDispBag > 0) ? ` (+${roDispBag} ${roDispCur} bag add-on)` : ''
     const roSeatNote = ro.ancillaries?.seat_selection?.included === true ? ' (seat incl)' : ''
