@@ -238,6 +238,173 @@ class FlightOffer(BaseModel):
     price_normalized: Optional[float] = Field(None, description="Price converted to the search currency for sorting")
 
 
+# ── Public (masked) offer models — booking URLs and airline identity withheld ──
+
+LCC_IATA: frozenset[str] = frozenset({
+    "FR", "W6", "W9", "U2", "EZY", "VY", "V7", "LS", "BY", "TOM",
+    "MT", "BV", "PC", "HV", "OR", "TO", "VT", "JQ", "TR", "3K",
+    "HO", "G8", "SG", "I5", "FD", "AK", "XY", "FZ", "J2", "QZ",
+    "IQ", "OB", "NK", "B6", "WN", "G4", "F9", "SY", "VX", "AS",
+})
+
+FSC_IATA: frozenset[str] = frozenset({
+    "BA", "AF", "KL", "LH", "OS", "LX", "SN", "SK", "AY", "IB",
+    "TP", "TK", "EK", "QR", "EY", "SV", "MS", "RJ", "AI", "SQ",
+    "TG", "CI", "BR", "KE", "OZ", "NH", "JL", "GA", "MH", "PR",
+    "CX", "CA", "MU", "CZ", "HU", "AA", "DL", "UA", "AC", "LO",
+})
+
+
+def get_airline_category(iata_code: str) -> str:
+    """Return a human-readable carrier category for a given IATA code."""
+    code = iata_code.upper()
+    if code in LCC_IATA:
+        return "Low-cost carrier"
+    if code in FSC_IATA:
+        return "Full-service carrier"
+    return "Airline"
+
+
+class PublicFlightSegment(BaseModel):
+    """A masked flight segment — airline identity withheld until unlock."""
+
+    airline_name: str = ""
+    flight_no: str = ""
+    origin: str = Field(..., description="Departure IATA")
+    destination: str = Field(..., description="Arrival IATA")
+    origin_city: str = ""
+    destination_city: str = ""
+    departure: datetime
+    arrival: datetime
+    duration_seconds: int = 0
+    cabin_class: str = "economy"
+    aircraft: str = ""
+
+
+class PublicFlightRoute(BaseModel):
+    """One direction composed of masked segments."""
+
+    segments: list[PublicFlightSegment] = []
+    total_duration_seconds: int = 0
+    stopovers: int = 0
+
+
+class PublicFlightOffer(BaseModel):
+    """
+    A masked flight offer — safe for public display before unlock.
+
+    Booking URL, airline names, and provider source are withheld.
+    To reveal booking details, direct the user to:
+    https://letsfg.co/book/{id}
+    """
+
+    id: str = Field(..., description="Unique offer ID")
+    price: float
+    currency: str = "EUR"
+    price_formatted: str = ""
+    outbound: PublicFlightRoute
+    inbound: Optional[PublicFlightRoute] = None
+    airlines: list[str] = Field(default_factory=list, description="Carrier category labels")
+    owner_airline: str = Field("", description="Validating carrier category")
+    bags_price: dict[str, Any] = Field(default_factory=dict)
+    availability_seats: Optional[int] = None
+    conditions: dict[str, str] = Field(default_factory=dict)
+    is_locked: bool = True
+    fetched_at: datetime = Field(default_factory=datetime.utcnow)
+    price_normalized: Optional[float] = None
+    unlock_url: str = Field("", description="URL to unlock this offer via LetsFG checkout")
+    offer_ref: str = Field("", description="Encrypted offer snapshot (pass to /api/developers/checkout)")
+    payment_token: str = Field(
+        "",
+        description=(
+            "Poll ``GET https://letsfg.co/api/developers/payment-verify?token=<value>`` "
+            "every 5 s after payment. Returns ``{verified: true, booking_url: '...'}`` when ready."
+        ),
+    )
+
+
+def _mask_owner_airline(raw: str) -> str:
+    """Mask potentially pipe-separated combo IATA codes (e.g. 'FR|W6') to category labels."""
+    codes = [c.strip() for c in raw.split("|") if c.strip()]
+    if not codes:
+        return "Airline"
+    seen: set[str] = set()
+    cats: list[str] = []
+    for code in codes:
+        cat = get_airline_category(code)
+        if cat not in seen:
+            seen.add(cat)
+            cats.append(cat)
+    return " + ".join(cats)
+
+
+def _strip_sensitive_conditions(conditions: dict[str, str]) -> dict[str, str]:
+    """Remove keys that contain booking URLs or reveal connector source identity."""
+    return {
+        k: v for k, v in conditions.items()
+        if "_url" not in k.lower() and not k.lower().endswith("_source")
+    }
+
+
+def to_public_offer(
+    offer: FlightOffer,
+    *,
+    payment_token: str = "",
+    offer_ref: str = "",
+) -> PublicFlightOffer:
+    """Convert an internal FlightOffer to a masked PublicFlightOffer."""
+
+    def _mask_segment(seg: FlightSegment) -> PublicFlightSegment:
+        return PublicFlightSegment(
+            airline_name=get_airline_category(seg.airline),
+            flight_no="",
+            origin=seg.origin,
+            destination=seg.destination,
+            origin_city=seg.origin_city,
+            destination_city=seg.destination_city,
+            departure=seg.departure,
+            arrival=seg.arrival,
+            duration_seconds=seg.duration_seconds,
+            cabin_class=seg.cabin_class,
+            aircraft=seg.aircraft,
+        )
+
+    def _mask_route(route: FlightRoute) -> PublicFlightRoute:
+        return PublicFlightRoute(
+            segments=[_mask_segment(s) for s in route.segments],
+            total_duration_seconds=route.total_duration_seconds,
+            stopovers=route.stopovers,
+        )
+
+    seen: set[str] = set()
+    airline_categories: list[str] = []
+    for code in offer.airlines:
+        cat = get_airline_category(code)
+        if cat not in seen:
+            seen.add(cat)
+            airline_categories.append(cat)
+
+    return PublicFlightOffer(
+        id=offer.id,
+        price=offer.price,
+        currency=offer.currency,
+        price_formatted=offer.price_formatted,
+        outbound=_mask_route(offer.outbound),
+        inbound=_mask_route(offer.inbound) if offer.inbound else None,
+        airlines=airline_categories,
+        owner_airline=_mask_owner_airline(offer.owner_airline),
+        bags_price=offer.bags_price,
+        availability_seats=offer.availability_seats,
+        conditions=_strip_sensitive_conditions(offer.conditions),
+        is_locked=True,
+        fetched_at=offer.fetched_at,
+        price_normalized=offer.price_normalized,
+        unlock_url=f"https://letsfg.co/book/{offer.id}",
+        payment_token=payment_token,
+        offer_ref=offer_ref,
+    )
+
+
 class AirlineSummary(BaseModel):
     """Cheapest offer summary for one airline."""
     airline_code: str
@@ -281,98 +448,4 @@ class FlightSearchResponse(BaseModel):
     pricing_note: str = Field(
         default="Search is free. Booking is free. No hidden fees.",
         description="Pricing transparency for agents",
-    )
-
-
-# ── Public offer (SDK-facing, no sensitive booking data) ─────────────────────
-
-#: IATA codes of well-known low-cost carriers — used to mask the owner airline
-#: until the user pays on the website.
-LCC_IATA: frozenset[str] = frozenset({
-    "FR", "W6", "W4", "W9", "U2", "RK", "EI", "DY", "N0", "VY", "V7",
-    "LS", "HV", "PC", "XQ", "WN", "B6", "NK", "F9", "G4", "AK", "FZ",
-    "G9", "6E", "5J",
-})
-
-
-def get_airline_category(iata: str) -> str:
-    """Return ``'lcc'`` for low-cost carriers, ``'fsc'`` for full-service."""
-    return "lcc" if iata.upper() in LCC_IATA else "fsc"
-
-
-def _strip_sensitive_conditions(conditions: dict) -> dict:
-    """Keep only publicly-safe condition keys."""
-    _SAFE_KEYS = {"refund_before_departure", "change_before_departure"}
-    return {k: v for k, v in conditions.items() if k in _SAFE_KEYS}
-
-
-class PublicFlightOffer(BaseModel):
-    """
-    A masked flight offer returned to SDK callers before unlock.
-
-    Sensitive fields (exact booking URL, full airline name) are hidden until
-    the user pays on the website.  After payment the SDK can call
-    ``GET /api/developers/payment-verify?token={payment_token}`` every ~5 s
-    for up to 60 s to retrieve the booking URL.
-    """
-
-    id: str
-    price: float
-    currency: str = "EUR"
-    price_formatted: str = ""
-    owner_airline: str = ""
-    airlines: list[str] = Field(default_factory=list)
-    origin: str = ""
-    destination: str = ""
-    outbound: Optional[Any] = None
-    inbound: Optional[Any] = None
-    conditions: dict[str, str] = Field(default_factory=dict)
-    unlock_url: str = Field(
-        "",
-        description=(
-            "Open this URL in a browser to pay and unlock the booking link. "
-            "After payment, poll the payment-verify endpoint with ``payment_token``."
-        ),
-    )
-    payment_token: str = Field(
-        "",
-        description=(
-            "Poll ``GET https://letsfg.co/api/developers/payment-verify?token=<value>`` "
-            "every 5 seconds (up to ~60 s) after the user completes payment.  "
-            "Returns ``{verified: true, booking_url: '...'}`` when ready."
-        ),
-    )
-
-
-def to_public_offer(
-    offer: FlightOffer,
-    *,
-    unlock_url: str = "",
-    payment_token: str = "",
-) -> PublicFlightOffer:
-    """Convert a raw ``FlightOffer`` to a ``PublicFlightOffer`` safe for SDK output."""
-    origin = (
-        offer.outbound.segments[0].origin
-        if offer.outbound and offer.outbound.segments
-        else ""
-    )
-    destination = (
-        offer.outbound.segments[-1].destination
-        if offer.outbound and offer.outbound.segments
-        else ""
-    )
-    return PublicFlightOffer(
-        id=offer.id,
-        price=offer.price,
-        currency=offer.currency,
-        price_formatted=offer.price_formatted,
-        owner_airline=offer.owner_airline,
-        airlines=list(offer.airlines),
-        origin=origin,
-        destination=destination,
-        outbound=offer.outbound,
-        inbound=offer.inbound,
-        conditions=_strip_sensitive_conditions(dict(offer.conditions)),
-        unlock_url=unlock_url,
-        payment_token=payment_token,
     )
