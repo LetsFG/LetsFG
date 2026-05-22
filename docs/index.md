@@ -24,6 +24,23 @@ hide:
   </div>
 </section>
 
+## Three paths to LetsFG
+
+LetsFG has three distinct access paths — pick the one that matches your setup:
+
+| Path | How | Speed | Offer links |
+|------|-----|-------|-------------|
+| **1 — Local** (CLI / SDK / MCP-local) | 200+ connectors run on your machine via Playwright | 1–15 min | Direct airline booking URLs, free |
+| **2 — letsfg.co** (website + agent API) | Runs on our servers; works for humans and AI agents that can't run local browsers | Seconds | LetsFG unlock links; pay 1% concierge fee (min $3) via Stripe to receive the direct airline URL |
+| **3 — Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | Seconds | Direct airline booking URLs, no per-booking fee |
+
+**When to choose each:**
+- Use **Path 1** if you can run a local browser — it's free and unlimited.
+- Use **Path 2** if you're an AI agent (Claude, GPT, OpenClaw, etc.) or a user who can't run local browsers. Search is free; the concierge unlock flow delivers the direct airline URL after a 1% fee (min $3).
+- Use **Path 3** if you're building a product or need high volume without per-booking fees. Prepaid credits, results in seconds, direct airline URLs every time.
+
+---
+
 ## Pick your lane
 
 <div class="docs-mode-grid">

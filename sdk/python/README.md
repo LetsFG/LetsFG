@@ -299,6 +299,8 @@ if best:
 
 ## Local Search (No API Key)
 
+> **Note:** Local search results return masked booking links by default. Each offer includes `offer_ref` and `payment_token` fields. To get a direct airline booking URL, you have two options: use the **concierge unlock flow** (1% fee, min $3 — no API key needed) or sign up for the **Developer API** at [letsfg.co/developers](https://letsfg.co/developers) for fee-free direct links.
+
 The SDK includes 200 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
 
 ```python
@@ -313,6 +315,59 @@ result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
 ```
 
 The full search (`bt.search()`) runs both local connectors and cloud providers simultaneously and merges results.
+
+## Unlocking offer results
+
+Local search results include `offer_ref` and `payment_token` on each offer. Use these to get the direct airline booking URL via the concierge flow (no API key required):
+
+```python
+import httpx
+import time
+
+# 1. Pick an offer from local search results
+offer = result["offers"][0]
+offer_id      = offer["id"]
+offer_ref     = offer["offer_ref"]
+payment_token = offer["payment_token"]
+price         = offer["price"]        # ticket price as string, e.g. "312.50"
+currency      = offer["currency"]     # e.g. "USD"
+
+# 2. Initiate checkout — returns a Stripe checkout URL
+# Fee = max(price × 1%, $3.00). No API key needed.
+resp = httpx.post(
+    "https://letsfg.co/api/developers/checkout",
+    json={
+        "offer_id":      offer_id,
+        "offer_ref":     offer_ref,
+        "payment_token": payment_token,
+        "currency":      currency,
+        "price":         price,
+    },
+)
+resp.raise_for_status()
+checkout = resp.json()
+checkout_url = checkout["checkout_url"]
+
+# 3. Present the checkout URL to the user (or open it in a browser)
+print(f"Pay here: {checkout_url}")
+
+# 4. Poll until payment is confirmed
+booking_url = None
+while not booking_url:
+    time.sleep(3)
+    verify = httpx.get(
+        "https://letsfg.co/api/developers/payment-verify",
+        params={"token": payment_token},
+    )
+    data = verify.json()
+    if data.get("verified"):
+        booking_url = data["booking_url"]
+
+# 5. booking_url is the direct airline link — no further fees
+print(f"Book here: {booking_url}")
+```
+
+To skip the per-booking fee entirely, use the [Developer API](https://letsfg.co/developers) — it returns direct airline booking URLs on every search result.
 
 ## Quick Start (CLI)
 
