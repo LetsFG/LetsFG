@@ -313,8 +313,8 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         <p>If expired: status is &quot;expired&quot; — start a new search.</p>
 
         <h3>Step 3: Unlock to get the direct airline booking URL (optional)</h3>
-        <p>Get a free API key: POST https://letsfg.co/developers/api/v1/agents/register with body {"agent_name":"your-agent","email":"you@example.com"}</p>
-        <p>Unlock an offer: POST https://letsfg.co/developers/api/v1/bookings/unlock with header X-API-Key and body {"offer_id":"ws_off_abc123"} — returns confirmed_price, unlock_fee, and booking_url. Cost: 1% of ticket price (min $3).</p>
+        <p>Get a free API key: POST https://letsfg.co/developers/api/v1/agents/register with body {`{"agent_name":"your-agent","email":"you@example.com"}`}</p>
+        <p>Unlock an offer: POST https://letsfg.co/developers/api/v1/bookings/unlock with header X-API-Key and body {`{"offer_id":"ws_off_abc123"}`} — returns confirmed_price, unlock_fee, and booking_url. Cost: 1% of ticket price (min $3).</p>
 
         <h2>Pricing</h2>
         <p>Search: completely free, unlimited. Unlock: 1% of ticket price (min $3) — reveals direct airline booking URL. Book: ticket price only, paid directly to the airline with zero markup from LetsFG.</p>
