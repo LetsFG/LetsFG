@@ -72,6 +72,10 @@
     "searchExpired": "Zoekopdracht verlopen",
     "expiredNoticeTitle": "Zoekopdracht verlopen",
     "expiredNoticeSub": "Prijzen veranderen snel. Start een nieuwe zoekopdracht voor actuele tarieven.",
+    "searchFailed": "Zoeken mislukt",
+    "errorNoticeTitle": "Er is iets misgegaan",
+    "errorNoticeSub": "Er is een tijdelijke netwerkfout opgetreden. Probeer het opnieuw.",
+
     "searchAgain": "Opnieuw zoeken",
     "checkingWebsites": "{total} websites worden tegelijk gecontroleerd",
     "offersCount": "{count} aanbiedingen",

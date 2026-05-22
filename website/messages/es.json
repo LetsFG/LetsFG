@@ -72,6 +72,10 @@
     "searchExpired": "Búsqueda caducada",
     "expiredNoticeTitle": "Búsqueda caducada",
     "expiredNoticeSub": "Los precios cambian rápido. Inicia una nueva búsqueda para tarifas actuales.",
+    "searchFailed": "Búsqueda fallida",
+    "errorNoticeTitle": "Algo salió mal",
+    "errorNoticeSub": "Ocurrió un error de red temporal. Inténtalo de nuevo.",
+
     "searchAgain": "Buscar de nuevo",
     "checkingWebsites": "Verificando {total} sitios en paralelo",
     "offersCount": "{count} ofertas",

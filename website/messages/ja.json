@@ -72,6 +72,10 @@
     "searchExpired": "検索有効期限切れ",
     "expiredNoticeTitle": "検索有効期限切れ",
     "expiredNoticeSub": "価格は素早く変わります。最新の料金は新しい検索をお試しください。",
+    "searchFailed": "検索に失敗しました",
+    "errorNoticeTitle": "エラーが発生しました",
+    "errorNoticeSub": "一時的なネットワークエラーが発生しました。もう一度お試しください。",
+
     "searchAgain": "再検索",
     "checkingWebsites": "{total}サイトを並行して確認中",
     "offersCount": "{count}件",

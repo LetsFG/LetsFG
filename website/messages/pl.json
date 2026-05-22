@@ -72,6 +72,10 @@
     "searchExpired": "Wyszukiwanie wygasło",
     "expiredNoticeTitle": "Wyszukiwanie wygasło",
     "expiredNoticeSub": "Ceny zmieniają się szybko. Rozpocznij nowe wyszukiwanie, aby zobaczyć aktualne ceny.",
+    "searchFailed": "Wyszukiwanie nieudane",
+    "errorNoticeTitle": "Coś poszło nie tak",
+    "errorNoticeSub": "Wystąpił tymczasowy błąd sieci. Spróbuj ponownie.",
+
     "searchAgain": "Szukaj ponownie",
     "checkingWebsites": "Sprawdzanie {total} stron jednocześnie",
     "offersCount": "{count} ofert",

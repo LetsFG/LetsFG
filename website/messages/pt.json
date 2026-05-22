@@ -72,6 +72,10 @@
     "searchExpired": "Pesquisa expirada",
     "expiredNoticeTitle": "Pesquisa expirada",
     "expiredNoticeSub": "Os preços mudam rapidamente. Inicie uma nova pesquisa para tarifas atuais.",
+    "searchFailed": "Pesquisa falhou",
+    "errorNoticeTitle": "Algo correu mal",
+    "errorNoticeSub": "Ocorreu um erro de rede temporário. Tente novamente.",
+
     "searchAgain": "Pesquisar novamente",
     "checkingWebsites": "A verificar {total} sites em paralelo",
     "offersCount": "{count} ofertas",

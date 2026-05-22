@@ -72,6 +72,10 @@
     "searchExpired": "Pretraga istekla",
     "expiredNoticeTitle": "Pretraga istekla",
     "expiredNoticeSub": "Cijene se brzo mijenjaju. Pokrenite novu pretragu za aktualne tarife.",
+    "searchFailed": "Pretraga neuspješna",
+    "errorNoticeTitle": "Nešto je pošlo po krivu",
+    "errorNoticeSub": "Privremena mrežna greška. Pokušajte ponovo.",
+
     "searchAgain": "Pretraži ponovo",
     "checkingWebsites": "Provjera {total} web stranica paralelno",
     "offersCount": "{count} ponuda",

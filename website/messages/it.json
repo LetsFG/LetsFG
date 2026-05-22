@@ -72,6 +72,10 @@
     "searchExpired": "Ricerca scaduta",
     "expiredNoticeTitle": "Ricerca scaduta",
     "expiredNoticeSub": "I prezzi cambiano velocemente. Avvia una nuova ricerca per le tariffe attuali.",
+    "searchFailed": "Ricerca fallita",
+    "errorNoticeTitle": "Si è verificato un errore",
+    "errorNoticeSub": "Si è verificato un errore di rete temporaneo. Riprova.",
+
     "searchAgain": "Cerca di nuovo",
     "checkingWebsites": "Controllo di {total} siti in parallelo",
     "offersCount": "{count} offerte",

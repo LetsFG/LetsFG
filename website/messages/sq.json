@@ -72,6 +72,10 @@
     "searchExpired": "Kërkimi ka skaduar",
     "expiredNoticeTitle": "Kërkimi ka skaduar",
     "expiredNoticeSub": "Çmimet ndryshojnë shpejt. Filloni një kërkim të ri për çmimet aktuale.",
+    "searchFailed": "Kërkimi dështoi",
+    "errorNoticeTitle": "Diçka shkoi keq",
+    "errorNoticeSub": "Ndodhi një gabim i përkohshëm rrjeti. Provo përsëri.",
+
     "searchAgain": "Kërko sërish",
     "checkingWebsites": "Kontrollim i {total} faqeve paralelisht",
     "offersCount": "{count} oferta",
