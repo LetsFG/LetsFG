@@ -16,8 +16,6 @@
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
 
-> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG) → register → unlimited access forever.** First 1,000 stars only.
-
 ## Install
 
 ```bash
@@ -188,7 +186,7 @@ Or set the `LETSFG_MAX_BROWSERS` environment variable globally.
 - **Try without installing**: [letsfg.co](https://letsfg.co) — search instantly in your browser
 - **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
-> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** to unlock free access. First 1,000 stars only.
+> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** — we appreciate the support.
 
 ## License
 

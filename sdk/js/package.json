@@ -1,6 +1,6 @@
 {
   "name": "letsfg",
-  "version": "2026.5.53",
+  "version": "2026.5.54",
   "description": "Flight search & booking for AI agents. 200+ airline connectors run locally. Free search — get direct booking URLs via letsfg.co or the Developer API.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
