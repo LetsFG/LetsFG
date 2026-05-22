@@ -4,8 +4,6 @@
 
 **Your agent doesn't need to build a flight integration. Just add this MCP server.**
 
-> **Don't want to install anything?** [**Try it on Messenger**](https://m.me/61579557368989) — search flights instantly, no setup needed.
-
 [![npm](https://img.shields.io/npm/v/letsfg-mcp)](https://www.npmjs.com/package/letsfg-mcp)
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
