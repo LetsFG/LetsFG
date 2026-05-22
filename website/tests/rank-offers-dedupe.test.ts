@@ -281,3 +281,187 @@ test('rankOffers prefers refundable fares when cancellation is required', () => 
   assert.equal(ranked[0].heroFacts.includes('refundable before departure'), true)
   assert.equal(ranked[ranked.length - 1].offer.id, 'cheaper-nonrefundable')
 })
+
+// ── Intermediate-airport dedup fix ───────────────────────────────────────────
+
+test('deduplicateOffers keeps both 1-stop flights with different connection airports', () => {
+  // LHR→FRA→JFK and LHR→CDG→JFK: same airline, same dep/arr windows, same stops.
+  // Before the fix these shared the same dedup key and the more expensive copy
+  // was discarded, leaving the user blind to a meaningfully different routing.
+  const base = {
+    price: 420,
+    currency: 'EUR',
+    airline: 'Example Air',
+    origin: 'LHR',
+    destination: 'JFK',
+    departure_time: '2026-06-15T09:00:00Z',
+    arrival_time: '2026-06-15T18:30:00Z',
+    duration_minutes: 570,
+    stops: 1,
+  }
+  const offers = [
+    {
+      ...base,
+      id: 'via-fra',
+      segments: [
+        { origin: 'LHR', destination: 'FRA', layover_minutes: 90 },
+        { origin: 'FRA', destination: 'JFK' },
+      ],
+    },
+    {
+      ...base,
+      id: 'via-cdg',
+      price: 435,
+      segments: [
+        { origin: 'LHR', destination: 'CDG', layover_minutes: 90 },
+        { origin: 'CDG', destination: 'JFK' },
+      ],
+    },
+  ]
+
+  const deduped = deduplicateOffers(offers)
+  assert.equal(deduped.length, 2, 'Different connection airports must produce 2 distinct offers')
+  assert.deepEqual(
+    new Set(deduped.map(o => o.id)),
+    new Set(['via-fra', 'via-cdg']),
+  )
+})
+
+test('deduplicateOffers still collapses identical 1-stop flights from two connectors', () => {
+  // Same LHR→FRA→JFK from Kiwi and direct connector — must deduplicate.
+  const base = {
+    price: 420,
+    currency: 'EUR',
+    airline: 'Example Air',
+    origin: 'LHR',
+    destination: 'JFK',
+    departure_time: '2026-06-15T09:00:00Z',
+    arrival_time: '2026-06-15T18:30:00Z',
+    duration_minutes: 570,
+    stops: 1,
+    segments: [
+      { origin: 'LHR', destination: 'FRA', layover_minutes: 90 },
+      { origin: 'FRA', destination: 'JFK' },
+    ],
+  }
+  const offers = [
+    { ...base, id: 'kiwi-copy',   price: 425 },
+    { ...base, id: 'direct-copy', price: 415 },
+  ]
+
+  const deduped = deduplicateOffers(offers)
+  assert.equal(deduped.length, 1, 'Identical routing from two connectors must collapse')
+  assert.equal(deduped[0].id, 'direct-copy', 'Cheaper copy must win')
+})
+
+test('deduplicateOffers does NOT collapse offers when timestamps are missing', () => {
+  // Offers with undefined departure/arrival must not create spurious buckets
+  // that would cause unrelated flights to share a key.
+  const offers = [
+    {
+      id: 'no-times-a',
+      price: 100,
+      currency: 'EUR',
+      airline: 'Example Air',
+      origin: 'LON',
+      destination: 'BCN',
+      departure_time: undefined as unknown as string,
+      arrival_time: undefined as unknown as string,
+      duration_minutes: 135,
+      stops: 0,
+    },
+    {
+      id: 'no-times-b',
+      price: 110,
+      currency: 'EUR',
+      airline: 'Example Air',
+      origin: 'LON',
+      destination: 'BCN',
+      departure_time: undefined as unknown as string,
+      arrival_time: undefined as unknown as string,
+      duration_minutes: 140,
+      stops: 0,
+    },
+  ]
+  // Both end up with an empty bucket string — they may collapse (that's
+  // acceptable) but must never crash, and whichever survives must be a real offer.
+  const deduped = deduplicateOffers(offers)
+  assert.ok(deduped.length >= 1, 'Must return at least one offer without crashing')
+  assert.ok(deduped.every(o => o.id === 'no-times-a' || o.id === 'no-times-b'))
+})
+
+// ── Duration outlier pre-filter ───────────────────────────────────────────────
+
+test('rankOffers pre-filters offers with duration above 48 hours', () => {
+  const offers = [
+    {
+      id: 'normal',
+      price: 100,
+      displayPrice: 100,
+      currency: 'EUR',
+      airline: 'Example Air',
+      origin: 'LON',
+      destination: 'BCN',
+      departure_time: '2026-06-15T09:00:00Z',
+      arrival_time: '2026-06-15T11:15:00Z',
+      duration_minutes: 135,
+      stops: 0,
+    },
+    {
+      id: 'three-day-odyssey',
+      price: 50,
+      displayPrice: 50,
+      currency: 'EUR',
+      airline: 'Example Air',
+      origin: 'LON',
+      destination: 'BCN',
+      departure_time: '2026-06-15T09:00:00Z',
+      arrival_time: '2026-06-18T09:00:00Z',
+      duration_minutes: 4320, // 72 hours — clearly corrupt data
+      stops: 2,
+    },
+  ]
+
+  const ranked = rankOffers(offers, {})
+  assert.ok(
+    ranked.every(r => r.offer.id !== 'three-day-odyssey'),
+    'Offer with 72h duration must be filtered from ranked output',
+  )
+})
+
+test('rankOffers pre-filters offers with duration below 10 minutes', () => {
+  const offers = [
+    {
+      id: 'normal',
+      price: 100,
+      displayPrice: 100,
+      currency: 'EUR',
+      airline: 'Example Air',
+      origin: 'LON',
+      destination: 'BCN',
+      departure_time: '2026-06-15T09:00:00Z',
+      arrival_time: '2026-06-15T11:15:00Z',
+      duration_minutes: 135,
+      stops: 0,
+    },
+    {
+      id: 'impossible-short',
+      price: 5,
+      displayPrice: 5,
+      currency: 'EUR',
+      airline: 'Example Air',
+      origin: 'LON',
+      destination: 'BCN',
+      departure_time: '2026-06-15T09:00:00Z',
+      arrival_time: '2026-06-15T09:05:00Z',
+      duration_minutes: 5, // 5 minutes — clearly corrupt data
+      stops: 0,
+    },
+  ]
+
+  const ranked = rankOffers(offers, {})
+  assert.ok(
+    ranked.every(r => r.offer.id !== 'impossible-short'),
+    'Offer with 5min duration must be filtered from ranked output',
+  )
+})

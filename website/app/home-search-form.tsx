@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState, useRef, useEffect, useCallback, KeyboardEvent, startTransition } from 'react'
+import { FormEvent, useState, useRef, useEffect, useLayoutEffect, useCallback, KeyboardEvent, startTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -564,13 +564,36 @@ export default function HomeSearchForm({
     }
   }, [])
 
-  useEffect(() => {
+  // useLayoutEffect so this fires synchronously after DOM commit, before any useEffect.
+  // This means when the query-debounce useEffect runs it sees inputValue = cached value
+  // (not ''), so its 80 ms timer never fires setQuery('') and there is no race condition.
+  useLayoutEffect(() => {
     const nextInitialQuery = initialQuery.trim()
     const nextDetectedOrigin = nextInitialQuery ? '' : initialDetectedOrigin.trim()
     userEditedAutoPrefillRef.current = false
-    setAutoPrefillOrigin(nextDetectedOrigin)
-    setInputValue(nextInitialQuery || nextDetectedOrigin)
-    setQuery(nextInitialQuery || nextDetectedOrigin)
+
+    if (nextInitialQuery || nextDetectedOrigin) {
+      setAutoPrefillOrigin(nextDetectedOrigin)
+      setInputValue(nextInitialQuery || nextDetectedOrigin)
+      setQuery(nextInitialQuery || nextDetectedOrigin)
+      return
+    }
+
+    try {
+      const cached = localStorage.getItem(lsKeyHomeOriginPrefill(locale))?.trim() || ''
+      if (cached) {
+        setAutoPrefillOrigin(cached)
+        setInputValue(cached)
+        setQuery(cached)
+        return
+      }
+    } catch {
+      // Ignore storage failures (private mode, etc.)
+    }
+
+    setAutoPrefillOrigin('')
+    setInputValue('')
+    setQuery('')
   }, [initialDetectedOrigin, initialQuery])
 
   useEffect(() => {
@@ -601,9 +624,9 @@ export default function HomeSearchForm({
     try {
       const cachedOrigin = localStorage.getItem(lsKeyHomeOriginPrefill(locale))?.trim() || ''
       if (cachedOrigin && !userEditedAutoPrefillRef.current) {
-        const currentValue = inputRef.current?.value.trim() ?? ''
-        if (currentValue) return
-
+        // Don't check inputRef.current.value here — userEditedAutoPrefillRef.current=false
+        // already guarantees the user hasn't typed anything. The extra DOM check was
+        // incorrectly blocking the restore when Chrome autofills name="q" on hard refresh.
         setAutoPrefillOrigin(cachedOrigin)
         setInputValue(cachedOrigin)
         setQuery(cachedOrigin)
@@ -1030,7 +1053,7 @@ export default function HomeSearchForm({
       params.set('launch', token)
     }
     setIsLoading(true)
-    window.location.assign(`/results/pending?${params.toString()}`)
+    router.push(`/results/pending?${params.toString()}`)
   }, [locale, prefCurrency, probeMode, router])
 
   // When the user picks a date from the clarification strip, replace the ambiguous

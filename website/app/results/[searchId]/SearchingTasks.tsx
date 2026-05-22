@@ -855,9 +855,19 @@ export default function SearchingTasks({
   const originName = originLabel || originCode || 'Origin'
   const destinationName = destinationLabel || destinationCode || 'Destination'
 
-  // Keep the first render deterministic so SSR and hydration produce identical markup.
-  const [elapsed, setElapsed] = useState(0)
-  const [simFloor, setSimFloor] = useState(0)
+  // Lazy initializers read from module-level maps so remounts (loading.tsx →
+  // SearchPageClient) start at the correct value instead of flashing 0%.
+  // SSR-safe: typeof window === 'undefined' on the server → returns 0, matching
+  // the server-rendered HTML and avoiding hydration mismatches.
+  const [elapsed, setElapsed] = useState(() => {
+    if (typeof window === 'undefined' || !searchId) return 0
+    const e = _epochMap.get(searchId)
+    return e !== undefined ? Math.max(0, (Date.now() - e) / 1000) : 0
+  })
+  const [simFloor, setSimFloor] = useState(() => {
+    if (typeof window === 'undefined' || !searchId) return 0
+    return _simFloor.get(searchId) ?? 0
+  })
   const [airlineIdx, setAirlineIdx] = useState(0)
 
   // Keep elapsed ticking and persist the epoch to sessionStorage (for hard-reload recovery).

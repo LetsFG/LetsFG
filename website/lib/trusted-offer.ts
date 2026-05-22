@@ -289,7 +289,13 @@ function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: 
   let arrival = extractTimestamp(last, ARRIVAL_TIME_KEYS) || normalizeTimestampCandidate(fallbackArrival) || ''
   const departureHasClock = hasExplicitFlightTime(departure)
   const arrivalHasClock = hasExplicitFlightTime(arrival)
+  // Only trust the epoch-subtraction diff when both timestamps carry explicit
+  // timezone information (Z or ±HH:MM).  Without it, new Date() treats the
+  // string as server-local time (UTC on Cloud Run), producing a wrong diff for
+  // cross-timezone routes (e.g. LHR→CDG where dep is local UK and arr is local FR).
+  const hasTimezoneInfo = (ts: string) => /Z$|[+-]\d{2}:\d{2}$/.test(ts)
   let durationMinutes = departureHasClock && arrivalHasClock
+    && hasTimezoneInfo(departure) && hasTimezoneInfo(arrival)
     ? Math.round((new Date(arrival).getTime() - new Date(departure).getTime()) / 60000)
     : 0
 

@@ -1752,7 +1752,7 @@ export default function ResultsPanel({
         <div className={`rf-bar${isSearching ? ' rf-bar--searching' : ''}`}>
           <div className="rf-bar-meta">
             <span className="rf-bar-count">
-              {allOffers.length === 1 ? t('flightSingular', { count: 1 }) : t('flightPlural', { count: allOffers.length })}
+              {(() => { const n = Math.max(allOffers.length, progress?.found ?? 0); return n === 1 ? t('flightSingular', { count: 1 }) : t('flightPlural', { count: n }) })()}
             </span>
             {isSearching ? (
               <SearchProgressBarInline progress={progress} />

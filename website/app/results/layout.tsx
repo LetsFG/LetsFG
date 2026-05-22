@@ -6,10 +6,8 @@ export default async function ResultsLayout({ children }: { children: ReactNode 
   const locale = await getLocale()
   const messages = await getMessages()
   return (
-    <div className="results-body-wrap">
-      <NextIntlClientProvider locale={locale} messages={messages}>
-        {children}
-      </NextIntlClientProvider>
-    </div>
+    <NextIntlClientProvider locale={locale} messages={messages}>
+      <div className="results-scope">{children}</div>
+    </NextIntlClientProvider>
   )
 }

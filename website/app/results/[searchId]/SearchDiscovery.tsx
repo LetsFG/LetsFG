@@ -374,11 +374,15 @@ const DISCOVERY_STYLES = `
   cursor: pointer;
   transition: background 0.18s, border-color 0.18s, transform 0.15s;
   text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.disc-opt:hover {
-  background: rgba(124,58,237,0.18);
-  border-color: rgba(124,58,237,0.45);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .disc-opt:hover {
+    background: rgba(124,58,237,0.18);
+    border-color: rgba(124,58,237,0.45);
+    transform: translateY(-1px);
+  }
 }
 .disc-opt--selected {
   background: rgba(124,58,237,0.35) !important;

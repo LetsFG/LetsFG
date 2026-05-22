@@ -22,33 +22,12 @@ import BookingFrictionSurvey, { BOOKING_FRICTION_EXPERIMENT_ID, BOOKING_FRICTION
 import { parseNLQuery } from '../../lib/searchParsing'
 import { normalizeTripPurposes, type TripPurpose } from '../../lib/trip-purpose'
 import { getOfferInstanceKey } from '../../lib/rankOffers'
+import { slugifyResultsQuery } from '../../../lib/results-slug'
 
 const REPO_URL = 'https://github.com/LetsFG/LetsFG'
 const INSTAGRAM_URL = 'https://www.instagram.com/letsfg_'
 const TIKTOK_URL = 'https://www.tiktok.com/@letsfg_'
 const X_URL = 'https://x.com/LetsFG_'
-
-function slugifyResultsQuery(query: string): string {
-  const words = query
-    .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .split('-')
-    .filter(Boolean)
-
-  const slugParts: string[] = []
-  let length = 0
-
-  for (const word of words) {
-    const nextLength = length + word.length + (slugParts.length > 0 ? 1 : 0)
-    if (slugParts.length >= 10 || nextLength > 64) break
-    slugParts.push(word)
-    length = nextLength
-  }
-
-  return slugParts.join('-')
-}
 
 function buildResultsSharePath({
   searchId,
@@ -679,17 +658,14 @@ export default function SearchPageClient({
     try {
       const currentUrl = new URL(window.location.href)
       const nextUrl = new URL(activeResultsPath, currentUrl.origin)
-      if (currentUrl.pathname === nextUrl.pathname && currentUrl.search === nextUrl.search) return
-      // Use the un-patched History prototype method to update the URL bar without
-      // triggering a Next.js App Router navigation. Next.js monkey-patches
-      // window.history.replaceState at the instance level and fires a router
-      // event on pathname changes, which causes a spurious soft navigation and
-      // loading.tsx flash (the "black screen + reload" bug when the slug is
-      // added to the URL path on first hydration).
+      // Never change the pathname — path changes trigger Next.js router events
+      // even via the un-patched prototype, causing loading.tsx flashes and
+      // full-page reloads (the "black screen + reset" bug). Only update the
+      // query string so the address bar stays in sync with search state.
+      nextUrl.pathname = currentUrl.pathname
+      if (currentUrl.search === nextUrl.search) return
       History.prototype.replaceState.call(window.history, null, '', nextUrl.toString())
-    } catch (_) {
-      // Ignore browsers that reject history writes.
-    }
+    } catch (_) {}
   }, [activeResultsPath, searchId])
 
   useEffect(() => {

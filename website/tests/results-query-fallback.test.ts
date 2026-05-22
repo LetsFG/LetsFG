@@ -43,6 +43,6 @@ test('pending results page adopts the in-flight prefire before falling back to t
   assert.match(handoffSource, /export function clearClientSearchHandoff\(/)
   assert.match(pendingSource, /waitForClientSearchHandoff\(activeToken, PREFIRE_ROUTE_WAIT_MS\)/)
   assert.match(pendingSource, /startClientSearchHandoff\(activeToken, \{/)
-  assert.match(pendingSource, /router\.replace\(`\/results\/\$\{result\.searchId\}\?\$\{nextParams\.toString\(\)\}`\)/)
+  assert.match(pendingSource, /router\.replace\(`\/results\/\$\{encodeURIComponent\(result\.searchId\)\}\?\$\{nextParams\.toString\(\)\}`\)/)
   assert.match(pendingSource, /router\.replace\(`\/results\?\$\{nextParams\.toString\(\)\}`\)/)
 })

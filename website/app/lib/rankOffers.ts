@@ -929,6 +929,16 @@ export function rankOffers<T extends RankOffer>(
   const [pLo, pHi] = p5p95(prices)
   const [dLo, dHi] = p5p95(durations)
   const cheapestPrice = Math.min(...prices)
+  // When preferDirect, use cheapest direct offer as penalty reference so that
+  // premiumPenalty doesn't crush directs relative to cheap 1-stops — without this
+  // a €35 stopover becomes the baseline and a €80 direct gets a 0.26× multiplier
+  // that wipes out the stops weight advantage entirely.
+  const cheapestDirectPrice = ctx.preferDirect
+    ? (() => {
+        const dp = plausible.filter(o => (o.stops ?? 0) === 0).map(effectivePrice).filter(p => isFinite(p))
+        return dp.length > 0 ? Math.min(...dp) : cheapestPrice
+      })()
+    : cheapestPrice
   const fastestMins = Math.min(...durations)
   const tripPurposes = normalizeTripPurposes({
     tripPurpose: ctx.tripPurpose,
@@ -968,7 +978,8 @@ export function rankOffers<T extends RankOffer>(
 
     // Apply price-premium penalty so no flight can leapfrog a much cheaper one
     // purely on arrival time / stops when the price gap is unreasonable.
-    const score = rawScore * premiumPenalty(ep, cheapestPrice)
+    const penaltyRef = (ctx.preferDirect && (offer.stops ?? 0) === 0) ? cheapestDirectPrice : cheapestPrice
+    const score = rawScore * premiumPenalty(ep, penaltyRef)
       * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
       * depTimeMismatchMultiplier(depMins, ctx.depTimePref)
       * retDepTimeMismatchMultiplier(offer, ctx.retTimePref)

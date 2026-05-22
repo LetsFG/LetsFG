@@ -84,7 +84,7 @@ export default function BookingFrictionSurvey({
   onMonitorUpsellClick,
 }: Props) {
   const t = useTranslations('BookingFrictionSurvey')
-  const tResults = useTranslations('Results')
+  const tResults = useTranslations('ResultsPanel')
 
   // SSR-safe suppression: hydrate from storage on client only
   const [suppressed, setSuppressed] = useState(false)
@@ -180,28 +180,28 @@ export default function BookingFrictionSurvey({
   if (showMonitoringUpsell) {
     return (
       <div className="bfs-bar bfs-bar--monitor" role="complementary" aria-label="Flight monitoring">
+        <button
+          className="bfs-close"
+          onClick={handleDismiss}
+          aria-label="Dismiss prompt"
+          type="button"
+        >✕</button>
         <div className="bfs-inner">
           <div className="bfs-monitor">
             <div className="bfs-monitor-copy">
               <span className="bfs-monitor-kicker">{tResults('flightMonitoring')}</span>
               <span className="bfs-question">{tResults('wantToWait')}</span>
-              <p className="bfs-monitor-body">Not ready to buy? Monitor those offers with notifications or on Telegram.</p>
+              <p className="bfs-monitor-body">{tResults('monitorBody')}</p>
               <div className="bfs-monitor-channels" aria-hidden="true">
                 <span className="bfs-monitor-chip">Notifications</span>
                 <span className="bfs-monitor-chip">Telegram</span>
               </div>
             </div>
-            <div className="bfs-monitor-actions">
-              {onMonitorUpsellClick && (
+            {onMonitorUpsellClick && (
+              <div className="bfs-monitor-actions">
                 <button className="bfs-monitor-cta" type="button" onClick={handleMonitorUpsellClick}>{tResults('trackPrices')}</button>
-              )}
-              <button
-                className="bfs-close"
-                onClick={handleDismiss}
-                aria-label="Dismiss prompt"
-                type="button"
-              >✕</button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
