@@ -26,16 +26,11 @@ parse function) and therefore not unit-testable here:
 """
 
 import json
-import sys
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SDK_PYTHON_ROOT = PROJECT_ROOT / "sdk" / "python"
 FIXTURES = Path(__file__).parent / "fixtures"
-if str(SDK_PYTHON_ROOT) not in sys.path:
-    sys.path.insert(0, str(SDK_PYTHON_ROOT))
 
 from letsfg.connectors.finnair import FinnairConnectorClient
 from letsfg.connectors.kiwi import KiwiConnectorClient

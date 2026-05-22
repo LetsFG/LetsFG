@@ -55,6 +55,7 @@ jobs:
             echo "tags=--all-fast-mode" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tags=${{ github.event.inputs.connectors }}" >> "$GITHUB_OUTPUT"
+            # Note: connectors input is space-separated tags validated by smoke_harness.py
           else
             # PR / push: smoke only changed connectors
             BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
@@ -106,8 +107,12 @@ PYEOF
       - name: Run smoke harness
         if: steps.targets.outputs.tags != ''
         id: smoke
+        env:
+          SMOKE_TAGS: ${{ steps.targets.outputs.tags }}
         run: |
-          python connectors/tests/smoke_harness.py ${{ steps.targets.outputs.tags }} \
+          # SMOKE_TAGS is intentionally word-split: space-separated source tags
+          # shellcheck disable=SC2086
+          python connectors/tests/smoke_harness.py $SMOKE_TAGS \
             | tee smoke_output.txt
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 

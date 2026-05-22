@@ -1,4 +1,4 @@
-import { buildRecommendationQualityPayload } from './recommendation-quality.ts'
+import { buildRecommendationQualityPayload, type RecommendationQualityInput } from './recommendation-quality.ts'
 
 export interface SearchSessionEventPayload {
   type: string
@@ -213,18 +213,6 @@ export interface RecommendationQualityEventData {
   has_direct_flight: boolean
   min_stops: number
   carrier_diversity: number
-}
-
-export interface RecommendationQualityInput {
-  search_id: string
-  result_count: number
-  connector_count: number
-  has_direct_flight: boolean
-  min_stops: number
-  carrier_diversity: number
-  cheapest_price: number | null
-  google_flights_price: number | null
-  search_duration_ms: number
 }
 
 export function buildRecommendationQualityEventData(
