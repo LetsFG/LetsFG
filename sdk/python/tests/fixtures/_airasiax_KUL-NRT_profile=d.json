@@ -1,0 +1,45 @@
+{
+  "searchResults": {
+    "trips": [
+      {
+        "flightsList": [
+          {
+            "convertedPrice": 350.0,
+            "userCurrencyCode": "MYR",
+            "tripId": "KUL-NRT-fixture",
+            "flightDetails": {
+              "designator": {
+                "carrierCode": "D7",
+                "departureStation": "KUL",
+                "arrivalStation": "NRT",
+                "departureTime": "2026-07-01T08:00:00",
+                "arrivalTime": "2026-07-01T16:00:00"
+              },
+              "segments": [
+                {
+                  "carrierCode": "D7",
+                  "marketingFlightNo": "D7511",
+                  "designator": {
+                    "departureStation": "KUL",
+                    "arrivalStation": "NRT",
+                    "departureTime": "2026-07-01T08:00:00",
+                    "arrivalTime": "2026-07-01T16:00:00"
+                  }
+                }
+              ],
+              "baggage": {
+                "complimentaryBaggage": [
+                  {
+                    "type": "cabin_bag",
+                    "weight": 7
+                  }
+                ],
+                "checkedBaggageAllowed": true
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

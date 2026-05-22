@@ -1,0 +1,73 @@
+{
+  "data": {
+    "airBoundGroups": [
+      {
+        "boundDetails": {
+          "duration": 14400,
+          "segments": [{ "flightId": "ME201" }]
+        },
+        "airBounds": [
+          {
+            "fareFamilyCode": "ECOFLEX",
+            "prices": { "totalPrices": [{ "total": 18900, "currencyCode": "USD" }] },
+            "availabilityDetails": [{ "flightId": "ME201", "cabin": "economy" }],
+            "services": [{ "serviceCode": "SVC_ECO" }]
+          },
+          {
+            "fareFamilyCode": "BUSIFLEX",
+            "prices": { "totalPrices": [{ "total": 45000, "currencyCode": "USD" }] },
+            "availabilityDetails": [{ "flightId": "ME201", "cabin": "business" }],
+            "services": [{ "serviceCode": "SVC_BUSI" }]
+          }
+        ]
+      }
+    ]
+  },
+  "dictionaries": {
+    "flight": {
+      "ME201": {
+        "departure": { "locationCode": "BEY", "dateTime": "2026-06-10T08:00:00" },
+        "arrival": { "locationCode": "CDG", "dateTime": "2026-06-10T11:30:00" },
+        "marketingAirlineCode": "ME",
+        "marketingFlightNumber": "201"
+      }
+    },
+    "currency": { "USD": { "decimalPlaces": 2 } },
+    "fareFamilyWithServices": {
+      "ECOFLEX": { "cabin": "economy" },
+      "BUSIFLEX": { "cabin": "business" }
+    },
+    "service": {
+      "SVC_ECO": {
+        "serviceType": "freeCheckedBaggage",
+        "baggagePolicyDescriptions": [
+          {
+            "quantity": 1,
+            "baggageCharacteristics": [
+              {
+                "policyDetails": [
+                  { "type": "weight", "unit": "kilogram", "value": 23 }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "SVC_BUSI": {
+        "serviceType": "freeCheckedBaggage",
+        "baggagePolicyDescriptions": [
+          {
+            "quantity": 2,
+            "baggageCharacteristics": [
+              {
+                "policyDetails": [
+                  { "type": "weight", "unit": "kilogram", "value": 30 }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
