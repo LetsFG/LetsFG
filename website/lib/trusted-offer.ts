@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 
 import { cacheOffers, getCachedOffer } from './offer-cache'
+import { findOfferInCachedResults } from './results-cache'
 import { hasExplicitFlightTime } from './flight-datetime'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
@@ -1545,6 +1546,18 @@ export async function getTrustedOffer(
   if (snapshotOffer?.id === offerId) {
     cacheOffers([snapshotOffer], searchId || undefined)
     return snapshotOffer
+  }
+
+  // Fall back to the 30-day persisted search results cache. Stored offers carry
+  // an offer_ref (encrypted TrustedOffer snapshot) written at search-completion
+  // time, so we can fully reconstruct the offer including booking URLs.
+  const storedOffer = findOfferInCachedResults(offerId, searchId)
+  if (storedOffer) {
+    const recovered = decodeOfferSnapshot(typeof storedOffer.offer_ref === 'string' ? storedOffer.offer_ref : null)
+    if (recovered?.id === offerId) {
+      cacheOffers([recovered], searchId || undefined)
+      return recovered
+    }
   }
 
   if (!searchId || !searchId.startsWith('ws_')) {

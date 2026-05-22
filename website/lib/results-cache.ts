@@ -259,6 +259,33 @@ export function getCachedSearchResult(searchId: string): PersistedSearchResult |
   return sanitizedResult
 }
 
+/**
+ * Find a single offer by ID in the persisted search results cache (30-day TTL).
+ * Returns the raw stored offer object (PublicOffer shape, includes offer_ref).
+ * Pass searchId to restrict the search; omit to scan all cached results.
+ */
+export function findOfferInCachedResults(offerId: string, searchId?: string | null): Record<string, unknown> | null {
+  loadCache()
+
+  const searchIn = searchId
+    ? (resultsCache.has(searchId) ? [resultsCache.get(searchId)!] : [])
+    : Array.from(resultsCache.values())
+
+  for (const result of searchIn) {
+    for (const offer of result.offers) {
+      if (
+        offer !== null &&
+        typeof offer === 'object' &&
+        !Array.isArray(offer) &&
+        (offer as Record<string, unknown>).id === offerId
+      ) {
+        return offer as Record<string, unknown>
+      }
+    }
+  }
+  return null
+}
+
 export function updateGeminiJustification(
   searchId: string,
   gemini: { title?: string; hero: string; runners: string[]; offer_ids?: string[] },
