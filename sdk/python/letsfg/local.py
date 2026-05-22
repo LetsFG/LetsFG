@@ -20,9 +20,8 @@ import os
 import sys
 from datetime import date
 from urllib.request import Request as _Req, urlopen
-from urllib.error import URLError
 
-from letsfg.models.flights import FlightSearchRequest
+from letsfg.models.flights import FlightSearchRequest, get_airline_category
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +88,27 @@ def _sync_register_offers(raw_offers: list[dict], search_id: str | None) -> dict
     except Exception as exc:
         logger.debug("[register-local] skipped: %s", exc)
         return {}
+
+
+def _mask_airlines_summary(summary_list: list[dict]) -> list[dict]:
+    """Merge airlines_summary entries by category, keeping cheapest price per category."""
+    by_category: dict[str, dict] = {}
+    for s in summary_list:
+        cat = get_airline_category(s.get("airline_code", ""))
+        if cat not in by_category:
+            by_category[cat] = {**s, "airline_code": cat, "airline_name": cat}
+        else:
+            existing = by_category[cat]
+            if s.get("cheapest_price", float("inf")) < existing.get("cheapest_price", float("inf")):
+                by_category[cat] = {
+                    **s,
+                    "airline_code": cat,
+                    "airline_name": cat,
+                    "offer_count": existing.get("offer_count", 0) + s.get("offer_count", 0),
+                }
+            else:
+                existing["offer_count"] = existing.get("offer_count", 0) + s.get("offer_count", 0)
+    return list(by_category.values())
 
 
 async def search_local(
