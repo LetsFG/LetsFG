@@ -8,8 +8,6 @@
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG) → register → unlimited access forever.** First 1,000 stars only.
-
 ---
 
 ## What This Is
@@ -187,7 +185,7 @@ To avoid unexpected updates:
 | `search_flights` | Search 400+ airlines worldwide | FREE | None (read-only) |
 | `search_hotels` | Search 300,000+ hotels worldwide | FREE | None (read-only) |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
-| `link_github` | Verify GitHub star for access | FREE | Updates profile |
+| `link_github` | Link your GitHub account | FREE | Updates profile |
 | `unlock_flight_offer` | Confirm live price, reserve 30 min | — | Confirms price |
 | `book_flight` | Create real airline reservation (PNR) | Ticket price | Creates booking |
 | `setup_payment` | Attach payment card (required for booking) | FREE | Updates payment |
@@ -200,9 +198,9 @@ To avoid unexpected updates:
 **Local connectors (Path 1 — default, free):**
 
 ```
-link_github  →  search_flights  →  [concierge unlock]  →  booking_url
- (verify star)     (free)          POST /checkout + pay    direct airline link
-                                    1% fee (min $3)
+search_flights  →  [concierge unlock]  →  booking_url
+    (free)          POST /checkout + pay    direct airline link
+                     1% fee (min $3)
 ```
 
 Local search results include `offer_ref` and `payment_token` on each offer. Booking links are masked by default. To get the direct airline URL:
@@ -218,17 +216,14 @@ Search via the [Developer API](https://letsfg.co/developers) returns direct airl
 **Full MCP flow with local connectors:**
 
 ```
-link_github  →  search_flights  →  unlock_flight_offer  →  setup_payment (once)  →  book_flight
- (verify star)     (free)              (quote)              (attach card)        (ticket price, creates PNR)
+search_flights  →  unlock_flight_offer  →  setup_payment (once)  →  book_flight
+    (free)              (quote)              (attach card)        (ticket price, creates PNR)
 ```
 
-**GitHub star verification is required before searching.** The agent calls `link_github` once with the user's GitHub username. If verified, all tools are unlocked forever.
-
-1. Star https://github.com/LetsFG/LetsFG
-2. `link_github("your-github-username")` — verifies the star
-3. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 200+ airlines
-4. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min
-5. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket
+1. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 200+ airlines
+2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min
+3. `setup_payment(token)` — attach a payment card once (required before booking)
+4. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket
 
 The `search_flights` tool accepts an optional `max_browsers` parameter (1–32) to limit concurrent browser instances. Omit it to auto-detect based on system RAM.
 
@@ -262,13 +257,14 @@ The agent has native tools — no API docs needed, no URL building, no token-bur
 
 ## Get an API Key
 
-**An API key + GitHub star verification is required.** Search, unlock, and book all require a verified star.
+Register for a free API key at [letsfg.co/developers](https://letsfg.co/developers) or via CLI:
 
-The flow for agents:
-1. Register to get an API key (free, instant)
-2. Star https://github.com/LetsFG/LetsFG
-3. Call `link_github` with the GitHub username
-4. Once verified — unlimited access forever. First 1,000 stars only.
+```bash
+pip install letsfg
+letsfg register --name my-agent --email you@example.com
+```
+
+Or directly via the API:
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/register \
@@ -276,11 +272,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 ```
 
-Or via CLI:
-```bash
-pip install letsfg
-letsfg register --name my-agent --email you@example.com
-```
+Optionally, link your GitHub account with `link_github` to connect your profile.
 
 ---
 
@@ -392,7 +384,7 @@ Ensure Node.js 18+ is installed. The server communicates via stdio (stdin/stdout
 - **Try without installing**: [Message us on Messenger](https://m.me/61579557368989)
 - **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
-> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** to unlock free access. First 1,000 stars only.
+> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** — we appreciate the support.
 
 ## License
 

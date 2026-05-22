@@ -43,8 +43,6 @@ letsfg search GRU LIM 2026-06-15 --region latin-america
 letsfg search-local LHR BCN 2026-06-15 --mode fast
 ```
 
-> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG) → register → unlimited access forever.** First 1,000 stars only.
-
 ## Authentication
 
 ```python
@@ -500,7 +498,7 @@ Prices are cheaper because we connect directly to airlines — no OTA markup.
 - **Try without installing**: [letsfg.co](https://letsfg.co) — search instantly in your browser
 - **GitHub**: [LetsFG/LetsFG](https://github.com/LetsFG/LetsFG)
 
-> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** to unlock free access. First 1,000 stars only.
+> ⭐ **[Star the repo](https://github.com/LetsFG/LetsFG)** — we appreciate the support.
 
 ## License
 
