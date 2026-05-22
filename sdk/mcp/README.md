@@ -199,6 +199,26 @@ To avoid unexpected updates:
 
 ### Booking Flow
 
+**Local connectors (Path 1 — default, free):**
+
+```
+link_github  →  search_flights  →  [concierge unlock]  →  booking_url
+ (verify star)     (free)          POST /checkout + pay    direct airline link
+                                    1% fee (min $3)
+```
+
+Local search results include `offer_ref` and `payment_token` on each offer. Booking links are masked by default. To get the direct airline URL:
+
+1. Call `POST https://letsfg.co/api/developers/checkout` with `offer_id`, `offer_ref`, `payment_token`, `currency`, and `price` (no API key needed) — returns a Stripe `checkout_url`.
+2. Present `checkout_url` to the user. Fee = max(price × 1%, $3.00).
+3. Poll `GET https://letsfg.co/api/developers/payment-verify?token={payment_token}` until `verified: true`. The response contains `booking_url` — the direct airline link.
+
+**Developer API (Path 3 — prepaid credits, no per-booking fee):**
+
+Search via the [Developer API](https://letsfg.co/developers) returns direct airline booking URLs on every result — no concierge flow, no per-booking checkout step. Use this path when you want raw offers at volume without per-booking fees.
+
+**Full MCP flow with local connectors:**
+
 ```
 link_github  →  search_flights  →  unlock_flight_offer  →  setup_payment (once)  →  book_flight
  (verify star)     (free)              (quote)              (attach card)        (ticket price, creates PNR)

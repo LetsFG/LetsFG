@@ -45,6 +45,42 @@ letsfg search LHR BCN 2026-06-15 --mode fast
 
 Use `--mode fast` when you want a quicker local sweep across high-coverage OTAs and key airlines.
 
+## Unlocking local search results (concierge flow)
+
+Local search results (Path 1) return `offer_ref` and `payment_token` fields alongside each offer. The booking links in local results are masked by default. You have two options to get the direct airline URL:
+
+**Option 1: Concierge unlock (1% fee, min $3.00)**
+
+No API key required. Call the checkout endpoint with the offer details, pay via Stripe, then poll to receive the direct airline booking link.
+
+```bash
+# Step 1 — initiate checkout
+curl -X POST https://letsfg.co/api/developers/checkout \
+  -H "Content-Type: application/json" \
+  -d '{
+    "offer_id":      "off_xxx",
+    "offer_ref":     "<offer_ref from search result>",
+    "payment_token": "<payment_token from search result>",
+    "currency":      "USD",
+    "price":         "312.50"
+  }'
+# Returns: { "checkout_url": "https://checkout.stripe.com/...", "stripe_session_id": "..." }
+
+# Step 2 — open checkout_url in a browser (human or agent presents it to the user)
+
+# Step 3 — poll until paid (fee = max(price × 1%, $3.00))
+curl "https://letsfg.co/api/developers/payment-verify?token=<payment_token>"
+# Returns: { "verified": true, "booking_url": "https://airline.com/..." }
+```
+
+Keep polling `payment-verify` every few seconds until `verified` is `true`. The `booking_url` in the response is the direct airline link.
+
+**Option 2: Developer API (no per-booking fee)**
+
+Sign up at [letsfg.co/developers](https://letsfg.co/developers) for prepaid credits. Developer API searches return direct airline booking URLs with no concierge fee and no checkout step. See [Option B](#option-b-public-developer-api) below for setup.
+
+---
+
 ## Option B: Public developer API
 
 Use this path if you want account-managed cloud search through the website-owned developer API.

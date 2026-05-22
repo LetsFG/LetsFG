@@ -79,17 +79,20 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 
 ## Three ways to use LetsFG
 
-| | **Local** (CLI / SDK / MCP) | **Developer API** | **Website** |
+| | **Path 1 — Local** (CLI / SDK / MCP-local) | **Path 2 — letsfg.co** (website + agent API) | **Path 3 — Developer API** |
 |---|---|---|---|
-| **Best for** | Personal use, experimentation | Business / commercial / high-volume | Quick search, no install |
-| **Speed** | 1–15 min (local browsers) | Seconds (server-side) | Seconds |
-| **Cost** | 100% free, unlimited | Prepaid credits | Free search + small unlock fee |
-| **Setup** | `pip install letsfg` | [letsfg.co/developers](https://letsfg.co/developers) | [letsfg.co](https://letsfg.co) |
+| **Best for** | Developers, personal use, agents that can run a local browser | AI agents that can't run local browsers (Claude, GPT, OpenClaw, etc.), human users, zero-install | Teams, products, agents that want raw offers without per-booking fees |
+| **Speed** | 1–15 min (local browsers) | Seconds (server-side) | Seconds (server-side) |
+| **Cost** | 100% free, unlimited | Free search; booking links require 1% concierge fee (min $3) | Prepaid credits, no per-booking fee |
+| **Setup** | `pip install letsfg` | [letsfg.co](https://letsfg.co) | [letsfg.co/developers](https://letsfg.co/developers) |
 | **Runs where** | Your machine | Our servers | Our servers |
+| **Offer links** | Direct airline booking URLs | LetsFG unlock links (pay 1% fee to receive direct airline URL) | Direct airline booking URLs |
 
-- **Local:** Fires 200+ airline connectors on your machine via Playwright. Free, unlimited, personal use only. Searches take 1–15 min depending on how many connectors you run.
-- **Developer API:** Server-side search with no local browser requirements. Built for teams and products. Prepaid credits, no wait, extremely efficient. → [letsfg.co/developers](https://letsfg.co/developers)
-- **Website:** [letsfg.co](https://letsfg.co) is purpose-built for agents (OpenClaw, etc.) and humans who need instant results without installing anything. No browser automation required on your end.
+- **Local (Path 1):** Fires 200+ airline connectors on your machine via Playwright. Free, unlimited, no API key required. Results include `offer_ref` and `payment_token` fields. Booking links are masked by default — use the concierge flow or the Developer API to get the direct airline URL (see below).
+- **letsfg.co (Path 2):** Purpose-built for agents (OpenClaw, Claude, GPT, etc.) and humans who need instant results without installing anything. Search is free. To get the direct booking link, call `POST https://letsfg.co/api/developers/checkout` with the `offer_id`, `offer_ref`, `payment_token`, and `price` — this returns a Stripe checkout URL. After the user or agent pays the 1% fee (min $3.00), poll `GET https://letsfg.co/api/developers/payment-verify?token={payment_token}` until `verified: true` to receive the `booking_url`.
+- **Developer API (Path 3):** Server-side search at [letsfg.co/developers](https://letsfg.co/developers) with prepaid credits. Returns direct airline booking URLs with no concierge fee and no per-booking checkout layer. Best for teams and products at volume.
+
+> **Concierge fee vs. Developer API:** The 1% concierge fee (min $3) applies only when unlocking offers via the letsfg.co website or agent API (Path 2). If you want direct airline URLs without any per-booking fee, sign up for the Developer API at [letsfg.co/developers](https://letsfg.co/developers).
 
 ---
 

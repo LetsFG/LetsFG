@@ -86,6 +86,8 @@ letsfg book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john@exampl
 
 Search 200 airline connectors locally (no API key needed). Requires Python + `letsfg` installed.
 
+> **Note:** Local search results return masked booking links by default. Each offer includes `offer_ref` and `payment_token` fields. To get a direct airline booking URL, use the **concierge unlock flow** (1% fee, min $3 — no API key needed) or sign up for the **Developer API** at [letsfg.co/developers](https://letsfg.co/developers) for fee-free direct links.
+
 ```typescript
 import { searchLocal } from 'letsfg';
 
@@ -95,6 +97,52 @@ console.log(result.total_results);
 // Limit browser concurrency for constrained environments
 const result2 = await searchLocal('GDN', 'BCN', '2026-06-15', { maxBrowsers: 4 });
 ```
+
+### Unlocking offer results
+
+Local search results include `offer_ref` and `payment_token` on each offer. Use these to retrieve the direct airline booking URL via the concierge flow (no API key required):
+
+```typescript
+import { searchLocal } from 'letsfg';
+
+const result = await searchLocal('GDN', 'BCN', '2026-06-15');
+const offer = result.offers[0];
+
+// 1. Initiate checkout — fee = max(price × 1%, $3.00). No API key needed.
+const checkoutRes = await fetch('https://letsfg.co/api/developers/checkout', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    offer_id:      offer.id,
+    offer_ref:     offer.offer_ref,
+    payment_token: offer.payment_token,
+    currency:      offer.currency,
+    price:         String(offer.price),
+  }),
+});
+const { checkout_url } = await checkoutRes.json();
+
+// 2. Present checkout_url to the user (or open it programmatically)
+console.log(`Pay here: ${checkout_url}`);
+
+// 3. Poll until payment is confirmed
+async function pollVerify(token: string): Promise<string> {
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+    const res = await fetch(
+      `https://letsfg.co/api/developers/payment-verify?token=${token}`
+    );
+    const data = await res.json();
+    if (data.verified) return data.booking_url;
+  }
+}
+
+// 4. booking_url is the direct airline link — no further fees
+const bookingUrl = await pollVerify(offer.payment_token);
+console.log(`Book here: ${bookingUrl}`);
+```
+
+To skip the per-booking fee entirely, use the [Developer API](https://letsfg.co/developers) — it returns direct airline booking URLs on every search result.
 
 ### `systemInfo()`
 
