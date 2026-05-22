@@ -6,10 +6,11 @@
 
 ## Choose the right mode
 
-| Mode | Best for | Setup | Cost |
-|------|----------|-------|------|
-| Local search | SDK users, repo clones, connector debugging, wide local sweeps | Install only | Free |
-| Public developer API | Managed cloud search, account billing, public REST integrations, hosted onboarding | Register, attach Stripe, top up balance | Prepaid balance |
+| Mode | Best for | Setup | Search cost | Booking URL |
+|------|----------|-------|-------------|-------------|
+| Local search | SDK users, repo clones, connector debugging, wide local sweeps | Install only | Free | 1% concierge fee (min $3) via letsfg.co |
+| letsfg.co (website / agent API) | Agents without local browsers, humans, zero-install | None | Free | 1% concierge fee (min $3) via letsfg.co |
+| Public Developer API | Managed cloud search, products, teams, no per-booking fee | Register, attach Stripe, top up balance | Prepaid credits | Direct airline URLs, no fee |
 
 ## Option A: Free local search
 
