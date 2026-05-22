@@ -20,6 +20,8 @@ interface RankOfferSegment {
   airline?: string
   flight_number?: string
   aircraft?: string
+  origin?: string
+  destination?: string
 }
 
 // ── Minimal offer shape (subset of FlightOffer in ResultsPanel) ───────────
@@ -430,17 +432,32 @@ export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
     origin: string | undefined,
     destination: string | undefined,
     stops: number | undefined,
-  ) => [
-    dayKey(departureTime),
-    (origin ?? '').toUpperCase(),
-    (destination ?? '').toUpperCase(),
-    departureTime ? bucket(departureTime) : '',
-    arrivalTime ? bucket(arrivalTime) : '',
-    stops ?? '',
-  ].join('_')
+    segments?: Array<{ origin?: string; destination?: string }> | undefined,
+  ) => {
+    // For itineraries with >1 segment, include sorted intermediate airport codes
+    // so that LHR→FRA→JFK and LHR→CDG→JFK with the same dep/arr slot are not
+    // collapsed into the same dedup bucket.
+    const intermediate = segments && segments.length > 1
+      ? segments
+          .slice(0, -1)
+          .map((s) => (s.destination ?? '').toUpperCase())
+          .filter(Boolean)
+          .sort()
+          .join(',')
+      : ''
+    return [
+      dayKey(departureTime),
+      (origin ?? '').toUpperCase(),
+      (destination ?? '').toUpperCase(),
+      departureTime ? bucket(departureTime) : '',
+      arrivalTime ? bucket(arrivalTime) : '',
+      stops ?? '',
+      intermediate,
+    ].join('_')
+  }
   const key = (o: T) => [
     (o.airline ?? '').toUpperCase(),
-    legKey(o.departure_time, o.arrival_time, o.origin, o.destination, o.stops),
+    legKey(o.departure_time, o.arrival_time, o.origin, o.destination, o.stops, o.segments),
     o.inbound
       ? legKey(
         o.inbound.departure_time,
@@ -448,6 +465,7 @@ export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
         o.inbound.origin,
         o.inbound.destination,
         o.inbound.stops,
+        o.inbound.segments,
       )
       : 'oneway',
     o.conditions?.refund_before_departure ?? 'unknown',
@@ -486,9 +504,15 @@ export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
 // ── Helpers ────────────────────────────────────────────────────────────────
 function isoToMins(iso: string | undefined): number {
   if (!iso) return 0
+  // Extract local airport time directly from the ISO string literal.
+  // "2026-06-01T10:15:00+02:00" → 615 (10h15m local, not 495 UTC).
+  // Timestamps without timezone info are by convention the local airport time,
+  // so the T-prefixed HH:MM in the string is always what we want.
+  const match = /T(\d{2}):(\d{2})/.exec(iso)
+  if (match) return parseInt(match[1], 10) * 60 + parseInt(match[2], 10)
   const d = new Date(iso)
   if (isNaN(d.getTime())) return 0
-  return d.getHours() * 60 + d.getMinutes()
+  return d.getUTCHours() * 60 + d.getUTCMinutes()
 }
 
 /** Number of calendar days between departure and arrival (UTC). 0 = same day, 1 = next day, etc. */
@@ -883,19 +907,25 @@ function premiumPenalty(offerPrice: number, cheapestPrice: number): number {
 export function rankOffers<T extends RankOffer>(
   offers: T[],
   ctx: RankingContext,
+  options?: { skipDedup?: boolean },
 ): RankedOffer<T>[] {
   if (offers.length === 0) return []
 
-  // Remove near-identical offers (same physical flight from multiple sources).
-  // Only the cheapest copy in each (dep window × arr window × stops) bucket survives.
-  const deduped = deduplicateOffers(offers)
+  // By default remove near-identical offers (same physical flight from multiple
+  // sources). Pass skipDedup: true to rank all offers as-is — useful when the
+  // caller wants to show every offer found rather than one per physical flight.
+  const pool = options?.skipDedup ? offers : deduplicateOffers(offers)
+
+  // Pre-filter obvious duration outliers that would distort normalisation and
+  // produce nonsensical scores.
+  const plausible = pool.filter(o => o.duration_minutes >= 10 && o.duration_minutes <= 2880)
 
   const weights = resolveWeights(ctx)
   // Use displayPrice when available — it reflects what the user actually pays
   // (ticket + LetsFG fee + ancillaries, in their display currency).
   const effectivePrice = (o: RankOffer) => o.displayPrice ?? o.price
-  const prices = deduped.map(effectivePrice)
-  const durations = deduped.map(o => o.duration_minutes)
+  const prices = plausible.map(effectivePrice)
+  const durations = plausible.map(o => o.duration_minutes)
   const [pLo, pHi] = p5p95(prices)
   const [dLo, dHi] = p5p95(durations)
   const cheapestPrice = Math.min(...prices)
@@ -906,7 +936,7 @@ export function rankOffers<T extends RankOffer>(
   })
 
   // Score every offer
-  const scored: RankedOffer<T>[] = deduped.map(offer => {
+  const scored: RankedOffer<T>[] = plausible.map(offer => {
     const depMins = isoToMins(offer.departure_time)
     const arrMins = isoToMins(offer.arrival_time)
     const dayOffset = daysBetween(offer.departure_time, offer.arrival_time)
