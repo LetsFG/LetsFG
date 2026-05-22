@@ -1,0 +1,26 @@
+{
+  "fares": [
+    {
+      "outbound": {
+        "departureAirport": {"iataCode": "DUB", "name": "Dublin"},
+        "arrivalAirport": {"iataCode": "STN", "name": "London Stansted"},
+        "departureDate": "2026-06-15T08:00:00",
+        "arrivalDate": "2026-06-15T09:05:00",
+        "flightNumber": "FR1234",
+        "price": {"value": 29.99, "currencyCode": "EUR"},
+        "flightKey": "DUB~STN~20260615~0800~FR1234"
+      }
+    },
+    {
+      "outbound": {
+        "departureAirport": {"iataCode": "DUB", "name": "Dublin"},
+        "arrivalAirport": {"iataCode": "STN", "name": "London Stansted"},
+        "departureDate": "2026-06-16T12:30:00",
+        "arrivalDate": "2026-06-16T13:35:00",
+        "flightNumber": "FR5678",
+        "price": {"value": 45.99, "currencyCode": "EUR"},
+        "flightKey": "DUB~STN~20260616~1230~FR5678"
+      }
+    }
+  ]
+}

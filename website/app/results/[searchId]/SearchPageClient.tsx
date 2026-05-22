@@ -13,6 +13,7 @@ import { SearchProgressBarFull } from './SearchProgressBar'
 import { CURRENCY_CHANGE_EVENT, readBrowserCurrencyPreference, type CurrencyCode } from '../../../lib/currency-preference'
 import { formatOfferDisplayPrice, getOfferDisplayTotalPrice, type FxRateTable } from '../../../lib/display-price'
 import { trackSearchSession, trackSearchSessionEvent } from '../../../lib/search-session-analytics'
+import { extractShareSource } from '../../../lib/share-link'
 import { useExperiment } from '../../../lib/ab-testing'
 import { readBrowserCachedResults, writeBrowserCachedResults } from '../../../lib/browser-offer-cache'
 import { setResultsLocaleSearchParam } from '../../../lib/locale-routing'
@@ -687,13 +688,19 @@ export default function SearchPageClient({
     const normalizedQuery = query.trim()
     if (!normalizedQuery) return
 
+    // Read share attribution once at session start — intentionally not in deps
+    // to avoid re-tracking when other URL params (currency, etc.) change.
+    const shareSourceId = extractShareSource(searchParams) ?? undefined
+
     trackSearchSession({
       search_id: analyticsSearchId,
       query: normalizedQuery,
-      source: 'website-results-client',
+      source: shareSourceId ? 'share' : 'website-results-client',
       source_path: resultsSourcePath,
+      source_search_id: shareSourceId,
       is_test_search: isTestSearch || undefined,
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyticsSearchId, isTestSearch, query, resultsSourcePath])
 
   // Reset progressive-reveal state when search changes

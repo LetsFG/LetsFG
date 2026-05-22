@@ -19,7 +19,7 @@ function signUnlockPayload(payload: string, secret: string): string {
   return createHmac('sha256', secret).update(payload).digest('base64url')
 }
 
-function parseUnlockToken(
+export function parseUnlockToken(
   token: string | null,
   expectedUid: string,
   expectedSearchId: string,
