@@ -1433,6 +1433,7 @@ export default function ResultsPanel({
     preferCheapest,
     maxStops,
     fallbackNotes,
+    fxRates,
   ])
 
   // ── 5-generation Gemini justification system ─────────────────────────────
