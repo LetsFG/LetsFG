@@ -1363,6 +1363,7 @@ export default function ResultsPanel({
           breakdown: r.breakdown,
           heroFacts: r.heroFacts,
           tradeoffs: r.tradeoffs,
+          relaxedGates: r.relaxedGates,
         })),
         rawQuery,
         context: {
