@@ -403,9 +403,18 @@ export async function GET(
         || (typeof durable.query === 'string' ? durable.query.trim() : '')
         || (typeof cachedParsed.query === 'string' ? cachedParsed.query.trim() : '')
       const enrichedParsed: Record<string, unknown> = { ...cachedParsed }
+      let _debugReparseInfo: Record<string, unknown> = { urlQueryPresent: !!urlQuery, urlQueryLen: urlQuery.length }
       if (urlQuery) {
         try {
           const reparsed = parseNLQuery(urlQuery) as Record<string, unknown>
+          _debugReparseInfo = {
+            ..._debugReparseInfo,
+            reparsedKeys: Object.keys(reparsed),
+            reparsed_depart_time_pref: reparsed.depart_time_pref,
+            reparsed_return_depart_time_pref: reparsed.return_depart_time_pref,
+            reparsed_stops: reparsed.stops,
+            cachedParsedKeys: Object.keys(cachedParsed),
+          }
           // Fill ONLY missing fields. Cache wins where it has a value.
           for (const [k, v] of Object.entries(reparsed)) {
             if (v !== undefined && v !== null && enrichedParsed[k] === undefined) {
@@ -466,6 +475,7 @@ export async function GET(
         // Echo the query so the client's parseNLQuery fallback always has it,
         // and the SSR can show the original phrasing on reload.
         query: urlQuery || (typeof durable.query === 'string' ? durable.query : undefined),
+        _debug_reparse: _debugReparseInfo,
       })
     }
   }
