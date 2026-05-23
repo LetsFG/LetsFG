@@ -473,11 +473,18 @@ export async function GET(
     // Pass user-requested dates so the validator can flag offers whose
     // outbound or inbound departure date drifted from the search criteria
     // (e.g. connector returned a return-leg on June 3 when the user asked
-    // for May 31). Without these the validator only checks intrinsic
-    // plausibility and wrong-date offers sail through as valid.
+    // for May 31). FSW does NOT always echo date_from/return_date in the
+    // mid-search polling response, so we fall back to parsed_context from the
+    // search meta — that's where the original parsed dates always live.
+    const _earlyMeta = getSearchMeta(searchId)
+    const _earlyParsedContext: Record<string, unknown> = _earlyMeta?.parsed_context && typeof _earlyMeta.parsed_context === 'object'
+      ? _earlyMeta.parsed_context as Record<string, unknown>
+      : {}
+    const _expectedDateFrom = (typeof data.date_from === 'string' && data.date_from) || (typeof _earlyParsedContext.date === 'string' ? _earlyParsedContext.date : undefined)
+    const _expectedReturnDate = (typeof data.return_date === 'string' && data.return_date) || (typeof _earlyParsedContext.return_date === 'string' ? _earlyParsedContext.return_date : undefined)
     const { valid: validOffers, suspect: suspectOffers } = validateOfferBatch(normalized, {
-      date_from: data.date_from,
-      return_date: data.return_date,
+      date_from: _expectedDateFrom,
+      return_date: _expectedReturnDate,
     })
     const orderedOffers = [
       ...validOffers,
