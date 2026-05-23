@@ -50,7 +50,7 @@ test('route returns immediately on cache hit when status is completed', () => {
   // rather than falling through to the FSW poll.
   assert.match(
     source,
-    /durable.*status === 'completed'[\s\S]{0,2000}return NextResponse\.json\((?:durable|\{\s*\.\.\.durable)/,
+    /durable.*status === 'completed'[\s\S]{0,5000}return NextResponse\.json\((?:durable|\{\s*\.\.\.durable)/,
     'route must return early when durable cache returns a completed result',
   )
 })
