@@ -176,7 +176,9 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
-        if (session.payment_status === 'paid') {
+        // Accept 'no_payment_required' alongside 'paid' so 100%-off promo codes
+        // (and any other server-issued $0 sessions) still complete the unlock.
+        if (session.payment_status === 'paid' || session.payment_status === 'no_payment_required') {
           const monitorId = session.metadata?.monitor_id
 
           if (monitorId) {
