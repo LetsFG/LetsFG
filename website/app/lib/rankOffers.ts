@@ -65,6 +65,12 @@ export interface RankOffer {
     change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
     [key: string]: string | undefined
   }
+  /** Quality tag set by upstream validateOfferBatch when the offer's intrinsic
+   *  data is untrustworthy (date drift from search criteria, asymmetric leg
+   *  durations, etc.). The ranker uses this as the highest-priority hero gate:
+   *  a suspect offer can never be hero unless every offer in the pool is suspect.
+   *  Rank-not-filter — suspect offers still appear as runner-ups. */
+  quality?: 'suspect' | string
 }
 
 export interface RankingContext {
@@ -1011,6 +1017,13 @@ function selectHeroByGates<T extends RankOffer>(
     // is NOT direct from the user's perspective.
     gates.push({ name: 'direct', pred: o => combinedStops(o) === 0 })
   }
+
+  // not_suspect is ALWAYS active and sits at the highest priority (last to
+  // relax). The hero must come from offers whose data is trustworthy. Only
+  // when every offer in the pool is suspect (e.g. all connectors returned
+  // wrong-date results) does this gate drop. Rank-not-filter: suspect offers
+  // still appear as runner-ups, just never as hero.
+  gates.push({ name: 'not_suspect', pred: o => o.quality !== 'suspect' })
 
   const relaxed: string[] = []
   for (let dropCount = 0; dropCount <= gates.length; dropCount++) {

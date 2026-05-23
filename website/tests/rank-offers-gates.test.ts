@@ -156,6 +156,59 @@ test('depTimePref relaxes before direct when no morning direct exists', () => {
   assert.ok(ranked[0].relaxedGates?.includes('time'))
 })
 
+test('suspect-quality offers are never picked as hero when valid offers exist', () => {
+  // The LHR->BCN bug: a connector returned a return leg on the wrong date
+  // with a fake 1h duration. validateOfferBatch tags it quality:'suspect'.
+  // The ranker must NOT pick it even though direct-both-ways scores highest.
+  const suspectButHighScore: RankOffer = {
+    id: 'suspect-direct',
+    price: 200,
+    quality: 'suspect',
+    currency: 'GBP',
+    airline: 'Sketchy Air',
+    origin: 'LHR',
+    destination: 'BCN',
+    departure_time: '2026-05-29T20:50:00+01:00',
+    arrival_time: '2026-05-29T23:10:00+02:00',
+    duration_minutes: 140,
+    stops: 0,
+    inbound: {
+      origin: 'BCN',
+      destination: 'LHR',
+      departure_time: '2026-06-03T00:00:00+02:00',
+      arrival_time: '2026-06-03T01:00:00+01:00',
+      duration_minutes: 60,
+      stops: 0,
+    },
+  } as RankOffer & { quality: 'suspect' }
+
+  const valid: RankOffer = {
+    id: 'valid-1stop',
+    price: 240,
+    currency: 'GBP',
+    airline: 'Real Air',
+    origin: 'LHR',
+    destination: 'BCN',
+    departure_time: '2026-05-29T08:00:00+01:00',
+    arrival_time: '2026-05-29T13:30:00+02:00',
+    duration_minutes: 270,
+    stops: 1,
+    inbound: {
+      origin: 'BCN',
+      destination: 'LHR',
+      departure_time: '2026-05-31T18:00:00+02:00',
+      arrival_time: '2026-05-31T22:00:00+01:00',
+      duration_minutes: 240,
+      stops: 1,
+    },
+  }
+  const ranked = rankOffers([suspectButHighScore, valid], {})
+  assert.equal(ranked[0].offer.id, 'valid-1stop',
+    'valid 1-stop must win over suspect-quality direct (rank-not-filter: suspect stays in array but not as hero)')
+  // Suspect offer still appears in results
+  assert.ok(ranked.some(r => r.offer.id === 'suspect-direct'), 'suspect offer must remain in ranked array')
+})
+
 test('preferCheapest + preferDirect: gate still fires (cheapest direct wins, not cheapest overall)', () => {
   const cheapest1Stop = offer({ id: 'cheapest-1s', price: 60, stops: 1 })
   const cheapestDirect = offer({ id: 'cheapest-direct', price: 110, stops: 0 })
