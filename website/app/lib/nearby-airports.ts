@@ -90,6 +90,28 @@ export const NEARBY_AIRPORTS: Record<string, NearbyAirportFallback> = {
     hub_name: 'Nice Côte d’Azur (NCE)',
     reason: 'Monaco has no commercial airport — NCE is ~30 km away with helicopter or coach transfer',
   },
+  // Le Bourget (LBG) is the world's busiest business-aviation airport but has
+  // essentially no scheduled commercial service. OurAirports lists it as
+  // "large" so it slips through isUsableIata; this curated entry catches the
+  // typed city/IATA paths so we route the search to Paris commercial instead.
+  'le bourget': {
+    code: 'PAR',
+    name: 'Paris (nearest to Le Bourget)',
+    hub_name: 'Paris (CDG / ORY)',
+    reason: 'Le Bourget Airport (LBG) is business/private aviation only — CDG and ORY are the commercial gateways',
+  },
+  'paris-le bourget': {
+    code: 'PAR',
+    name: 'Paris (nearest to Le Bourget)',
+    hub_name: 'Paris (CDG / ORY)',
+    reason: 'Le Bourget Airport (LBG) is business/private aviation only — CDG and ORY are the commercial gateways',
+  },
+  'lbg': {
+    code: 'PAR',
+    name: 'Paris (nearest to Le Bourget)',
+    hub_name: 'Paris (CDG / ORY)',
+    reason: 'Le Bourget Airport (LBG) is business/private aviation only — CDG and ORY are the commercial gateways',
+  },
   'monte carlo': {
     code: 'NCE',
     name: 'Nice (nearest to Monte Carlo)',
@@ -265,12 +287,25 @@ import { AIRPORTS_DB, type AirportRow } from './airports-db.generated'
 // like PRY (Pretoria — no commercial service) so we can override them with the
 // nearest real hub instead of starting a doomed search.
 const USABLE_IATAS: ReadonlySet<string> = new Set(AIRPORTS_DB.map(a => a.c))
+
+// Airports that OurAirports classifies as large/medium (so they're in
+// USABLE_IATAS) but have essentially zero scheduled commercial service —
+// private jets / business aviation only. Searching them yields 0 offers and
+// we want isUsableIata to treat them as "ghost" so the swap-to-nearby-hub
+// fallback kicks in. Real user incident: LBG → TFS returned 0 results.
+// Add cautiously: a code listed here can never be searched directly even if
+// a connector technically supports it.
+const KNOWN_NON_COMMERCIAL_IATAS: ReadonlySet<string> = new Set([
+  'LBG', // Paris-Le Bourget — business/private aviation only
+])
+
 export function isUsableIata(code: string | undefined | null): boolean {
   if (!code) return false
   // Multi-airport "city" codes like LON, NYC, PAR aren't in OurAirports'
   // airport list but ARE flyable on every supplier — whitelist them.
   const upper = code.toUpperCase()
   if (CITY_METACODES.has(upper)) return true
+  if (KNOWN_NON_COMMERCIAL_IATAS.has(upper)) return false
   return USABLE_IATAS.has(upper)
 }
 const CITY_METACODES: ReadonlySet<string> = new Set([
@@ -320,6 +355,7 @@ export function findNearestAirport(
   type Hit = { row: AirportRow; km: number }
   let candidates: Hit[] = []
   for (const a of AIRPORTS_DB) {
+    if (KNOWN_NON_COMMERCIAL_IATAS.has(a.c)) continue
     if (a.lat < minLat || a.lat > maxLat) continue
     if (!lonWraps && (a.lon < minLon || a.lon > maxLon)) continue
     const km = haversineKm(lat, lon, a.lat, a.lon)
@@ -330,6 +366,7 @@ export function findNearestAirport(
     // only ~3,300 entries so this is still sub-millisecond).
     candidates = []
     for (const a of AIRPORTS_DB) {
+      if (KNOWN_NON_COMMERCIAL_IATAS.has(a.c)) continue
       const km = haversineKm(lat, lon, a.lat, a.lon)
       if (km <= maxKm) candidates.push({ row: a, km })
     }

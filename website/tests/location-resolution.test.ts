@@ -391,3 +391,22 @@ test('launch route fallback still swaps ghost IATAs to a nearby commercial hub',
   assert.equal(resolved.destination, 'FCO')
   assert.equal(resolved.fallbackNotes.origin?.used_code, 'JNB')
 })
+
+test('launch route swaps Le Bourget (LBG) to a Paris commercial airport', () => {
+  // Real user query: "Paris-Le Bourget Airport to Tenerife Island..." returned
+  // 0 results because LBG is private/business aviation only — no scheduled
+  // commercial service — but it's classified as a "large" airport in
+  // OurAirports so isUsableIata returned true and no fallback fired.
+  const resolved = resolveSearchLaunchRoute({
+    origin: 'LBG',
+    originName: 'Paris-Le Bourget',
+    aiOriginLat: 48.9623,
+    aiOriginLon: 2.4365,
+    destination: 'TFS',
+    destinationName: 'Tenerife South',
+  })
+
+  assert.notEqual(resolved.origin, 'LBG', 'LBG must be swapped — no commercial service')
+  assert.ok(resolved.fallbackNotes.origin, 'fallback note must be set so the UI can explain the swap')
+  assert.equal(resolved.fallbackNotes.origin?.intended.toLowerCase().includes('le bourget'), true)
+})
