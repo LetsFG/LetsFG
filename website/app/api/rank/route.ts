@@ -200,13 +200,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const hBd = offerBreakdown(h.price, h.currency, hSource, h.ancillaries as FullAncillaries, false, false)
   // Display currency: prefer the client-computed display_price/display_currency (exact match
   // to what the card shows). Fall back to backend fxConvert only when not provided.
-  const hOfferExt = h as RankOffer & { display_price?: number; display_currency?: string }
+  const hOfferExt = h as RankOffer & { display_price?: number; display_currency?: string; display_price_formatted?: string }
   const hDispCur = hOfferExt.display_currency || displayCurrency || h.currency
   const dispFee = fxConvert(hBd.fee, h.currency, hDispCur)
   const dispBag = fxConvert(hBd.bag, h.currency, hDispCur)
   const dispSeat = fxConvert(hBd.seat, h.currency, hDispCur)
   const hTotal = hOfferExt.display_price ?? fxConvert(hBd.total, h.currency, hDispCur)
   const dispTicket = Math.round((hTotal - dispFee) * 100) / 100
+  // Pre-formatted price string the user actually sees on the card (e.g. "$183.31").
+  // Gemini must use this string VERBATIM in its copy — never reformat or convert.
+  const heroPriceStr = hOfferExt.display_price_formatted || `${hTotal} ${hDispCur}`
   const normalizedGoogle = normalizeGoogleFlightsComparisonPrice(h.google_flights_price, context.travelerCount)
   const dispGoogle = normalizedGoogle ? fxConvert(normalizedGoogle, h.currency, hDispCur) : 0
   const savingsLine = dispGoogle && dispGoogle > hTotal + 8
@@ -226,7 +229,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     bdLines.push(`  💺 Seat:        +${dispSeat} ${hDispCur}  ← optional add-on for seat selection (NOT in TOTAL)`)
   }
   bdLines.push(`  ─────────────────────────────`)
-  bdLines.push(`  TOTAL:         ${hTotal} ${hDispCur}  ← use this EXACT number in your copy (matches the card)`)
+  bdLines.push(`  TOTAL:         ${heroPriceStr}  ← use this EXACT string in your copy (matches the card)`)
   const priceBreakdownBlock = bdLines.join('\n')
   // Collect unique aircraft types from outbound segments (runtime data includes aircraft even if type doesn't)
   const heroAircraft = (h.segments as Array<{ aircraft?: string }> | undefined)
@@ -260,9 +263,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const roSource = (ro as RankOffer & { source?: string }).source
     // Match the displayed card total (ticket + fee + included ancillaries only).
     const roBd = offerBreakdown(ro.price, ro.currency, roSource, ro.ancillaries as FullAncillaries, false, false)
-    const roOfferExt = ro as RankOffer & { display_price?: number; display_currency?: string }
+    const roOfferExt = ro as RankOffer & { display_price?: number; display_currency?: string; display_price_formatted?: string }
     const roDispCur = roOfferExt.display_currency || displayCurrency || ro.currency
     const roDispTotal = roOfferExt.display_price ?? fxConvert(roBd.total, ro.currency, roDispCur)
+    const roPriceStr = roOfferExt.display_price_formatted || `${roDispTotal} ${roDispCur}`
     const roDispBag = fxConvert(roBd.bag, ro.currency, roDispCur)
     const roBagNote = ro.ancillaries?.checked_bag?.included === true ? ' (bag incl)' : (requireBag && roDispBag > 0) ? ` (+${roDispBag} ${roDispCur} bag add-on)` : ''
     const roSeatNote = ro.ancillaries?.seat_selection?.included === true ? ' (seat incl)' : ''
@@ -271,7 +275,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const roRetNote = roRetDep ? ` | return departs ${fmtMins(roRetDep)}` : ''
     return (
       `${FLIGHT_LABELS[i + 1]}: ` +
-      `${roDispTotal} ${roDispCur}${roBagNote}${roSeatNote}, ` +
+      `${roPriceStr}${roBagNote}${roSeatNote}, ` +
       `${ro.stops === 0 ? 'direct' : `${ro.stops} stop(s)`}, ` +
       `${fmtDur(ro.duration_minutes)}, ` +
       `departs ${fmtMins(ro.departure_time)} → arrives ${fmtMins(ro.arrival_time)}${roRetNote} ` +
@@ -355,9 +359,10 @@ ${priceBreakdownBlock}${savingsLine}${aircraftLine}${heroDetailBlock}
 
 NOTES ON THE BREAKDOWN:
 - The LetsFG fee is a small platform service charge (like a booking fee). Do NOT dwell on it — it is normal and unremarkable.
-- If a bag or seat cost is shown in the breakdown, it was factored in because it's a realistic expected cost for this trip (e.g. families need checked bags and to sit together). Justify it naturally — e.g. "bag included in the ${hTotal} ${h.currency}" — do not apologise for it.
+- If a bag or seat cost is shown in the breakdown, it was factored in because it's a realistic expected cost for this trip (e.g. families need checked bags and to sit together). Justify it naturally — e.g. "bag included in the ${heroPriceStr}" — do not apologise for it.
 - Ancillaries NOT shown in the breakdown are optional/not expected for this trip — do not add them to the price or imply the user must pay them.
-- Always reference the TOTAL price (${hTotal} ${h.currency}) when talking about what the trip costs. Never quote just the ticket price.
+- Always reference the TOTAL price (${heroPriceStr}) when talking about what the trip costs. Never quote just the ticket price.
+- CRITICAL: When you write the price, copy the string "${heroPriceStr}" EXACTLY as given — same digits, same currency symbol, same formatting. Do NOT convert it to another currency. Do NOT change the symbol. Do NOT round or recalculate. This string is what the user sees on the card; any deviation will look like a bug.
 
 REASONS IT RANKED FIRST (use these, don\'t invent others):
 ${heroFactsText}
@@ -372,7 +377,7 @@ Title rules:
 - Do NOT start with "The" or "A"
 
 Justification rules:
-- Sentence 1: Lead with the price angle — is it the cheapest? Cheaper than Google? Best value given what you get? Reference the TOTAL (${hTotal} ${h.currency}).
+- Sentence 1: Lead with the price angle — is it the cheapest? Cheaper than Google? Best value given what you get? Reference the TOTAL (${heroPriceStr}) — copy this string exactly.
 - Sentence 2: Address the outbound departure time. Is ${fmtMins(h.departure_time)} a good or acceptable time for THIS trip (${tripDesc})? Why or why not?
 - Sentence 3: ${noDirectsAvailable ? `The user wanted direct — cover what they're actually getting (${stopsLabel}, ${fmtDur(h.duration_minutes)}) and whether that's a reasonable trade for this route.` : `Stops and duration — ${stopsLabel}, ${fmtDur(h.duration_minutes)}. Is this good for the route? How does the journey feel?`}${context.retTimePref && h.inbound?.departure_time ? `\n- Sentence about return: The user asked for a ${context.retTimePref.replace(/_/g, ' ')} return. The return departs ${fmtMins(h.inbound.departure_time)}. Be HONEST about whether this matches — if it doesn't, say so plainly (e.g. "One caveat: the return is at ${fmtMins(h.inbound.departure_time)}, which isn't the evening flight back you asked for — no late returns are available on this route"). Do NOT skip this or pretend the return time is fine when it isn't.` : ''}
 - Sentence 4: Any other notable positives (bag included, savings vs Google, good arrival time). If bag/seat costs are in the breakdown, weave them in as proof the total is still solid. Skip if nothing noteworthy.
