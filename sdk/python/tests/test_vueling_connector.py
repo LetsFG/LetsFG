@@ -1,6 +1,6 @@
 import sys
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -11,13 +11,18 @@ if str(SDK_PYTHON_ROOT) not in sys.path:
 from letsfg.connectors.vueling import VuelingConnectorClient
 from letsfg.models.flights import FlightSearchRequest
 
+OUT_DATE = date.today() + timedelta(days=7)
+RET_DATE = OUT_DATE + timedelta(days=2)
+OUT_STR = OUT_DATE.isoformat()
+RET_STR = RET_DATE.isoformat()
+
 
 def _make_req(**kwargs):
     defaults = dict(
         origin="LHR",
         destination="BCN",
-        date_from=date(2026, 5, 22),
-        return_from=date(2026, 5, 24),
+        date_from=OUT_DATE,
+        return_from=RET_DATE,
         adults=2,
         children=0,
         infants=0,
@@ -67,10 +72,10 @@ def _graphql_payload() -> dict:
     outbound = _journey(
         origin="LHR",
         destination="BCN",
-        local_departure="2026-05-22T17:15:00Z",
-        local_arrival="2026-05-22T20:35:00Z",
-        utc_departure="2026-05-22T16:15:00Z",
-        utc_arrival="2026-05-22T18:35:00Z",
+        local_departure=f"{OUT_STR}T17:15:00Z",
+        local_arrival=f"{OUT_STR}T20:35:00Z",
+        utc_departure=f"{OUT_STR}T16:15:00Z",
+        utc_arrival=f"{OUT_STR}T18:35:00Z",
         segment_duration=140,
         fare_key=fare_key,
         flight_no="7816",
@@ -78,10 +83,10 @@ def _graphql_payload() -> dict:
     inbound = _journey(
         origin="BCN",
         destination="LHR",
-        local_departure="2026-05-24T10:45:00Z",
-        local_arrival="2026-05-24T12:10:00Z",
-        utc_departure="2026-05-24T08:45:00Z",
-        utc_arrival="2026-05-24T11:10:00Z",
+        local_departure=f"{RET_STR}T10:45:00Z",
+        local_arrival=f"{RET_STR}T12:10:00Z",
+        utc_departure=f"{RET_STR}T08:45:00Z",
+        utc_arrival=f"{RET_STR}T11:10:00Z",
         segment_duration=145,
         fare_key=fare_key,
         flight_no="7817",
@@ -142,16 +147,16 @@ class VuelingTimezoneRegressionTest(unittest.TestCase):
         outbound_offer = outbound[0]
         outbound_segment = outbound_offer.outbound.segments[0]
         self.assertIsNone(outbound_segment.departure.tzinfo)
-        self.assertEqual(outbound_segment.departure.isoformat(), "2026-05-22T17:15:00")
-        self.assertEqual(outbound_segment.arrival.isoformat(), "2026-05-22T20:35:00")
+        self.assertEqual(outbound_segment.departure.isoformat(), f"{OUT_STR}T17:15:00")
+        self.assertEqual(outbound_segment.arrival.isoformat(), f"{OUT_STR}T20:35:00")
         self.assertEqual(outbound_segment.duration_seconds, 8400)
         self.assertEqual(outbound_offer.outbound.total_duration_seconds, 8400)
 
         inbound_offer = inbound[0]
         inbound_segment = inbound_offer.outbound.segments[0]
         self.assertIsNone(inbound_segment.departure.tzinfo)
-        self.assertEqual(inbound_segment.departure.isoformat(), "2026-05-24T10:45:00")
-        self.assertEqual(inbound_segment.arrival.isoformat(), "2026-05-24T12:10:00")
+        self.assertEqual(inbound_segment.departure.isoformat(), f"{RET_STR}T10:45:00")
+        self.assertEqual(inbound_segment.arrival.isoformat(), f"{RET_STR}T12:10:00")
         self.assertEqual(inbound_segment.duration_seconds, 8700)
         self.assertEqual(inbound_offer.outbound.total_duration_seconds, 8700)
 
