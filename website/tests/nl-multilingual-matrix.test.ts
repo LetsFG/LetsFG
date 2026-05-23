@@ -57,6 +57,11 @@ const CASES: Case[] = [
     expect: { origin: 'DUB', destinationAny: ['ROM', 'FCO', 'CIA'], stops: 0 } },
   { lang: 'en', query: 'Manchester to Lisbon September 3, without stops',
     expect: { origin: 'MAN', destination: 'LIS', stops: 0 } },
+  // Bare "N weeks" (no "for" before it) — trip duration must still be derived.
+  { lang: 'en', query: 'London to Tokyo end of June, family trip, 2 adults 1 child, 2 weeks, window seats together, cheapest option, direct flights only',
+    expect: { origin: 'LON', destination: 'TYO', hasReturnDate: true, adults: 2, totalPax: 3, stops: 0 } },
+  { lang: 'en', query: 'Paris to Bali October 5, 3 weeks, family of 4',
+    expect: { origin: 'PAR', destination: 'DPS', hasReturnDate: true, totalPax: 4 } },
 
   // ── POLISH ─────────────────────────────────────────────────────────────────
   { lang: 'pl', query: 'Warszawa do Barcelony 18 lipca powrót 22 lipca',

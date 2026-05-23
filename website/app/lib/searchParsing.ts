@@ -5465,6 +5465,11 @@ export function parseNLQuery(query: string): ParsedQuery {
   const tripDurBareSingleRe = /(?:^|[\s,(])(?<!for\s)(\d+)\s+(?:days?|nights?|nächte?|jours?|giorni?|dias?|dagar|dana|ditë)\b(?!\s+(?:after|later|earlier|ago|layover|stopover|connection|transfer|stop))(?=\s*(?:[,.)]|trip\b|stay\b|holiday\b|vacation\b|break\b|business\b|refundable\b|return\b|back\b|$))/i
   const tripDurWeeksRe = /\bfor\s+(\d+)\s*[-–to]\s*(\d+)\s*weeks?\b/i
   const tripDurWeekSingleRe = /\bfor\s+(?:(\d+)|a|an|one)\s+weeks?\b/i
+  // Bare "N weeks" (no "for" preceding). Mirrors tripDurBareSingleRe shape:
+  // requires a delimiter or trip-context word after so we don't false-positive
+  // on phrases like "2 weeks of vacation accrued" inside longer prose. In
+  // practice flight-search queries say "...., 2 weeks, ..." or "2 weeks trip".
+  const tripDurBareWeeksRe = /(?:^|[\s,(])(?<!for\s)(\d+)\s*weeks?\b(?=\s*(?:[,.)]|trip\b|stay\b|holiday\b|vacation\b|break\b|business\b|refundable\b|return\b|back\b|$))/i
   const returnAfterRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(?:between\s+)?(\d+)\s*(?:and|[-–to])\s*(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
   const returnAfterSingleRe = /\b(?:come?\s+back|return(?:ing)?|back)\s+(\d+)\s*(?:days?|nights?)\s+(?:after|later|später|después|après|dopo)\b/i
 
@@ -5498,6 +5503,17 @@ export function parseNLQuery(query: string): ParsedQuery {
               const wks = twsm[1] ? parseInt(twsm[1]) : 1
               result.min_trip_days = wks * 7
               result.max_trip_days = wks * 7
+            } else {
+              // Bare "N weeks" without "for" — common in comma-separated
+              // queries ("..., 2 weeks, ..."). Trip-context word OR comma/EOL
+              // is required after the number to avoid mis-grabbing unrelated
+              // numerics elsewhere in the query.
+              const twbm = q.match(tripDurBareWeeksRe)
+              if (twbm) {
+                const wks = parseInt(twbm[1])
+                result.min_trip_days = wks * 7
+                result.max_trip_days = wks * 7
+              }
             }
           }
         }
