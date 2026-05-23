@@ -6,7 +6,7 @@ import { cacheCompletedSearchResult, getCachedSearchResult, getSearchMeta } from
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
 import { getSessionUid } from '../../../../lib/session-uid'
-import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
+import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
 import { validateOfferBatch } from '../../../../lib/offer-validation'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
@@ -380,7 +380,40 @@ export async function GET(
   if (searchId.startsWith('ws_')) {
     const durable = await getDurableSearchResult(searchId)
     if (durable && durable.status === 'completed') {
-      return NextResponse.json(durable)
+      // Re-run validation on the cached payload. Cache entries written
+      // before the date-drift rules landed (and entries that simply pre-date
+      // any future rule change) carry the original un-tagged offers, so the
+      // ranker would still pick a bad-date hero. Re-validating here makes
+      // the cache self-correcting against the validator's *current* rules
+      // without invalidating the cache or losing reload-stability — the same
+      // offer ids come back, just re-ordered with up-to-date quality tags.
+      const cachedOffers = Array.isArray(durable.offers) ? durable.offers : []
+      const cachedParsed = (durable.parsed && typeof durable.parsed === 'object')
+        ? durable.parsed as Record<string, unknown>
+        : {}
+      const expectedDateFrom = typeof cachedParsed.date === 'string'
+        ? cachedParsed.date
+        : (typeof cachedParsed.date_from === 'string' ? cachedParsed.date_from : undefined)
+      const expectedReturnDate = typeof cachedParsed.return_date === 'string'
+        ? cachedParsed.return_date
+        : undefined
+      // Strip any prior quality tag before re-validating so we don't double-stack.
+      const untagged = cachedOffers.map((offer) => {
+        if (offer && typeof offer === 'object' && 'quality' in offer) {
+          const { quality: _quality, ...rest } = offer as Record<string, unknown>
+          return rest
+        }
+        return offer
+      })
+      const { valid, suspect } = validateOfferBatch(untagged as PublicOffer[], {
+        date_from: expectedDateFrom,
+        return_date: expectedReturnDate,
+      })
+      const reordered = [
+        ...valid,
+        ...suspect.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
+      ]
+      return NextResponse.json({ ...durable, offers: reordered })
     }
   }
 
