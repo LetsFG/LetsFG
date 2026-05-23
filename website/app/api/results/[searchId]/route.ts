@@ -470,7 +470,15 @@ export async function GET(
     // duration, impossible time ordering, extreme price) and push them to the
     // end of the list so valid results appear first.  Suspect offers are NOT
     // dropped — they are kept in case the valid set is small.
-    const { valid: validOffers, suspect: suspectOffers } = validateOfferBatch(normalized)
+    // Pass user-requested dates so the validator can flag offers whose
+    // outbound or inbound departure date drifted from the search criteria
+    // (e.g. connector returned a return-leg on June 3 when the user asked
+    // for May 31). Without these the validator only checks intrinsic
+    // plausibility and wrong-date offers sail through as valid.
+    const { valid: validOffers, suspect: suspectOffers } = validateOfferBatch(normalized, {
+      date_from: data.date_from,
+      return_date: data.return_date,
+    })
     const orderedOffers = [
       ...validOffers,
       ...suspectOffers.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
