@@ -290,6 +290,14 @@ function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: 
   let arrival = extractTimestamp(last, ARRIVAL_TIME_KEYS) || normalizeTimestampCandidate(fallbackArrival) || ''
   const departureHasClock = hasExplicitFlightTime(departure)
   const arrivalHasClock = hasExplicitFlightTime(arrival)
+
+  // Connector only gave us dates (no clock on either side). Refuse to
+  // fabricate a clock from total_duration_seconds — that path produced cards
+  // like "00:00 → 01:00, 1h Direct" in production (ws_47776b352af74a1b,
+  // 2026-05-23). Surface the gap so validateOfferBatch can flag the offer.
+  if (!departureHasClock && !arrivalHasClock) {
+    return { departure: '', arrival: '', durationMinutes: 0 }
+  }
   // Only trust the epoch-subtraction diff when both timestamps carry explicit
   // timezone information (Z or ±HH:MM).  Without it, new Date() treats the
   // string as server-local time (UTC on Cloud Run), producing a wrong diff for

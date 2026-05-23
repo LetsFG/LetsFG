@@ -60,6 +60,30 @@ export function validateOfferBatch(offers: PublicOffer[]): OfferValidationResult
 export function detectSuspectReason(offer: PublicOffer): string | null {
   const { duration_minutes, departure_time, arrival_time, price, segments, inbound } = offer
 
+  // Rule 0 — inbound timing integrity (round-trip only).
+  //   Origin: ws_47776b352af74a1b on 2026-05-23 rendered a return leg as
+  //   "00:00 → 01:00, 1h Direct" because the connector gave us a date-only
+  //   timestamp and total_duration_seconds; getRouteTiming used to fabricate
+  //   a clock from the duration. Now that getRouteTiming returns empty
+  //   timestamps for date-only input, flag those offers as suspect so the
+  //   bad return leg never sits in the validOffers slot.
+  if (inbound) {
+    if (!inbound.departure_time || !inbound.arrival_time) {
+      return 'inbound_missing_timing'
+    }
+    if (inbound.duration_minutes < 20) {
+      return `inbound_duration_too_short:${inbound.duration_minutes}min`
+    }
+    if (inbound.duration_minutes > 1440) {
+      return `inbound_duration_too_long:${inbound.duration_minutes}min`
+    }
+    const inboundDep = new Date(inbound.departure_time).getTime()
+    const inboundArr = new Date(inbound.arrival_time).getTime()
+    if (!isNaN(inboundDep) && !isNaN(inboundArr) && inboundArr <= inboundDep) {
+      return 'inbound_arrival_before_departure'
+    }
+  }
+
   // Rule 1 — duration plausibility
   if (duration_minutes < 20) {
     return `duration_too_short:${duration_minutes}min`
