@@ -403,18 +403,9 @@ export async function GET(
         || (typeof durable.query === 'string' ? durable.query.trim() : '')
         || (typeof cachedParsed.query === 'string' ? cachedParsed.query.trim() : '')
       const enrichedParsed: Record<string, unknown> = { ...cachedParsed }
-      let _debugReparseInfo: Record<string, unknown> = { urlQueryPresent: !!urlQuery, urlQueryLen: urlQuery.length }
       if (urlQuery) {
         try {
           const reparsed = parseNLQuery(urlQuery) as Record<string, unknown>
-          _debugReparseInfo = {
-            ..._debugReparseInfo,
-            reparsedKeys: Object.keys(reparsed),
-            reparsed_depart_time_pref: reparsed.depart_time_pref,
-            reparsed_return_depart_time_pref: reparsed.return_depart_time_pref,
-            reparsed_stops: reparsed.stops,
-            cachedParsedKeys: Object.keys(cachedParsed),
-          }
           // Fill ONLY missing fields. Cache wins where it has a value.
           for (const [k, v] of Object.entries(reparsed)) {
             if (v !== undefined && v !== null && enrichedParsed[k] === undefined) {
@@ -475,7 +466,6 @@ export async function GET(
         // Echo the query so the client's parseNLQuery fallback always has it,
         // and the SSR can show the original phrasing on reload.
         query: urlQuery || (typeof durable.query === 'string' ? durable.query : undefined),
-        _debug_reparse: _debugReparseInfo,
       })
     }
   }
@@ -604,9 +594,50 @@ export async function GET(
       ? (Math.abs(diff) < 0.005 ? 0 : Math.max(0, diff))
       : undefined
     const meta = getSearchMeta(searchId)
-    const parsedContext = meta?.parsed_context && typeof meta.parsed_context === 'object'
-      ? meta.parsed_context
+    const rawParsedContext: Record<string, unknown> = meta?.parsed_context && typeof meta.parsed_context === 'object'
+      ? meta.parsed_context as Record<string, unknown>
       : {}
+    // Enrich parsed_context with a fresh parseNLQuery on the URL query so the
+    // response carries time prefs / direct flag / etc. even when the cached
+    // meta was written by an older parser version (or by a Gemini AI parse
+    // that didn't capture them). Cache wins for any field it already sets;
+    // we only fill gaps. Cf. parallel enrichment in the durable cache block
+    // above — same intent (server payload is self-sufficient for ranking).
+    const urlQueryFsw = request.nextUrl.searchParams.get('q')?.trim()
+      || (typeof rawParsedContext.query === 'string' ? rawParsedContext.query.trim() : '')
+      || (typeof meta?.query === 'string' ? meta.query.trim() : '')
+    const parsedContext: Record<string, unknown> = { ...rawParsedContext }
+    if (urlQueryFsw) {
+      try {
+        const reparsed = parseNLQuery(urlQueryFsw) as Record<string, unknown>
+        for (const [k, v] of Object.entries(reparsed)) {
+          if (v !== undefined && v !== null && parsedContext[k] === undefined) {
+            parsedContext[k] = v
+          }
+        }
+        // Mirror onto ai_-prefixed fields the client reads first so the chain
+        // `parsed.ai_dep_time_pref ?? nlParsed?.depart_time_pref` resolves on
+        // server-shipped values independent of client-side parsing.
+        const mirror: Array<[string, string]> = [
+          ['depart_time_pref', 'ai_dep_time_pref'],
+          ['return_depart_time_pref', 'ai_ret_time_pref'],
+          ['arrive_time_pref', 'ai_arrival_time_pref'],
+          ['passenger_context', 'ai_passenger_context'],
+          ['trip_purpose', 'ai_trip_purpose'],
+        ]
+        for (const [src, dst] of mirror) {
+          if (parsedContext[src] !== undefined && parsedContext[dst] === undefined) {
+            parsedContext[dst] = parsedContext[src]
+          }
+        }
+        if ((parsedContext.prefer_direct === true || parsedContext.stops === 0)
+            && parsedContext.ai_direct_only === undefined) {
+          parsedContext.ai_direct_only = true
+        }
+      } catch {
+        // parseNLQuery should never throw — never let it fail a results read.
+      }
+    }
 
     // Cache completed offers so /api/offer/[offerId] can find them without
     // needing to hit FSW again (which may route to a different instance).
