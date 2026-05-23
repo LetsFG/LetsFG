@@ -47,6 +47,16 @@ const CASES: Case[] = [
     expect: { origin: 'MAN', destination: 'DXB', totalPax: 4, passenger_context: 'family', preferred_sort: 'price' } },
   { lang: 'en', query: 'Berlin to Bangkok next Monday, hand luggage only',
     expect: { origin: 'BER', destination: 'BKK', carry_on_only: true } },
+  // Colloquial direct-flight synonyms — "changes" / "connections" / "transfers"
+  // are how non-technical travellers describe a stopover. Must parse as stops=0.
+  { lang: 'en', query: 'London to Madrid June 10, no changes',
+    expect: { origin: 'LON', destination: 'MAD', stops: 0 } },
+  { lang: 'en', query: 'Boston to Paris July 4, no connections please',
+    expect: { origin: 'BOS', destination: 'PAR', stops: 0 } },
+  { lang: 'en', query: 'Dublin to Rome August 12, no transfers',
+    expect: { origin: 'DUB', destinationAny: ['ROM', 'FCO', 'CIA'], stops: 0 } },
+  { lang: 'en', query: 'Manchester to Lisbon September 3, without stops',
+    expect: { origin: 'MAN', destination: 'LIS', stops: 0 } },
 
   // ── POLISH ─────────────────────────────────────────────────────────────────
   { lang: 'pl', query: 'Warszawa do Barcelony 18 lipca powrót 22 lipca',

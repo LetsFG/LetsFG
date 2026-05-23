@@ -49,6 +49,10 @@ export interface RankOffer {
     origin?: string
     destination?: string
     stops?: number
+    /** Inbound-leg duration in minutes. Required for round-trip scoring to
+     *  see the return leg in `scoreDuration`. When absent the inbound is
+     *  treated as zero-duration (best case for the offer). */
+    duration_minutes?: number
     segments?: RankOfferSegment[]
   }
   ancillaries?: {
@@ -108,6 +112,12 @@ export interface RankedOffer<T extends RankOffer = RankOffer> {
   breakdown: ScoreBreakdown
   heroFacts: string[] // key reasons why this offer was selected
   tradeoffs: string[] // what's not ideal (for runner-up explanations)
+  /** Hero only: names of user-stated criteria gates that had to be relaxed to
+   *  find a hero (no offer satisfied them all). Surfaced so the UI can banner
+   *  the mismatch — e.g. "No direct flights on this route" or "No refundable
+   *  fare available". Empty/undefined means the hero satisfied every stated
+   *  criterion. Relax order: refund → bag → time → direct. */
+  relaxedGates?: string[]
 }
 
 export function getOfferInstanceKey(offer: Pick<RankOffer, 'id' | 'departure_time' | 'arrival_time' | 'stops' | 'inbound'>): string {
@@ -693,12 +703,23 @@ function scoreComfortHours(depMins: number): number {
 }
 
 function scoreLayover(offer: RankOffer): number {
-  if (offer.stops === 0) return 1.0
-  const segs = offer.segments ?? []
-  const layoverMins = segs
+  // Round-trip aware: consider layovers across BOTH legs. A 20h layover on the
+  // return leg is just as bad as one on the outbound — historically the inbound
+  // segments were ignored entirely, masking 28h-return offers behind a clean
+  // direct outbound.
+  const outStops = offer.stops ?? 0
+  const inStops = offer.inbound?.stops ?? 0
+  if (outStops === 0 && inStops === 0) return 1.0
+
+  const layoverMins = [
+    ...(offer.segments ?? []),
+    ...(offer.inbound?.segments ?? []),
+  ]
     .filter(s => (s.layover_minutes ?? 0) > 0)
     .map(s => s.layover_minutes!)
-  if (layoverMins.length === 0) return 0.50  // stop present but no segment detail: neutral
+
+  // If we have at least one stop but no segment detail at all, stay neutral.
+  if (layoverMins.length === 0) return 0.50
 
   const worst = Math.max(...layoverMins)
   if (worst < 40)  return 0.10  // dangerously tight connection
@@ -709,6 +730,23 @@ function scoreLayover(offer: RankOffer): number {
   if (worst <= 480) return 0.28  // 6–8h: genuinely bad
   if (worst <= 660) return 0.12  // 8–11h: awful
   return 0.04                     // 11h+ layover: borderline unusable
+}
+
+/** Round-trip stops signal: take the worse leg. A direct outbound paired with
+ *  a 1-stop return is, for ranking purposes, a 1-stop trip. */
+function combinedStops(offer: RankOffer): number {
+  const out = offer.stops ?? 0
+  const inb = offer.inbound?.stops ?? 0
+  return Math.max(out, inb)
+}
+
+/** Round-trip total duration in minutes. Falls back to outbound-only when no
+ *  inbound is present (one-way) or when inbound duration is missing. */
+function totalRoundTripDuration(offer: RankOffer): number {
+  const out = offer.duration_minutes ?? 0
+  if (!offer.inbound) return out
+  const inb = offer.inbound.duration_minutes ?? 0
+  return out + inb
 }
 
 function refundabilityMultiplier(offer: RankOffer, requireCancellation: boolean | undefined): number {
@@ -904,6 +942,88 @@ function premiumPenalty(offerPrice: number, cheapestPrice: number): number {
   return 0.14                       // 3×+ : essentially out of contention
 }
 
+/**
+ * Builds hard gates from user-stated criteria, then finds the highest-scoring
+ * offer that passes all gates. When no offer passes them all, relaxes gates
+ * in priority order: refund → bag → time → direct. Returns the chosen hero
+ * and the list of gates relaxed to find it.
+ *
+ * Gates only fire when the user explicitly stated the corresponding criterion.
+ * Unstated criteria do not gate the hero — the regular weighted score still
+ * picks the best offer among those passing the (possibly empty) gate set.
+ */
+function selectHeroByGates<T extends RankOffer>(
+  sorted: RankedOffer<T>[],
+  ctx: RankingContext,
+): { hero: RankedOffer<T>; relaxed: string[] } {
+  if (sorted.length === 0) throw new Error('selectHeroByGates: empty input')
+
+  // Gates ordered LOWEST priority first (= dropped first when no offer matches).
+  // refund < bag < time < direct. Direct is sacred; refund is most relaxable.
+  const gates: Array<{ name: string; pred: (o: T) => boolean }> = []
+
+  if (ctx.requireCancellation) {
+    gates.push({
+      name: 'refund',
+      pred: o => o.conditions?.refund_before_departure === 'allowed',
+    })
+  }
+
+  if (ctx.requireBag) {
+    gates.push({
+      name: 'bag',
+      pred: o => o.ancillaries?.checked_bag?.included === true,
+    })
+  }
+
+  // Time gate combines all stated time prefs into a single predicate. Any one
+  // failing fails the whole time gate — relaxing time drops all three at once,
+  // which matches the user's mental model ("I'm flexible on time").
+  const timePreds: Array<(o: T) => boolean> = []
+  if (ctx.depTimePref) {
+    timePreds.push(o => scoreDepTime(isoToMins(o.departure_time), ctx.depTimePref) >= 0.55)
+  }
+  if (ctx.retTimePref) {
+    timePreds.push(o => {
+      const retDep = o.inbound?.departure_time
+      // One-way (no inbound) — no return time to violate; pass.
+      if (!retDep) return true
+      return scoreDepTime(isoToMins(retDep), ctx.retTimePref) >= 0.55
+    })
+  }
+  if (ctx.arrivalTimePref) {
+    const tripPurposes = normalizeTripPurposes({
+      tripPurpose: ctx.tripPurpose,
+      tripPurposes: ctx.tripPurposes,
+    })
+    timePreds.push(o => {
+      const arrMins = isoToMins(o.arrival_time)
+      const dayOffset = daysBetween(o.departure_time, o.arrival_time)
+      return scoreArrivalTime(arrMins, ctx.arrivalTimePref, tripPurposes, dayOffset) >= 0.55
+    })
+  }
+  if (timePreds.length > 0) {
+    gates.push({ name: 'time', pred: o => timePreds.every(p => p(o)) })
+  }
+
+  if (ctx.preferDirect) {
+    // Both legs must be direct. A direct outbound paired with a 1-stop return
+    // is NOT direct from the user's perspective.
+    gates.push({ name: 'direct', pred: o => combinedStops(o) === 0 })
+  }
+
+  const relaxed: string[] = []
+  for (let dropCount = 0; dropCount <= gates.length; dropCount++) {
+    const active = gates.slice(dropCount)
+    const candidate = sorted.find(s => active.every(g => g.pred(s.offer)))
+    if (candidate) return { hero: candidate, relaxed: [...relaxed] }
+    // No candidate at this gate set — relax the next lowest-priority gate.
+    if (dropCount < gates.length) relaxed.push(gates[dropCount].name)
+  }
+  // Unreachable: dropping all gates leaves `active=[]`, every offer matches.
+  return { hero: sorted[0], relaxed }
+}
+
 export function rankOffers<T extends RankOffer>(
   offers: T[],
   ctx: RankingContext,
@@ -917,15 +1037,26 @@ export function rankOffers<T extends RankOffer>(
   const pool = options?.skipDedup ? offers : deduplicateOffers(offers)
 
   // Pre-filter obvious duration outliers that would distort normalisation and
-  // produce nonsensical scores.
-  const plausible = pool.filter(o => o.duration_minutes >= 10 && o.duration_minutes <= 2880)
+  // produce nonsensical scores. We guard both per-leg (no single leg over 48h —
+  // that's corrupt data, even ULH flights are <20h) and the round-trip total
+  // (96h ceiling so a legit 14h+14h LON→TYO round-trip survives).
+  const plausible = pool.filter(o => {
+    const out = o.duration_minutes ?? 0
+    if (out < 10 || out > 2880) return false
+    // Only check inbound when its duration was actually populated. Some
+    // upstream paths (and tests) omit inbound.duration_minutes; missing data
+    // is not a corruption signal.
+    const inb = o.inbound?.duration_minutes
+    if (typeof inb === 'number' && (inb < 10 || inb > 2880)) return false
+    return totalRoundTripDuration(o) <= 5760
+  })
 
   const weights = resolveWeights(ctx)
   // Use displayPrice when available — it reflects what the user actually pays
   // (ticket + LetsFG fee + ancillaries, in their display currency).
   const effectivePrice = (o: RankOffer) => o.displayPrice ?? o.price
   const prices = plausible.map(effectivePrice)
-  const durations = plausible.map(o => o.duration_minutes)
+  const durations = plausible.map(totalRoundTripDuration)
   const [pLo, pHi] = p5p95(prices)
   const [dLo, dHi] = p5p95(durations)
   const cheapestPrice = Math.min(...prices)
@@ -939,7 +1070,11 @@ export function rankOffers<T extends RankOffer>(
         return dp.length > 0 ? Math.min(...dp) : cheapestPrice
       })()
     : cheapestPrice
+  // Fastest in the pool — used by fact generation to label the top pick as
+  // "fastest on this route". Operates on round-trip totals to match scoreDuration.
   const fastestMins = Math.min(...durations)
+  const outboundDurations = plausible.map(o => o.duration_minutes)
+  const fastestOutboundMins = outboundDurations.length > 0 ? Math.min(...outboundDurations) : 0
   const tripPurposes = normalizeTripPurposes({
     tripPurpose: ctx.tripPurpose,
     tripPurposes: ctx.tripPurposes,
@@ -954,8 +1089,8 @@ export function rankOffers<T extends RankOffer>(
 
     const bd: ScoreBreakdown = {
       price:        scorePrice(ep, pLo, pHi),
-      stops:        scoreStops(offer.stops),
-      duration:     scoreDuration(offer.duration_minutes, dLo, dHi),
+      stops:        scoreStops(combinedStops(offer)),
+      duration:     scoreDuration(totalRoundTripDuration(offer), dLo, dHi),
       depTime:      scoreDepTime(depMins, ctx.depTimePref),
       arrivalTime:  scoreArrivalTime(arrMins, ctx.arrivalTimePref, tripPurposes, dayOffset),
       baggage:      scoreBaggage(offer, ctx.requireBag),
@@ -1010,6 +1145,20 @@ export function rankOffers<T extends RankOffer>(
     return a.offer.id.localeCompare(b.offer.id)
   })
 
+  // Constraint-gate hero selection: top-1 must satisfy every user-stated
+  // criterion. If no offer does, gates are relaxed in priority order. Runner-
+  // ups keep their score-based positions so the user can still see the
+  // cheaper-but-non-matching alternatives for context.
+  if (scored.length > 0) {
+    const { hero, relaxed } = selectHeroByGates(scored, ctx)
+    const idx = scored.indexOf(hero)
+    if (idx > 0) {
+      scored.splice(idx, 1)
+      scored.unshift(hero)
+    }
+    if (relaxed.length > 0) scored[0].relaxedGates = relaxed
+  }
+
   // Assign 1-based ranks and generate human-readable facts
   // Hero compares vs cheapest in set; runners compare vs the hero price
   const heroPrice = scored[0]?.offer.price ?? cheapestPrice
@@ -1018,7 +1167,7 @@ export function rankOffers<T extends RankOffer>(
     const isHero = i === 0
     const refPrice = isHero ? cheapestPrice : heroPrice
     const { heroFacts, tradeoffs } = generateFacts(
-      scored[i].offer, scored[i].breakdown, refPrice, fastestMins, ctx, ctx.travelerCount, isHero,
+      scored[i].offer, scored[i].breakdown, refPrice, fastestOutboundMins, ctx, ctx.travelerCount, isHero,
     )
     scored[i].heroFacts = heroFacts
     scored[i].tradeoffs = tradeoffs

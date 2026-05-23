@@ -13,6 +13,11 @@ interface RankedOfferPayload {
   breakdown: RankedOffer['breakdown']
   heroFacts: string[]
   tradeoffs: string[]
+  /** Hero only: user-stated criteria that had to be relaxed to find the hero
+   *  (no offer satisfied them all). Names: 'refund' | 'bag' | 'time' | 'direct'.
+   *  Used to make the LLM copy lead with the relaxation note instead of
+   *  silently claiming a match. */
+  relaxedGates?: string[]
 }
 
 interface FallbackNotePayload {
@@ -254,6 +259,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     context.arrivalTimePref ? `prefers ${context.arrivalTimePref} arrival` : '',
   ].filter(Boolean).join(', ')
 
+  // Hero criteria relaxation: when the ranker had to relax stated criteria to
+  // find a hero (no offer satisfied them all), we MUST tell Gemini so the copy
+  // leads with the caveat instead of silently claiming a match. Without this
+  // the user reads "direct flight — matches your search!" on a 1-stop hero.
+  const relaxedGates = hero.relaxedGates ?? []
+  const relaxedHumanNames: Record<string, string> = {
+    direct: 'direct/non-stop (no direct flights exist on this route)',
+    time: 'preferred time of day (no offer matches the requested time window)',
+    bag: 'checked bag included in fare (no offer includes a bag — bag is an add-on cost)',
+    refund: 'refundable/flexible fare (no refundable offer found at this price tier)',
+  }
+  const relaxedBlock = relaxedGates.length > 0
+    ? '\nIMPORTANT — HERO DOES NOT FULLY MATCH USER CRITERIA:\n' +
+      relaxedGates.map(g => `  - ${relaxedHumanNames[g] ?? g}`).join('\n') +
+      '\nLead Sentence 1 or 2 with this caveat in plain language (e.g. "no direct flights on this route — this is the closest match"). Do NOT describe the hero as matching a criterion it does not actually satisfy.'
+    : ''
+
   const heroFactsText = hero.heroFacts.length > 0
     ? hero.heroFacts.map(f => `- ${f}`).join('\n')
     : '- No strong differentiating factors detected'
@@ -345,7 +367,7 @@ SEARCH BREADTH:
 - In early or mid phases, frame the count as "so far" or "already checked," never as a final total.
 - You can use the breadth to signal that these picks are the shortlist worth focusing on, but do NOT rely on one stock tagline such as "worth your time".`
 
-  const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${noDirectsBlock}${heroDirectGuardBlock}${fareClaimGuardBlock}
+  const prompt = `You are a decisive travel advisor. You've already made the call — now justify it. Write like a sharp, honest friend who knows flights, not like a helpdesk bot. Be specific. Use actual numbers and times from the data.${languageInstruction}${fallbackBlock}${relaxedBlock}${noDirectsBlock}${heroDirectGuardBlock}${fareClaimGuardBlock}
 
 USER'S SEARCH: "${rawQuery}"
 TRIP: ${tripDesc}${prefs ? ` | ${prefs}` : ''}
