@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cacheOffers } from '../../../../lib/offer-cache'
+import { dedupOffersById } from '../../../../lib/offer-dedup'
+import { getDurableSearchResult, putDurableSearchResult } from '../../../../lib/durable-search-cache'
 import { cacheCompletedSearchResult, getCachedSearchResult, getSearchMeta } from '../../../../lib/results-cache'
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
@@ -9,10 +11,25 @@ import { validateOfferBatch } from '../../../../lib/offer-validation'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
 import { PFP_ACQUISITION_COOKIE, buildAcquisitionSearchPayload } from '../../../../lib/pfp/analytics/pfp-acquisition'
+import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../../lib/letsfg-api'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
 const FSW_SECRET = process.env.FSW_SECRET || ''
 const ACTIVE_SEARCH_RECOVERY_WINDOW_MS = 15 * 60 * 1000
+
+async function fetchSearchQueryFromAnalytics(searchId: string): Promise<string> {
+  try {
+    const res = await fetch(
+      `${getLetsfgApiBase()}/api/v1/flights/search-query/${encodeURIComponent(searchId)}`,
+      { headers: withLetsfgWebsiteApiHeaders(), signal: AbortSignal.timeout(1500), cache: 'no-store' },
+    )
+    if (!res.ok) return ''
+    const data = await res.json() as { query?: string }
+    return typeof data.query === 'string' ? data.query.trim() : ''
+  } catch {
+    return ''
+  }
+}
 
 // ── FSW offer → website offer normalizer ─────────────────────────────────────
 // FSW offers use the SDK format: { price, currency, airlines[], outbound: { segments[], stopovers }, inbound?, source }
@@ -353,6 +370,20 @@ export async function GET(
     return NextResponse.json({ error: 'Search not found' }, { status: 404 })
   }
 
+  // Durable cache-first read for `ws_` completed searches.
+  //   The FSW backing this poll is per-Cloud-Run-instance and drops state at
+  //   ~10 min. A user reloading later (cold start, different instance, post-
+  //   TTL) used to see a mutated/reranked/empty offer set — origin of the
+  //   ws_47776b352af74a1b instability complaint on 2026-05-23. The durable
+  //   cache (Firestore via LetsFG-private) returns the *same* payload on every
+  //   subsequent read so reloads are stable.
+  if (searchId.startsWith('ws_')) {
+    const durable = await getDurableSearchResult(searchId)
+    if (durable && durable.status === 'completed') {
+      return NextResponse.json(durable)
+    }
+  }
+
   // Explore search (we_) — pass through directly; no offer normalization needed
   if (searchId.startsWith('we_')) {
     try {
@@ -380,18 +411,25 @@ export async function GET(
 
     if (res.status === 404) {
       const cachedResult = getCachedSearchResult(searchId)
+      const analyticsQuery = await fetchSearchQueryFromAnalytics(analyticsSearchId)
+
       if (cachedResult) {
-        return NextResponse.json(buildExpiredResult(searchId, cachedResult, requestedDisplayCurrency))
+        const resolvedCachedQuery = analyticsQuery || cachedResult.query
+        const enrichedCache = resolvedCachedQuery ? { ...cachedResult, query: resolvedCachedQuery } : cachedResult
+        return NextResponse.json(buildExpiredResult(searchId, enrichedCache, requestedDisplayCurrency))
       }
 
       const meta = getSearchMeta(searchId)
       const started = request.nextUrl.searchParams.get('started')
-      const query = request.nextUrl.searchParams.get('q') || undefined
+      const query = analyticsQuery || request.nextUrl.searchParams.get('q') || undefined
       if (isRecoverableActiveSearch(started, meta)) {
         return NextResponse.json(buildRecoveringSearchResult(searchId, query, started, meta))
       }
 
-      return NextResponse.json(buildExpiredResult(searchId, undefined, requestedDisplayCurrency))
+      return NextResponse.json({
+        ...buildExpiredResult(searchId, undefined, requestedDisplayCurrency),
+        ...(analyticsQuery ? { query: analyticsQuery } : {}),
+      })
     }
 
     if (!res.ok) {
@@ -423,9 +461,11 @@ export async function GET(
       rawOffers.map((offer: any, idx: number) => normalizeTrustedOffer(offer, idx)),
       derivedBaseline,
     )
-    const normalized = trustedOffers
-      .map((offer) => toPublicOffer(offer))
-      .filter((offer) => (offer.duration_minutes ?? 0) > 0)
+    const normalized = dedupOffersById(
+      trustedOffers
+        .map((offer) => toPublicOffer(offer))
+        .filter((offer) => (offer.duration_minutes ?? 0) > 0),
+    )
     // Pre-presentation validation: flag offers with suspect metadata (wrong
     // duration, impossible time ordering, extreme price) and push them to the
     // end of the list so valid results appear first.  Suspect offers are NOT
@@ -471,7 +511,9 @@ export async function GET(
 
       await upsertSearchSessionServer({
         search_id: analyticsSearchId,
-        query: typeof data.query === 'string' ? data.query : undefined,
+        query: (typeof meta?.query === 'string' && meta.query.trim()) ? meta.query.trim()
+          : (typeof data.query === 'string' && data.query.trim()) ? data.query.trim()
+          : undefined,
         origin: data.origin,
         origin_name: data.origin_name || data.origin || (typeof parsedContext.origin_name === 'string' ? parsedContext.origin_name : undefined),
         destination: data.destination,
@@ -529,10 +571,15 @@ export async function GET(
     // Pick up website-side resolution context (e.g. "Pretoria has no airport,
     // we used JNB") that was recorded at /api/search time. FSW knows nothing
     // about it, so we merge it into `parsed` here.
+    const resolvedQuery = data.query
+      || (typeof meta?.query === 'string' ? meta.query : undefined)
+      || request.nextUrl.searchParams.get('q')
+      || (data.status !== 'searching' ? await fetchSearchQueryFromAnalytics(analyticsSearchId) : undefined)
+      || undefined
     const result = {
       search_id: searchId,
       status: data.status,
-      query: data.query,
+      query: resolvedQuery,
       parsed: {
         ...parsedContext,
         origin: data.origin,
@@ -587,6 +634,17 @@ export async function GET(
         searched_at: result.searched_at,
         expires_at: result.expires_at,
       })
+      // Mirror to the durable cross-instance cache (Firestore via LetsFG-private)
+      // so subsequent reloads — even on a different Cloud Run instance or
+      // after FSW state expires — return the same payload.
+      //   Awaited (not fire-and-forget): if the write fails on the completion
+      //   request and we don't retry, no future request will repopulate the
+      //   cache (each finds it empty, polls FSW, writes a *different* snapshot),
+      //   which reintroduces the exact instability we're fixing. Probe
+      //   searches skip the write to keep test traffic out of the prod cache.
+      if (!isProbeSearch) {
+        await putDurableSearchResult(result.search_id, result)
+      }
       // Attach any previously-cached Gemini justification so shared links return it.
       const cached = getCachedSearchResult(result.search_id)
       const cachedGemini = selectCachedGeminiForCurrency(cached, requestedDisplayCurrency)
