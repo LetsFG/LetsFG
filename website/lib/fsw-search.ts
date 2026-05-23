@@ -22,8 +22,8 @@ export interface WebSearchParams {
   // the website's Gemini parser. FSW uses these to adjust scoring weights
   // and preferred departure windows without hard-filtering anything out.
   sort_by?: 'price' | 'duration'
-  depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
-  return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
+  return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
   depart_after_mins?: number
   depart_before_mins?: number
   preferred_stops?: number

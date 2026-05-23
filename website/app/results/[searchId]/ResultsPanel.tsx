@@ -691,8 +691,8 @@ interface Props {
   requireBagPerPerson?: boolean
   requireMeals?: boolean
   requireCancellation?: boolean
-  initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
-  initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  initialDepTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
+  initialRetTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
   initialArrTimePref?: 'morning' | 'afternoon' | 'evening'
   /** Hard departure time floor in minutes from midnight (e.g. 600 = 10:00 am). */
   initialDepartAfterMins?: number

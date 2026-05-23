@@ -167,8 +167,8 @@ type GeminiClarificationResponse = {
   depart_after?: string | null
   depart_before?: string | null
   bags_included?: boolean | null
-  dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
-  ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye' | null
+  ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye' | null
   passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
   is_round_trip?: boolean | null
   anywhere_destination?: boolean
