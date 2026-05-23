@@ -48,7 +48,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ unlocked: false, error: 'Session mismatch' }, { status: 403 })
     }
 
-    if (session.payment_status !== 'paid') {
+    // Accept 'no_payment_required' alongside 'paid' so 100%-off promo codes
+    // (and any other server-issued $0 sessions) still complete the unlock.
+    if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
       return NextResponse.json({ unlocked: false })
     }
 
