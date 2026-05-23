@@ -8,6 +8,7 @@ import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../
 import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
 import { validateOfferBatch } from '../../../../lib/offer-validation'
+import { parseNLQuery } from '../../../lib/searchParsing'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
 import { PFP_ACQUISITION_COOKIE, buildAcquisitionSearchPayload } from '../../../../lib/pfp/analytics/pfp-acquisition'
@@ -391,11 +392,56 @@ export async function GET(
       const cachedParsed = (durable.parsed && typeof durable.parsed === 'object')
         ? durable.parsed as Record<string, unknown>
         : {}
-      const expectedDateFrom = typeof cachedParsed.date === 'string'
-        ? cachedParsed.date
-        : (typeof cachedParsed.date_from === 'string' ? cachedParsed.date_from : undefined)
-      const expectedReturnDate = typeof cachedParsed.return_date === 'string'
-        ? cachedParsed.return_date
+      // Re-parse the original NL query on the server too. Cached parsed_context
+      // entries written before parser improvements (or with Gemini-AI parses
+      // that didn't capture time prefs) lack fields the ranker depends on:
+      // depart_time_pref, return_depart_time_pref, prefer_direct, etc. Without
+      // these the client picks a hero ignoring stated time preferences. We do
+      // NOT override existing values — the cached parsed_context is source of
+      // truth for any field it does set.
+      const urlQuery = request.nextUrl.searchParams.get('q')?.trim()
+        || (typeof durable.query === 'string' ? durable.query.trim() : '')
+        || (typeof cachedParsed.query === 'string' ? cachedParsed.query.trim() : '')
+      const enrichedParsed: Record<string, unknown> = { ...cachedParsed }
+      if (urlQuery) {
+        try {
+          const reparsed = parseNLQuery(urlQuery) as Record<string, unknown>
+          // Fill ONLY missing fields. Cache wins where it has a value.
+          for (const [k, v] of Object.entries(reparsed)) {
+            if (v !== undefined && v !== null && enrichedParsed[k] === undefined) {
+              enrichedParsed[k] = v
+            }
+          }
+          // Mirror onto ai_-prefixed fields the client reads first, so the
+          // client's chain `parsed.ai_dep_time_pref ?? nlParsed?.depart_time_pref`
+          // resolves on the server-shipped value (independent of client parser).
+          const mirror: Array<[string, string]> = [
+            ['depart_time_pref', 'ai_dep_time_pref'],
+            ['return_depart_time_pref', 'ai_ret_time_pref'],
+            ['arrive_time_pref', 'ai_arrival_time_pref'],
+            ['passenger_context', 'ai_passenger_context'],
+            ['trip_purpose', 'ai_trip_purpose'],
+          ]
+          for (const [src, dst] of mirror) {
+            if (enrichedParsed[src] !== undefined && enrichedParsed[dst] === undefined) {
+              enrichedParsed[dst] = enrichedParsed[src]
+            }
+          }
+          // Mirror prefer_direct → ai_direct_only so the maxStops derivation
+          // (parsed.ai_direct_only === true ? 0 : ...) resolves correctly.
+          if ((enrichedParsed.prefer_direct === true || enrichedParsed.stops === 0)
+              && enrichedParsed.ai_direct_only === undefined) {
+            enrichedParsed.ai_direct_only = true
+          }
+        } catch {
+          // parseNLQuery should never throw, but never let a cache read fail.
+        }
+      }
+      const expectedDateFrom = typeof enrichedParsed.date === 'string'
+        ? enrichedParsed.date
+        : (typeof enrichedParsed.date_from === 'string' ? enrichedParsed.date_from : undefined)
+      const expectedReturnDate = typeof enrichedParsed.return_date === 'string'
+        ? enrichedParsed.return_date
         : undefined
       // Strip any prior quality tag before re-validating so we don't double-stack.
       const untagged = cachedOffers.map((offer) => {
@@ -413,7 +459,14 @@ export async function GET(
         ...valid,
         ...suspect.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
       ]
-      return NextResponse.json({ ...durable, offers: reordered })
+      return NextResponse.json({
+        ...durable,
+        offers: reordered,
+        parsed: enrichedParsed,
+        // Echo the query so the client's parseNLQuery fallback always has it,
+        // and the SSR can show the original phrasing on reload.
+        query: urlQuery || (typeof durable.query === 'string' ? durable.query : undefined),
+      })
     }
   }
 
