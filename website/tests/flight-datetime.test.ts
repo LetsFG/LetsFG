@@ -29,9 +29,11 @@ test('normalizeTrustedOffer does not invent clock times from date-only route dat
     },
   }, 0)
 
-  assert.equal(offer.departure_time, '2026-06-01')
-  assert.equal(offer.arrival_time, '2026-06-01')
-  assert.equal(offer.duration_minutes, 120)
+  // When no clock is present on either side, times are stripped to '' to prevent
+  // fabricated "00:00 → 01:00" cards. validateOfferBatch will flag these as suspect.
+  assert.equal(offer.departure_time, '')
+  assert.equal(offer.arrival_time, '')
+  assert.equal(offer.duration_minutes, 0)
 })
 
 test('normalizeTrustedOffer still infers missing clock times when an explicit clock is present', () => {

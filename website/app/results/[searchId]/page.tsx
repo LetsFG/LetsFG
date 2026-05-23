@@ -159,7 +159,8 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
     ?? buildSearchingShell(searchId, sp?.started, sp?.q?.trim() || '')
 
   const { status, query: resultQuery, parsed, progress, offers, searched_at, expires_at, gemini_justification } = result
-  const query = sp?.q?.trim() || resultQuery?.trim() || buildFallbackSearchQuery(parsed)
+  const analyticsQuery = sp?.q?.trim() || resultQuery?.trim() || ''
+  const query = analyticsQuery || buildFallbackSearchQuery(parsed)
 
   const isSearching = status === 'searching'
   const routeLabel = [parsed.origin_name || parsed.origin, parsed.destination_name || parsed.destination]
@@ -221,6 +222,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         initialCurrency={initialCurrency}
         fxRates={fxRates}
         query={query}
+        analyticsQuery={analyticsQuery}
         parsed={parsed}
         initialStatus={status}
         initialProgress={progress}

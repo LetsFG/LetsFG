@@ -461,6 +461,7 @@ export interface SearchPageClientProps {
   initialCurrency?: CurrencyCode
   fxRates?: FxRateTable
   query: string
+  analyticsQuery?: string
   parsed: ParsedQuery
   initialStatus: 'searching' | 'completed' | 'expired' | 'error'
   initialProgress?: { checked: number; total: number; found: number; pending_connectors?: string[] }
@@ -524,6 +525,7 @@ export default function SearchPageClient({
   initialCurrency = 'EUR',
   fxRates,
   query: initialQuery,
+  analyticsQuery,
   parsed: initialParsed,
   initialStatus,
   initialProgress,
@@ -583,6 +585,7 @@ export default function SearchPageClient({
       isTestSearch,
       currency: displayCurrency,
       offersCountOverride: status === 'completed' ? offers.length : undefined,
+      preserveQuery: true,
     }),
     [displayCurrency, isTestSearch, locale, offers.length, query, searchId, status],
   )
@@ -601,7 +604,7 @@ export default function SearchPageClient({
       // Keep just enough live-search context in the URL so a discarded tab can
       // rebuild the searching shell instead of landing on a false expired state.
       startedAt: status === 'searching' ? normalizeStartedAtParam(searchedAt) : undefined,
-      preserveQuery: status === 'searching',
+      preserveQuery: true,
     }),
     [displayCurrency, fswSession, isTestSearch, locale, offers.length, query, searchId, searchedAt, status],
   )
@@ -686,7 +689,7 @@ export default function SearchPageClient({
   }, [searchId, initialCurrency, initialExpiresAt, initialGeminiProp, initialOffers, initialParsed, initialProgress, initialQuery, initialSearchedAt, initialStatus])
 
   useEffect(() => {
-    const normalizedQuery = query.trim()
+    const normalizedQuery = (analyticsQuery ?? '').trim()
     if (!normalizedQuery) return
 
     // Read share attribution once at session start — intentionally not in deps
@@ -702,7 +705,7 @@ export default function SearchPageClient({
       is_test_search: isTestSearch || undefined,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analyticsSearchId, isTestSearch, query, resultsSourcePath])
+  }, [analyticsSearchId, analyticsQuery, isTestSearch, resultsSourcePath])
 
   // Reset progressive-reveal state when search changes
   useEffect(() => {

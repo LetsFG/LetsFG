@@ -444,12 +444,11 @@ export async function POST(request: NextRequest) {
 
     // Persist any fallback notes so /api/results can merge them into the
     // poll response (FSW doesn't know about our website-side resolution).
-    if (fallbackNotes.origin || fallbackNotes.destination || Object.keys(parsedResponse).length > 0) {
-      setSearchMeta(searchId, {
-        ...(fallbackNotes.origin || fallbackNotes.destination ? { fallback_notes: fallbackNotes } : {}),
-        parsed_context: parsedResponse,
-      })
-    }
+    setSearchMeta(searchId, {
+      ...(fallbackNotes.origin || fallbackNotes.destination ? { fallback_notes: fallbackNotes } : {}),
+      parsed_context: parsedResponse,
+      ...(queryText ? { query: queryText } : {}),
+    })
 
     return NextResponse.json({
       search_id: searchId,

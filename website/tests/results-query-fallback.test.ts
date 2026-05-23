@@ -22,7 +22,7 @@ test('results page prefers the explicit rerun query before falling back to resul
 
   assert.match(
     pageSource,
-    /const query = sp\?\.q\?\.trim\(\) \|\| resultQuery\?\.trim\(\) \|\| buildFallbackSearchQuery\(parsed\)/,
+    /const analyticsQuery = sp\?\.q\?\.trim\(\) \|\| resultQuery\?\.trim\(\) \|\| ''\s+const query = analyticsQuery \|\| buildFallbackSearchQuery\(parsed\)/,
   )
 })
 

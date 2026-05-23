@@ -38,6 +38,7 @@ export interface FallbackNote {
 export interface SearchMeta {
   fallback_notes?: { origin?: FallbackNote; destination?: FallbackNote }
   parsed_context?: Record<string, unknown>
+  query?: string
   stored_at: number
 }
 

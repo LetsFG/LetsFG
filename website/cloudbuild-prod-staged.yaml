@@ -82,7 +82,7 @@ steps:
       - '--region=europe-west1'
       - '--project=sms-caller'
       - '--no-traffic'
-      - '--tag=stripe-promo-staged'
+      - '--tag=query-fix-prod'
       - '--quiet'
 
 images:
