@@ -21,6 +21,27 @@ export interface OfferValidationResult {
   suspect: SuspectOffer[]
 }
 
+/** Search criteria the user actually asked for. When provided, offers whose
+ *  outbound/inbound LOCAL departure date doesn't match are flagged as suspect.
+ *  Without these the validator only checks intrinsic plausibility, so an offer
+ *  for a totally different return date sails through as valid. */
+export interface ExpectedSearchCriteria {
+  /** YYYY-MM-DD prefix; matched against the local departure date of the outbound. */
+  date_from?: string
+  /** YYYY-MM-DD prefix; matched against the local departure date of the inbound. */
+  return_date?: string
+}
+
+/** Extract YYYY-MM-DD from an ISO timestamp using LOCAL airport time (the
+ *  literal date before "T") — NOT UTC. A flight departing
+ *  '2026-05-31T23:50:00+02:00' is a "May 31 departure" from the airport's
+ *  perspective even though UTC is already June 1. */
+function isoToCalendarDate(ts: string | undefined): string | null {
+  if (!ts || typeof ts !== 'string') return null
+  const match = /^(\d{4}-\d{2}-\d{2})T/.exec(ts)
+  return match ? match[1] : null
+}
+
 /** Returns true when the ISO string carries an explicit timezone designator. */
 function hasExplicitTz(ts: string): boolean {
   return /Z$|[+-]\d{2}:\d{2}$/.test(ts)
@@ -37,12 +58,15 @@ function hasExplicitTz(ts: string): boolean {
  * - Extreme price outlier: price < 1 or price > 20 000 (EUR-normalised terms)
  * - Layover anomaly: any segment layover > 720 min on a sub-24 h itinerary
  */
-export function validateOfferBatch(offers: PublicOffer[]): OfferValidationResult {
+export function validateOfferBatch(
+  offers: PublicOffer[],
+  expected?: ExpectedSearchCriteria,
+): OfferValidationResult {
   const valid: PublicOffer[] = []
   const suspect: SuspectOffer[] = []
 
   for (const offer of offers) {
-    const reason = detectSuspectReason(offer)
+    const reason = detectSuspectReason(offer, expected)
     if (reason) {
       suspect.push({ offer, reason })
     } else {
@@ -57,8 +81,34 @@ export function validateOfferBatch(offers: PublicOffer[]): OfferValidationResult
  * Returns a human-readable suspect reason string, or null when the offer looks
  * valid. Only the first matching rule is returned (most significant first).
  */
-export function detectSuspectReason(offer: PublicOffer): string | null {
+export function detectSuspectReason(
+  offer: PublicOffer,
+  expected?: ExpectedSearchCriteria,
+): string | null {
   const { duration_minutes, departure_time, arrival_time, price, segments, inbound } = offer
+
+  // Rule -1 — outbound calendar date drift.
+  //   The connector returned an offer for a DIFFERENT outbound date than the
+  //   user requested. Real incident: search for 2026-05-29 produced offers on
+  //   2026-05-30 with no warning. Compare LOCAL airport dates (before T) so
+  //   late-night departures aren't mis-flagged.
+  if (expected?.date_from) {
+    const outboundDate = isoToCalendarDate(departure_time)
+    if (outboundDate && outboundDate !== expected.date_from) {
+      return `outbound_date_drift:wanted=${expected.date_from};got=${outboundDate}`
+    }
+  }
+
+  // Rule 0a — inbound calendar date drift (round-trip only).
+  //   THE BUG: user asked for 2026-05-31 return, connector returned offer
+  //   with inbound on 2026-06-03. Validator had no concept of expected dates,
+  //   so the wrong-date offer passed and was even ranked as #1.
+  if (inbound && expected?.return_date) {
+    const inboundDate = isoToCalendarDate(inbound.departure_time)
+    if (inboundDate && inboundDate !== expected.return_date) {
+      return `return_date_drift:wanted=${expected.return_date};got=${inboundDate}`
+    }
+  }
 
   // Rule 0 — inbound timing integrity (round-trip only).
   //   Origin: ws_47776b352af74a1b on 2026-05-23 rendered a return leg as
@@ -81,6 +131,19 @@ export function detectSuspectReason(offer: PublicOffer): string | null {
     const inboundArr = new Date(inbound.arrival_time).getTime()
     if (!isNaN(inboundDep) && !isNaN(inboundArr) && inboundArr <= inboundDep) {
       return 'inbound_arrival_before_departure'
+    }
+  }
+
+  // Rule 0c — inbound/outbound duration symmetry (round-trip only).
+  //   Same physical route reversed; durations should be comparable. A 1h
+  //   BCN→LON return on a 2h20m LON→BCN outbound is a connector returning
+  //   wrong/fabricated data. Tolerance ±50% absorbs legit wind/ATC asymmetry.
+  //   Runs after Rule 0's hard plausibility check so the more specific
+  //   "duration_too_short" error wins for absurdly short legs (<20min).
+  if (inbound && duration_minutes > 0 && inbound.duration_minutes > 0) {
+    const ratio = inbound.duration_minutes / duration_minutes
+    if (ratio < 0.5 || ratio > 2.0) {
+      return `inbound_duration_asymmetric:outbound=${duration_minutes}min;inbound=${inbound.duration_minutes}min`
     }
   }
 
