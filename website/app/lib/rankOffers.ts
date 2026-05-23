@@ -78,8 +78,8 @@ export interface RankingContext {
   tripPurpose?: TripPurpose
   tripPurposes?: ReadonlyArray<TripPurpose>
   travelerCount?: number
-  depTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
-  retTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  depTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
+  retTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
   arrivalTimePref?: 'morning' | 'afternoon' | 'evening'
   requireBag?: boolean
   requireSeat?: boolean
@@ -584,6 +584,10 @@ const TIME_RANGES: Record<string, [number, number, number, number]> = {
   morning:       [360, 660, 300, 750],
   afternoon:     [720, 1020, 660, 1140],
   evening:       [1080, 1320, 1020, 1380],
+  // "night" is later/stricter than "evening" — when a user says "Sunday night
+  // back" they mean ~21:00+, not 18:00. Perfect 21:00–23:30, ok 20:00–23:59.
+  // A 18:20 return fails this gate while still passing the evening gate.
+  night:         [1260, 1410, 1200, 1439],
   red_eye:       [1320, 1439, 0, 420],
 }
 

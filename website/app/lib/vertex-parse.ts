@@ -56,9 +56,9 @@ export interface VertexCityResult {
   /** Trip purpose inferred from context. null if unclear. */
   trip_purpose?:    TripPurpose | null
   /** Preferred departure time bucket for the outbound leg. null if not stated. */
-  dep_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  dep_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye' | null
   /** Preferred departure time bucket for the return leg. null if not a round-trip or not stated. */
-  ret_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye' | null
+  ret_time_pref?:   'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye' | null
   /** Passenger group context. null if unclear. */
   passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
   /** true = round trip, false = one-way, null = unclear. */

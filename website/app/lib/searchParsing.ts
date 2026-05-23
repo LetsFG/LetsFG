@@ -2506,9 +2506,9 @@ export interface ParsedQuery {
   require_lounge?: boolean           // "with lounge access"
 
   // ── Time-of-day preferences ──────────────────────────────────────────────────
-  depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
   arrive_time_pref?: 'morning' | 'afternoon' | 'evening'
-  return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  return_depart_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
   /** Hard lower bound on departure time, in minutes from midnight (e.g. 600 = 10:00 am).
    *  Flights departing before this time are heavily penalised in ranking. */
   depart_after_mins?: number
@@ -5605,7 +5605,8 @@ export function parseNLQuery(query: string): ParsedQuery {
     if (t.includes('early') || t === 'early morning') return 'early_morning'
     if (t === 'morning') return 'morning'
     if (t === 'afternoon' || t === 'noon' || t === 'lunchtime' || t === 'midday') return 'afternoon'
-    if (t === 'evening' || t === 'night') return 'evening'
+    if (t === 'night' || t === 'late evening' || t === 'late night') return 'night'
+    if (t === 'evening') return 'evening'
     return undefined
   }
   // Apply departure time-of-day from step 0c (fills in when extractTimePrefs couldn't detect)
@@ -5623,7 +5624,8 @@ export function parseNLQuery(query: string): ParsedQuery {
       if (/\bearly\s+morning\b/.test(_ol)) result.depart_time_pref = 'early_morning'
       else if (/\bmorning\b/.test(_ol)) result.depart_time_pref = 'morning'
       else if (/\b(?:afternoon|noon|lunchtime|midday)\b/.test(_ol)) result.depart_time_pref = 'afternoon'
-      else if (/\b(?:evening|night)\b/.test(_ol)) result.depart_time_pref = 'evening'
+      else if (/\b(?:late\s+night|night)\b/.test(_ol)) result.depart_time_pref = 'night'
+      else if (/\bevening\b/.test(_ol)) result.depart_time_pref = 'evening'
     }
   }
   // Apply return time-of-day from step 0c
@@ -5641,7 +5643,8 @@ export function parseNLQuery(query: string): ParsedQuery {
       if (/\bearly\s+morning\b/.test(_rl)) result.return_depart_time_pref = 'early_morning'
       else if (/\bmorning\b/.test(_rl)) result.return_depart_time_pref = 'morning'
       else if (/\b(?:afternoon|noon|lunchtime|midday)\b/.test(_rl)) result.return_depart_time_pref = 'afternoon'
-      else if (/\b(?:evening|night)\b/.test(_rl)) result.return_depart_time_pref = 'evening'
+      else if (/\b(?:late\s+night|night)\b/.test(_rl)) result.return_depart_time_pref = 'night'
+      else if (/\bevening\b/.test(_rl)) result.return_depart_time_pref = 'evening'
     }
   }
 

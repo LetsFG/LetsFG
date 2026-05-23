@@ -421,8 +421,8 @@ interface ParsedQuery {
   ai_sort_by?: 'price' | 'duration'
   ai_trip_purposes?: TripPurpose[]
   ai_trip_purpose?: TripPurpose
-  ai_dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
-  ai_ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'red_eye'
+  ai_dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
+  ai_ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
   ai_passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
 }
 
