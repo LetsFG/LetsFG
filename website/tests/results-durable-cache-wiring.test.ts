@@ -43,10 +43,14 @@ test('route reads durable cache BEFORE polling FSW for ws_ searches', () => {
 
 test('route returns immediately on cache hit when status is completed', () => {
   const source = readSource()
-  // Looking for: if (durable && durable.status === 'completed') { return NextResponse.json(durable) }
+  // Looking for: if (durable && durable.status === 'completed') { ... return NextResponse.json(durable | {...durable, ...}) }
+  // The route may wrap `durable` to re-apply validation rules to cached
+  // payloads (so cache entries written before a rule change get the
+  // current quality tags), but it must still short-circuit on a hit
+  // rather than falling through to the FSW poll.
   assert.match(
     source,
-    /durable.*status === 'completed'[\s\S]{0,80}return NextResponse\.json\(durable\)/,
+    /durable.*status === 'completed'[\s\S]{0,2000}return NextResponse\.json\((?:durable|\{\s*\.\.\.durable)/,
     'route must return early when durable cache returns a completed result',
   )
 })
