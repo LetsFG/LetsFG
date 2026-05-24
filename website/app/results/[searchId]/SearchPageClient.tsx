@@ -800,21 +800,29 @@ export default function SearchPageClient({
           setExpiresAt(data.expires_at)
         }
 
-        // Merge partial offers even while still searching
+        // Merge partial offers while searching (climbing counter UX), then snap
+        // to the authoritative final snapshot on completion. Snap is required
+        // because early polls can include "transient" offers that FSW later
+        // removes — keeping them leads to 404s at unlock. Confirmed via live
+        // FSW probe 2026-05-24: ~65 transient IDs per search on popular routes.
         if (data.offers?.length) {
           const incoming = data.offers as FlightOffer[]
-          const freshIds = incoming
-            .map((offer) => getOfferInstanceKey(offer))
-            .filter((offerKey) => !knownOfferIdsRef.current.has(offerKey))
-          freshIds.forEach((offerKey) => knownOfferIdsRef.current.add(offerKey))
+          if (data.status === 'searching') {
+            const freshIds = incoming
+              .map((offer) => getOfferInstanceKey(offer))
+              .filter((offerKey) => !knownOfferIdsRef.current.has(offerKey))
+            freshIds.forEach((offerKey) => knownOfferIdsRef.current.add(offerKey))
 
-          if (freshIds.length > 0) {
-            setNewOfferIds(new Set(freshIds))
-            if (newIdsTimer) clearTimeout(newIdsTimer)
-            newIdsTimer = setTimeout(() => setNewOfferIds(new Set()), 900)
+            if (freshIds.length > 0) {
+              setNewOfferIds(new Set(freshIds))
+              if (newIdsTimer) clearTimeout(newIdsTimer)
+              newIdsTimer = setTimeout(() => setNewOfferIds(new Set()), 900)
+            }
+
+            setOffers(prev => dedup([...prev, ...incoming]))
+          } else {
+            setOffers(dedup(incoming))
           }
-
-          setOffers(prev => dedup([...prev, ...incoming]))
         }
 
         if (data.status !== 'searching') {
