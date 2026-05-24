@@ -82,7 +82,7 @@ steps:
       - '--region=europe-west1'
       - '--project=sms-caller'
       - '--no-traffic'
-      - '--tag=ranking-fix-0583569'
+      - '--tag=convo-overflow-fix'
       - '--quiet'
 
 images:
