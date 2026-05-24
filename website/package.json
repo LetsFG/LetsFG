@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "npm run test && next build --webpack",
+    "dev": "next dev",
+    "build": "npm run test && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "npm run test:locations && npm run test:city-pair-matrix && npm run test:round-trip-detection && npm run test:ratelimit && npm run test:flight-datetime && npm run test:flight-time-surfaces && npm run test:checkout-unlock-experiment && npm run test:unlock-token && npm run test:user-currency && npm run test:mixed-currency-rendering && npm run test:results-rerun-state && npm run test:results-query-fallback && npm run test:results-expired-cache-state && npm run test:results-expired-response-state && npm run test:results-dedup-by-id && npm run test:trusted-offer-date-only && npm run test:offer-validation-inbound && npm run test:durable-search-cache && npm run test:results-durable-cache-wiring && npm run test:google-comparison && npm run test:recommendation-quality && npm run test:tracker-growth-events && npm run test:booking-url-repair && npm run test:register-local-offer && npm run test:pfp-quality-gate && npm run test:pfp-normalizer && npm run test:pfp-ingest && npm run test:pfp-distribution-service && npm run test:pfp-flight-page && npm run test:pfp-json-ld && npm run test:pfp-seo-head && npm run test:pfp-sitemap && npm run test:pfp-tracker && npm run test:pfp-experiment-context && npm run test:pfp-cron-cleanup && npm run test:pfp-integration && npm run test:share-link",
@@ -48,9 +48,6 @@
     "test:share-link": "tsx --test tests/share-link.test.ts"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^7.2.0",
-    "@fortawesome/free-solid-svg-icons": "^7.2.0",
-    "@fortawesome/react-fontawesome": "^3.3.0",
     "@swc/helpers": "^0.5.21",
     "@types/geoip-lite": "^1.4.4",
     "geoip-lite": "^1.4.10",
