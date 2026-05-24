@@ -315,12 +315,17 @@ function getRouteTiming(route: any, fallbackDeparture: string, fallbackArrival: 
   }, 0)
   const fallbackDurationMinutes = routeDurationMinutes || segmentDurationMinutes
 
-  if ((!arrival || durationMinutes <= 0) && departure && fallbackDurationMinutes > 0 && departureHasClock) {
+  // Only synthesize a missing timestamp from departure + duration.  Never
+  // overwrite an existing one — the connector's arrival is the actual local
+  // airport time (e.g. 15:55 JFK for a LHR 13:05 + 7h50m flight, NOT 20:55).
+  // Synthesizing here treats the naive string as UTC and skips the timezone
+  // shift, producing wrong arrival displays for cross-TZ routes.
+  if (!arrival && departure && fallbackDurationMinutes > 0 && departureHasClock) {
     arrival = new Date(new Date(departure).getTime() + fallbackDurationMinutes * 60000).toISOString()
     durationMinutes = fallbackDurationMinutes
   }
 
-  if ((!departure || durationMinutes <= 0) && arrival && fallbackDurationMinutes > 0 && arrivalHasClock) {
+  if (!departure && arrival && fallbackDurationMinutes > 0 && arrivalHasClock) {
     departure = new Date(new Date(arrival).getTime() - fallbackDurationMinutes * 60000).toISOString()
     durationMinutes = fallbackDurationMinutes
   }
