@@ -24,10 +24,13 @@ const STALE_BUCKET_MS = 30 * 60 * 1000
 const PRUNE_INTERVAL = 128
 const MAX_BUCKETS = 20_000
 
+// Tightened after one IP submitted 90 search jobs in ~5 minutes. A real user
+// rarely needs more than ~4 searches/minute; 6 burst tokens covers typing
+// corrections and rapid date adjustments.
 const SEARCH_POLICY: RateLimitPolicy = {
   name: 'search',
   capacity: 6,
-  refillPerMinute: 18,
+  refillPerMinute: 6,
 }
 
 const RESULTS_POLICY: RateLimitPolicy = {
