@@ -2573,21 +2573,34 @@ function getUpcomingUsThanksgiving(baseDate: Date): Date {
 }
 
 // Edit distance (Levenshtein) — for typo tolerance in city matching
+// Damerau–Levenshtein distance: like Levenshtein but treats adjacent
+// transpositions as cost 1 instead of 2. This makes typical typos like
+// "Toyko"↔"Tokyo" resolve at distance 1 so the maxDist=1 fuzzy threshold
+// catches them without lowering the bar for genuinely different strings.
 function editDistance(a: string, b: string): number {
   if (a === b) return 0
   if (a.length === 0) return b.length
   if (b.length === 0) return a.length
-  const row = Array.from({ length: b.length + 1 }, (_, i) => i)
-  for (let i = 1; i <= a.length; i++) {
-    let prev = i
-    for (let j = 1; j <= b.length; j++) {
-      const val = a[i - 1] === b[j - 1] ? row[j - 1] : Math.min(row[j - 1], row[j], prev) + 1
-      row[j - 1] = prev
-      prev = val
+  const m = a.length
+  const n = b.length
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) d[i][0] = i
+  for (let j = 0; j <= n; j++) d[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,        // deletion
+        d[i][j - 1] + 1,        // insertion
+        d[i - 1][j - 1] + cost, // substitution
+      )
+      // Transposition of two adjacent characters (a[i-2]a[i-1] swapped with b[j-2]b[j-1])
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+      }
     }
-    row[b.length] = prev
   }
-  return row[b.length]
+  return d[m][n]
 }
 
 function containsLocationKey(text: string, key: string): boolean {
