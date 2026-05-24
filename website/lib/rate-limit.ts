@@ -24,13 +24,13 @@ const STALE_BUCKET_MS = 30 * 60 * 1000
 const PRUNE_INTERVAL = 128
 const MAX_BUCKETS = 20_000
 
-// Tightened after one IP submitted 90 search jobs in ~5 minutes. A real user
-// rarely needs more than ~4 searches/minute; 6 burst tokens covers typing
-// corrections and rapid date adjustments.
+// Generous enough for real users exploring many routes; the FSW-side
+// (ip, route_key) duplicate block + per-IP hourly cap catch the abuse case
+// (same IP repeating the same search, or 90 distinct routes in 5 min).
 const SEARCH_POLICY: RateLimitPolicy = {
   name: 'search',
-  capacity: 6,
-  refillPerMinute: 6,
+  capacity: 10,
+  refillPerMinute: 30,
 }
 
 const RESULTS_POLICY: RateLimitPolicy = {
