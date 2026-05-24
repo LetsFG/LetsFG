@@ -1,7 +1,10 @@
 # cloudbuild-prod-staged.yaml
-# Builds and deploys letsfg-website to Cloud Run (europe-west1) with --no-traffic.
+# Builds and deploys letsfg-website-preview to Cloud Run (us-central1) with --no-traffic.
+# Despite the "-preview" name, letsfg-website-preview in us-central1 is the
+# production service serving letsfg.co. The europe-west1 letsfg-website
+# service is unused.
 # After verifying the new revision, shift traffic with:
-#   gcloud run services update-traffic letsfg-website --region=europe-west1 --to-latest
+#   gcloud run services update-traffic letsfg-website-preview --region=us-central1 --to-latest
 # This file is reusable for any staged production deploy.
 
 steps:
@@ -56,9 +59,9 @@ steps:
       - '-f'
       - 'Dockerfile.cloudrun'
       - '-t'
-      - 'europe-west1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website:$BUILD_ID'
+      - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
       - '-t'
-      - 'europe-west1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website:staged-latest'
+      - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:staged-latest'
       - '.'
 
   # ── 6. Push image ────────────────────────────────────────────────────────────
@@ -67,7 +70,7 @@ steps:
     waitFor: ['docker-build']
     args:
       - 'push'
-      - 'europe-west1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website:$BUILD_ID'
+      - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
 
   # ── 7. Deploy to Cloud Run with NO traffic ───────────────────────────────────
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
@@ -77,17 +80,17 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'letsfg-website'
-      - '--image=europe-west1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website:$BUILD_ID'
-      - '--region=europe-west1'
+      - 'letsfg-website-preview'
+      - '--image=us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
+      - '--region=us-central1'
       - '--project=sms-caller'
       - '--no-traffic'
       - '--tag=convo-overflow-fix'
       - '--quiet'
 
 images:
-  - 'europe-west1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website:$BUILD_ID'
-  - 'europe-west1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website:staged-latest'
+  - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:$BUILD_ID'
+  - 'us-central1-docker.pkg.dev/sms-caller/cloud-run-source-deploy/letsfg-website-preview:staged-latest'
 
 options:
   machineType: 'E2_HIGHCPU_8'
