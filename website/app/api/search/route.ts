@@ -8,6 +8,7 @@ import { startWebSearch } from '../../../lib/fsw-search'
 import { setSearchMeta } from '../../../lib/results-cache'
 import { getTrackedSourcePath, isProbeModeValue } from '../../../lib/probe-mode'
 import { getSessionUid } from '../../../lib/session-uid'
+import { buildRateLimitClientKey, checkRouteBurst, getGlobalRouteBurstStore, getRouteBurstPolicy } from '../../../lib/rate-limit'
 import { buildClarificationSearchSessionPayload } from '../../../lib/search-session-analytics'
 import { upsertSearchSessionServer } from '../../../lib/search-session-analytics-server'
 import { detectPreferredCurrency } from '../../../lib/user-currency'
@@ -395,6 +396,27 @@ export async function POST(request: NextRequest) {
 
     if (!origin || !destination) {
       return NextResponse.json({ error: 'Could not determine origin or destination.' }, { status: 400 })
+    }
+
+    const burstPolicy = getRouteBurstPolicy()
+    const burstKey = `burst:${buildRateLimitClientKey(request.headers, sessionUid)}`
+    const burstDecision = checkRouteBurst(getGlobalRouteBurstStore(), burstKey, origin, destination, burstPolicy)
+    if (!burstDecision.allowed) {
+      const retryAfterSec = Math.max(1, Math.ceil(burstDecision.retryAfterMs / 1000))
+      return NextResponse.json(
+        {
+          error: 'route_burst_limit',
+          message: `Too many different destinations from ${burstDecision.origin} in a short window. Please wait and try again.`,
+          retry_after_seconds: retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfterSec),
+            'X-RateLimit-Policy': 'route-burst',
+          },
+        },
+      )
     }
 
     recordLocalSearch()

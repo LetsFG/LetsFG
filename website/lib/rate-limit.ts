@@ -20,9 +20,42 @@ export interface RateLimitDecision {
 
 export type RateLimitStore = Map<string, RateLimitBucket>
 
+// Route-burst suppression: one client hammering many *different* destinations
+// from the same origin in seconds (spam pattern observed 2026-05-24, where two
+// users fired POA→{MIA,JFK,MCO,LIS,MAD,YYZ,...} in <30s without ever waiting
+// for results). Distinct from the token-bucket SEARCH_POLICY: that limits raw
+// rate (~2/sec); this limits *exploratory breadth* from a single origin.
+export interface RouteBurstPolicy {
+  windowMs: number
+  maxDestinations: number
+}
+
+export interface RouteBurstBucket {
+  origin: string
+  destinations: Set<string>
+  windowStartedAt: number
+  lastSeenAt: number
+}
+
+export interface RouteBurstDecision {
+  allowed: boolean
+  origin: string
+  distinctDestinations: number
+  maxDestinations: number
+  windowMs: number
+  retryAfterMs: number
+}
+
+export type RouteBurstStore = Map<string, RouteBurstBucket>
+
 const STALE_BUCKET_MS = 30 * 60 * 1000
 const PRUNE_INTERVAL = 128
 const MAX_BUCKETS = 20_000
+
+const ROUTE_BURST_POLICY: RouteBurstPolicy = {
+  windowMs: 60_000,
+  maxDestinations: 5,
+}
 
 // Generous enough for real users exploring many routes; the FSW-side
 // (ip, route_key) duplicate block + per-IP hourly cap catch the abuse case
@@ -80,6 +113,7 @@ let checksSincePrune = 0
 
 declare global {
   var __letsfgRateLimitStore: RateLimitStore | undefined
+  var __letsfgRouteBurstStore: RouteBurstStore | undefined
 }
 
 export function createRateLimitStore(): RateLimitStore {
@@ -91,6 +125,24 @@ export function getGlobalRateLimitStore(): RateLimitStore {
     globalThis.__letsfgRateLimitStore = createRateLimitStore()
   }
   return globalThis.__letsfgRateLimitStore
+}
+
+export function createRouteBurstStore(): RouteBurstStore {
+  return new Map<string, RouteBurstBucket>()
+}
+
+export function getGlobalRouteBurstStore(): RouteBurstStore {
+  if (!globalThis.__letsfgRouteBurstStore) {
+    globalThis.__letsfgRouteBurstStore = createRouteBurstStore()
+  }
+  return globalThis.__letsfgRouteBurstStore
+}
+
+export function getRouteBurstPolicy(env: Record<string, string | undefined> = process.env): RouteBurstPolicy {
+  const windowMs = readPositiveInt(env, 'LETSFG_ROUTE_BURST_WINDOW_MS') ?? ROUTE_BURST_POLICY.windowMs
+  const maxDestinations =
+    readPositiveInt(env, 'LETSFG_ROUTE_BURST_MAX_DESTINATIONS') ?? ROUTE_BURST_POLICY.maxDestinations
+  return { windowMs, maxDestinations }
 }
 
 function readPositiveInt(env: Record<string, string | undefined>, key: string): number | undefined {
@@ -227,5 +279,85 @@ export function checkRateLimit(
     remaining: 0,
     retryAfterMs,
     resetAfterMs: retryAfterMs,
+  }
+}
+
+function pruneRouteBurstStore(store: RouteBurstStore, now: number) {
+  for (const [key, bucket] of store.entries()) {
+    if (now - bucket.lastSeenAt >= STALE_BUCKET_MS) {
+      store.delete(key)
+    }
+  }
+  if (store.size <= MAX_BUCKETS) return
+  const byAge = Array.from(store.entries()).sort((a, b) => a[1].lastSeenAt - b[1].lastSeenAt)
+  for (const [key] of byAge.slice(0, store.size - MAX_BUCKETS)) {
+    store.delete(key)
+  }
+}
+
+let routeBurstChecks = 0
+
+export function checkRouteBurst(
+  store: RouteBurstStore,
+  key: string,
+  origin: string,
+  destination: string,
+  policy: RouteBurstPolicy = ROUTE_BURST_POLICY,
+  now = Date.now(),
+): RouteBurstDecision {
+  routeBurstChecks += 1
+  if (store.size > MAX_BUCKETS || routeBurstChecks % PRUNE_INTERVAL === 0) {
+    pruneRouteBurstStore(store, now)
+  }
+
+  const normalizedOrigin = origin.trim().toUpperCase()
+  const normalizedDestination = destination.trim().toUpperCase()
+
+  let bucket = store.get(key)
+  const windowExpired = bucket && now - bucket.windowStartedAt >= policy.windowMs
+  const originChanged = bucket && bucket.origin !== normalizedOrigin
+
+  if (!bucket || windowExpired || originChanged) {
+    bucket = {
+      origin: normalizedOrigin,
+      destinations: new Set<string>([normalizedDestination]),
+      windowStartedAt: now,
+      lastSeenAt: now,
+    }
+    store.set(key, bucket)
+    return {
+      allowed: true,
+      origin: normalizedOrigin,
+      distinctDestinations: 1,
+      maxDestinations: policy.maxDestinations,
+      windowMs: policy.windowMs,
+      retryAfterMs: 0,
+    }
+  }
+
+  bucket.destinations.add(normalizedDestination)
+  bucket.lastSeenAt = now
+
+  const distinct = bucket.destinations.size
+  if (distinct > policy.maxDestinations) {
+    const elapsed = now - bucket.windowStartedAt
+    const retryAfterMs = Math.max(1_000, policy.windowMs - elapsed)
+    return {
+      allowed: false,
+      origin: normalizedOrigin,
+      distinctDestinations: distinct,
+      maxDestinations: policy.maxDestinations,
+      windowMs: policy.windowMs,
+      retryAfterMs,
+    }
+  }
+
+  return {
+    allowed: true,
+    origin: normalizedOrigin,
+    distinctDestinations: distinct,
+    maxDestinations: policy.maxDestinations,
+    windowMs: policy.windowMs,
+    retryAfterMs: 0,
   }
 }
