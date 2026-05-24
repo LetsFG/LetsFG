@@ -2101,6 +2101,13 @@ body.lp-convo-open .lp-community {
   z-index: 0;
 }
 
+/* On the results page, res-hero has overflow:hidden (base) or overflow-y:auto (searching)
+   which clips the absolutely-positioned convo panel and triggers unwanted hero scroll.
+   Make it visible while the convo is open so the panel can extend below the hero freely. */
+body.lp-convo-open .res-hero {
+  overflow: visible;
+}
+
 .lp-convo {
   position: absolute;
   top: 100%;
