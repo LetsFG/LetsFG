@@ -16,7 +16,13 @@ async function callBackend(p: DateGridKey): Promise<DateGridPayload | null> {
     const res = await fetch(`${base}/api/v1/flights/date-grid`, {
       method: 'POST',
       headers: withLetsfgWebsiteApiHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(p),
+      body: JSON.stringify({
+        origin: p.origin,
+        destination: p.destination,
+        dep: p.dep,
+        ret: p.ret,
+        mode: p.mode ?? 'grid',
+      }),
       cache: 'no-store',
       signal: AbortSignal.timeout(30_000),
     })
@@ -34,7 +40,14 @@ async function callSubprocess(p: DateGridKey): Promise<DateGridPayload | null> {
 
   const repoRoot = resolvePath(process.cwd(), '..')
   const script = resolvePath(process.cwd(), 'scripts', 'date_grid_runner.py')
-  const args = [script, p.origin, p.destination, p.dep, ...(p.ret ? [p.ret] : [])]
+  const args = [
+    script,
+    p.origin,
+    p.destination,
+    p.dep,
+    ...(p.ret ? [p.ret] : []),
+    `--mode=${p.mode ?? 'grid'}`,
+  ]
   const python = process.env.PYTHON_BIN || 'python'
 
   return new Promise(resolve => {

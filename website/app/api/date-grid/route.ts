@@ -35,6 +35,8 @@ function validate(searchParams: URLSearchParams): { ok: true; key: DateGridKey; 
   const dep = (searchParams.get('dep') ?? '').trim()
   const retRaw = (searchParams.get('ret') ?? '').trim()
   const ret = retRaw === '' ? null : retRaw
+  const modeRaw = (searchParams.get('mode') ?? 'grid').trim().toLowerCase()
+  const mode = (modeRaw === 'month' ? 'month' : 'grid') as 'grid' | 'month'
   // Optional `cur` query param — converts EUR prices (Google's response) to the
   // user's selected currency using the same live FX rates as the rest of the
   // app. Defaults to EUR (no conversion).
@@ -43,7 +45,7 @@ function validate(searchParams: URLSearchParams): { ok: true; key: DateGridKey; 
   if (!IATA_RE.test(destination)) return { ok: false, error: 'destination must be a 3-letter IATA code' }
   if (!ISO_DATE_RE.test(dep)) return { ok: false, error: 'dep must be YYYY-MM-DD' }
   if (ret !== null && !ISO_DATE_RE.test(ret)) return { ok: false, error: 'ret must be YYYY-MM-DD or omitted' }
-  return { ok: true, key: { origin, destination, dep, ret }, targetCurrency }
+  return { ok: true, key: { origin, destination, dep, ret, mode }, targetCurrency }
 }
 
 async function convertPayload(payload: DateGridPayload, targetCurrency: string): Promise<DateGridPayload> {

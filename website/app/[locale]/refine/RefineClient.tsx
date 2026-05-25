@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -445,6 +445,11 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
 
   const [dateGrid, setDateGrid] = useState<DateGridResponse | null>(null)
   const [dateGridError, setDateGridError] = useState<string | null>(null)
+  // Month-wide grid is fetched lazily — only when the user actually picks
+  // the "Flexible, show me all of <month>" option. ~1s extra to fetch when
+  // requested, so we don't burn it on every refine visit.
+  const [monthGrid, setMonthGrid] = useState<DateGridResponse | null>(null)
+  const [monthGridLoading, setMonthGridLoading] = useState(false)
 
   // Fetch the real Google Flights price grid once we know the route + dates.
   useEffect(() => {
@@ -480,6 +485,31 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
       })
     return () => { cancelled = true; ctrl.abort() }
   }, [parsed?.departure_date, parsed?.return_date, parsed?.origin, parsed?.destination, initialCurrency])
+
+  // Lazy month-grid fetcher: only fires when the user actually selects
+  // "Flexible, show me all of <month>" — then runs in the background while
+  // they finish the rest of the questions.
+  const fetchMonthGrid = useCallback(() => {
+    if (monthGrid || monthGridLoading) return
+    if (!parsed?.departure_date || !parsed?.origin || !parsed?.destination) return
+    setMonthGridLoading(true)
+    const params = new URLSearchParams()
+    params.set('origin', parsed.origin)
+    params.set('destination', parsed.destination)
+    params.set('dep', parsed.departure_date)
+    if (parsed.return_date) params.set('ret', parsed.return_date)
+    if (initialCurrency) params.set('cur', initialCurrency)
+    params.set('mode', 'month')
+    fetch(`/api/date-grid?${params.toString()}`)
+      .then(async res => res.ok ? (await res.json() as DateGridResponse) : null)
+      .then(data => {
+        if (data && Array.isArray(data.grid) && data.grid.length > 0) {
+          setMonthGrid(data)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setMonthGridLoading(false))
+  }, [parsed?.departure_date, parsed?.return_date, parsed?.origin, parsed?.destination, initialCurrency, monthGrid, monthGridLoading])
 
   // User's current outbound + return date selection. Defaults to the parsed
   // dates and updates when they tap a different cell on either strip.
@@ -558,7 +588,11 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
 
   function resolveFinalDates(collected: Record<string, string>) {
     const flex = (collected.date_flexibility as 'fixed' | 'plus_minus_3' | 'whole_month' | undefined) ?? 'fixed'
-    return resolveFlexDates(flex, chosenDep, chosenRet, dateGrid)
+    // Use the wider month-grid when available + relevant; fall back to the
+    // smaller ±3 grid otherwise. The resolver itself doesn't care which
+    // source — it just picks the cheapest trip-length-preserving cell.
+    const sourceGrid = flex === 'whole_month' && monthGrid ? monthGrid : dateGrid
+    return resolveFlexDates(flex, chosenDep, chosenRet, sourceGrid)
   }
 
   function goToResults(collected: Record<string, string>) {
@@ -818,12 +852,19 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                     role="radio"
                     aria-checked={dateFlex === 'whole_month'}
                     className={`rf-option${dateFlex === 'whole_month' ? ' rf-option--selected' : ''}`}
-                    onClick={() => setDateFlex('whole_month')}
+                    onClick={() => {
+                      setDateFlex('whole_month')
+                      fetchMonthGrid()
+                    }}
                   >
                     <span className="rf-option-icon" aria-hidden="true"><MonthIcon /></span>
                     <div className="rf-option-body">
                       <strong className="rf-option-title">Flexible, show me all of {monthName}</strong>
-                      <span className="rf-option-sub">Best price anywhere in the month</span>
+                      <span className="rf-option-sub">
+                        {dateFlex === 'whole_month' && monthGridLoading
+                          ? 'Checking the whole month…'
+                          : 'Best price anywhere in the month'}
+                      </span>
                     </div>
                     {dateFlex === 'whole_month' && <span className="rf-option-check" aria-hidden="true"><CheckIcon /></span>}
                   </button>
