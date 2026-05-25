@@ -2331,22 +2331,18 @@ input {
   text-transform: uppercase;
   color: rgba(0, 0, 0, 0.4);
   margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .rf-signal-back {
-  margin-left: auto;
+  display: block;
+  margin: 4px auto 0;
+  padding: 6px 12px;
   background: transparent;
   border: 0;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: rgba(244, 122, 28, 0.85);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.55);
   cursor: pointer;
-  padding: 4px 6px;
-  text-transform: uppercase;
 }
 
 .rf-signal-back:hover {
