@@ -149,37 +149,76 @@ interface DayCell {
   price: number
   tier: 'cheap' | 'avg' | 'pricy'
   selected: boolean
+  currency: string | null
+}
+
+interface DateGridGridCell {
+  outbound: string
+  return: string
+  price: number
+  currency: string
+  is_cheaper: boolean
+}
+
+interface DateGridResponse {
+  origin: string
+  destination: string
+  currency: string | null
+  selected_outbound: string
+  selected_return: string | null
+  scraped_at: string
+  grid: DateGridGridCell[]
+  source: 'backend' | 'subprocess'
 }
 
 function formatMonthShort(m: number): string {
   return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m]
 }
 
-// Visual mock: 7 days centered on the chosen date with seeded prices.
-// When the backend adds a real "near-date price signal" endpoint, swap this
-// out for the real response.
-function buildDayGrid(centerIso: string | null): { days: DayCell[]; spread: number | null } {
-  if (!centerIso) return { days: [], spread: null }
+// Build the visible 7-day strip from the real Google Flights grid response.
+// We collapse the 7×7 outbound×return matrix down to one row by taking the
+// cheapest available combo per OUTBOUND date — that's what the user is
+// actually choosing on this step.
+function buildDayGridFromResponse(resp: DateGridResponse, centerIso: string): { days: DayCell[]; spread: number | null } {
+  const cheapestPerOutbound = new Map<string, DateGridGridCell>()
+  for (const cell of resp.grid) {
+    if (cell.price <= 0) continue
+    const existing = cheapestPerOutbound.get(cell.outbound)
+    if (!existing || cell.price < existing.price) {
+      cheapestPerOutbound.set(cell.outbound, cell)
+    }
+  }
   const center = new Date(centerIso + 'T00:00:00Z')
   if (Number.isNaN(center.getTime())) return { days: [], spread: null }
-  const basePrices = [109, 121, 187, 178, 234, 251, 163]
   const days: DayCell[] = []
   for (let i = -3; i <= 3; i++) {
     const d = new Date(center)
     d.setUTCDate(center.getUTCDate() + i)
-    const price = basePrices[i + 3]
-    const tier: DayCell['tier'] = price < 140 ? 'cheap' : price < 210 ? 'avg' : 'pricy'
+    const iso = d.toISOString().slice(0, 10)
+    const cell = cheapestPerOutbound.get(iso)
+    if (!cell) continue  // skip days with no price (matches the "no flights" cells)
     days.push({
-      iso: d.toISOString().slice(0, 10),
+      iso,
       weekday: WEEKDAYS[d.getUTCDay()],
       day: d.getUTCDate(),
-      price,
-      tier,
+      price: cell.price,
+      currency: cell.currency,
+      tier: 'avg',  // tier assigned below relative to spread
       selected: i === 0,
     })
   }
+  if (days.length === 0) return { days: [], spread: null }
   const prices = days.map(d => d.price)
-  return { days, spread: Math.max(...prices) - Math.min(...prices) }
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const spread = max - min
+  // Tier each day relative to the spread: bottom third = cheap, top third = pricy.
+  const lo = min + spread / 3
+  const hi = min + (spread * 2) / 3
+  for (const d of days) {
+    d.tier = d.price <= lo ? 'cheap' : d.price >= hi ? 'pricy' : 'avg'
+  }
+  return { days, spread }
 }
 
 function formatDateRange(dep: string | null, ret: string | null): string {
@@ -339,10 +378,49 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
   const step = steps[currentStepIdx]
   const isLast = currentStepIdx >= steps.length - 1
 
-  const { days, spread } = useMemo(
-    () => buildDayGrid(parsed?.departure_date ?? null),
-    [parsed?.departure_date],
-  )
+  const [dateGrid, setDateGrid] = useState<DateGridResponse | null>(null)
+  const [dateGridError, setDateGridError] = useState<string | null>(null)
+
+  // Fetch the real Google Flights price grid once we know the route + dates.
+  useEffect(() => {
+    if (!parsed?.departure_date || !parsed?.origin || !parsed?.destination) return
+    let cancelled = false
+    const ctrl = new AbortController()
+    const params = new URLSearchParams()
+    params.set('origin', parsed.origin)
+    params.set('destination', parsed.destination)
+    params.set('dep', parsed.departure_date)
+    if (parsed.return_date) params.set('ret', parsed.return_date)
+    fetch(`/api/date-grid?${params.toString()}`, { signal: ctrl.signal })
+      .then(async res => {
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '')
+          throw new Error(`HTTP ${res.status} ${errText.slice(0, 120)}`)
+        }
+        return res.json() as Promise<DateGridResponse>
+      })
+      .then(data => {
+        if (cancelled) return
+        if (!data || !Array.isArray(data.grid) || data.grid.length === 0) {
+          setDateGridError('no-data')
+          return
+        }
+        setDateGrid(data)
+        setDateGridError(null)
+      })
+      .catch(err => {
+        if (cancelled) return
+        setDateGridError(err instanceof Error ? err.message : 'unknown')
+      })
+    return () => { cancelled = true; ctrl.abort() }
+  }, [parsed?.departure_date, parsed?.return_date, parsed?.origin, parsed?.destination])
+
+  const { days, spread } = useMemo(() => {
+    if (dateGrid && parsed?.departure_date) {
+      return buildDayGridFromResponse(dateGrid, parsed.departure_date)
+    }
+    return { days: [], spread: null }
+  }, [dateGrid, parsed?.departure_date])
   const route = useMemo(() => (parsed ? formatRouteShort(parsed) : null), [parsed])
   const dateRange = useMemo(
     () => formatDateRange(parsed?.departure_date ?? null, parsed?.return_date ?? null),
@@ -484,10 +562,16 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
 
             {step.kind === 'date_flexibility' && (
               <>
-                {spread !== null && spread > 0 && (
+                {spread !== null && spread > 0 && dateGrid?.currency && (
                   <p className="rf-sub">
-                    I found price differences of up to <strong>€{spread}</strong> within ±3 days of your chosen date.
+                    I found price differences of up to <strong>{dateGrid.currency} {spread}</strong> within ±3 days of your chosen date.
                   </p>
+                )}
+                {dateGrid === null && dateGridError === null && (
+                  <p className="rf-sub">Checking nearby-date prices on Google Flights…</p>
+                )}
+                {dateGridError !== null && (
+                  <p className="rf-sub">Couldn&apos;t pull live nearby-date prices right now — pick what works for you.</p>
                 )}
 
                 {days.length > 0 && (
@@ -504,7 +588,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                         >
                           <span className="rf-day-name">{day.weekday}</span>
                           <span className="rf-day-num">{day.day}</span>
-                          <span className="rf-day-price">€{day.price}</span>
+                          <span className="rf-day-price">{day.currency ?? ''} {day.price}</span>
                         </div>
                       ))}
                     </div>
