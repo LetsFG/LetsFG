@@ -2349,41 +2349,6 @@ input {
   color: #f47a1c;
 }
 
-.rf-signal--compact {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.rf-signal-label--inline {
-  text-transform: none;
-  font-size: 0.85rem;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: rgba(0, 0, 0, 0.65);
-  margin-bottom: 0;
-}
-
-.rf-signal-label--inline strong {
-  color: #0d0d0d;
-  font-weight: 700;
-}
-
-.rf-signal-change {
-  background: transparent;
-  border: 0;
-  padding: 4px 6px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #f47a1c;
-  cursor: pointer;
-}
-
-.rf-signal-change:hover {
-  color: #d36410;
-  text-decoration: underline;
-}
 
 .rf-day-grid {
   display: grid;
