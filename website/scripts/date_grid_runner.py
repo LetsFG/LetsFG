@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -42,9 +43,13 @@ async def main(argv: list[str]) -> int:
     origin, dest, dep = argv[1], argv[2], argv[3]
     ret = argv[4] if len(argv) > 4 else None
 
-    from connectors.google_flights import GoogleFlightsClient
+    # Prefer the direct-XHR client (~500ms, no browser). Fall back to the
+    # Playwright connector only if the XHR endpoint stops working.
+    from connectors.google_flights_xhr import GoogleFlightsXhrClient
 
-    client = GoogleFlightsClient(headless=True)
+    # Currency comes from env so the website can pass through the user's pref.
+    currency = os.environ.get("LETSFG_DATE_GRID_CURRENCY", "EUR")
+    client = GoogleFlightsXhrClient(currency=currency)
     try:
         result = await client.scrape_date_grid(
             origin=origin,
