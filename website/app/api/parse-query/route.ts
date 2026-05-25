@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { vertexClarify } from '../../lib/vertex-parse'
 import { resolveCity } from '../../lib/searchParsing'
 import { decideSkipRefineQuestion } from '../../lib/refine-decision'
+import { getInflight, setInflight } from '../../lib/date-grid-cache'
+import { scrapeDateGrid } from '../../lib/date-grid-scrape'
 
 const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
 
@@ -42,6 +44,30 @@ export async function POST(request: NextRequest) {
       (destinationCity && destinationCity !== 'ANYWHERE')
         ? resolveCity(destinationCity)
         : null
+
+    // Pre-warm the Google Flights date-grid scrape if we have a complete
+    // round-trip route + dates and the refine question isn't being skipped.
+    // The scrape runs in the background; /api/date-grid will coalesce on
+    // the same in-flight Promise when the client asks for it from /refine.
+    const willShowRefine = refineDecision?.skip !== true
+    if (
+      willShowRefine
+      && originResolved?.code
+      && destResolved?.code
+      && typeof ai.departure_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ai.departure_date)
+    ) {
+      const key = {
+        origin: originResolved.code,
+        destination: destResolved.code,
+        dep: ai.departure_date,
+        ret: typeof ai.return_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ai.return_date)
+          ? ai.return_date
+          : null,
+      }
+      if (!getInflight(key)) {
+        setInflight(key, scrapeDateGrid(key))
+      }
+    }
 
     return NextResponse.json({
       ...ai,
