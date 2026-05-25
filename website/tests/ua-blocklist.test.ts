@@ -6,38 +6,37 @@ import {
   isBlockedUserAgent,
 } from '../lib/ua-blocklist.ts'
 
-test('default list blocks the known passagens-monitor abuser', () => {
-  assert.equal(isBlockedUserAgent('passagens-monitor/0.2', {}), true)
-  assert.equal(isBlockedUserAgent('PASSAGENS-MONITOR/1.0', {}), true)
+test('with no env var, nothing is blocked', () => {
+  assert.equal(isBlockedUserAgent('any-bot/1.0', {}), false)
+  assert.equal(isBlockedUserAgent('Mozilla/5.0', {}), false)
+  assert.equal(isBlockedUserAgent(null, {}), false)
+  assert.equal(isBlockedUserAgent('', {}), false)
+  assert.deepEqual(getBlockedUserAgentSubstrings({}), [])
 })
 
-test('legitimate user agents pass through', () => {
+test('env-supplied needles match as case-insensitive substrings', () => {
+  const env = { LETSFG_BLOCKED_USER_AGENTS: 'needle-one, NeedleTwo/2' }
+  assert.equal(isBlockedUserAgent('needle-one/1.0', env), true)
+  assert.equal(isBlockedUserAgent('SomeApp NEEDLE-ONE x', env), true)
+  assert.equal(isBlockedUserAgent('also-needletwo/2-variant', env), true)
+  assert.equal(isBlockedUserAgent('unrelated/agent', env), false)
+})
+
+test('empty / whitespace-only env entries are ignored', () => {
+  assert.deepEqual(getBlockedUserAgentSubstrings({ LETSFG_BLOCKED_USER_AGENTS: '' }), [])
+  assert.deepEqual(getBlockedUserAgentSubstrings({ LETSFG_BLOCKED_USER_AGENTS: ' , ,' }), [])
+  const env = { LETSFG_BLOCKED_USER_AGENTS: ' real-needle , ,extra ' }
+  assert.deepEqual(getBlockedUserAgentSubstrings(env), ['real-needle', 'extra'])
+})
+
+test('legitimate user agents pass through even with an active blocklist', () => {
+  const env = { LETSFG_BLOCKED_USER_AGENTS: 'some-needle' }
   assert.equal(
     isBlockedUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-      {},
+      env,
     ),
     false,
   )
-  assert.equal(isBlockedUserAgent('curl/8.4.0', {}), false)
-  assert.equal(isBlockedUserAgent(null, {}), false)
-  assert.equal(isBlockedUserAgent('', {}), false)
-})
-
-test('env overrides extend the denylist without a deploy', () => {
-  const env = { LETSFG_BLOCKED_USER_AGENTS: 'badbot, OtherBot/2' }
-  assert.equal(isBlockedUserAgent('badbot/1.0', env), true)
-  assert.equal(isBlockedUserAgent('Some-OtherBot/2', env), true)
-  assert.equal(isBlockedUserAgent('GoodAgent/1', env), false)
-  const list = getBlockedUserAgentSubstrings(env)
-  assert.ok(list.includes('passagens-monitor'))
-  assert.ok(list.includes('badbot'))
-  assert.ok(list.includes('otherbot/2'))
-})
-
-test('empty env value does not break the default list', () => {
-  assert.equal(
-    isBlockedUserAgent('passagens-monitor/0.2', { LETSFG_BLOCKED_USER_AGENTS: '' }),
-    true,
-  )
+  assert.equal(isBlockedUserAgent('curl/8.4.0', env), false)
 })
