@@ -8,9 +8,20 @@ import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
 import type { CurrencyCode } from '../../../lib/currency-preference'
 import { parseNLQuery } from '../../lib/searchParsing'
+import {
+  clearClientSearchHandoff,
+  createClientSearchHandoffToken,
+  startClientSearchHandoff,
+} from '../../../lib/client-search-handoff'
 
-// TESTING MODE — set to false to actually fire the search.
+// TESTING MODE — set to false to keep refine UX testable without burning
+// connector compute.
 const FIRE_SEARCH_ON_SUBMIT = false
+// Background-fire the actual flight search as soon as the user commits the
+// date-flexibility step. The remaining refine questions only feed ranking,
+// so we can start the search early and let it run while they answer them.
+// Same testing gate — flip to true once you want real searches firing.
+const FIRE_BACKGROUND_SEARCH = false
 
 const REFINE_HANDOFF_KEY = 'lfg_refine_handoff'
 
@@ -39,7 +50,11 @@ interface ParsedData {
   departure_date: string | null
   return_date: string | null
   origin: string | null
+  origin_name?: string | null
   destination: string | null
+  destination_name?: string | null
+  passengers?: number | null
+  cabin_class?: 'economy' | 'premium_economy' | 'business' | 'first' | null
   is_round_trip: boolean | null
   skip_refine_question?: boolean | null
   follow_up_questions?: FollowUpQuestion[] | null
@@ -315,12 +330,19 @@ function formatRouteShort(parsed: ParsedData): string | null {
 // Vertex, or transient outage). Yields just the date-flexibility step.
 function localFallbackParse(query: string): ParsedData {
   const local = parseNLQuery(query)
+  const cabinMap: Record<string, ParsedData['cabin_class']> = {
+    M: 'economy', W: 'premium_economy', C: 'business', F: 'first',
+  }
   return {
     origin: local.origin ?? null,
+    origin_name: local.origin_name ?? null,
     destination: local.destination ?? null,
+    destination_name: local.destination_name ?? null,
     departure_date: local.date && !local.date_is_default ? local.date : null,
     return_date: local.return_date ?? null,
     is_round_trip: Boolean(local.return_date),
+    passengers: local.adults ?? 1,
+    cabin_class: local.cabin ? cabinMap[local.cabin] ?? 'economy' : 'economy',
     skip_refine_question: null,
     follow_up_questions: null,
     _fallback: true,
@@ -376,6 +398,10 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
   const [multiSel, setMultiSel] = useState<string[]>([])
   const [freeText, setFreeText] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Token for a background search fired once the user commits date-flex.
+  // Carried into /results/pending via ?launch=<token> so it picks up the
+  // already-running search instead of starting a new one.
+  const [prefiredToken, setPrefiredToken] = useState<string | null>(null)
   const [testNotice, setTestNotice] = useState<string | null>(null)
 
   // Load parsed data: try sessionStorage handoff first, else refetch.
@@ -608,7 +634,46 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     for (const [k, v] of Object.entries(collected)) {
       if (v) params.set(`r_${k}`, v)
     }
+    // If we already fired the background search when the user committed the
+    // date-flex step, pass its token so /results/pending picks up the
+    // running search instead of starting a new one.
+    if (prefiredToken) params.set('launch', prefiredToken)
     router.push(`/results/pending?${params.toString()}`)
+  }
+
+  function fireBackgroundSearch(collected: Record<string, string>): string | null {
+    const resolved = resolveFinalDates(collected)
+    if (!resolved.dep || !parsed) return null
+    // Cancel any previous in-flight search (user changed their date-flex
+    // option, came back via "Change departure", etc.).
+    if (prefiredToken) {
+      clearClientSearchHandoff(prefiredToken)
+    }
+    if (!FIRE_BACKGROUND_SEARCH) {
+      setTestNotice(`Would fire background search now → ${describeResolvedFlex(collected)}. Background firing disabled while testing.`)
+      window.setTimeout(() => setTestNotice(null), 5000)
+      return null
+    }
+    const token = createClientSearchHandoffToken()
+    const cabinShort =
+      parsed.cabin_class === 'business' ? 'C' :
+      parsed.cabin_class === 'first' ? 'F' :
+      parsed.cabin_class === 'premium_economy' ? 'W' : 'M'
+    void startClientSearchHandoff(token, {
+      query,
+      currency: initialCurrency,
+      probeMode,
+      origin: parsed.origin ?? undefined,
+      destination: parsed.destination ?? undefined,
+      date_from: resolved.dep,
+      return_date: resolved.ret ?? undefined,
+      adults: parsed.passengers ?? undefined,
+      origin_name: parsed.origin_name ?? undefined,
+      destination_name: parsed.destination_name ?? undefined,
+      cabin: cabinShort,
+    })
+    setPrefiredToken(token)
+    return token
   }
 
   function describeResolvedFlex(collected: Record<string, string>): string {
@@ -627,6 +692,12 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     setAnswers(next)
     setMultiSel([])
     setFreeText('')
+    // Background-fire the search as soon as the user commits the date-flex
+    // step — dates are locked from here on, and the remaining questions only
+    // feed ranking. Search runs in the background while they finish.
+    if (step.topic === 'date_flexibility') {
+      fireBackgroundSearch(next)
+    }
     if (isLast) {
       if (!FIRE_SEARCH_ON_SUBMIT) {
         setTestNotice(`Would search ${describeResolvedFlex(next)}. Answers: ${JSON.stringify(next)} — search firing disabled while testing.`)
@@ -643,6 +714,11 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     if (!step) return
     setMultiSel([])
     setFreeText('')
+    // Same background fire if the user skips the date-flex step (uses
+    // the default 'fixed' flex on their chosen dates).
+    if (step.topic === 'date_flexibility') {
+      fireBackgroundSearch(answers)
+    }
     if (isLast) {
       if (!FIRE_SEARCH_ON_SUBMIT) {
         setTestNotice(`Skipped final step. Would search ${describeResolvedFlex(answers)}. Search firing disabled while testing.`)
