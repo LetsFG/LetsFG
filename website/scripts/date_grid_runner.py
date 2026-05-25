@@ -37,26 +37,37 @@ def _serialize(obj):
 
 async def main(argv: list[str]) -> int:
     if len(argv) < 4:
-        print("usage: date_grid_runner.py ORIGIN DEST DEP_DATE [RET_DATE]", file=sys.stderr)
+        print("usage: date_grid_runner.py ORIGIN DEST DEP_DATE [RET_DATE] [--mode=grid|month]", file=sys.stderr)
         return 2
 
     origin, dest, dep = argv[1], argv[2], argv[3]
-    ret = argv[4] if len(argv) > 4 else None
+    ret = None
+    mode = "grid"
+    for raw in argv[4:]:
+        if raw.startswith("--mode="):
+            mode = raw.split("=", 1)[1]
+        elif ret is None and not raw.startswith("--"):
+            ret = raw
 
-    # Prefer the direct-XHR client (~500ms, no browser). Fall back to the
-    # Playwright connector only if the XHR endpoint stops working.
     from connectors.google_flights_xhr import GoogleFlightsXhrClient
 
-    # Currency comes from env so the website can pass through the user's pref.
     currency = os.environ.get("LETSFG_DATE_GRID_CURRENCY", "EUR")
     client = GoogleFlightsXhrClient(currency=currency)
     try:
-        result = await client.scrape_date_grid(
-            origin=origin,
-            destination=dest,
-            dep_date=dep,
-            ret_date=ret,
-        )
+        if mode == "month":
+            result = await client.scrape_month_grid(
+                origin=origin,
+                destination=dest,
+                dep_date=dep,
+                ret_date=ret,
+            )
+        else:
+            result = await client.scrape_date_grid(
+                origin=origin,
+                destination=dest,
+                dep_date=dep,
+                ret_date=ret,
+            )
     finally:
         await client.close()
 

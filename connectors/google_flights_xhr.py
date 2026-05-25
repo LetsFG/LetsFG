@@ -88,6 +88,16 @@ def _expand_iata(code: str) -> list[str]:
     upper = code.upper()
     return METRO_CODE_AIRPORTS.get(upper, [upper])
 
+
+def _last_of_month(d: date) -> date:
+    """Return the last day of the same month as ``d``."""
+    from datetime import timedelta
+    if d.month == 12:
+        next_month_first = date(d.year + 1, 1, 1)
+    else:
+        next_month_first = date(d.year, d.month + 1, 1)
+    return next_month_first - timedelta(days=1)
+
 # The response is Google's "wrb.fr" format. The first non-anti-XSSI line is
 # the byte-length of the next chunk, then a JSON array.
 _ANTI_XSSI_PREFIX = ")]}'"
@@ -345,6 +355,117 @@ class GoogleFlightsXhrClient:
             selected_return=ret,
             scraped_at=datetime.now(timezone.utc),
             grid=[],
+        )
+
+    async def scrape_month_grid(
+        self,
+        origin: str,
+        destination: str,
+        dep_date,
+        ret_date=None,
+        *,
+        attempts: int = 2,
+    ) -> DateGridResult:
+        """Fetch a full-month round-trip price grid by firing several parallel
+        ±3 scrapes covering the month and merging the results.
+
+        Google's ``GetCalendarGrid`` XHR caps each call at ~7-day windows, so
+        whole-month coverage needs multiple calls. We anchor scrapes every
+        ~6 days across the relevant date range, fire them in parallel, dedupe
+        by (outbound, return) keeping the cheapest price.
+
+        Trip length is preserved by the caller's resolver — this just returns
+        the merged grid; filtering to ``return - outbound == user_nights`` is
+        done in the website's resolver.
+
+        Returns a ``DateGridResult`` with ``selected_outbound`` / ``selected_return``
+        set to the user's original picks (not the cheapest combo). The merged
+        ``grid`` typically contains 150-300 unique cells.
+        """
+        from datetime import timedelta
+
+        dep = dep_date if isinstance(dep_date, date) else date.fromisoformat(dep_date)
+        ret = (
+            ret_date if isinstance(ret_date, date) or ret_date is None
+            else date.fromisoformat(ret_date)
+        )
+
+        # Decide which date range to cover. Default: the whole month containing
+        # the user's departure, plus the month containing the return if it
+        # differs. Each anchor's ±3 window covers ~7 days.
+        first_of_dep = dep.replace(day=1)
+        last_of_dep = _last_of_month(dep)
+        if ret is not None:
+            last_of_ret = _last_of_month(ret)
+        else:
+            last_of_ret = last_of_dep
+        # Range = [first_of_dep_month, last_of_ret_month]
+        anchor_start = first_of_dep
+        anchor_end = last_of_ret
+
+        # Anchors every ~6 days so ±3 windows mostly tile without big gaps.
+        trip_nights = (ret - dep).days if ret is not None else 0
+        anchors: list[tuple[date, Optional[date]]] = []
+        cur = anchor_start
+        while cur <= anchor_end:
+            cur_ret = cur + timedelta(days=trip_nights) if trip_nights > 0 else None
+            anchors.append((cur, cur_ret))
+            cur = cur + timedelta(days=6)
+        # Also include the user's original anchor — guarantees we cover their
+        # picked dates even if the tiling missed them.
+        if (dep, ret) not in anchors:
+            anchors.append((dep, ret))
+
+        # Google appears to rate-limit / throttle when too many GetCalendarGrid
+        # requests land at once — full parallel fan-out causes ReadTimeouts.
+        # Cap concurrency at 4: empirically keeps Google happy and still gives
+        # us ~2x speedup vs serial across a 30-day month.
+        sem = asyncio.Semaphore(4)
+
+        async def one(anchor: tuple[date, Optional[date]]) -> list[GridCell]:
+            async with sem:
+                try:
+                    cells = await self._call_once(origin, destination, anchor[0], anchor[1])
+                    logger.info(
+                        "GFLIGHTS_MONTH anchor (%s, %s): %d cells",
+                        anchor[0], anchor[1], len(cells),
+                    )
+                    return cells
+                except Exception as e:
+                    logger.warning(
+                        "GFLIGHTS_MONTH anchor %s failed for %s→%s: %r",
+                        anchor[0], origin, destination, e,
+                    )
+                    return []
+
+        t0 = time.monotonic()
+        results = await asyncio.gather(*(one(a) for a in anchors))
+        elapsed = time.monotonic() - t0
+
+        # Merge: dedupe by (outbound, return), keep cheapest
+        merged: dict[tuple[date, date], GridCell] = {}
+        for batch in results:
+            for c in batch:
+                c.currency = self.currency
+                key = (c.outbound_date, c.return_date)
+                existing = merged.get(key)
+                if not existing or c.price < existing.price:
+                    merged[key] = c
+
+        cells = sorted(merged.values(), key=lambda c: (c.outbound_date, c.return_date))
+        logger.info(
+            "GFLIGHTS_MONTH %s→%s anchors=%d → %d unique cells in %.0fms",
+            origin, destination, len(anchors), len(cells), elapsed * 1000,
+        )
+
+        return DateGridResult(
+            origin=origin,
+            destination=destination,
+            currency=self.currency,
+            selected_outbound=dep,
+            selected_return=ret,
+            scraped_at=datetime.now(timezone.utc),
+            grid=cells,
         )
 
     async def _call_once(self, origin: str, destination: str, dep: date, ret: Optional[date]) -> list[GridCell]:

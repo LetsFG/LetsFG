@@ -40,15 +40,18 @@ export interface DateGridPayload {
   source: 'backend' | 'subprocess'
 }
 
+export type DateGridMode = 'grid' | 'month'
+
 export interface DateGridKey {
   origin: string
   destination: string
   dep: string
   ret: string | null
+  mode?: DateGridMode  // defaults to 'grid' when omitted
 }
 
 function k(key: DateGridKey): string {
-  return `${key.origin}|${key.destination}|${key.dep}|${key.ret ?? ''}`
+  return `${key.origin}|${key.destination}|${key.dep}|${key.ret ?? ''}|${key.mode ?? 'grid'}`
 }
 
 // Stored separately so we can introspect for logging without unwrapping.
