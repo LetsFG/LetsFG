@@ -38,6 +38,7 @@ const caveat = Caveat({
   display: 'swap',
 })
 
+
 // Next.js 16 requires html + body in the root layout.
 // Locale is read from the x-next-intl-locale header injected by proxy.ts.
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -45,7 +46,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const locale = headersList.get('x-next-intl-locale') ?? 'en'
 
   return (
-    <html lang={locale} className={`${lexend.variable} ${jetbrainsMono.variable} ${caveat.variable}`}>
+    <html lang={locale} className={`${lexend.variable} ${jetbrainsMono.variable} ${caveat.variable} `}>
       {/* AI agent discovery — these <link> tags are in <head> so agents find them
           before parsing the body. The llms.txt and for-agents URLs contain the
           full native search guide and traffic control instructions. */}

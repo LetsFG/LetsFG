@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { vertexClarify } from '../../lib/vertex-parse'
 import { resolveCity } from '../../lib/searchParsing'
+import { decideSkipRefineQuestion } from '../../lib/refine-decision'
 
 const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
 
@@ -21,7 +22,13 @@ export async function POST(request: NextRequest) {
     }
 
     const today = new Date().toISOString().slice(0, 10)
-    const ai = await vertexClarify(query, today)
+    // Run the city/intent parse and the refine-question decision in parallel —
+    // both go to Vertex AI Gemini independently.
+    const [ai, refineDecision] = await Promise.all([
+      vertexClarify(query, today),
+      decideSkipRefineQuestion(query),
+    ])
+
     if (!ai) {
       return NextResponse.json({ error: 'AI parse unavailable' }, { status: 503 })
     }
@@ -43,6 +50,10 @@ export async function POST(request: NextRequest) {
       destination:          destResolved?.code    ?? null,
       destination_name:     destResolved?.name    ?? destinationCity,
       anywhere_destination: destinationCity       === 'ANYWHERE',
+      // Gemini-driven decision on whether to surface the date-flexibility step.
+      // null when Vertex was unavailable — the client falls back to a heuristic.
+      skip_refine_question:        refineDecision?.skip ?? null,
+      skip_refine_question_reason: refineDecision?.reason ?? null,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'internal error'

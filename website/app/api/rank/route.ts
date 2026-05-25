@@ -217,8 +217,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const heroPriceStr = hOfferExt.display_price_formatted || `${hTotal} ${hDispCur}`
   const normalizedGoogle = normalizeGoogleFlightsComparisonPrice(h.google_flights_price, context.travelerCount)
   const dispGoogle = normalizedGoogle ? fxConvert(normalizedGoogle, h.currency, hDispCur) : 0
+  const fmtCurrency = (amount: number) =>
+    new Intl.NumberFormat(locale, { style: 'currency', currency: hDispCur, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
   const savingsLine = dispGoogle && dispGoogle > hTotal + 8
-    ? `\n- Saves ${Math.round(dispGoogle - hTotal)} ${hDispCur} vs Google Flights (Google charges ~${Math.round(dispGoogle)} ${hDispCur})`
+    ? `\n- Saves ${fmtCurrency(Math.round((dispGoogle - hTotal) * 100) / 100)} vs Google Flights (Google charges ~${fmtCurrency(Math.round(dispGoogle * 100) / 100)})`
     : ''
   // Price breakdown block for prompt (only show lines that are non-zero / relevant)
   const bdLines: string[] = [`  ✈ Ticket:      ${dispTicket} ${hDispCur}`]
