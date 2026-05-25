@@ -50,6 +50,44 @@ _ENDPOINT = (
     "travel.frontend.flights.FlightsFrontendService/GetCalendarGrid"
 )
 
+# IATA metro codes → list of operational airports inside that metro.
+# Google's XHR rejects bare metro codes (LON, NYC, PAR, etc.) and returns
+# an empty grid, but if you pass the underlying airports as a multi-airport
+# array it returns the cheapest combo across all of them. This map lets the
+# connector accept either a metro code or a specific airport.
+#
+# Keep this list focused on the metro codes Google Flights actually treats
+# as multi-airport. If you find one Google handles but we don't, add it here.
+METRO_CODE_AIRPORTS: dict[str, list[str]] = {
+    "LON": ["LHR", "LGW", "STN", "LTN", "LCY", "SEN"],
+    "NYC": ["JFK", "LGA", "EWR"],
+    "PAR": ["CDG", "ORY", "BVA"],
+    "TYO": ["NRT", "HND"],
+    "WAS": ["IAD", "DCA", "BWI"],
+    "CHI": ["ORD", "MDW"],
+    "MIL": ["MXP", "LIN", "BGY"],
+    "ROM": ["FCO", "CIA"],
+    "BUE": ["EZE", "AEP"],
+    "BJS": ["PEK", "PKX"],
+    "SAO": ["GRU", "CGH", "VCP"],
+    "RIO": ["GIG", "SDU"],
+    "STO": ["ARN", "BMA", "NYO"],
+    "BUH": ["OTP", "BBU"],
+    "MOW": ["SVO", "DME", "VKO"],
+    "OSA": ["KIX", "ITM"],
+    "SEL": ["ICN", "GMP"],
+    "BSL": ["BSL", "MLH", "EAP"],
+    "QDF": ["DTW"],  # rare placeholder; keeps the format consistent
+}
+
+
+def _expand_iata(code: str) -> list[str]:
+    """Expand a metro code (e.g. ``LON``) to its constituent airport codes.
+    Returns ``[code]`` unchanged when ``code`` is already an airport.
+    """
+    upper = code.upper()
+    return METRO_CODE_AIRPORTS.get(upper, [upper])
+
 # The response is Google's "wrb.fr" format. The first non-anti-XSSI line is
 # the byte-length of the next chunk, then a JSON array.
 _ANTI_XSSI_PREFIX = ")]}'"
@@ -66,10 +104,19 @@ def _build_f_req(
     Reverse-engineered from a live request (see ``google_flights_date_grid.md``).
     The protocol is JSON-in-JSON: an outer 2-element envelope wrapping an
     inner JSON string that encodes the actual search parameters.
+
+    Metro codes (LON, NYC, PAR, ...) are expanded to their constituent
+    airports in a multi-airport array — Google's XHR rejects bare metro
+    codes but accepts ``[[[LHR,0],[LGW,0],[STN,0],...]]`` for "any London".
     """
+    origin_airports = _expand_iata(origin)
+    dest_airports = _expand_iata(destination)
+    origin_block = [[[c, 0] for c in origin_airports]]
+    dest_block = [[[c, 0] for c in dest_airports]]
+
     outbound_leg = [
-        [[[origin, 0]]],          # origin (IATA)
-        [[[destination, 0]]],     # destination (IATA)
+        origin_block,
+        dest_block,
         None, 0, None, None,
         dep.isoformat(),
         None, None, None, None, None, None, None, 3,
@@ -77,8 +124,8 @@ def _build_f_req(
     legs = [outbound_leg]
     if ret is not None:
         return_leg = [
-            [[[destination, 0]]],
-            [[[origin, 0]]],
+            dest_block,
+            origin_block,
             None, 0, None, None,
             ret.isoformat(),
             None, None, None, None, None, None, None, 3,
