@@ -10,6 +10,7 @@ import {
   getGlobalRateLimitStore,
   getRateLimitPolicy,
 } from './lib/rate-limit'
+import { isBlockedUserAgent } from './lib/ua-blocklist'
 import { isPublicShareAssetPath } from './lib/share-preview'
 
 const intlMiddleware = createMiddleware(routing)
@@ -101,6 +102,13 @@ function tooManyRequestsResponse(
 
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
+
+  if (isBlockedUserAgent(req.headers.get('user-agent'))) {
+    return new NextResponse('Forbidden', {
+      status: 403,
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
 
   const legacyDocsRedirect = redirectLegacyDocsHost(req)
   if (legacyDocsRedirect) {
