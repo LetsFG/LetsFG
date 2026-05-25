@@ -89,9 +89,9 @@ function cabinLabel(cabin: ParseResponse['cabin_class']): string {
   }
 }
 
-// TESTING MODE — when false, the skip-refine path won't fire a real search.
-// Flip to true once we're ready to actually start searches end-to-end.
-const FIRE_SEARCH_ON_SKIP_REFINE = false
+// When the refine step is skipped (Gemini said nothing to ask), the user
+// is sent straight from /confirm to /results/pending which fires the search.
+const FIRE_SEARCH_ON_SKIP_REFINE = true
 
 // Decide whether to surface the date-flexibility refine step.
 // Long-term: the backend's ai-intent endpoint should return a boolean

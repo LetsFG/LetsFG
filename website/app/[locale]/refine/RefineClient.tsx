@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -14,14 +14,12 @@ import {
   startClientSearchHandoff,
 } from '../../../lib/client-search-handoff'
 
-// TESTING MODE — set to false to keep refine UX testable without burning
-// connector compute.
-const FIRE_SEARCH_ON_SUBMIT = false
+// Final navigation from /refine → /results/pending fires the actual search.
+const FIRE_SEARCH_ON_SUBMIT = true
 // Background-fire the actual flight search as soon as the user commits the
 // date-flexibility step. The remaining refine questions only feed ranking,
 // so we can start the search early and let it run while they answer them.
-// Same testing gate — flip to true once you want real searches firing.
-const FIRE_BACKGROUND_SEARCH = false
+const FIRE_BACKGROUND_SEARCH = true
 
 const REFINE_HANDOFF_KEY = 'lfg_refine_handoff'
 
@@ -57,10 +55,20 @@ interface ParsedData {
   cabin_class?: 'economy' | 'premium_economy' | 'business' | 'first' | null
   is_round_trip: boolean | null
   skip_refine_question?: boolean | null
+  skip_refine_question_reason?: string | null
   follow_up_questions?: FollowUpQuestion[] | null
   // Internal marker — true when produced by localFallbackParse instead of Gemini.
   // Used so we don't poison the sessionStorage cache with fallback data.
   _fallback?: boolean
+}
+
+// Heuristic to detect when the user's natural-language query already signaled
+// flexibility ("anywhere in June", "sometime in May", "show me whole month")
+// so we know to apply whole-month resolution even when the date-flex step
+// itself is skipped.
+function detectWholeMonthIntent(query: string, reason: string | null | undefined): boolean {
+  const haystack = `${query} ${reason ?? ''}`.toLowerCase()
+  return /\b(whole\s+month|all\s+of\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|anywhere\s+in|any\s*time\s+in|sometime\s+in|first\s+half|second\s+half|throughout|flexible\s+dates?)\b/.test(haystack)
 }
 
 type DateFlex = 'fixed' | 'plus_minus_3' | 'whole_month'
@@ -611,6 +619,37 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, parsed, steps.length])
+
+  // Auto-fire background search when the date-flex step is NOT in the
+  // sequence (Gemini decided the user is already date-locked or already
+  // flexible). Two paths:
+  //   - user signaled whole-month flexibility ("anywhere in June") →
+  //     fetch monthGrid, wait, fire with whole_month resolution
+  //   - otherwise → fire immediately with the user's fixed dates
+  const autoFireDoneRef = useRef(false)
+  useEffect(() => {
+    if (loading || !parsed) return
+    if (steps.length === 0) return // handled by the effect above
+    if (steps.some(s => s.kind === 'date_flexibility')) return // user will commit it
+    if (prefiredToken || autoFireDoneRef.current) return // already fired
+    if (!parsed.departure_date) return // can't fire without dates
+
+    const wantsMonth = detectWholeMonthIntent(query, parsed.skip_refine_question_reason)
+    if (wantsMonth && parsed.return_date) {
+      if (!monthGrid && !monthGridLoading) {
+        fetchMonthGrid()
+        return // wait for the fetch to flip monthGridLoading and re-run
+      }
+      if (monthGridLoading) return // still in flight
+      // Fetch finished — fire with whole_month if we got data, else fixed.
+      autoFireDoneRef.current = true
+      fireBackgroundSearch({ date_flexibility: monthGrid ? 'whole_month' : 'fixed' })
+    } else {
+      autoFireDoneRef.current = true
+      fireBackgroundSearch({ date_flexibility: 'fixed' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, parsed, steps, monthGrid, monthGridLoading, prefiredToken])
 
   function resolveFinalDates(collected: Record<string, string>) {
     const flex = (collected.date_flexibility as 'fixed' | 'plus_minus_3' | 'whole_month' | undefined) ?? 'fixed'
