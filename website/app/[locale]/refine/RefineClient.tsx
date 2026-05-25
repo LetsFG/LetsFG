@@ -432,10 +432,17 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
   const [chosenDep, setChosenDep] = useState<string | null>(null)
   const [chosenRet, setChosenRet] = useState<string | null>(null)
 
+  // Progressive disclosure: show ONE strip at a time. Click on the departure
+  // strip → advance to the return strip → click there to lock in. After both,
+  // the strips collapse to a compact summary (with a "change dates" affordance).
+  type DateStage = 'dep' | 'ret' | 'done'
+  const [dateStage, setDateStage] = useState<DateStage>('dep')
+
   // Re-sync when a new parsed payload arrives (e.g. different search).
   useEffect(() => {
     setChosenDep(parsed?.departure_date ?? null)
     setChosenRet(parsed?.return_date ?? null)
+    setDateStage('dep')
   }, [parsed?.departure_date, parsed?.return_date])
 
   const { depDays, retDays, spread } = useMemo(() => {
@@ -618,7 +625,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   <p className="rf-sub">Couldn&apos;t pull live nearby-date prices right now — pick what works for you.</p>
                 )}
 
-                {depDays.length > 0 && (
+                {dateStage === 'dep' && depDays.length > 0 && (
                   <div className="rf-signal">
                     <div className="rf-signal-label">
                       Departure prices for {depLabel}{route ? ` (${route})` : ''}
@@ -632,7 +639,14 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                           aria-pressed={day.selected}
                           aria-label={`Departure ${day.weekday} ${day.day} — ${day.currency ?? ''} ${day.price}`}
                           className={`rf-day rf-day--${day.tier}${day.selected ? ' rf-day--selected' : ''}`}
-                          onClick={() => setChosenDep(day.iso)}
+                          onClick={() => {
+                            setChosenDep(day.iso)
+                            // Advance to the return strip even if user clicked
+                            // the date they already had — that's their signal
+                            // they're done with departure.
+                            if (parsed?.return_date) setDateStage('ret')
+                            else setDateStage('done')
+                          }}
                         >
                           <span className="rf-day-name">{day.weekday}</span>
                           <span className="rf-day-num">{day.day}</span>
@@ -643,10 +657,18 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   </div>
                 )}
 
-                {retDays.length > 0 && (
+                {dateStage === 'ret' && retDays.length > 0 && (
                   <div className="rf-signal">
                     <div className="rf-signal-label">
                       Return prices for {retLabel}{reverseRoute ? ` (${reverseRoute})` : ''}
+                      <button
+                        type="button"
+                        className="rf-signal-back"
+                        onClick={() => setDateStage('dep')}
+                        aria-label="Back to departure dates"
+                      >
+                        ← departure
+                      </button>
                     </div>
                     <div className="rf-day-grid" role="list">
                       {retDays.map(day => (
@@ -657,7 +679,10 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                           aria-pressed={day.selected}
                           aria-label={`Return ${day.weekday} ${day.day} — ${day.currency ?? ''} ${day.price}`}
                           className={`rf-day rf-day--${day.tier}${day.selected ? ' rf-day--selected' : ''}`}
-                          onClick={() => setChosenRet(day.iso)}
+                          onClick={() => {
+                            setChosenRet(day.iso)
+                            setDateStage('done')
+                          }}
                         >
                           <span className="rf-day-name">{day.weekday}</span>
                           <span className="rf-day-num">{day.day}</span>
@@ -668,7 +693,22 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   </div>
                 )}
 
-                {(depDays.length > 0 || retDays.length > 0) && (
+                {dateStage === 'done' && (depDays.length > 0 || retDays.length > 0) && (
+                  <div className="rf-signal rf-signal--compact">
+                    <span className="rf-signal-label rf-signal-label--inline">
+                      Locked in: <strong>{chosenRange}</strong>{route ? ` · ${route}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      className="rf-signal-change"
+                      onClick={() => setDateStage('dep')}
+                    >
+                      Change dates
+                    </button>
+                  </div>
+                )}
+
+                {dateStage !== 'done' && (depDays.length > 0 || retDays.length > 0) && (
                   <div className="rf-legend">
                     <span><span className="rf-legend-dot rf-legend-dot--cheap" />Cheaper</span>
                     <span><span className="rf-legend-dot rf-legend-dot--avg" />Average</span>
