@@ -225,6 +225,60 @@ function buildAxisStrip(
   return { days, spread }
 }
 
+function daysBetween(a: string, b: string): number {
+  const ta = Date.parse(a + 'T00:00:00Z')
+  const tb = Date.parse(b + 'T00:00:00Z')
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return 0
+  return Math.round((tb - ta) / 86_400_000)
+}
+
+/**
+ * Resolve a user-picked flexibility option down to concrete (dep, ret) dates
+ * that the connector fan-out will actually search. Preserves the trip length
+ * the user picked — if they chose 2 nights, every resolved combo is 2 nights.
+ *
+ * Strategy:
+ *   - 'fixed'        → just the chosen dates, no resolution needed
+ *   - 'plus_minus_3' → cheapest 2-night combo in the existing ±3 grid (49 cells)
+ *   - 'whole_month'  → same idea, but the candidate set is the whole month.
+ *                      We don't have month-wide data yet (Google's XHR caps at
+ *                      ~7 days), so for now this falls back to ±3. When we add
+ *                      a wider-month scraper, swap the source grid here.
+ */
+function resolveFlexDates(
+  flex: 'fixed' | 'plus_minus_3' | 'whole_month',
+  chosenDep: string | null,
+  chosenRet: string | null,
+  grid: DateGridResponse | null,
+): { dep: string | null; ret: string | null; resolved_from?: 'fixed' | 'plus_minus_3' | 'whole_month'; resolved_price?: number; resolved_currency?: string | null } {
+  if (!chosenDep) return { dep: null, ret: null }
+  if (flex === 'fixed' || !chosenRet) {
+    return { dep: chosenDep, ret: chosenRet, resolved_from: 'fixed' }
+  }
+  if (!grid || grid.grid.length === 0) {
+    return { dep: chosenDep, ret: chosenRet, resolved_from: flex }
+  }
+  const tripNights = daysBetween(chosenDep, chosenRet)
+  if (tripNights <= 0) return { dep: chosenDep, ret: chosenRet, resolved_from: flex }
+
+  let best: { dep: string; ret: string; price: number; currency: string } | null = null
+  for (const cell of grid.grid) {
+    if (cell.price <= 0) continue
+    if (daysBetween(cell.outbound, cell.return) !== tripNights) continue
+    if (!best || cell.price < best.price) {
+      best = { dep: cell.outbound, ret: cell.return, price: cell.price, currency: cell.currency }
+    }
+  }
+  if (!best) return { dep: chosenDep, ret: chosenRet, resolved_from: flex }
+  return {
+    dep: best.dep,
+    ret: best.ret,
+    resolved_from: flex,
+    resolved_price: best.price,
+    resolved_currency: best.currency,
+  }
+}
+
 function formatSingleDate(iso: string | null): string {
   if (!iso) return ''
   const d = new Date(iso + 'T00:00:00Z')
@@ -502,16 +556,35 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, parsed, steps.length])
 
+  function resolveFinalDates(collected: Record<string, string>) {
+    const flex = (collected.date_flexibility as 'fixed' | 'plus_minus_3' | 'whole_month' | undefined) ?? 'fixed'
+    return resolveFlexDates(flex, chosenDep, chosenRet, dateGrid)
+  }
+
   function goToResults(collected: Record<string, string>) {
     setSubmitting(true)
+    const resolved = resolveFinalDates(collected)
     const params = new URLSearchParams()
     params.set('q', query)
     if (initialCurrency) params.set('cur', initialCurrency)
     if (probeMode) params.set('probe', '1')
+    if (resolved.dep) params.set('dep', resolved.dep)
+    if (resolved.ret) params.set('ret', resolved.ret)
+    if (resolved.resolved_from) params.set('flex', resolved.resolved_from)
     for (const [k, v] of Object.entries(collected)) {
       if (v) params.set(`r_${k}`, v)
     }
     router.push(`/results/pending?${params.toString()}`)
+  }
+
+  function describeResolvedFlex(collected: Record<string, string>): string {
+    const r = resolveFinalDates(collected)
+    if (!r.dep || !r.ret) return r.dep ?? '(no date)'
+    const range = formatDateRange(r.dep, r.ret)
+    if (r.resolved_from && r.resolved_from !== 'fixed' && r.resolved_price !== undefined) {
+      return `${range} (cheapest in window via ${r.resolved_from}: ${r.resolved_currency} ${r.resolved_price})`
+    }
+    return range
   }
 
   function commitAndAdvance(value: string) {
@@ -522,8 +595,8 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     setFreeText('')
     if (isLast) {
       if (!FIRE_SEARCH_ON_SUBMIT) {
-        setTestNotice(`Answers: ${JSON.stringify(next)} — would start search. Search firing disabled while testing.`)
-        window.setTimeout(() => setTestNotice(null), 5000)
+        setTestNotice(`Would search ${describeResolvedFlex(next)}. Answers: ${JSON.stringify(next)} — search firing disabled while testing.`)
+        window.setTimeout(() => setTestNotice(null), 6000)
         return
       }
       goToResults(next)
@@ -538,8 +611,8 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     setFreeText('')
     if (isLast) {
       if (!FIRE_SEARCH_ON_SUBMIT) {
-        setTestNotice(`Skipped final step. Answers: ${JSON.stringify(answers)} — would start search. Search firing disabled while testing.`)
-        window.setTimeout(() => setTestNotice(null), 5000)
+        setTestNotice(`Skipped final step. Would search ${describeResolvedFlex(answers)}. Search firing disabled while testing.`)
+        window.setTimeout(() => setTestNotice(null), 6000)
         return
       }
       goToResults(answers)
