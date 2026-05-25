@@ -618,7 +618,7 @@ function ApartmentBlock({ x }: { x: number }) {
 }
 
 // ── Seed helpers ──────────────────────────────────────────────────────────────
-function hashStr(s: string): number {
+export function hashStr(s: string): number {
   // FNV-1a 32-bit — deterministic, no external deps
   let h = 2166136261
   for (let i = 0; i < s.length; i++) {
@@ -707,7 +707,7 @@ const CITY_HEROES: Record<string, string[]> = {
   KUL: ['petrastowers'],
 }
 
-function Skyline({ mirrored = false, seed = 0, cityCode = '' }: { mirrored?: boolean; seed?: number; cityCode?: string }) {
+export function Skyline({ mirrored = false, seed = 0, cityCode = '' }: { mirrored?: boolean; seed?: number; cityCode?: string }) {
   const heroIds = CITY_HEROES[cityCode.toUpperCase()] ?? []
   const heroes = heroIds.map(id => LANDMARKS.find(l => l.id === id)!).filter(Boolean)
 
@@ -742,7 +742,7 @@ function Skyline({ mirrored = false, seed = 0, cityCode = '' }: { mirrored?: boo
   )
 }
 
-function FlightArc() {
+export function FlightArc() {
   const visiblePath = 'M20 140C120 56 240 30 360 30C480 30 600 56 700 140'
   // Lead-in: approach (20,140) from off-canvas — shorter (y=200 not y=240), same tangent angle preserved
   // ctrl2=(-30,182): direction to (20,140) is (50,-42) ≈ same unit vector as original (100,-84) ✓

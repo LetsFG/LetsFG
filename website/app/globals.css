@@ -2699,6 +2699,709 @@ input {
 }
 
 
+/* ── Pending / loading page ─────────────────────────────────────────────── */
+
+.pend-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f8f9fd;
+}
+
+.pend-body {
+  flex: 1;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 22px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 26px;
+}
+
+.pend-headline {
+  position: relative;
+  min-height: 3.2em;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.pend-headline-phrase {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: clamp(1.55rem, 4.4vw, 2.05rem);
+  line-height: 1.25;
+  color: #1a1a1a;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+  pointer-events: none;
+}
+
+.pend-headline-phrase--active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.pend-graphic {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 720px;
+}
+
+.pend-page .st-window {
+  fill: rgba(20, 45, 60, 0.42);
+}
+
+.pend-bar {
+  position: relative;
+  height: 6px;
+  width: min(420px, 100%);
+  margin: 0 auto;
+  background: rgba(20, 45, 60, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pend-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f47a1c 0%, #ff8a1d 100%);
+  border-radius: 999px;
+  transition: width 0.25s linear;
+}
+
+.pend-agent {
+  margin: 14px auto 0;
+  width: 100%;
+  max-width: 520px;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  pointer-events: none;
+}
+
+.pend-agent--in {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.pend-agent-card {
+  background: #ffffff;
+  border: 1px solid rgba(244, 122, 28, 0.20);
+  border-radius: 18px;
+  padding: 18px 20px 14px;
+  box-shadow: 0 14px 36px rgba(20, 45, 60, 0.08);
+}
+
+.pend-agent-prelude {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f47a1c;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.pend-agent-question {
+  margin: 0 0 16px;
+  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: clamp(1.55rem, 4vw, 1.95rem);
+  font-weight: 400;
+  color: #1a1a1a;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.pend-agent-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pend-agent-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f7f7fb;
+  border: 1.5px solid rgba(20, 45, 60, 0.06);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+
+.pend-agent-opt:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: rgba(244, 122, 28, 0.40);
+  transform: translateY(-1px);
+}
+
+.pend-agent-opt--selected,
+.pend-agent-opt--selected:hover {
+  background: rgba(244, 122, 28, 0.10);
+  border-color: #f47a1c;
+  box-shadow: 0 8px 20px rgba(244, 122, 28, 0.18);
+  transform: none;
+}
+
+.pend-agent-opt:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pend-agent-opt-emoji {
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.pend-agent-opt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pend-agent-opt-label {
+  font-size: 0.93rem;
+  font-weight: 700;
+  color: #0d0d0d;
+  line-height: 1.25;
+}
+
+.pend-agent-opt-sub {
+  font-size: 0.76rem;
+  color: rgba(20, 45, 60, 0.5);
+  line-height: 1.3;
+}
+
+.pend-agent-skip {
+  display: block;
+  margin: 12px auto 2px;
+  background: none;
+  border: 0;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: rgba(20, 45, 60, 0.5);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.pend-agent-skip:hover {
+  color: #0d0d0d;
+}
+
+@media (min-width: 720px) {
+  .pend-body {
+    padding: 40px 24px 80px;
+    gap: 32px;
+  }
+
+  .pend-headline {
+    min-height: 2.6em;
+  }
+}
+
+
+/* ── Results page v2 (rebuilt) ──────────────────────────────────────────── */
+
+.res2-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f8f9fd;
+}
+
+.res2-body {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 22px 22px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Agent-voice title — handwriting font so the whole header reads as the
+ * agent introducing the picks (matches the question style on /pending). */
+.res2-title {
+  margin: 4px 0 -4px;
+  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: clamp(2.35rem, 6.8vw, 2.8rem);
+  font-weight: 400;
+  color: #1a1a1a;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+/* Subtitle — same handwriting font as the title; neutral dark colour. */
+.res2-subtitle {
+  margin: 0 0 8px;
+  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: clamp(1.32rem, 3.4vw, 1.55rem);
+  font-weight: 400;
+  color: rgba(20, 45, 60, 0.72);
+  line-height: 1.35;
+}
+
+/* Hero card — top-1 pick, whole card clickable */
+
+.res2-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 22px 20px;
+  background: #ffffff;
+  border: 1.5px solid rgba(244, 122, 28, 0.30);
+  border-radius: 22px;
+  box-shadow: 0 16px 40px rgba(20, 45, 60, 0.08);
+}
+
+.res2-hero-times {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.res2-hero-time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.res2-hero-time-col--right {
+  align-items: flex-end;
+}
+
+.res2-hero-time {
+  font-size: clamp(1.65rem, 5vw, 2rem);
+  font-weight: 800;
+  color: #0d0d0d;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.res2-hero-code {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: rgba(20, 45, 60, 0.5);
+}
+
+.res2-hero-flightline {
+  position: relative;
+  height: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.res2-hero-flightline-bar {
+  flex: 1;
+  height: 2px;
+  background: rgba(20, 45, 60, 0.18);
+  border-radius: 2px;
+  position: relative;
+}
+
+.res2-hero-flightline-bar::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid rgba(20, 45, 60, 0.45);
+}
+
+.res2-hero-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.res2-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: rgba(20, 45, 60, 0.06);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #0d0d0d;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.res2-pill--direct {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.res2-pill--airline {
+  background: rgba(20, 45, 60, 0.05);
+  color: rgba(20, 45, 60, 0.85);
+}
+
+.res2-hero-bullets {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(244, 122, 28, 0.06);
+  border-radius: 14px;
+}
+
+/* Hero bullets — agent voice, so handwriting font. A small brand-orange dot
+ * stands in for the old green checkmark: less clinical, still rhythmic, lets
+ * the eye track down the list. */
+.res2-hero-bullet {
+  position: relative;
+  padding-left: 22px;
+  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: clamp(1.2rem, 2.9vw, 1.35rem);
+  font-weight: 400;
+  line-height: 1.4;
+  color: #142d3e;
+}
+
+.res2-hero-bullet::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0.72em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f47a1c;
+}
+
+.res2-hero-price-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.res2-hero-price {
+  font-size: clamp(2rem, 6.5vw, 2.5rem);
+  font-weight: 800;
+  color: #0d0d0d;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.res2-hero-price-meta {
+  font-size: 0.83rem;
+  color: rgba(20, 45, 60, 0.55);
+}
+
+.res2-hero-savings {
+  margin-top: 6px;
+  padding: 7px 12px;
+  background: rgba(22, 163, 74, 0.10);
+  color: #15803d;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  align-self: flex-start;
+  line-height: 1.3;
+}
+
+/* Hero action buttons — fully rounded pill buttons, brand orange primary +
+ * outlined secondary alert. Match the mockup ratios (primary wider). */
+.res2-hero-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.res2-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 22px;
+  border-radius: 999px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+  border: 0;
+  line-height: 1.2;
+}
+
+.res2-hero-cta--primary {
+  flex: 1;
+  background: #f47a1c;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(244, 122, 28, 0.30);
+}
+
+.res2-hero-cta--primary:hover {
+  background: #df6a0e;
+  box-shadow: 0 12px 26px rgba(244, 122, 28, 0.36);
+  transform: translateY(-1px);
+}
+
+.res2-hero-cta--secondary {
+  background: #ffffff;
+  color: #b85a0e;
+  border: 1.5px solid rgba(244, 122, 28, 0.40);
+  padding: 11.5px 20px;
+}
+
+.res2-hero-cta--secondary:hover {
+  background: rgba(244, 122, 28, 0.06);
+  border-color: #f47a1c;
+}
+
+.res2-hero-cta-icon {
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+/* Section headings — "Also worth considering" / "Other flights" */
+
+.res2-section-heading {
+  margin: 14px 0 -2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: rgba(20, 45, 60, 0.55);
+}
+
+/* Runner card */
+
+.res2-runner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.res2-runner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid rgba(20, 45, 60, 0.08);
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .res2-runner:hover {
+    border-color: rgba(244, 122, 28, 0.35);
+    box-shadow: 0 8px 20px rgba(20, 45, 60, 0.06);
+    transform: translateY(-1px);
+  }
+}
+
+.res2-runner-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.res2-runner-times {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.res2-runner-time {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0d0d0d;
+  font-variant-numeric: tabular-nums;
+}
+
+.res2-runner-code {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgba(20, 45, 60, 0.55);
+}
+
+.res2-runner-arrow {
+  color: rgba(20, 45, 60, 0.4);
+  margin: 0 2px;
+}
+
+.res2-runner-meta {
+  font-size: 0.82rem;
+  color: rgba(20, 45, 60, 0.6);
+}
+
+.res2-runner-reason {
+  font-size: 0.83rem;
+  color: #15803d;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.res2-runner-price {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.res2-runner-price-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0d0d0d;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Other flights list */
+
+.res2-other-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.res2-other {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid rgba(20, 45, 60, 0.07);
+  border-radius: 11px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .res2-other:hover {
+    border-color: rgba(244, 122, 28, 0.30);
+    background: #fffaf5;
+  }
+}
+
+.res2-other-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.res2-other-times {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.93rem;
+  font-weight: 700;
+  color: #0d0d0d;
+  font-variant-numeric: tabular-nums;
+}
+
+.res2-other-arrow {
+  color: rgba(20, 45, 60, 0.4);
+}
+
+.res2-other-meta {
+  font-size: 0.78rem;
+  color: rgba(20, 45, 60, 0.55);
+}
+
+.res2-other-price {
+  flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0d0d0d;
+  font-variant-numeric: tabular-nums;
+}
+
+.res2-show-more {
+  margin: 8px auto 0;
+  padding: 10px 22px;
+  background: #ffffff;
+  border: 1.5px solid rgba(244, 122, 28, 0.40);
+  border-radius: 999px;
+  color: #b85a0e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.res2-show-more:hover {
+  background: #f47a1c;
+  color: #fff;
+}
+
+.res2-empty {
+  padding: 30px 22px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid rgba(20, 45, 60, 0.08);
+  border-radius: 16px;
+  color: rgba(20, 45, 60, 0.65);
+  font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.res2-empty--loading {
+  font-style: italic;
+}
+
+.res2-empty-cta {
+  padding: 10px 22px;
+  background: #f47a1c;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.res2-empty-cta:hover {
+  background: #df6a0e;
+}
+
+@media (min-width: 720px) {
+  .res2-body {
+    padding: 32px 24px 96px;
+  }
+  .res2-hero {
+    padding: 26px 28px 24px;
+  }
+}
+
+
 /* Search form */
 
 .lp-sf-wrap {

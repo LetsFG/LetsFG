@@ -306,7 +306,13 @@ export async function POST(request: NextRequest) {
       aiFollowUpTopics = aiFollowUpTopics.filter(t => t !== 'date')
     }
 
-    if (aiFollowUpTopics.length > 0) {
+    // Fast-path pre-fire: refine page (or any client) has already resolved
+    // origin + destination + departure date. Trip-purpose / priority topics
+    // are ranking signals, not search-blockers, and refine collects them
+    // upstream — re-asking here would duplicate the same conversation.
+    const isFastPathPrefire = !!(body.origin && body.destination && body.date_from)
+
+    if (aiFollowUpTopics.length > 0 && !isFastPathPrefire) {
       await upsertSearchSessionServer(buildClarificationSearchSessionPayload({
         query: queryText || undefined,
         origin,
@@ -345,7 +351,7 @@ export async function POST(request: NextRequest) {
       }, { status: 422 })
     }
 
-    if (!isSearchLaunchReady(queryText, parsedForLaunch)) {
+    if (!isSearchLaunchReady(queryText, parsedForLaunch) && !isFastPathPrefire) {
       const clarification = getSearchClarificationState(queryText, parsedForLaunch)
       const requiredTopics = getRequiredSearchClarificationTopics(queryText, parsedForLaunch)
       const followUpTopics = buildHomeConvoTopicOrder(aiFollowUpTopics, requiredTopics)
@@ -353,7 +359,6 @@ export async function POST(request: NextRequest) {
       // Fast-path pre-fire calls (body.origin/destination/date_from provided by the home form's
       // navigateSearch) are internal implementation details — not user-initiated NL searches.
       // Skip stats logging for them to avoid phantom -¥100 entries in the P&L dashboard.
-      const isFastPathPrefire = !!(body.origin && body.destination && body.date_from)
       if (!isFastPathPrefire) {
         await upsertSearchSessionServer(buildClarificationSearchSessionPayload({
         query: queryText || undefined,
