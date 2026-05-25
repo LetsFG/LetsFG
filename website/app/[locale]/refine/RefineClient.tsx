@@ -433,9 +433,10 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
   const [chosenRet, setChosenRet] = useState<string | null>(null)
 
   // Progressive disclosure: show ONE strip at a time. Click on the departure
-  // strip → advance to the return strip → click there to lock in. After both,
-  // the strips collapse to a compact summary (with a "change dates" affordance).
-  type DateStage = 'dep' | 'ret' | 'done'
+  // strip → advance to the return strip → stay there with the selection
+  // highlighted. The "Change departure" link below the return strip is the
+  // way back.
+  type DateStage = 'dep' | 'ret'
   const [dateStage, setDateStage] = useState<DateStage>('dep')
 
   // Re-sync when a new parsed payload arrives (e.g. different search).
@@ -477,7 +478,16 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     () => formatSingleDate(chosenRet),
     [chosenRet],
   )
-  const monthName = useMemo(() => inferMonthName(parsed?.departure_date ?? null), [parsed])
+  // Month label for "Flexible, show me all of X". Uses the chosen dates so it
+  // reflects what the user is actually looking at — if their trip now spans
+  // two months (e.g. May 30 → Jun 3), show both.
+  const monthName = useMemo(() => {
+    const depMonth = inferMonthName(chosenDep)
+    const retMonth = chosenRet ? inferMonthName(chosenRet) : depMonth
+    if (depMonth === retMonth || retMonth === 'the month') return depMonth
+    if (depMonth === 'the month') return retMonth
+    return `${depMonth} & ${retMonth}`
+  }, [chosenDep, chosenRet])
 
   // If parsing finished but there's nothing to ask, bail straight to results.
   useEffect(() => {
@@ -643,9 +653,8 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                             setChosenDep(day.iso)
                             // Advance to the return strip even if user clicked
                             // the date they already had — that's their signal
-                            // they're done with departure.
+                            // they're done with departure. (One-way: stay here.)
                             if (parsed?.return_date) setDateStage('ret')
-                            else setDateStage('done')
                           }}
                         >
                           <span className="rf-day-name">{day.weekday}</span>
@@ -673,7 +682,8 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                           className={`rf-day rf-day--${day.tier}${day.selected ? ' rf-day--selected' : ''}`}
                           onClick={() => {
                             setChosenRet(day.iso)
-                            setDateStage('done')
+                            // Stay on the return strip with the new selection
+                            // highlighted — don't collapse the picker.
                           }}
                         >
                           <span className="rf-day-name">{day.weekday}</span>
@@ -693,22 +703,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   </div>
                 )}
 
-                {dateStage === 'done' && (depDays.length > 0 || retDays.length > 0) && (
-                  <div className="rf-signal rf-signal--compact">
-                    <span className="rf-signal-label rf-signal-label--inline">
-                      Locked in: <strong>{chosenRange}</strong>{route ? ` · ${route}` : ''}
-                    </span>
-                    <button
-                      type="button"
-                      className="rf-signal-change"
-                      onClick={() => setDateStage('dep')}
-                    >
-                      Change dates
-                    </button>
-                  </div>
-                )}
-
-                {dateStage !== 'done' && (depDays.length > 0 || retDays.length > 0) && (
+                {(depDays.length > 0 || retDays.length > 0) && (
                   <div className="rf-legend">
                     <span><span className="rf-legend-dot rf-legend-dot--cheap" />Cheaper</span>
                     <span><span className="rf-legend-dot rf-legend-dot--avg" />Average</span>
