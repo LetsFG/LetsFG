@@ -5394,8 +5394,22 @@ export function parseNLQuery(query: string): ParsedQuery {
     // If the user said "in december returning in january" they have a concrete round-trip
     // — month-only flag no longer meaningful once we have a return date.
     if (retDate) {
-      result.return_date = retDate
-      result.date_month_only = undefined  // concrete round-trip: don't trigger best-window
+      // "return ticket next month" / "return flight next month" — the word "return"
+      // here introduces a round-trip default phrase, not a return-leg date marker.
+      // RETURN_SPLIT_RE consumed "return", leaving the user's only date expression
+      // ("next month") inside returnRaw. If outbound parsing also found no date
+      // (so we fell back to today+7), that date belongs to the outbound leg, not
+      // the return leg — let the round-trip block below derive the return from a
+      // default trip length. Without this guard, depart=default and return=same
+      // collide with the mid-month nudge → return_date <= date → sanity-cleared.
+      const _isReturnPhrase = /\breturn\s+(?:flight|ticket|flights|tickets)\b/i.test(q)
+      if (_isReturnPhrase && result.date_is_default) {
+        result.date = retDate
+        result.date_is_default = undefined
+      } else {
+        result.return_date = retDate
+        result.date_month_only = undefined  // concrete round-trip: don't trigger best-window
+      }
     } else {
       // "Return 4 days" / "return after 5 days" / "returning in 7 days" — duration-based.
       // When the user expresses the return as a trip-length (no calendar date),
