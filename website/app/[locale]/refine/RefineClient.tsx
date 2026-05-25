@@ -175,17 +175,22 @@ function formatMonthShort(m: number): string {
   return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m]
 }
 
-// Build the visible 7-day strip from the real Google Flights grid response.
-// We collapse the 7×7 outbound×return matrix down to one row by taking the
-// cheapest available combo per OUTBOUND date — that's what the user is
-// actually choosing on this step.
-function buildDayGridFromResponse(resp: DateGridResponse, centerIso: string): { days: DayCell[]; spread: number | null } {
-  const cheapestPerOutbound = new Map<string, DateGridGridCell>()
+// Build a 7-day strip for one axis (outbound or return) from the 7×7 grid.
+// Prices on each cell = cheapest available combo for that day on the chosen
+// axis. ``selectedIso`` flags which cell is currently chosen by the user.
+function buildAxisStrip(
+  resp: DateGridResponse,
+  axis: 'outbound' | 'return',
+  centerIso: string,
+  selectedIso: string | null,
+): { days: DayCell[]; spread: number | null } {
+  const cheapestByAxis = new Map<string, DateGridGridCell>()
   for (const cell of resp.grid) {
     if (cell.price <= 0) continue
-    const existing = cheapestPerOutbound.get(cell.outbound)
+    const key = axis === 'outbound' ? cell.outbound : cell.return
+    const existing = cheapestByAxis.get(key)
     if (!existing || cell.price < existing.price) {
-      cheapestPerOutbound.set(cell.outbound, cell)
+      cheapestByAxis.set(key, cell)
     }
   }
   const center = new Date(centerIso + 'T00:00:00Z')
@@ -195,16 +200,16 @@ function buildDayGridFromResponse(resp: DateGridResponse, centerIso: string): { 
     const d = new Date(center)
     d.setUTCDate(center.getUTCDate() + i)
     const iso = d.toISOString().slice(0, 10)
-    const cell = cheapestPerOutbound.get(iso)
-    if (!cell) continue  // skip days with no price (matches the "no flights" cells)
+    const cell = cheapestByAxis.get(iso)
+    if (!cell) continue
     days.push({
       iso,
       weekday: WEEKDAYS[d.getUTCDay()],
       day: d.getUTCDate(),
       price: cell.price,
       currency: cell.currency,
-      tier: 'avg',  // tier assigned below relative to spread
-      selected: i === 0,
+      tier: 'avg',
+      selected: iso === selectedIso,
     })
   }
   if (days.length === 0) return { days: [], spread: null }
@@ -212,13 +217,19 @@ function buildDayGridFromResponse(resp: DateGridResponse, centerIso: string): { 
   const min = Math.min(...prices)
   const max = Math.max(...prices)
   const spread = max - min
-  // Tier each day relative to the spread: bottom third = cheap, top third = pricy.
   const lo = min + spread / 3
   const hi = min + (spread * 2) / 3
   for (const d of days) {
     d.tier = d.price <= lo ? 'cheap' : d.price >= hi ? 'pricy' : 'avg'
   }
   return { days, spread }
+}
+
+function formatSingleDate(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00Z')
+  if (Number.isNaN(d.getTime())) return ''
+  return `${formatMonthShort(d.getUTCMonth())} ${d.getUTCDate()}`
 }
 
 function formatDateRange(dep: string | null, ret: string | null): string {
@@ -416,16 +427,48 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     return () => { cancelled = true; ctrl.abort() }
   }, [parsed?.departure_date, parsed?.return_date, parsed?.origin, parsed?.destination, initialCurrency])
 
-  const { days, spread } = useMemo(() => {
-    if (dateGrid && parsed?.departure_date) {
-      return buildDayGridFromResponse(dateGrid, parsed.departure_date)
+  // User's current outbound + return date selection. Defaults to the parsed
+  // dates and updates when they tap a different cell on either strip.
+  const [chosenDep, setChosenDep] = useState<string | null>(null)
+  const [chosenRet, setChosenRet] = useState<string | null>(null)
+
+  // Re-sync when a new parsed payload arrives (e.g. different search).
+  useEffect(() => {
+    setChosenDep(parsed?.departure_date ?? null)
+    setChosenRet(parsed?.return_date ?? null)
+  }, [parsed?.departure_date, parsed?.return_date])
+
+  const { depDays, retDays, spread } = useMemo(() => {
+    if (!dateGrid || !parsed?.departure_date) {
+      return { depDays: [], retDays: [], spread: null }
     }
-    return { days: [], spread: null }
-  }, [dateGrid, parsed?.departure_date])
+    const dep = buildAxisStrip(dateGrid, 'outbound', parsed.departure_date, chosenDep)
+    const ret = parsed.return_date
+      ? buildAxisStrip(dateGrid, 'return', parsed.return_date, chosenRet)
+      : { days: [], spread: null }
+    // Use the bigger of the two spreads for the "I found differences of up to X" line.
+    const spread = Math.max(dep.spread ?? 0, ret.spread ?? 0) || null
+    return { depDays: dep.days, retDays: ret.days, spread }
+  }, [dateGrid, parsed?.departure_date, parsed?.return_date, chosenDep, chosenRet])
+
   const route = useMemo(() => (parsed ? formatRouteShort(parsed) : null), [parsed])
-  const dateRange = useMemo(
-    () => formatDateRange(parsed?.departure_date ?? null, parsed?.return_date ?? null),
-    [parsed],
+  const reverseRoute = useMemo(() => {
+    if (!parsed?.origin || !parsed?.destination) return null
+    return `${parsed.destination} → ${parsed.origin}`
+  }, [parsed?.origin, parsed?.destination])
+  // The "Fixed dates (May 30 - Jun 1)" label reflects the user's current pick,
+  // not the original parse — so it updates as they shift the strip.
+  const chosenRange = useMemo(
+    () => formatDateRange(chosenDep, chosenRet),
+    [chosenDep, chosenRet],
+  )
+  const depLabel = useMemo(
+    () => formatSingleDate(chosenDep),
+    [chosenDep],
+  )
+  const retLabel = useMemo(
+    () => formatSingleDate(chosenRet),
+    [chosenRet],
   )
   const monthName = useMemo(() => inferMonthName(parsed?.departure_date ?? null), [parsed])
 
@@ -575,29 +618,61 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   <p className="rf-sub">Couldn&apos;t pull live nearby-date prices right now — pick what works for you.</p>
                 )}
 
-                {days.length > 0 && (
+                {depDays.length > 0 && (
                   <div className="rf-signal">
                     <div className="rf-signal-label">
-                      Price signal for {dateRange}{route ? ` (${route})` : ''}
+                      Departure prices for {depLabel}{route ? ` (${route})` : ''}
                     </div>
                     <div className="rf-day-grid" role="list">
-                      {days.map(day => (
-                        <div
+                      {depDays.map(day => (
+                        <button
                           key={day.iso}
+                          type="button"
                           role="listitem"
+                          aria-pressed={day.selected}
+                          aria-label={`Departure ${day.weekday} ${day.day} — ${day.currency ?? ''} ${day.price}`}
                           className={`rf-day rf-day--${day.tier}${day.selected ? ' rf-day--selected' : ''}`}
+                          onClick={() => setChosenDep(day.iso)}
                         >
                           <span className="rf-day-name">{day.weekday}</span>
                           <span className="rf-day-num">{day.day}</span>
                           <span className="rf-day-price">{day.currency ?? ''} {day.price}</span>
-                        </div>
+                        </button>
                       ))}
                     </div>
-                    <div className="rf-legend">
-                      <span><span className="rf-legend-dot rf-legend-dot--cheap" />Cheaper</span>
-                      <span><span className="rf-legend-dot rf-legend-dot--avg" />Average</span>
-                      <span><span className="rf-legend-dot rf-legend-dot--pricy" />Pricier</span>
+                  </div>
+                )}
+
+                {retDays.length > 0 && (
+                  <div className="rf-signal">
+                    <div className="rf-signal-label">
+                      Return prices for {retLabel}{reverseRoute ? ` (${reverseRoute})` : ''}
                     </div>
+                    <div className="rf-day-grid" role="list">
+                      {retDays.map(day => (
+                        <button
+                          key={day.iso}
+                          type="button"
+                          role="listitem"
+                          aria-pressed={day.selected}
+                          aria-label={`Return ${day.weekday} ${day.day} — ${day.currency ?? ''} ${day.price}`}
+                          className={`rf-day rf-day--${day.tier}${day.selected ? ' rf-day--selected' : ''}`}
+                          onClick={() => setChosenRet(day.iso)}
+                        >
+                          <span className="rf-day-name">{day.weekday}</span>
+                          <span className="rf-day-num">{day.day}</span>
+                          <span className="rf-day-price">{day.currency ?? ''} {day.price}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(depDays.length > 0 || retDays.length > 0) && (
+                  <div className="rf-legend">
+                    <span><span className="rf-legend-dot rf-legend-dot--cheap" />Cheaper</span>
+                    <span><span className="rf-legend-dot rf-legend-dot--avg" />Average</span>
+                    <span><span className="rf-legend-dot rf-legend-dot--pricy" />Pricier</span>
                   </div>
                 )}
 
@@ -611,7 +686,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   >
                     <span className="rf-option-icon" aria-hidden="true"><PinIcon /></span>
                     <div className="rf-option-body">
-                      <strong className="rf-option-title">Fixed dates ({dateRange})</strong>
+                      <strong className="rf-option-title">Fixed dates ({chosenRange})</strong>
                       <span className="rf-option-sub">Search only these dates</span>
                     </div>
                     {dateFlex === 'fixed' && <span className="rf-option-check" aria-hidden="true"><CheckIcon /></span>}
@@ -740,7 +815,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                 )}
               </button>
               <button type="button" className="rf-skip" onClick={skipStep} disabled={submitting}>
-                {isLast ? `Skip, use ${dateRange} exactly` : 'Skip this question'}
+                {isLast ? `Skip, use ${chosenRange} exactly` : 'Skip this question'}
               </button>
             </div>
           </>
