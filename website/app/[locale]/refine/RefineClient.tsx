@@ -391,6 +391,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
     params.set('destination', parsed.destination)
     params.set('dep', parsed.departure_date)
     if (parsed.return_date) params.set('ret', parsed.return_date)
+    if (initialCurrency) params.set('cur', initialCurrency)
     fetch(`/api/date-grid?${params.toString()}`, { signal: ctrl.signal })
       .then(async res => {
         if (!res.ok) {
@@ -413,7 +414,7 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
         setDateGridError(err instanceof Error ? err.message : 'unknown')
       })
     return () => { cancelled = true; ctrl.abort() }
-  }, [parsed?.departure_date, parsed?.return_date, parsed?.origin, parsed?.destination])
+  }, [parsed?.departure_date, parsed?.return_date, parsed?.origin, parsed?.destination, initialCurrency])
 
   const { days, spread } = useMemo(() => {
     if (dateGrid && parsed?.departure_date) {
