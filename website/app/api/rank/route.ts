@@ -49,7 +49,15 @@ interface RankRequestBody {
 
 interface RankResponseBody {
   title?: string
+  /** One-line page subtitle under "Your 3 best flights". Gemini-written so it
+   *  weaves search breadth + the value prop (all-fees-included) in the user's
+   *  language. Optional — clients fall back to a deterministic string. */
+  subtitle?: string
+  /** Existing single-string hero justification (kept for back-compat / SEO). */
   hero: string
+  /** Three short bullets shown on the hero card. Each 5–11 words, single
+   *  specific fact. Replaces the long `hero` paragraph in the new layout. */
+  hero_bullets?: string[]
   runners: string[]
   offer_ids: string[]
 }
@@ -418,8 +426,25 @@ TASK 2 — For each runner-up, write exactly 2 sentences.
 - If a runner is listed with "tradeoffs: none" or similar, still find something that makes #1 better
 - Max 70 words total per runner
 
+TASK 3 — Page subtitle (one short line, max 14 words).
+- Combine the search-breadth signal with one warm value-prop the user cares about
+- Reference the breadth count naturally (e.g. "From ${formattedScannedDealsCount} options across our 180 airline connectors")
+- Add a confidence/value clause (e.g. "all prices include baggage & seat", "no surprise fees at checkout")
+- Must be plain prose, no markdown, no emoji, no leading punctuation
+- Match the user's language (same locale rules as the hero)
+
+TASK 4 — Hero card bullets (exactly 3, each 5–11 words).
+- Each bullet is a single specific reason this flight wins for THIS trip
+- DO NOT repeat info that's already visible elsewhere on the card (departure/arrival times, the airline name, the price, the stop pill, the duration pill)
+- Prefer concrete data the user can't see at a glance: ancillary inclusions, airport-of-choice tradeoffs, schedule fit relative to the destination's typical activities, savings vs alternatives, arrival-time advantages, etc.
+- Bullet 1: stops/timing/schedule fit angle
+- Bullet 2: total-price / ancillaries / fee-inclusion angle
+- Bullet 3: location, airline, or practical-insight angle (airport choice, baggage policy, layover quality, etc.)
+- Do NOT start any bullet with a checkmark, dash, bullet, or symbol — those are rendered separately
+- Do NOT start with "This flight" or "We've selected"
+
 Return ONLY valid JSON, no markdown, no code blocks:
-{"title": "...", "hero": "...", "runners": ["...", "..."]}`
+{"title": "...", "subtitle": "...", "hero": "...", "hero_bullets": ["...", "...", "..."], "runners": ["...", "..."]}`
 
   try {
     const rankResp = await fetch(`${getLetsfgApiBase()}/api/v1/flights/rank-copy`, {
@@ -446,7 +471,17 @@ Return ONLY valid JSON, no markdown, no code blocks:
 
     const result: RankResponseBody = {
       title: typeof parsed.title === 'string' && parsed.title.length > 3 ? parsed.title.trim() : undefined,
+      subtitle: typeof parsed.subtitle === 'string' && parsed.subtitle.trim().length > 3
+        ? parsed.subtitle.trim()
+        : undefined,
       hero: parsed.hero.trim(),
+      hero_bullets: Array.isArray(parsed.hero_bullets)
+        ? parsed.hero_bullets
+            .filter((b): b is string => typeof b === 'string')
+            .map((b) => b.trim().replace(/^[•\-•✓✓✦]+\s*/, ''))
+            .filter((b) => b.length > 0)
+            .slice(0, 3)
+        : undefined,
       runners: Array.isArray(parsed.runners)
         ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => r.trim())
         : [],
