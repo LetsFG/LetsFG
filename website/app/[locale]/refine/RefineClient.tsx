@@ -661,14 +661,6 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                   <div className="rf-signal">
                     <div className="rf-signal-label">
                       Return prices for {retLabel}{reverseRoute ? ` (${reverseRoute})` : ''}
-                      <button
-                        type="button"
-                        className="rf-signal-back"
-                        onClick={() => setDateStage('dep')}
-                        aria-label="Back to departure dates"
-                      >
-                        ← departure
-                      </button>
                     </div>
                     <div className="rf-day-grid" role="list">
                       {retDays.map(day => (
@@ -690,6 +682,14 @@ export default function RefineClient({ query, locale, initialCurrency, probeMode
                         </button>
                       ))}
                     </div>
+                    <button
+                      type="button"
+                      className="rf-signal-back"
+                      onClick={() => setDateStage('dep')}
+                      aria-label="Back to departure dates"
+                    >
+                      ← Change departure
+                    </button>
                   </div>
                 )}
 
