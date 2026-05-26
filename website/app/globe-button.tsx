@@ -19,7 +19,7 @@ import JP from 'country-flag-icons/react/3x2/JP'
 import CN from 'country-flag-icons/react/3x2/CN'
 import { setResultsLocaleSearchParam } from '../lib/locale-routing'
 
-type FlagComponent = (props: React.SVGProps<SVGSVGElement>) => React.JSX.Element
+type FlagComponent = typeof GB
 
 const LANGUAGES: { code: string; label: string; Flag: FlagComponent }[] = [
   { code: 'en', label: 'English',    Flag: GB },
