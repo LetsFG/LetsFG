@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$SRC = "C:\Users\Adam\Desktop\folder\LetsFG\website"
+$SRC = "C:\Users\Adam\Desktop\folder\LetsFG-rebuild\website"
 
 gcloud builds submit `
     --config="$SRC\cloudbuild.yaml" `
