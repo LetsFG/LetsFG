@@ -310,6 +310,7 @@ interface HomeSearchFormProps {
   initialCurrency?: CurrencyCode
   compact?: boolean
   autoFocus?: boolean
+  autoClarify?: boolean
   probeMode?: boolean
   onSearchStart?: (query: string) => void
   belowFormSlot?: ReactNode
@@ -864,17 +865,44 @@ export default function HomeSearchForm({
                 type="button"
                 className="lp-dest-card"
                 onClick={() => {
-                  setInputValue(dest.query)
-                  setQuery(dest.query)
-                  setTimeout(() => {
-                    const input = inputRef.current
-                    if (input) {
-                      input.focus()
-                      input.setSelectionRange(dest.query.length, dest.query.length)
-                    }
-                  }, 0)
+                  // Bulletproof fill: poke the DOM value directly + dispatch
+                  // a synthetic input event so React's onChange handler
+                  // updates state. Going through setInputValue alone has
+                  // occasionally lost on mobile when async effects in this
+                  // form race the click. The native setter trick is the
+                  // canonical React-controlled-input override pattern.
+                  const input = inputRef.current
+                  if (input) {
+                    const nativeSetter = Object.getOwnPropertyDescriptor(
+                      window.HTMLInputElement.prototype,
+                      'value',
+                    )?.set
+                    nativeSetter?.call(input, dest.query)
+                    input.dispatchEvent(new Event('input', { bubbles: true }))
+                    // Also set React state directly so any reads of
+                    // inputValue (not just the input element) see the
+                    // new value in the same tick.
+                    setInputValue(dest.query)
+                    setQuery(dest.query)
+                    // Mark the user as having intentionally provided this
+                    // query so the passive IP-lookup useEffect doesn't
+                    // later overwrite it with a geo-prefill.
+                    userEditedAutoPrefillRef.current = true
+                    // Focus synchronously (only way iOS Safari opens the
+                    // keyboard) + scroll into view so the user sees what
+                    // happened (input sits above the chip row).
+                    input.focus()
+                    try {
+                      input.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                    } catch { /* older browsers: ignore */ }
+                  }
                 }}
                 onMouseMove={(e) => {
+                  // Touch devices fire mouse events too (emulation). The
+                  // parallax property-set on every move ate scroll gestures
+                  // AND interfered with tap-to-click on mobile. Skip the
+                  // whole thing unless the device actually supports hover.
+                  if (typeof window === 'undefined' || !window.matchMedia('(hover: hover)').matches) return
                   const r = e.currentTarget.getBoundingClientRect()
                   const x = ((e.clientX - r.left) / r.width - 0.5) * 7
                   const y = ((e.clientY - r.top) / r.height - 0.5) * 5
@@ -882,6 +910,7 @@ export default function HomeSearchForm({
                   e.currentTarget.style.setProperty('--my', `${y}px`)
                 }}
                 onMouseLeave={(e) => {
+                  if (typeof window === 'undefined' || !window.matchMedia('(hover: hover)').matches) return
                   e.currentTarget.style.setProperty('--mx', '0px')
                   e.currentTarget.style.setProperty('--my', '0px')
                 }}
