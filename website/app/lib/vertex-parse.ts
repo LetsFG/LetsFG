@@ -69,6 +69,15 @@ export interface VertexCityResult {
   return_date?: string | null
   /** Ordered list of clarification topics the homepage convo should ask next. */
   follow_up_topics?: HomeConvoFollowUpTopic[] | null
+  /**
+   * Short, money-impacting questions Gemini wants surfaced *on the loading
+   * page* (after refine completes) while the search runs in the background.
+   * Same shape as follow_up_questions but a separate stream — these are
+   * shown one-at-a-time as a small agent card and their answers feed the
+   * inclusive-price (price_with_all) sort on the results page.
+   * Null = no loading-page question for this query.
+   */
+  loading_questions?: VertexFollowUpQuestion[] | null
 }
 
 // Keep old name as alias so callers importing VertexParseResult still compile
@@ -131,6 +140,6 @@ export async function vertexClarify(
   return requestVertexJson(query, today, {
     label: 'clarify',
     mode: 'clarify',
-    timeoutMs: 2500,
+    timeoutMs: 15000,
   })
 }

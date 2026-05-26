@@ -51,6 +51,7 @@
   "dependencies": {
     "@swc/helpers": "^0.5.21",
     "@types/geoip-lite": "^1.4.4",
+    "country-flag-icons": "^1.6.17",
     "geoip-lite": "^1.4.10",
     "lucide-react": "^1.8.0",
     "next": "^16.2.4",

@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState, useRef, useEffect, useLayoutEffect, useCallback, KeyboardEvent, startTransition } from 'react'
+import { FormEvent, ReactNode, useState, useRef, useEffect, useLayoutEffect, KeyboardEvent, startTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -11,27 +11,14 @@ import {
   readBrowserSearchCurrency,
   type CurrencyCode,
 } from '../lib/currency-preference'
-import {
-  clearClientSearchHandoff,
-  createClientSearchHandoffToken,
-  startClientSearchHandoff,
-} from '../lib/client-search-handoff'
-import { setResultsLocaleSearchParam } from '../lib/locale-routing'
-import { getTrackedSourcePath } from '../lib/probe-mode'
-import { buildClarificationSearchSessionPayload, trackSearchSession } from '../lib/search-session-analytics'
-import {
-  normalizeHomeConvoFollowUpTopics,
-  type HomeConvoFollowUpTopic,
-} from './lib/home-search-assist'
-import type { TripPurpose } from './lib/trip-purpose'
 
 const DESTINATION_KEYS = [
-  { key: 'barcelona', code: 'BCN', flag: '/flags/es.svg', img: '/destinations/barcelona.jpg' },
-  { key: 'tokyo',     code: 'NRT', flag: '/flags/jp.svg', img: '/destinations/tokyo.jpg' },
-  { key: 'newYork',   code: 'JFK', flag: '/flags/us.svg', img: '/destinations/newyork.jpg' },
-  { key: 'paris',     code: 'CDG', flag: '/flags/fr.svg', img: '/destinations/paris.jpg' },
-  { key: 'bali',      code: 'DPS', flag: '/flags/id.svg', img: '/destinations/bali.jpg' },
-  { key: 'dubai',     code: 'DXB', flag: '/flags/ae.svg', img: '/destinations/dubai.jpg' },
+  { key: 'barcelona', code: 'BCN', img: '/destinations/barcelona.jpg' },
+  { key: 'tokyo',     code: 'NRT', img: '/destinations/tokyo.jpg' },
+  { key: 'newYork',   code: 'JFK', img: '/destinations/newyork.jpg' },
+  { key: 'paris',     code: 'CDG', img: '/destinations/paris.jpg' },
+  { key: 'bali',      code: 'DPS', img: '/destinations/bali.jpg' },
+  { key: 'dubai',     code: 'DXB', img: '/destinations/dubai.jpg' },
 ] as const
 
 // "to" keyword in various languages
@@ -141,64 +128,6 @@ const ANCILLARY_KEYWORDS: Record<string, string[]> = {
   sq: ['me bagazh', 'me zgjedhje vendi', 'vetëm bagazh dore'],
 }
 
-
-type GeminiClarificationResponse = {
-  follow_up_questions?: GeminiClarificationQuestion[] | null
-  ready_to_search?: boolean | null
-  origin?: string | null
-  origin_name?: string | null
-  destination?: string | null
-  destination_name?: string | null
-  origin_city: string | null
-  destination_city: string | null
-  via_city: string | null
-  origin_lat?: number | null
-  origin_lon?: number | null
-  destination_lat?: number | null
-  destination_lon?: number | null
-  departure_date?: string | null
-  return_date?: string | null
-  passengers?: number | null
-  cabin_class?: 'economy' | 'premium_economy' | 'business' | 'first' | null
-  trip_purpose?: TripPurpose | null
-  trip_purposes?: TripPurpose[] | null
-  direct_only?: boolean | null
-  sort_by?: 'price' | 'duration' | null
-  depart_after?: string | null
-  depart_before?: string | null
-  bags_included?: boolean | null
-  dep_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye' | null
-  ret_time_pref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye' | null
-  passenger_context?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler' | null
-  is_round_trip?: boolean | null
-  anywhere_destination?: boolean
-  follow_up_topics?: HomeConvoFollowUpTopic[] | null
-}
-
-type GeminiClarificationChoice = {
-  key: string
-  label?: string | null
-}
-
-type GeminiClarificationQuestion = {
-  topic: HomeConvoFollowUpTopic
-  question?: string | null
-  free_hint?: string | null
-  multi_choice?: boolean | null
-  is_essential?: boolean | null
-  suggested_answers?: GeminiClarificationChoice[] | null
-}
-
-function parseClockTimeToMinutes(value: string | null | undefined): number | undefined {
-  if (!value) return undefined
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim())
-  if (!match) return undefined
-
-  const hours = parseInt(match[1], 10)
-  const minutes = parseInt(match[2], 10)
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return undefined
-  return hours * 60 + minutes
-}
 
 function PlaneIcon() {
   // Font Awesome 6 Free Solid — fa-plane-departure (CC BY 4.0)
@@ -384,6 +313,7 @@ interface HomeSearchFormProps {
   autoClarify?: boolean
   probeMode?: boolean
   onSearchStart?: (query: string) => void
+  belowFormSlot?: ReactNode
 }
 
 const AUTO_PREFILL_FALLBACK_SUFFIXES: Record<string, string> = {
@@ -484,16 +414,14 @@ export default function HomeSearchForm({
   initialCurrency = 'EUR',
   compact = false,
   autoFocus = true,
-  autoClarify = false,
   probeMode = false,
   onSearchStart,
+  belowFormSlot,
 }: HomeSearchFormProps = {}) {
   const router = useRouter()
   const locale = useLocale()
   const td = useTranslations('destinations')
   const th = useTranslations('hero')
-  const tc = useTranslations('Clarify')
-  const ths = useTranslations('HomeSearch')
   const normalizedInitialQuery = initialQuery.trim()
   const normalizedDetectedOrigin = normalizedInitialQuery ? '' : initialDetectedOrigin.trim()
   const [inputValue, setInputValue] = useState(normalizedInitialQuery || normalizedDetectedOrigin)
@@ -515,9 +443,8 @@ export default function HomeSearchForm({
   const rowRef = useRef<HTMLDivElement>(null)
   const suppressDropdownRef = useRef(false)
   const userEditedAutoPrefillRef = useRef(false)
-  const autoClarifyQueryRef = useRef('')
-  const clarificationAnalyticsKeyRef = useRef('')
-  const clarifyRequestGenerationRef = useRef(0)
+  const legalRef = useRef<HTMLSpanElement>(null)
+  const [tipRect, setTipRect] = useState<DOMRect | null>(null)
 
   const DESTINATIONS = DESTINATION_KEYS.map((d) => ({
     ...d,
@@ -597,17 +524,6 @@ export default function HomeSearchForm({
   }, [initialDetectedOrigin, initialQuery])
 
   useEffect(() => {
-    const trimmed = normalizedInitialQuery
-    if (!autoClarify || !trimmed) return
-    if (autoClarifyQueryRef.current === trimmed) return
-    autoClarifyQueryRef.current = trimmed
-    const frame = window.requestAnimationFrame(() => {
-      formRef.current?.requestSubmit()
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [autoClarify, normalizedInitialQuery])
-
-  useEffect(() => {
     const normalizedOrigin = initialDetectedOrigin.trim()
     if (!normalizedOrigin) return
 
@@ -681,310 +597,6 @@ export default function HomeSearchForm({
   }, [initialCurrency])
 
   // ── Date-clarification state ─────────────────────────────────────────────────
-  const [dateClarify, setDateClarify] = useState<{
-    a_date: string; b_date: string
-    a_label: string; b_label: string
-    originalFragment: string   // the "10/12" token to replace
-    pendingQuery: string       // full original query
-  } | null>(null)
-
-  // ── Conversational personalization state ─────────────────────────────────────
-  type QAnswer = { topic?: HomeConvoFollowUpTopic; q: string; a: string; aDisplay: string }
-  interface ConvoState {
-    pendingQuery: string
-    step: number
-    answers: QAnswer[]
-    collapsing: boolean
-    questions: ConvoQuestion[]
-    clarification: GeminiClarificationResponse
-  }
-  const [convo, setConvo] = useState<ConvoState | null>(null)
-  const convoBottomRef = useRef<HTMLDivElement>(null)
-  const convoFreeRef = useRef<HTMLInputElement>(null)
-  const [convoFreeText, setConvoFreeText] = useState('')
-  const [convoMultiSel, setConvoMultiSel] = useState<string[]>([])
-  // Pre-fired search: started in background as soon as convo begins, so the
-  // results page opens with the search already running.
-  const prefiredSearchRef = useRef<{ searchId: string; startedAt: number; fswSession?: string; handoffToken?: string } | null>(null)
-  const prefiredSearchGenerationRef = useRef(0)
-
-  const clearPrefiredSearch = useCallback((options: { preserveHandoff?: boolean } = {}) => {
-    const current = prefiredSearchRef.current
-    prefiredSearchGenerationRef.current += 1
-    prefiredSearchRef.current = null
-    if (!options.preserveHandoff && current?.handoffToken) {
-      clearClientSearchHandoff(current.handoffToken)
-    }
-  }, [])
-
-  const launchPrefiredSearch = useCallback((searchQuery: string) => {
-    const generation = prefiredSearchGenerationRef.current + 1
-    const startedAt = Date.now()
-    const handoffToken = createClientSearchHandoffToken()
-    prefiredSearchGenerationRef.current = generation
-    prefiredSearchRef.current = { searchId: '', startedAt, handoffToken }
-
-    void startClientSearchHandoff(handoffToken, {
-      query: searchQuery,
-      ...(prefCurrency ? { currency: prefCurrency } : {}),
-      probeMode,
-    }).then((d) => {
-        if (prefiredSearchGenerationRef.current !== generation) return
-        if (d?.searchId) {
-          prefiredSearchRef.current = { searchId: d.searchId, startedAt, fswSession: d.fswSession, handoffToken }
-        } else {
-          prefiredSearchRef.current = null
-        }
-      })
-      .catch(() => {
-        if (prefiredSearchGenerationRef.current !== generation) return
-        prefiredSearchRef.current = null
-      })
-  }, [prefCurrency, probeMode])
-
-  type ConvoQuestion = { topic: HomeConvoFollowUpTopic; q: string; chips: { label: string; key: string }[]; freeHint?: string; multiChoice?: boolean; isEssential?: boolean }
-
-  const buildAiConvoQuestions = useCallback((ai: GeminiClarificationResponse): ConvoQuestion[] => {
-    const questions: ConvoQuestion[] = []
-    const seenTopics = new Set<HomeConvoFollowUpTopic>()
-    const aiQuestions = Array.isArray(ai.follow_up_questions) ? ai.follow_up_questions : []
-
-    for (const question of aiQuestions) {
-      const topic = question?.topic
-      if (!topic || seenTopics.has(topic)) continue
-
-      const chips = (Array.isArray(question.suggested_answers) ? question.suggested_answers : [])
-        .filter((choice): choice is GeminiClarificationChoice => Boolean(choice && typeof choice.key === 'string' && choice.key.trim()))
-        .map((choice) => {
-          const key = choice.key.trim()
-          const label = typeof choice.label === 'string' && choice.label.trim()
-            ? choice.label.trim()
-            : key
-          return { key, label }
-        })
-
-      questions.push({
-        topic,
-        q: typeof question.question === 'string' && question.question.trim() ? question.question.trim() : topic,
-        chips,
-        freeHint: typeof question.free_hint === 'string' && question.free_hint.trim() ? question.free_hint.trim() : undefined,
-        multiChoice: question.multi_choice === true && topic !== 'trip_purpose',
-        isEssential: question.is_essential === true,
-      })
-      seenTopics.add(topic)
-    }
-
-    return questions
-  }, [])
-
-  const CONVO_QUESTIONS = convo?.questions ?? []
-
-  const openClarificationConvo = useCallback((
-    pendingQuery: string,
-    clarification: GeminiClarificationResponse,
-  ) => {
-    const questions = buildAiConvoQuestions(clarification)
-    const followUpTopics = normalizeHomeConvoFollowUpTopics(clarification.follow_up_topics)
-
-    if (typeof window !== 'undefined') {
-      const trackingKey = `${window.location.pathname}|${pendingQuery.toLowerCase()}`
-      if (clarificationAnalyticsKeyRef.current !== trackingKey) {
-        clarificationAnalyticsKeyRef.current = trackingKey
-        trackSearchSession(buildClarificationSearchSessionPayload({
-          query: pendingQuery,
-          origin: clarification.origin ?? undefined,
-          origin_name: clarification.origin_name ?? clarification.origin_city ?? undefined,
-          destination: clarification.destination ?? undefined,
-          destination_name: clarification.destination_name ?? clarification.destination_city ?? undefined,
-          route: clarification.origin && clarification.destination ? `${clarification.origin}-${clarification.destination}` : undefined,
-          date_from: clarification.departure_date ?? undefined,
-          return_date: clarification.return_date ?? undefined,
-          adults: clarification.passengers || 1,
-          currency: prefCurrency,
-          source: window.location.pathname.includes('/results') ? 'website-results-form' : 'website-home-form',
-          source_path: getTrackedSourcePath(window.location.pathname || '/', probeMode),
-          is_test_search: probeMode || undefined,
-          follow_up_topics: followUpTopics,
-          missing_origin: followUpTopics.includes('origin'),
-          missing_destination: followUpTopics.includes('destination'),
-          needs_date_clarification: followUpTopics.includes('date'),
-          same_route: Boolean(clarification.origin && clarification.destination && clarification.origin === clarification.destination),
-        }), { keepalive: true })
-      }
-    }
-
-    const nextConvo = {
-      pendingQuery,
-      step: 0,
-      answers: [] as QAnswer[],
-      collapsing: false,
-      questions,
-      clarification,
-    }
-
-    if (convo && convo.pendingQuery !== pendingQuery) {
-      setConvo(null)
-      setConvoFreeText('')
-      setConvoMultiSel([])
-      setTimeout(() => setConvo(nextConvo), 0)
-      return
-    }
-
-    setConvo(nextConvo)
-    setConvoFreeText('')
-    setConvoMultiSel([])
-  }, [buildAiConvoQuestions, convo, prefCurrency, probeMode])
-
-  // Translate convo chip answers into phrases the downstream search parser already understands.
-  const CONVO_ANSWER_PHRASES: Record<string, string> = {
-    // Party / who
-    'solo': 'travelling solo',
-    'just me': 'travelling solo',
-    'two of us': 'as a couple',
-    'partner': 'as a couple',
-    'family': 'travelling with family',
-    'group of friends': 'with friends',
-    'squad': 'with friends',
-    'small team': 'with colleagues',
-    'with a colleague': 'with a colleague',
-    'with family': 'travelling with family',
-    // Trip purpose
-    'business': 'business trip',
-    'special occasion': 'special occasion',
-    'adventure': 'adventure trip',
-    'backpacking': 'backpacking trip',
-    'luxury': 'luxury holiday',
-    'remote work': 'remote work trip',
-    'ski trip': 'ski trip',
-    'honeymoon': 'honeymoon',
-    // Trip type / duration
-    'one way': 'one way',
-    'return weekend': 'round trip for 3 days',
-    'return 1 week': 'round trip for 7 days',
-    'return 2 weeks': 'round trip for 14 days',
-    'return 3+ weeks': 'round trip for 21 days',
-    // Priority / constraints
-    'direct flights': 'direct flights only',
-    'direct flights only': 'direct flights only',
-    'no stops': 'direct flights only',
-    'lowest price': 'cheapest option',
-    'cheapest possible': 'cheapest possible',
-    'cheapest option': 'cheapest option',
-    'cheapest fare': 'cheapest option',
-    'some comfort ok': 'comfortable flight',
-    'good times': 'good departure times',
-    'flexible dates': 'flexible dates',
-    'flexible on price': 'flexible on price',
-    'business class': 'business class',
-    'early departure': 'early morning departure',
-    'latest return': 'evening return',
-    'seat together': 'need seats together',
-    'seats together': 'need seats together',
-    'quick flight': 'shortest possible flight',
-    'comfortable': 'comfortable flight',
-    'morning flights': 'morning departure',
-  }
-
-  function expandConvoAnswer(answer: string): string {
-    // Multi-selection answers are stored as comma-joined keys — expand each part
-    if (answer.includes(',')) {
-      return answer.split(',').map(part => {
-        const k = part.toLowerCase().trim()
-        return CONVO_ANSWER_PHRASES[k] ?? k
-      }).join(', ')
-    }
-    const key = answer.toLowerCase().trim()
-    return CONVO_ANSWER_PHRASES[key] ?? answer
-  }
-
-  const currentQ = convo ? CONVO_QUESTIONS[convo.step] : null
-
-  // Commit one answer and advance — or collapse and navigate if done.
-  // `answer` is the English key (for phrase lookup); `display` is the localised label shown to the user.
-  // Build the final search query, handling the case where the first answer was
-  // the missing origin (prepend "from X to" instead of appending).
-  function buildFinalQuery(pending: string, answers: QAnswer[]): string {
-    let q = pending
-    let originAnswer: string | null = null
-    let destinationAnswer: string | null = null
-    const contextParts: string[] = []
-
-    for (const answer of answers) {
-      if (answer.topic === 'origin' && !originAnswer) {
-        originAnswer = answer.a.trim()
-        continue
-      }
-      if (answer.topic === 'destination' && !destinationAnswer) {
-        destinationAnswer = answer.a.trim()
-        continue
-      }
-      contextParts.push(expandConvoAnswer(answer.a))
-    }
-
-    if (originAnswer) {
-      q = q ? `from ${originAnswer} to ${q}` : `from ${originAnswer}`
-    }
-    if (destinationAnswer) {
-      q = q ? `${q} to ${destinationAnswer}` : `to ${destinationAnswer}`
-    }
-
-    return contextParts.length > 0 ? `${q}, ${contextParts.join(', ')}` : q
-  }
-
-  const commitConvoAnswer = useCallback((answer: string, display?: string) => {
-    if (!convo) return
-    setConvoMultiSel([])
-    const newAnswers = [...convo.answers, { topic: currentQ!.topic, q: currentQ!.q, a: answer, aDisplay: display ?? answer }]
-    const nextStep = convo.step + 1
-    if (nextStep >= CONVO_QUESTIONS.length) {
-      // All done — build context suffix and navigate
-      setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: true })
-      setTimeout(() => {
-        // If the user edited the search box during the wizard use the current text
-        // as the base — do NOT blindly trust convo.pendingQuery which was captured
-        // at wizard open time.
-        const currentInput = inputRef.current?.value.trim() ?? ''
-        const baseQuery = (currentInput && currentInput !== convo.pendingQuery)
-          ? currentInput
-          : convo.pendingQuery
-        const finalQuery = buildFinalQuery(baseQuery, newAnswers)
-        setConvo(null)
-        setConvoFreeText('')
-        void navigateSearch(finalQuery, convo.clarification)
-      }, 420)
-    } else {
-      setConvo({ ...convo, answers: newAnswers, step: nextStep, collapsing: false })
-      setConvoFreeText('')
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [convo, currentQ])
-
-  // Skip remaining questions and navigate
-  const skipConvo = useCallback(() => {
-    if (!convo) return
-    setConvo({ ...convo, collapsing: true })
-    setTimeout(() => {
-      const currentInput = inputRef.current?.value.trim() ?? ''
-      const baseQuery = (currentInput && currentInput !== convo.pendingQuery)
-        ? currentInput
-        : convo.pendingQuery
-      const finalQuery = buildFinalQuery(baseQuery, convo.answers)
-      setConvo(null)
-      setConvoFreeText('')
-      void navigateSearch(finalQuery, convo.clarification)
-    }, 420)
-  }, [convo])
-
-  // Scroll new question into view
-  useEffect(() => {
-    if (convo && !convo.collapsing && convoBottomRef.current) {
-      setTimeout(() => {
-        convoBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      }, 50)
-    }
-  }, [convo?.step])
-
-  const _MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const heroPlaceholder = th('placeholder')
   const autoPrefillPristine = !!autoPrefillOrigin && !userEditedAutoPrefillRef.current && query.trim() === autoPrefillOrigin
 
@@ -996,135 +608,29 @@ export default function HomeSearchForm({
   }
 
   useEffect(() => {
-    router.prefetch('/results/pending')
-  }, [router])
-
-  // Navigate to results with the given query string.
-  const navigateSearch = useCallback((q: string, clarification?: GeminiClarificationResponse | null) => {
-    if (DEMO_LOADING) {
-      setIsLoading(true)
-      router.push(`/results/demo-loading${probeMode ? '?probe=1' : ''}`)
-      return
-    }
-    const sp = new URLSearchParams(window.location.search)
-    const params = new URLSearchParams()
-    params.set('q', q)
-    if (prefCurrency) params.set('cur', prefCurrency)
-    setResultsLocaleSearchParam(params, locale)
-    if (probeMode) params.set('probe', '1')
-    for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
-      const val = sp.get(key)
-      if (val) params.set(key, val)
-    }
-    // When the convo wizard has already resolved origin/destination/date via Gemini,
-    // kick off the search immediately (in parallel with navigation) so the pending
-    // page picks up an already-in-flight search instead of waiting for a full
-    // Gemini re-parse. This cuts the loading-page wait from ~5s to ~1s.
-    if (clarification?.origin && clarification?.destination && clarification?.departure_date) {
-      const token = createClientSearchHandoffToken()
-      void startClientSearchHandoff(token, {
-        query: q,
-        ...(prefCurrency ? { currency: prefCurrency } : {}),
-        probeMode,
-        origin: clarification.origin,
-        destination: clarification.destination,
-        date_from: clarification.departure_date,
-        ...(clarification.return_date ? { return_date: clarification.return_date } : {}),
-        ...(clarification.passengers ? { adults: clarification.passengers } : {}),
-        ...(clarification.origin_name ?? clarification.origin_city
-          ? { origin_name: (clarification.origin_name ?? clarification.origin_city)! }
-          : {}),
-        ...(clarification.destination_name ?? clarification.destination_city
-          ? { destination_name: (clarification.destination_name ?? clarification.destination_city)! }
-          : {}),
-        // Forward convo-wizard-collected context so the fast path satisfies isSearchLaunchReady.
-        ...(clarification.cabin_class
-          ? { cabin: clarification.cabin_class === 'business' ? 'C' : clarification.cabin_class === 'first' ? 'F' : clarification.cabin_class === 'premium_economy' ? 'W' : 'M' }
-          : {}),
-        ...(clarification.trip_purpose
-          ? { trip_purpose: clarification.trip_purpose }
-          : clarification.trip_purposes?.[0]
-            ? { trip_purpose: clarification.trip_purposes[0] }
-            : {}),
-        ...(clarification.sort_by ? { sort_by: clarification.sort_by } : {}),
-        ...(clarification.passenger_context ? { passenger_context: clarification.passenger_context } : {}),
-        ...(clarification.direct_only ? { max_stops: 0 } : {}),
-      })
-      params.set('launch', token)
-    }
-    setIsLoading(true)
-    router.push(`/results/pending?${params.toString()}`)
-  }, [locale, prefCurrency, probeMode, router])
-
-  // When the user picks a date from the clarification strip, replace the ambiguous
-  // fragment with an unambiguous "12 October" / "October 12" form and navigate.
-  const pickDate = (isoDate: string) => {
-    if (!dateClarify) return
-    const d = new Date(isoDate + 'T00:00:00')
-    const replacement = `${d.getDate()} ${_MONTHS[d.getMonth()]}`
-    const newQuery = dateClarify.pendingQuery.replace(dateClarify.originalFragment, replacement)
-    setDateClarify(null)
-    void navigateSearch(newQuery)
-  }
+    router.prefetch(`/${locale}/confirm`)
+  }, [router, locale])
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault()
-    // Always clear the airport dropdown immediately — it must not overlay the convo panel
     setDropdownItems([])
     setDropdownActiveIdx(-1)
     setDropdownPos(null)
     const trimmed = inputValue.trim()
     if (!trimmed) return
     onSearchStart?.(trimmed)
+    setIsLoading(true)
 
-    setDateClarify(null)
-    const clarifyGeneration = ++clarifyRequestGenerationRef.current
-
-    if (convo && convo.pendingQuery !== trimmed) {
-      // Different query while convo is open — close it instantly then reopen so the
-      // user can see the panel reset rather than appear frozen.
-      setConvo(null)
-      setConvoFreeText('')
-      setConvoMultiSel([])
+    const params = new URLSearchParams()
+    params.set('q', trimmed)
+    if (prefCurrency) params.set('cur', prefCurrency)
+    if (probeMode) params.set('probe', '1')
+    const sp = new URLSearchParams(window.location.search)
+    for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+      const val = sp.get(key)
+      if (val) params.set(key, val)
     }
-
-    const ctrl = new AbortController()
-    const timer = window.setTimeout(() => ctrl.abort(), 8000)
-    const aiFollowUpPlanPromise = fetch('/api/parse-query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: trimmed }),
-      signal: ctrl.signal,
-    }).catch(() => null)
-    const aiFollowUpResponse = await aiFollowUpPlanPromise
-    window.clearTimeout(timer)
-    if (clarifyRequestGenerationRef.current !== clarifyGeneration) return
-
-    const ai = aiFollowUpResponse && aiFollowUpResponse.ok
-      ? await aiFollowUpResponse.json().catch(() => null) as GeminiClarificationResponse | null
-      : null
-
-    if (!ai) {
-      setConvo(null)
-      setConvoFreeText('')
-      setConvoMultiSel([])
-      void navigateSearch(trimmed)
-      return
-    }
-
-    const aiQuestions = buildAiConvoQuestions(ai)
-
-    if (aiQuestions.length === 0) {
-      setConvo(null)
-      setConvoFreeText('')
-      setConvoMultiSel([])
-      void navigateSearch(trimmed)
-      return
-    }
-
-    openClarificationConvo(trimmed, ai)
-    return
-
+    router.push(`/${locale}/confirm?${params.toString()}`)
   }
 
   // Select an airport from the dropdown and insert it into the query
@@ -1214,28 +720,6 @@ export default function HomeSearchForm({
     }
   }, [dropdownItems.length])
 
-  // Add/remove body class when convo is open — lets CSS lower stats-sheet z-index
-  // so the absolutely-positioned panel can render above it without a portal
-  useEffect(() => {
-    const open = !!(convo && !dateClarify)
-    document.body.classList.toggle('lp-convo-open', open)
-    return () => { document.body.classList.remove('lp-convo-open') }
-  }, [convo, dateClarify])
-
-  // Dismiss convo panel when user clicks outside the search frame
-  useEffect(() => {
-    if (!convo) return
-    const handler = (e: MouseEvent) => {
-      if (frameRef.current && !frameRef.current.contains(e.target as Node)) {
-        setConvo(null)
-        setConvoFreeText('')
-        setConvoMultiSel([])
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [convo])
-
   // Handle keyboard navigation for dropdown + Tab to accept ghost suggestion
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (dropdownItems.length > 0) {
@@ -1272,21 +756,46 @@ export default function HomeSearchForm({
     <div className={`lp-sf-wrap${compact ? ' lp-sf-wrap--compact' : ''}`}>
       {!compact && (
         <div className="lp-sf-disclosure" aria-hidden="false">
-          <span className="lp-sf-legal" tabIndex={0} role="note">
+          <span
+            ref={legalRef}
+            className="lp-sf-legal"
+            tabIndex={0}
+            role="note"
+            onMouseEnter={() => legalRef.current && setTipRect(legalRef.current.getBoundingClientRect())}
+            onMouseLeave={() => setTipRect(null)}
+            onFocus={() => legalRef.current && setTipRect(legalRef.current.getBoundingClientRect())}
+            onBlur={() => setTipRect(null)}
+          >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.4" />
               <path d="M7 6v4M7 4.5v.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
-            <span className="lp-sf-legal-tip" role="tooltip">
+          </span>
+        </div>
+      )}
+      {mounted && tipRect && createPortal(
+        (() => {
+          const TIP_W = 272
+          const iconCenter = tipRect.left + tipRect.width / 2
+          const naturalLeft = iconCenter - TIP_W / 2
+          const clampedLeft = Math.max(8, Math.min(naturalLeft, (typeof window !== 'undefined' ? window.innerWidth : 800) - TIP_W - 8))
+          const arrowLeftPct = `${((iconCenter - clampedLeft) / TIP_W * 100).toFixed(1)}%`
+          return (
+            <span
+              className="lp-sf-legal-tip"
+              role="tooltip"
+              style={{ top: tipRect.bottom + 10, left: clampedLeft, ['--tip-arrow-left' as string]: arrowLeftPct }}
+            >
               By searching, you authorise AI agents to act on your behalf — they connect to airline
               websites and search for flights as you instructed. You are the one directing these
               agents. LetsFG provides the automation; you are responsible for the searches you initiate.
             </span>
-          </span>
-        </div>
+          )
+        })(),
+        document.body
       )}
 
-      <form ref={formRef} onSubmit={handleSearch} className={`lp-sf-form${convo && !dateClarify ? ' lp-sf-form--convo-open' : ''}`}>
+      <form ref={formRef} id="home-search-form" onSubmit={handleSearch} className="lp-sf-form">
         <div className="lp-sf-frame-wrap" ref={frameRef}>
         <div className="lp-sf-frame">
           <div className="lp-sf-input-wrap">
@@ -1328,94 +837,6 @@ export default function HomeSearchForm({
           </button>
         </div>
 
-        {/* ── Conversational personalization panel (absolute, overlays content below) */}
-        {convo && !dateClarify && (
-          <div className={`lp-convo${convo.collapsing ? ' lp-convo--collapsing' : ''}`}>
-            {convo.answers.map((qa, i) => (
-              <div key={i} className="lp-convo-row lp-convo-row--past">
-                <span className="lp-convo-q lp-convo-q--past">{qa.q}</span>
-                <span className="lp-convo-a">{qa.aDisplay}</span>
-              </div>
-            ))}
-            {currentQ && (
-              <div className="lp-convo-row lp-convo-row--active" ref={convoBottomRef}>
-                <span className="lp-convo-q">{currentQ.q}</span>
-                <div className="lp-convo-chips">
-                  {currentQ.chips.map(chip => (
-                    <button
-                      key={chip.key}
-                      type="button"
-                      className={`lp-convo-chip${currentQ.multiChoice && convoMultiSel.includes(chip.key) ? ' lp-convo-chip--sel' : ''}`}
-                      onClick={() => {
-                        if (currentQ.multiChoice) {
-                          setConvoMultiSel(prev =>
-                            prev.includes(chip.key) ? prev.filter(k => k !== chip.key) : [...prev, chip.key]
-                          )
-                        } else {
-                          commitConvoAnswer(chip.key, chip.label)
-                        }
-                      }}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-                {currentQ.multiChoice && convoMultiSel.length > 0 && (
-                  <button
-                    type="button"
-                    className="lp-convo-confirm"
-                    onClick={() => {
-                      const keys = convoMultiSel.join(', ')
-                      const labels = convoMultiSel
-                        .map(k => currentQ.chips.find(c => c.key === k)?.label ?? k)
-                        .join(' + ')
-                      commitConvoAnswer(keys, labels)
-                    }}
-                  >
-                    Continue →
-                  </button>
-                )}
-                {currentQ.freeHint && (
-                  <div className="lp-convo-free">
-                    <input
-                      ref={convoFreeRef}
-                      type="text"
-                      className="lp-convo-free-input"
-                      placeholder={currentQ.freeHint}
-                      value={convoFreeText}
-                      onChange={e => setConvoFreeText(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && convoFreeText.trim()) {
-                          e.preventDefault()
-                          commitConvoAnswer(convoFreeText.trim())
-                        }
-                      }}
-                    />
-                    {convoFreeText.trim() && (
-                      <button
-                        type="button"
-                        className="lp-convo-free-go"
-                        onClick={() => commitConvoAnswer(convoFreeText.trim())}
-                      >
-                        ↵
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="lp-convo-footer">
-              <div className="lp-convo-dots">
-                {CONVO_QUESTIONS.map((_, i) => (
-                  <span
-                    key={i}
-                    className={`lp-convo-dot${i < convo.step ? ' lp-convo-dot--done' : i === convo.step ? ' lp-convo-dot--active' : ''}`}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
         </div>
 
         {mounted && dropdownItems.length > 0 && dropdownPos && createPortal(
@@ -1447,58 +868,20 @@ export default function HomeSearchForm({
         )}
       </form>
 
-      {/* ── Ambiguous-date clarification strip ─────────────────────────────── */}
-      {dateClarify && (
-        <div style={{
-          display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px',
-          padding: '10px 14px', marginTop: '8px',
-          background: 'rgba(255,255,255,0.07)', borderRadius: '12px',
-          fontSize: '13px', color: 'rgba(255,255,255,0.85)',
-          backdropFilter: 'blur(8px)',
-        }}>
-          <span style={{ opacity: 0.7 }}>Did you mean</span>
-          <button
-            type="button"
-            onClick={() => pickDate(dateClarify.a_date)}
-            style={{
-              padding: '4px 12px', borderRadius: '20px', border: 'none', cursor: 'pointer',
-              background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '13px',
-              fontWeight: 600, transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.28)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.15)' }}
-          >
-            {dateClarify.a_label}
-          </button>
-          <span style={{ opacity: 0.5 }}>or</span>
-          <button
-            type="button"
-            onClick={() => pickDate(dateClarify.b_date)}
-            style={{
-              padding: '4px 12px', borderRadius: '20px', border: 'none', cursor: 'pointer',
-              background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '13px',
-              fontWeight: 600, transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.28)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.15)' }}
-          >
-            {dateClarify.b_label}
-          </button>
-          <span style={{ opacity: 0.5 }}>?</span>
-          <button
-            type="button"
-            onClick={() => { setDateClarify(null); void navigateSearch(dateClarify.pendingQuery) }}
-            aria-label="Skip — search anyway"
-            style={{
-              marginLeft: 'auto', padding: '2px 8px', borderRadius: '20px', border: 'none',
-              cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.4)',
-              fontSize: '18px', lineHeight: 1,
-            }}
-          >×</button>
-        </div>
+      {!compact && (
+        <button
+          type="submit"
+          form="home-search-form"
+          className={`lp-sf-sticky-btn${isLoading ? ' lp-sf-sticky-btn--busy' : ''}`}
+          disabled={(DEMO_LOADING && isLoading) || !inputValue.trim()}
+          aria-label={isLoading ? 'Searching flights' : 'Find my flights'}
+        >
+          <span className="lp-sf-sticky-btn-text">{isLoading ? 'Searching…' : 'Find my flights'}</span>
+          <PlaneIcon />
+        </button>
       )}
 
-
+      {!compact && belowFormSlot}
 
       {!compact && (
         <div className="lp-dest-row" aria-label="Popular destinations">
@@ -1509,17 +892,44 @@ export default function HomeSearchForm({
                 type="button"
                 className="lp-dest-card"
                 onClick={() => {
-                  setInputValue(dest.query)
-                  setQuery(dest.query)
-                  setTimeout(() => {
-                    const input = inputRef.current
-                    if (input) {
-                      input.focus()
-                      input.setSelectionRange(dest.query.length, dest.query.length)
-                    }
-                  }, 0)
+                  // Bulletproof fill: poke the DOM value directly + dispatch
+                  // a synthetic input event so React's onChange handler
+                  // updates state. Going through setInputValue alone has
+                  // occasionally lost on mobile when async effects in this
+                  // form race the click. The native setter trick is the
+                  // canonical React-controlled-input override pattern.
+                  const input = inputRef.current
+                  if (input) {
+                    const nativeSetter = Object.getOwnPropertyDescriptor(
+                      window.HTMLInputElement.prototype,
+                      'value',
+                    )?.set
+                    nativeSetter?.call(input, dest.query)
+                    input.dispatchEvent(new Event('input', { bubbles: true }))
+                    // Also set React state directly so any reads of
+                    // inputValue (not just the input element) see the
+                    // new value in the same tick.
+                    setInputValue(dest.query)
+                    setQuery(dest.query)
+                    // Mark the user as having intentionally provided this
+                    // query so the passive IP-lookup useEffect doesn't
+                    // later overwrite it with a geo-prefill.
+                    userEditedAutoPrefillRef.current = true
+                    // Focus synchronously (only way iOS Safari opens the
+                    // keyboard) + scroll into view so the user sees what
+                    // happened (input sits above the chip row).
+                    input.focus()
+                    try {
+                      input.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                    } catch { /* older browsers: ignore */ }
+                  }
                 }}
                 onMouseMove={(e) => {
+                  // Touch devices fire mouse events too (emulation). The
+                  // parallax property-set on every move ate scroll gestures
+                  // AND interfered with tap-to-click on mobile. Skip the
+                  // whole thing unless the device actually supports hover.
+                  if (typeof window === 'undefined' || !window.matchMedia('(hover: hover)').matches) return
                   const r = e.currentTarget.getBoundingClientRect()
                   const x = ((e.clientX - r.left) / r.width - 0.5) * 7
                   const y = ((e.clientY - r.top) / r.height - 0.5) * 5
@@ -1527,13 +937,13 @@ export default function HomeSearchForm({
                   e.currentTarget.style.setProperty('--my', `${y}px`)
                 }}
                 onMouseLeave={(e) => {
+                  if (typeof window === 'undefined' || !window.matchMedia('(hover: hover)').matches) return
                   e.currentTarget.style.setProperty('--mx', '0px')
                   e.currentTarget.style.setProperty('--my', '0px')
                 }}
               >
                 <img src={dest.img} alt={dest.city} className="lp-dest-img" loading="lazy" draggable={false} />
                 <div className="lp-dest-overlay" />
-                <img src={dest.flag} alt="" className="lp-dest-flag" draggable={false} />
                 <span className="lp-dest-city">{dest.city}</span>
                 <span className="lp-dest-code">{dest.code}</span>
               </button>

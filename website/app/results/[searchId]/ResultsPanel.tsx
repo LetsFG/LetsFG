@@ -1532,10 +1532,7 @@ export default function ResultsPanel({
     if (globalRankTopThree.length === 0) return
     const sentIds = globalRankTopThree.map((rankedOffer) => getOfferInstanceKey(rankedOffer.offer)).join(',')
     if (geminiStateRef.current.finalFired) {
-      // Race condition guard: one extra re-fire if top-3 changed slightly after final
-      if (geminiStateRef.current.finalRefired) return
       if (geminiStateRef.current.finalSentIds === sentIds) return
-      geminiStateRef.current.finalRefired = true
       geminiStateRef.current.finalSentIds = sentIds
       callGemini('final')
       return
@@ -1551,9 +1548,9 @@ export default function ResultsPanel({
   const lastCurrencyForGeminiRef = useRef<string>(currency)
   useEffect(() => {
     if (lastCurrencyForGeminiRef.current === currency) return
-    lastCurrencyForGeminiRef.current = currency
     if (geminiStateRef.current.phase === 'none') return  // hasn't run yet — Gen 1 will pick up the new currency naturally
     if (globalRankTopThree.length === 0) return
+    lastCurrencyForGeminiRef.current = currency
     callGemini(geminiStateRef.current.phase === 'final' ? 'final' : 'mid')
   }, [currency, globalRankTopThree, callGemini])
 

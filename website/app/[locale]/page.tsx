@@ -10,43 +10,9 @@ import { LETSFG_CURRENCY_COOKIE, resolveSearchCurrency } from '../../lib/currenc
 import { getGitHubStars, formatStars } from '../../lib/github-stars'
 import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
-import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../lib/letsfg-api'
 import { resolveHomeOriginPrefill } from '../../lib/home-origin-prefill'
 import { setResultsLocaleSearchParam } from '../../lib/locale-routing'
-import HomeMonitorNav from '../home-monitor-nav'
-
-const REPO_URL = 'https://github.com/LetsFG/LetsFG'
-
-const LOCALE_BANNERS: Record<string, string> = {
-  de: '/banners/de.png',
-  es: '/banners/es.png',
-  fr: '/banners/fr.png',
-  it: '/banners/it.png',
-  nl: '/banners/nl.png',
-  pl: '/banners/pl.png',
-  pt: '/banners/pt.png',
-  sq: '/banners/sq.png',
-  hr: '/banners/hr.png',
-  sv: '/banners/sv.png',
-}
-
-const LOCALE_BANNER_SCALE: Record<string, number> = {
-  de: 1.07,
-  es: 1.07,
-  fr: 1.15,
-  it: 1.15,
-  pt: 1.15,
-  nl: 1.15,
-  pl: 1.18,
-  sv: 1.07,
-  sq: 1.22,
-  hr: 1.35,
-}
-
-const API_BASE = getLetsfgAnalyticsApiBase()
-const HOMEPAGE_STATS_CACHE_BUSTER = (process.env.HOMEPAGE_STATS_CACHE_BUSTER || '').trim()
-
-export const dynamic = 'force-dynamic'
+import { getLetsfgAnalyticsApiBase, withLetsfgWebsiteApiHeaders } from '../../lib/letsfg-api'
 
 interface PublicStats {
   totalSearches: number | null
@@ -56,24 +22,13 @@ interface PublicStats {
 
 async function getPublicStats(): Promise<PublicStats> {
   try {
-    const statsUrl = new URL('/api/v1/analytics/stats/public', API_BASE)
-    if (HOMEPAGE_STATS_CACHE_BUSTER) {
-      statsUrl.searchParams.set('v', HOMEPAGE_STATS_CACHE_BUSTER)
-    }
-
-    const res = await fetch(statsUrl.toString(), {
+    const res = await fetch(`${getLetsfgAnalyticsApiBase()}/api/v1/analytics/stats/public`, {
       headers: withLetsfgWebsiteApiHeaders(),
-      cache: 'no-store',
-      next: { revalidate: 0 },
-      signal: AbortSignal.timeout(4000),
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(3000),
     })
     if (res.ok) {
-      const data = (await res.json()) as {
-        total_searches?: number
-        avg_savings_usd?: number
-        connectors_available?: number
-        websites_checked?: number
-      }
+      const data = (await res.json()) as { total_searches?: number; avg_savings_usd?: number; connectors_available?: number; websites_checked?: number }
       if (typeof data.total_searches === 'number') {
         return {
           totalSearches: data.total_searches,
@@ -83,16 +38,18 @@ async function getPublicStats(): Promise<PublicStats> {
       }
     }
   } catch (_) {}
-
-  // API unavailable — show dashes rather than misleading zeros
   return { totalSearches: null, avgSavings: null, connectorsAvailable: null }
 }
 
-function formatNumber(n: number): string {
+function formatStatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`
-  return n.toLocaleString('en-US')
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`
+  return String(n)
 }
+
+const REPO_URL = 'https://github.com/LetsFG/LetsFG'
+
+export const dynamic = 'force-dynamic'
 
 function GitHubIcon() {
   return (
@@ -105,9 +62,9 @@ function GitHubIcon() {
   )
 }
 
-export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; probe?: string; cur?: string; utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string }> }) {
+export default async function Home({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ q?: string; qfill?: string; probe?: string; cur?: string; utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string }> }) {
   const { locale } = await params
-  const { q, probe, cur, utm_source, utm_medium, utm_campaign, utm_content, utm_term } = await searchParams
+  const { q, qfill, probe, cur, utm_source, utm_medium, utm_campaign, utm_content, utm_term } = await searchParams
   const isProbe = isProbeModeValue(probe)
   const requestHeaders = await headers()
   const cookieStore = await cookies()
@@ -133,16 +90,11 @@ export default async function Home({ params, searchParams }: { params: Promise<{
       redirect(getTrackedSourcePath(`/results?${params.toString()}`, isProbe))
   }
 
-  const [stats, t, githubStars] = await Promise.all([
-    getPublicStats(),
-    getTranslations({ locale, namespace: 'stats' }),
+  const [githubStars, tn, stats] = await Promise.all([
     getGitHubStars(),
+    getTranslations({ locale, namespace: 'nav' }),
+    getPublicStats(),
   ])
-  const tn = await getTranslations({ locale, namespace: 'nav' })
-  const tf = await getTranslations({ locale, namespace: 'footer' })
-  const th = await getTranslations({ locale, namespace: 'hero' })
-  const tfeat = await getTranslations({ locale, namespace: 'features' })
-  const bannerSrc = LOCALE_BANNERS[locale] ?? '/banner.png'
 
   return (
     <main className="lp-root">
@@ -168,120 +120,84 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         }}
       />
 
-      <section className="lp-hero" id="search">
-        <div className="lp-hero-sky" aria-hidden="true">
+      <header className="lp-topbar">
+        <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label="LetsFG home">
           <Image
-            src="/chatgpt-sky-bg.jpg"
-            alt=""
-            fill
-            priority
-            unoptimized
-            sizes="(max-width: 767px) 1px, 1440px"
-            className="lp-hero-sky-img"
-            style={{ objectFit: 'cover', objectPosition: 'center 46%' }}
-          />
-        </div>
-        <div className="lp-hero-fade" aria-hidden="true" />
-
-        <div className="lp-topbar">
-          <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label="LetsFG home">
-            <Image
-              src="/lfg_ban.png"
-              alt="LetsFG"
-              width={4990}
-              height={1560}
-              className="lp-topbar-brand"
-              priority
-              sizes="(max-width: 768px) 180px, 280px"
-            />
-          </Link>
-
-          <HomeMonitorNav locale={locale} />
-
-          <div className="lp-topbar-side">
-            <GlobeButton inline />
-            <CurrencyButton inline behavior="persist" initialCurrency={initialCurrency} probeMode={isProbe} />
-            <a
-              href={REPO_URL}
-              target="_blank"
-              rel="noreferrer"
-              className={githubStars !== null ? 'lp-gh-btn lp-gh-btn--stars' : 'lp-gh-btn'}
-              aria-label={tn('githubLabel')}
-              title="GitHub"
-            >
-              <GitHubIcon />
-              {githubStars !== null && (
-                <span className="res-gh-stars"><span className="res-gh-star" aria-hidden="true">⭐</span>{formatStars(githubStars)}</span>
-              )}
-            </a>
-          </div>
-        </div>
-
-        <div className="lp-hero-content">
-          <Image
-            src={bannerSrc}
+            src="/lfg_ban.png"
             alt="LetsFG"
-            width={2000}
-            height={667}
-            className="lp-hero-brand"
+            width={4990}
+            height={1560}
+            className="lp-topbar-brand"
             priority
-            sizes="(max-width: 768px) 92vw, 920px"
-            style={LOCALE_BANNER_SCALE[locale] ? { transform: `scale(${LOCALE_BANNER_SCALE[locale]})` } : undefined}
-            aria-hidden="true"
+            sizes="(max-width: 768px) 180px, 280px"
           />
-          <p className="lp-hero-sub">{th('tagline')}</p>
-          <div className="lp-hero-search-shell" id="destinations">
-            <HomeSearchForm probeMode={isProbe} initialCurrency={initialCurrency} initialDetectedOrigin={initialDetectedOrigin} />
+        </Link>
+
+        <div className="lp-topbar-side">
+          <GlobeButton inline />
+          <CurrencyButton inline behavior="persist" initialCurrency={initialCurrency} probeMode={isProbe} />
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className={githubStars !== null ? 'lp-gh-btn lp-gh-btn--stars' : 'lp-gh-btn'}
+            aria-label={tn('githubLabel')}
+            title="GitHub"
+          >
+            <GitHubIcon />
+            {githubStars !== null && (
+              <span className="res-gh-stars"><span className="res-gh-star" aria-hidden="true">⭐</span>{formatStars(githubStars)}</span>
+            )}
+          </a>
+        </div>
+      </header>
+
+      <section className="lp-hero" id="search">
+        <div className="lp-hero-copy">
+          <h1 className="lp-hero-headline">Your personal flight <span className="lp-hero-headline-accent">concierge.</span></h1>
+          <p className="lp-hero-tagline">Tell me where you want to go.</p>
+        </div>
+        <div className="lp-hero-search-shell" id="destinations">
+          <HomeSearchForm
+            probeMode={isProbe}
+            initialCurrency={initialCurrency}
+            initialDetectedOrigin={initialDetectedOrigin}
+            initialQuery={qfill?.trim() ?? ''}
+            belowFormSlot={
+              <div className="lp-hero-stats" aria-label="Quick stats">
+                <div className="lp-hero-stat">
+                  <span className="lp-hero-stat-value">{stats.connectorsAvailable ? `${stats.connectorsAvailable}+` : '180+'}</span>
+                  <span className="lp-hero-stat-label">airlines scanned</span>
+                </div>
+                <div className="lp-hero-stat-divider" aria-hidden="true" />
+                <div className="lp-hero-stat">
+                  <span className="lp-hero-stat-value">{stats.avgSavings ? `$${stats.avgSavings > 500 ? Math.round(stats.avgSavings / 100) : Math.round(stats.avgSavings)}` : '$41'}</span>
+                  <span className="lp-hero-stat-label">avg. saving</span>
+                </div>
+                <div className="lp-hero-stat-divider" aria-hidden="true" />
+                <div className="lp-hero-stat">
+                  <span className="lp-hero-stat-value">{stats.totalSearches ? formatStatNumber(stats.totalSearches) : '—'}</span>
+                  <span className="lp-hero-stat-label">searches this week</span>
+                </div>
+              </div>
+            }
+          />
+        </div>
+
+        <div className="lp-hero-agent" id="for-agents" data-agent-content>
+          <h2 className="lp-hero-agent-title">
+            I&apos;m an agent <span className="lp-hero-agent-accent">— or you have one.</span>
+          </h2>
+          <ol className="lp-hero-agent-steps">
+            <li><code>GET /en?q=YOUR+QUERY</code> <span>— follow redirects to <code>/results/&lt;id&gt;</code></span></li>
+            <li><code>GET /api/results/&lt;id&gt;</code> <span>— poll every 10s, read <code>offers[]</code></span></li>
+          </ol>
+          <div className="lp-hero-agent-links">
+            <a href="/for-agents" className="lp-hero-agent-link lp-hero-agent-link--primary">Full agent guide →</a>
+            <a href="/llms.txt" className="lp-hero-agent-link">llms.txt</a>
+            <a href="/developers/api/docs" className="lp-hero-agent-link">API docs</a>
           </div>
         </div>
-      </section>
-
-      <section className="lp-stats-sheet" id="deals" aria-label="Platform statistics">
-        <div className="lp-stats">
-          <article className="lp-stat-card">
-            <span className="lp-stat-chip">Live usage</span>
-            <span className="lp-stat-value">
-              {stats.totalSearches !== null ? formatNumber(stats.totalSearches) : '—'}
-            </span>
-            <span className="lp-stat-label">{t('searches')}</span>
-          </article>
-
-          <article className="lp-stat-card">
-            <span className="lp-stat-chip">Average savings</span>
-            <span className="lp-stat-value">
-              {'$40.39'}
-            </span>
-            <span className="lp-stat-label">{t('savings')}</span>
-          </article>
-
-          <article className="lp-stat-card">
-            <span className="lp-stat-chip">Coverage</span>
-            <span className="lp-stat-value">
-              {stats.connectorsAvailable !== null ? `${stats.connectorsAvailable}` : '—'}
-            </span>
-            <span className="lp-stat-label">{t('airlines')}</span>
-          </article>
-        </div>
-      </section>
-
-      <section className="lp-community" id="support" aria-label="About LetsFG">
-        <p className="lp-community-intro">{tfeat('intro')}</p>
-        <h2 className="lp-community-join">{tfeat('join')}</h2>
-        <p>{tfeat('open_source')}</p>
-        <p>
-          {tfeat('contribute')}{' '}
-          <a href={REPO_URL} target="_blank" rel="noreferrer" className="lp-community-link">
-            {tfeat('contribute_link')}
-          </a>
-        </p>
-        <p>{tfeat('share')}</p>
-        <p className="lp-community-star">
-          {tfeat('star')}{' '}
-          <a href={REPO_URL} target="_blank" rel="noreferrer" className="lp-community-link">
-            ⭐ Star on GitHub
-          </a>
-        </p>
-        <p className="lp-community-signature">{tfeat('signature')}</p>
       </section>
 
       {/* Hidden section for AI agents and language models — not shown to human visitors */}
@@ -328,23 +244,6 @@ export default async function Home({ params, searchParams }: { params: Promise<{
         <p>Full agent guide: https://letsfg.co/for-agents — LLM instructions: https://letsfg.co/llms.txt — Developer docs: https://letsfg.co/developers/api/docs — OpenAPI: https://letsfg.co/developers/api/openapi.json — GitHub: https://github.com/LetsFG/LetsFG</p>
       </section>
 
-      <footer className="lp-footer">
-        <a href={REPO_URL} className="lp-footer-link" target="_blank" rel="noreferrer">{tf('github')}</a>
-        <a href="/terms" className="lp-footer-link">{tf('terms')}</a>
-        <a href="/privacy" className="lp-footer-link">{tf('privacy')}</a>
-        <Link href={`/${locale}/developers`} className="lp-footer-link">API</Link>
-        <a href="mailto:contact@letsfg.co" className="lp-footer-link">{tf('support')}</a>
-        <span className="lp-footer-sep" aria-hidden="true" />
-        <a href="https://www.instagram.com/letsfg_" className="lp-footer-social" target="_blank" rel="noreferrer" aria-label="Instagram">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-        </a>
-        <a href="https://www.tiktok.com/@letsfg_" className="lp-footer-social" target="_blank" rel="noreferrer" aria-label="TikTok">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.74a4.85 4.85 0 0 1-1.01-.05z"/></svg>
-        </a>
-        <a href="https://x.com/LetsFG_" className="lp-footer-social" target="_blank" rel="noreferrer" aria-label="X">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.835L1.254 2.25H8.08l4.264 5.633 5.9-5.633zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-        </a>
-      </footer>
     </main>
   )
 }

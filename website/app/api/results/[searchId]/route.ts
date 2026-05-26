@@ -6,8 +6,16 @@ import { cacheCompletedSearchResult, getCachedSearchResult, getSearchMeta } from
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
 import { getSessionUid } from '../../../../lib/session-uid'
-import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
-import { validateOfferBatch } from '../../../../lib/offer-validation'
+import { applyGoogleFlightsBaseline, buildAncillaries, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
+import { validateOfferBatch, RENDER_BLOCKING_SUSPECT_REASONS } from '../../../../lib/offer-validation'
+
+/** A suspect reason "matches" the render-blocking set when its tag (the
+ *  part before ":" — reasons can carry payload like ":wanted=...;got=...")
+ *  is in the set. */
+function isRenderBlockingReason(reason: string): boolean {
+  const tag = reason.split(':', 1)[0]
+  return RENDER_BLOCKING_SUSPECT_REASONS.has(tag)
+}
 import { parseNLQuery } from '../../../lib/searchParsing'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
@@ -157,6 +165,17 @@ function normalizeOffer(raw: any, idx: number): any {
     }
   }
 
+  // Virtual interlining / combo: this flight ships as TWO (or more)
+  // separate bookings the user has to complete one after the other rather
+  // than a single ticket. We surface a flag so the UI can warn — booking
+  // URLs themselves stay server-side. Mirrors the canonical derivation in
+  // lib/trusted-offer.ts so a public list and a /api/offer/[id] fetch agree.
+  const isCombo = Boolean(
+    raw.conditions?.combo_type === 'virtual_interlining'
+    || (typeof raw.source === 'string' && raw.source.startsWith('combo:'))
+    || (Array.isArray(raw.booking_options) && raw.booking_options.length > 0),
+  )
+
   return {
     id,
     price: Math.round((raw.price || 0) * 100) / 100,
@@ -166,6 +185,7 @@ function normalizeOffer(raw: any, idx: number): any {
     currency: raw.currency || 'EUR',
     airline: airlineName,
     airline_code: airlineCode,
+    flight_number: normSegs[0]?.flight_number || '',
     origin,
     origin_name: raw.origin_name || first.origin_name || origin,
     destination,
@@ -176,6 +196,11 @@ function normalizeOffer(raw: any, idx: number): any {
     stops: ob.stopovers ?? Math.max(0, segs.length - 1),
     segments: normSegs.length > 1 ? normSegs : undefined,
     inbound,
+    is_combo: isCombo,
+    // Ancillaries (bag / seat / cabin_bag prices) shipped inline so the
+    // drawer renders the price breakdown instantly without a second
+    // /api/offer/{id} round-trip. Adds ~50-100 bytes per offer; cheap.
+    ancillaries: buildAncillaries(raw),
   }
 }
 
@@ -455,9 +480,14 @@ export async function GET(
         date_from: expectedDateFrom,
         return_date: expectedReturnDate,
       })
+      // Drop offers whose CARD would render as garbage (e.g. "00:00 → 00:00"
+      // when the connector handed us a midnight sentinel). Everything else
+      // stays in rank-not-filter mode — appended after valid offers with a
+      // 'suspect' tag the ranker uses to keep them out of the hero slot.
+      const renderableSuspect = suspect.filter(({ reason }) => !isRenderBlockingReason(reason))
       const reordered = [
         ...valid,
-        ...suspect.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
+        ...renderableSuspect.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
       ]
       return NextResponse.json({
         ...durable,
@@ -572,9 +602,13 @@ export async function GET(
       date_from: _expectedDateFrom,
       return_date: _expectedReturnDate,
     })
+    // Same drop-vs-demote split as the durable-cache branch above. See
+    // RENDER_BLOCKING_SUSPECT_REASONS for the list (currently:
+    // inbound_missing_timing, *_midnight_sentinel).
+    const renderableSuspectOffers = suspectOffers.filter(({ reason }) => !isRenderBlockingReason(reason))
     const orderedOffers = [
       ...validOffers,
-      ...suspectOffers.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
+      ...renderableSuspectOffers.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
     ]
     const cheapestPrice = normalized.length > 0
       ? Math.min(...normalized.map((offer) => getOfferKnownTotalPrice(offer)))

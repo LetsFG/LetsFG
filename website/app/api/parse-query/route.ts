@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { vertexClarify } from '../../lib/vertex-parse'
-import { resolveCity } from '../../lib/searchParsing'
+import { parseNLQuery, resolveCity } from '../../lib/searchParsing'
+import { needsDateClarification } from '../../lib/home-search-assist'
+import { decideSkipRefineQuestion } from '../../lib/refine-decision'
+import { getInflight, setInflight } from '../../lib/date-grid-cache'
+import { scrapeDateGrid } from '../../lib/date-grid-scrape'
 
-const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
+const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$|^https:\/\/[\w-]+\.ngrok(?:-free)?\.(?:app|io)$/
 
 // POST /api/parse-query
 // Body: { query: string }
@@ -21,9 +25,28 @@ export async function POST(request: NextRequest) {
     }
 
     const today = new Date().toISOString().slice(0, 10)
-    const ai = await vertexClarify(query, today)
+    // Run the city/intent parse and the refine-question decision in parallel —
+    // both go to Vertex AI Gemini independently.
+    const [ai, refineDecision] = await Promise.all([
+      vertexClarify(query, today),
+      decideSkipRefineQuestion(query),
+    ])
+
     if (!ai) {
       return NextResponse.json({ error: 'AI parse unavailable' }, { status: 503 })
+    }
+
+    // Suppress Gemini's 'date' follow-up if the local parser already has
+    // enough date context (e.g. "in August, 10-14 days" → date_month_only +
+    // min_trip_days is actionable). Mirrors the same guard in /api/search.
+    const localParsed = parseNLQuery(query)
+    if (!needsDateClarification(localParsed)) {
+      if (ai.follow_up_topics) {
+        ai.follow_up_topics = ai.follow_up_topics.filter(t => t !== 'date')
+      }
+      if (ai.follow_up_questions) {
+        ai.follow_up_questions = ai.follow_up_questions.filter(q => q?.topic !== 'date')
+      }
     }
 
     const originCity = typeof ai.origin_city === 'string' ? ai.origin_city : null
@@ -36,6 +59,30 @@ export async function POST(request: NextRequest) {
         ? resolveCity(destinationCity)
         : null
 
+    // Pre-warm the Google Flights date-grid scrape if we have a complete
+    // round-trip route + dates and the refine question isn't being skipped.
+    // The scrape runs in the background; /api/date-grid will coalesce on
+    // the same in-flight Promise when the client asks for it from /refine.
+    const willShowRefine = refineDecision?.skip !== true
+    if (
+      willShowRefine
+      && originResolved?.code
+      && destResolved?.code
+      && typeof ai.departure_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ai.departure_date)
+    ) {
+      const key = {
+        origin: originResolved.code,
+        destination: destResolved.code,
+        dep: ai.departure_date,
+        ret: typeof ai.return_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ai.return_date)
+          ? ai.return_date
+          : null,
+      }
+      if (!getInflight(key)) {
+        setInflight(key, scrapeDateGrid(key))
+      }
+    }
+
     return NextResponse.json({
       ...ai,
       origin:               originResolved?.code  ?? null,
@@ -43,6 +90,10 @@ export async function POST(request: NextRequest) {
       destination:          destResolved?.code    ?? null,
       destination_name:     destResolved?.name    ?? destinationCity,
       anywhere_destination: destinationCity       === 'ANYWHERE',
+      // Gemini-driven decision on whether to surface the date-flexibility step.
+      // null when Vertex was unavailable — the client falls back to a heuristic.
+      skip_refine_question:        refineDecision?.skip ?? null,
+      skip_refine_question_reason: refineDecision?.reason ?? null,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'internal error'
