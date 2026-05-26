@@ -6,7 +6,7 @@ import { cacheCompletedSearchResult, getCachedSearchResult, getSearchMeta } from
 import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
 import { getSessionUid } from '../../../../lib/session-uid'
-import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
+import { applyGoogleFlightsBaseline, buildAncillaries, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
 import { validateOfferBatch } from '../../../../lib/offer-validation'
 import { parseNLQuery } from '../../../lib/searchParsing'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
@@ -177,6 +177,7 @@ function normalizeOffer(raw: any, idx: number): any {
     currency: raw.currency || 'EUR',
     airline: airlineName,
     airline_code: airlineCode,
+    flight_number: normSegs[0]?.flight_number || '',
     origin,
     origin_name: raw.origin_name || first.origin_name || origin,
     destination,
@@ -188,6 +189,10 @@ function normalizeOffer(raw: any, idx: number): any {
     segments: normSegs.length > 1 ? normSegs : undefined,
     inbound,
     is_combo: isCombo,
+    // Ancillaries (bag / seat / cabin_bag prices) shipped inline so the
+    // drawer renders the price breakdown instantly without a second
+    // /api/offer/{id} round-trip. Adds ~50-100 bytes per offer; cheap.
+    ancillaries: buildAncillaries(raw),
   }
 }
 

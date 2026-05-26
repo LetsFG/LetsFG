@@ -132,7 +132,7 @@ function offerBreakdown(
 }
 
 // ── Allowed origins ─────────────────────────────────────────────────────
-const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
+const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$|^https:\/\/[\w-]+\.ngrok(?:-free)?\.(?:app|io)$/
 
 // ── Route handler ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest): Promise<NextResponse> {

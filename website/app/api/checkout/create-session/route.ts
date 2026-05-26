@@ -18,12 +18,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No session cookie' }, { status: 400 })
   }
 
-  let offerId: string, searchId: string, probe: string | undefined, offerRef: string | undefined, paymentToken: string | undefined
+  let offerId: string,
+    searchId: string,
+    probe: string | undefined,
+    offerRef: string | undefined,
+    paymentToken: string | undefined,
+    returnTo: string | undefined
   try {
-    ;({ offerId, searchId, probe, offerRef, paymentToken } = await req.json())
+    ;({ offerId, searchId, probe, offerRef, paymentToken, returnTo } = await req.json())
   } catch (_) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
+  // 'drawer' = bring the user back to /results/<searchId>?unlocked=<offerId>
+  //            (the new in-drawer checkout flow).
+  // anything else (default) = legacy /book/<offerId> redirect.
+  const isDrawerFlow = returnTo === 'drawer'
 
   const isProbe = isProbeModeValue(probe)
 
@@ -43,12 +52,24 @@ export async function POST(req: NextRequest) {
   const unitAmount = toStripeAmount(fee, trustedOffer.currency)
 
   // Only trust the configured site URL, or a same-host origin in local/dev.
+  // In dev we additionally accept any localhost:<port> origin (so a non-3000
+  // dev server works) AND any *.ngrok-free.app / *.ngrok.app / *.ngrok.io
+  // tunnel — letting us test the full Stripe redirect flow on a phone over
+  // an ngrok tunnel. The relaxed branches only fire when the CONFIGURED
+  // site URL is also a non-prod host (localhost / ngrok), so prod with
+  // NEXT_PUBLIC_SITE_URL=https://letsfg.co stays strict same-host.
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://letsfg.co'
   const requestOrigin = req.headers.get('origin')
   let origin = configuredSiteUrl
   if (requestOrigin) {
     try {
-      if (new URL(requestOrigin).host === new URL(configuredSiteUrl).host) {
+      const reqUrl = new URL(requestOrigin)
+      const cfgUrl = new URL(configuredSiteUrl)
+      const isLocalish = (h: string) =>
+        h === 'localhost' || h === '127.0.0.1' || /\.ngrok(?:-free)?\.(?:app|io)$/.test(h)
+      const isSameHost = reqUrl.host === cfgUrl.host
+      const bothDev = isLocalish(reqUrl.hostname) && isLocalish(cfgUrl.hostname)
+      if (isSameHost || bothDev) {
         origin = requestOrigin
       }
     } catch (_) {
@@ -57,8 +78,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const successUrl = new URL(`/book/${offerId}`, origin)
-    if (searchId) successUrl.searchParams.set('from', searchId)
+    // Drawer flow returns the user to /results/<searchId> with an `unlocked`
+    // marker so ResultsClient re-opens the drawer for that offer and shows
+    // the booking-link state. Legacy /book flow keeps its original URLs.
+    const successUrl = isDrawerFlow && searchId
+      ? new URL(`/results/${searchId}`, origin)
+      : new URL(`/book/${offerId}`, origin)
+    if (isDrawerFlow && searchId) {
+      successUrl.searchParams.set('unlocked', offerId)
+    } else if (searchId) {
+      successUrl.searchParams.set('from', searchId)
+    }
     appendProbeParam(successUrl.searchParams, isProbe)
     // Embed offer snapshot so any Cloud Run instance can reconstruct the offer.
     if (freshOfferRef) {
@@ -70,8 +100,12 @@ export async function POST(req: NextRequest) {
     // would percent-encode the curly braces (%7B…%7D), breaking the substitution.
     const successUrlWithSession = `${successUrl.toString()}&stripe_session={CHECKOUT_SESSION_ID}`
 
-    const cancelUrl = new URL(`/book/${offerId}`, origin)
-    if (searchId) cancelUrl.searchParams.set('from', searchId)
+    // Drawer cancel = back to /results with NO extra params (user closes the
+    // drawer or retries from there). Legacy = same /book URL.
+    const cancelUrl = isDrawerFlow && searchId
+      ? new URL(`/results/${searchId}`, origin)
+      : new URL(`/book/${offerId}`, origin)
+    if (!isDrawerFlow && searchId) cancelUrl.searchParams.set('from', searchId)
     appendProbeParam(cancelUrl.searchParams, isProbe)
 
     const stripe = getStripe()

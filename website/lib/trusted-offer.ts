@@ -820,7 +820,7 @@ function getAncillaryTarget(key: string): keyof TrustedAncillaries | undefined {
   return undefined
 }
 
-function buildAncillaries(raw: any): TrustedAncillaries | undefined {
+export function buildAncillaries(raw: any): TrustedAncillaries | undefined {
   const defaultCurrency = parseStringValue(raw.currency) || 'EUR'
   const ancillaries: TrustedAncillaries = {}
 

@@ -24,7 +24,7 @@ import { scrapeDateGrid } from '../../lib/date-grid-scrape'
 import { getLiveFxRates } from '../../../lib/live-fx'
 import { convertCurrencyAmount, normalizeCurrencyCode } from '../../../lib/display-price'
 
-const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
+const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$|^https:\/\/[\w-]+\.ngrok(?:-free)?\.(?:app|io)$/
 
 const IATA_RE = /^[A-Z]{3}$/
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/

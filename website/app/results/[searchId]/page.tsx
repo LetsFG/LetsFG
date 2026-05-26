@@ -1,8 +1,9 @@
 import { Metadata } from 'next'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getLocale } from 'next-intl/server'
 import ResultsClient from './ResultsClient'
+import { hasActiveUnlockFromCookieValues } from '../../../lib/unlock-cookie'
 import { getOfferDisplayTotalPrice } from '../../../lib/display-price'
 import { getLiveFxRates } from '../../../lib/live-fx'
 import { extractShareLabelsFromResultsPathname } from '../../../lib/share-preview'
@@ -152,6 +153,15 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
   const initialCurrency = await resolveRequestCurrency(sp?.cur)
   const trackingSearchId = getTrackingSearchId(searchId, isProbe)
   const fxRates = await getLiveFxRates()
+  // Has this user already paid the unlock fee for this search? If so, every
+  // offer in the search exposes its booking link without re-paying — so the
+  // drawer skips the Stripe flow and goes straight to "booking link ready".
+  const cookieStore = await cookies()
+  const initialIsUnlocked = hasActiveUnlockFromCookieValues(
+    cookieStore.get('lfg_uid')?.value,
+    cookieStore.get('lfg_unlocks')?.value,
+    searchId,
+  )
   // Render immediately with the current snapshot and let SearchPageClient poll.
   // If the live snapshot fetch is slow, fall back to a searching shell so the
   // client can mount and start polling without sitting on loading.tsx.
@@ -226,6 +236,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         initialOffers={allOffers}
         searchedAt={searched_at || sp?.started}
         fswSession={sp?._fss}
+        initialIsUnlocked={initialIsUnlocked}
       />
     </>
   )
