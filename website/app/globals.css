@@ -1968,6 +1968,17 @@ input {
   text-align: center;
 }
 
+/* On phones the fixed "Find my flights" CTA (.lp-sf-sticky-btn) sits ~24px
+ * above the safe-area inset and is ~60px tall — without breathing room
+ * under the LLM-instructions block, the last line of agent-links sits
+ * permanently obscured. Reserve enough scroll runway here so the user can
+ * scroll the block fully clear of the CTA. */
+@media (max-width: 640px) {
+  .lp-hero-agent {
+    padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .lp-hero-agent-title {
   margin: 0 0 14px;
   font-size: clamp(1.05rem, 2.4vw, 1.2rem);
@@ -2951,6 +2962,54 @@ input {
   font-weight: 400;
   color: rgba(20, 45, 60, 0.72);
   line-height: 1.35;
+}
+
+/* Streaming-results chip — appears under the subtitle while the backend is
+ * still finding more deals, hides when status flips to 'completed'. Sized
+ * to read as a hint, not a control: tiny font, brand-orange tint, pulsing
+ * dot. align-self so the pill hugs its content instead of spanning the
+ * column. Negative top margin offsets the parent's gap:18px so the chip
+ * sits close to the subtitle without doubling the breathing room. */
+.res2-streaming {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin: -6px 0 -2px;
+  padding: 5px 11px;
+  background: rgba(244, 122, 28, 0.08);
+  border: 1px solid rgba(244, 122, 28, 0.20);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgba(20, 45, 60, 0.78);
+  font-variant-numeric: tabular-nums;
+  /* Soft enter so the chip doesn't pop when the first offer lands. */
+  animation: res2-streaming-fade-in 0.35s ease-out both;
+}
+
+.res2-streaming-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f47a1c;
+  flex-shrink: 0;
+  animation: res2-streaming-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes res2-streaming-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.1);  }
+}
+
+@keyframes res2-streaming-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .res2-streaming-dot { animation: none; opacity: 0.85; }
+  .res2-streaming     { animation: none; }
 }
 
 /* Hero card — top-1 pick, whole card clickable */

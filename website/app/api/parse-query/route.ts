@@ -5,7 +5,7 @@ import { decideSkipRefineQuestion } from '../../lib/refine-decision'
 import { getInflight, setInflight } from '../../lib/date-grid-cache'
 import { scrapeDateGrid } from '../../lib/date-grid-scrape'
 
-const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
+const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$|^https:\/\/[\w-]+\.ngrok(?:-free)?\.(?:app|io)$/
 
 // POST /api/parse-query
 // Body: { query: string }

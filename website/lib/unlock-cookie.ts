@@ -109,6 +109,19 @@ export function hasActiveUnlock(req: NextRequest, searchId: string): boolean {
   return unlocks[searchId] === true
 }
 
+/** Server-component-friendly variant — takes the raw cookie values from
+ *  `next/headers` `cookies()` instead of a NextRequest. Used by page.tsx
+ *  to compute `isUnlocked` for the initial ResultsClient render. */
+export function hasActiveUnlockFromCookieValues(
+  uid: string | undefined,
+  unlocksCookieValue: string | undefined,
+  searchId: string,
+): boolean {
+  if (!uid) return false
+  const unlocks = parseUnlockCookie(unlocksCookieValue, uid)
+  return unlocks[searchId] === true
+}
+
 export function setUnlockCookie(
   res: NextResponse,
   req: NextRequest,
