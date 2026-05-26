@@ -7,7 +7,15 @@ import { getOfferKnownTotalPrice } from '../../../../lib/offer-pricing'
 import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../../../../lib/probe-mode'
 import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, buildAncillaries, normalizeTrustedOffer, toPublicOffer, type PublicOffer } from '../../../../lib/trusted-offer'
-import { validateOfferBatch } from '../../../../lib/offer-validation'
+import { validateOfferBatch, RENDER_BLOCKING_SUSPECT_REASONS } from '../../../../lib/offer-validation'
+
+/** A suspect reason "matches" the render-blocking set when its tag (the
+ *  part before ":" — reasons can carry payload like ":wanted=...;got=...")
+ *  is in the set. */
+function isRenderBlockingReason(reason: string): boolean {
+  const tag = reason.split(':', 1)[0]
+  return RENDER_BLOCKING_SUSPECT_REASONS.has(tag)
+}
 import { parseNLQuery } from '../../../lib/searchParsing'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
@@ -472,9 +480,14 @@ export async function GET(
         date_from: expectedDateFrom,
         return_date: expectedReturnDate,
       })
+      // Drop offers whose CARD would render as garbage (e.g. "00:00 → 00:00"
+      // when the connector handed us a midnight sentinel). Everything else
+      // stays in rank-not-filter mode — appended after valid offers with a
+      // 'suspect' tag the ranker uses to keep them out of the hero slot.
+      const renderableSuspect = suspect.filter(({ reason }) => !isRenderBlockingReason(reason))
       const reordered = [
         ...valid,
-        ...suspect.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
+        ...renderableSuspect.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
       ]
       return NextResponse.json({
         ...durable,
@@ -589,9 +602,13 @@ export async function GET(
       date_from: _expectedDateFrom,
       return_date: _expectedReturnDate,
     })
+    // Same drop-vs-demote split as the durable-cache branch above. See
+    // RENDER_BLOCKING_SUSPECT_REASONS for the list (currently:
+    // inbound_missing_timing, *_midnight_sentinel).
+    const renderableSuspectOffers = suspectOffers.filter(({ reason }) => !isRenderBlockingReason(reason))
     const orderedOffers = [
       ...validOffers,
-      ...suspectOffers.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
+      ...renderableSuspectOffers.map(({ offer }) => ({ ...offer, quality: 'suspect' as const })),
     ]
     const cheapestPrice = normalized.length > 0
       ? Math.min(...normalized.map((offer) => getOfferKnownTotalPrice(offer)))

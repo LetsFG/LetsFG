@@ -47,6 +47,34 @@ function hasExplicitTz(ts: string): boolean {
   return /Z$|[+-]\d{2}:\d{2}$/.test(ts)
 }
 
+/** Connectors that only know a calendar date sometimes return a timestamp
+ *  with the time component set to literal midnight ("2026-06-04T00:00:00Z").
+ *  That passes hasExplicitFlightTime() (the regex matches `T\d{2}:\d{2}`)
+ *  so getRouteTiming doesn't blank it out — and downstream we render
+ *  "00:00 → 00:00" on the card. A SINGLE leg landing at midnight is a
+ *  legitimate red-eye; both dep AND arr at hour=minute=0 with a real
+ *  duration is physically impossible and a tell of date-only sentinel data. */
+function isMidnightSentinelTs(ts: string | undefined): boolean {
+  if (!ts || typeof ts !== 'string') return false
+  return /T00:00(?::00)?(?:\.0+)?(?:Z|[+-]\d{2}:\d{2})?$/.test(ts)
+}
+
+/** True when both timestamps look like midnight-fabricated stubs — see
+ *  isMidnightSentinelTs for why. */
+function isMidnightSentinelPair(dep: string | undefined, arr: string | undefined): boolean {
+  return isMidnightSentinelTs(dep) && isMidnightSentinelTs(arr)
+}
+
+/** Reasons that mean the offer's CARD would render visibly broken (e.g.
+ *  "00:00 → 00:00", empty time columns). Callers can use this set to DROP
+ *  these offers from the response entirely instead of demoting them, since
+ *  no amount of ranking makes a card with no times useful. */
+export const RENDER_BLOCKING_SUSPECT_REASONS = new Set([
+  'inbound_missing_timing',
+  'inbound_midnight_sentinel',
+  'outbound_midnight_sentinel',
+])
+
 /**
  * Validate a batch of offers, separating clearly bad data from plausible ones.
  *
@@ -121,6 +149,13 @@ export function detectSuspectReason(
     if (!inbound.departure_time || !inbound.arrival_time) {
       return 'inbound_missing_timing'
     }
+    // Connector handed back a midnight stub on BOTH legs — same class of
+    // bug as inbound_missing_timing, just disguised as a real timestamp.
+    // Origin: 2026-05-26 LHR→BCN+BCN→LGW combo where the return leg
+    // showed "00:00 BCN → 00:00 LGW" as the page's hero card.
+    if (isMidnightSentinelPair(inbound.departure_time, inbound.arrival_time)) {
+      return 'inbound_midnight_sentinel'
+    }
     if (inbound.duration_minutes < 20) {
       return `inbound_duration_too_short:${inbound.duration_minutes}min`
     }
@@ -145,6 +180,12 @@ export function detectSuspectReason(
     if (ratio < 0.5 || ratio > 2.0) {
       return `inbound_duration_asymmetric:outbound=${duration_minutes}min;inbound=${inbound.duration_minutes}min`
     }
+  }
+
+  // Rule 0d — outbound midnight sentinel. Same defence as the inbound
+  // version above but for the outbound leg.
+  if (isMidnightSentinelPair(departure_time, arrival_time)) {
+    return 'outbound_midnight_sentinel'
   }
 
   // Rule 1 — duration plausibility
