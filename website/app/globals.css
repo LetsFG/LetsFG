@@ -2245,8 +2245,6 @@ input {
 
 @media (min-width: 720px) {
   .cf-body {
-    flex: 0 0 auto;
-    margin: auto;
     padding: 56px 24px 80px;
   }
 
@@ -2256,7 +2254,7 @@ input {
 
   .cf-actions {
     flex-direction: row-reverse;
-    justify-content: flex-start;
+    justify-content: center;
     margin-top: 8px;
   }
 
@@ -2703,8 +2701,6 @@ input {
 
 @media (min-width: 720px) {
   .rf-body {
-    flex: 0 0 auto;
-    margin: auto;
     padding: 36px 24px 80px;
   }
 
@@ -6136,7 +6132,6 @@ body:has(.results-scope) {
 .res-hero--searching .res-hero-inner {
   flex: 1;
   gap: 28px;
-  justify-content: center;
 }
 
 @media (max-width: 640px) {
