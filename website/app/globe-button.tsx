@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter, useParams, usePathname } from 'next/navigation'
 import { useLocale } from 'next-intl'
+import US from 'country-flag-icons/react/3x2/US'
 import GB from 'country-flag-icons/react/3x2/GB'
 import PL from 'country-flag-icons/react/3x2/PL'
 import DE from 'country-flag-icons/react/3x2/DE'
@@ -21,8 +22,9 @@ import { setResultsLocaleSearchParam } from '../lib/locale-routing'
 
 type FlagComponent = typeof GB
 
-const LANGUAGES: { code: string; label: string; Flag: FlagComponent }[] = [
-  { code: 'en', label: 'English',    Flag: GB },
+const LANGUAGES: { code: string; variant?: string; label: string; Flag: FlagComponent }[] = [
+  { code: 'en', variant: 'US', label: 'English (US)', Flag: US },
+  { code: 'en', variant: 'GB', label: 'English (UK)', Flag: GB },
   { code: 'pl', label: 'Polski',     Flag: PL },
   { code: 'de', label: 'Deutsch',    Flag: DE },
   { code: 'es', label: 'Español',    Flag: ES },
@@ -38,7 +40,7 @@ const LANGUAGES: { code: string; label: string; Flag: FlagComponent }[] = [
 ]
 
 const LANGUAGE_FLAGS: Record<string, FlagComponent> = Object.fromEntries(
-  LANGUAGES.map((l) => [l.code, l.Flag]),
+  LANGUAGES.filter((l) => !l.variant).map((l) => [l.code, l.Flag]),
 )
 
 export default function GlobeButton({ inline = false }: { inline?: boolean } = {}) {
@@ -50,6 +52,12 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
 
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const [enFlag, setEnFlag] = useState<'US' | 'GB'>('US')
+
+  useEffect(() => {
+    const val = document.cookie.split('; ').find(r => r.startsWith('LETSFG_EN_FLAG='))?.split('=')[1]
+    if (val === 'GB') setEnFlag('GB')
+  }, [])
   const wrapRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -154,14 +162,26 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
             visibility: menuPos ? 'visible' : 'hidden',
           }}
         >
-          {LANGUAGES.map(lang => (
+          {LANGUAGES.map(lang => {
+            const isActive = lang.variant
+              ? lang.code === currentLocale && lang.variant === enFlag
+              : lang.code === currentLocale
+            return (
             <button
-              key={lang.code}
+              key={lang.variant ? `${lang.code}-${lang.variant}` : lang.code}
               role="option"
-              aria-selected={lang.code === currentLocale}
-              className={`lp-lang-option${lang.code === currentLocale ? ' lp-lang-option--active' : ''}`}
+              aria-selected={isActive}
+              className={`lp-lang-option${isActive ? ' lp-lang-option--active' : ''}`}
               onClick={() => {
                 const cookieOpts = 'path=/; max-age=31536000; SameSite=Lax'
+                if (lang.variant) {
+                  document.cookie = `LETSFG_EN_FLAG=${lang.variant}; ${cookieOpts}`
+                  setEnFlag(lang.variant as 'US' | 'GB')
+                  if (lang.code === currentLocale) {
+                    setOpen(false)
+                    return
+                  }
+                }
                 document.cookie = `LETSFG_LOCALE=${lang.code}; ${cookieOpts}`
                 document.cookie = `NEXT_LOCALE=${lang.code}; ${cookieOpts}`
                 setOpen(false)
@@ -193,13 +213,14 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
                 <lang.Flag className="lp-lang-flag-svg" />
               </span>
               <span className="lp-lang-name">{lang.label}</span>
-              {lang.code === currentLocale && (
+              {isActive && (
                 <svg className="lp-lang-check" viewBox="0 0 16 16" fill="currentColor" width="13" height="13" aria-hidden="true">
                   <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
                 </svg>
               )}
             </button>
-          ))}
+            )
+          })}
         </div>,
         document.body,
       )
@@ -218,7 +239,11 @@ export default function GlobeButton({ inline = false }: { inline?: boolean } = {
       >
         <span className="lp-lang-trigger-flag" aria-hidden="true">
           {(() => {
-            const Flag = LANGUAGE_FLAGS[currentLocale] ?? LANGUAGE_FLAGS.en
+            if (currentLocale === 'en') {
+              const Flag = enFlag === 'GB' ? GB : US
+              return <Flag className="lp-lang-flag-svg" />
+            }
+            const Flag = LANGUAGE_FLAGS[currentLocale] ?? US
             return <Flag className="lp-lang-flag-svg" />
           })()}
         </span>
