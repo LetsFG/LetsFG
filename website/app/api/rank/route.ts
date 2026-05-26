@@ -426,12 +426,13 @@ TASK 2 — For each runner-up, write exactly 2 sentences.
 - If a runner is listed with "tradeoffs: none" or similar, still find something that makes #1 better
 - Max 70 words total per runner
 
-TASK 3 — Page subtitle (one short line, max 14 words).
-- Combine the search-breadth signal with one warm value-prop the user cares about
-- Reference the breadth count naturally (e.g. "From ${formattedScannedDealsCount} options across our 180 airline connectors")
-- Add a confidence/value clause (e.g. "all prices include baggage & seat", "no surprise fees at checkout")
-- Must be plain prose, no markdown, no emoji, no leading punctuation
+TASK 3 — Page subtitle (one short line, MAX 12 WORDS, ~75 characters).
+- MUST start with the breadth signal using EXACTLY this phrasing: "From ${formattedScannedDealsCount} deals checked"
+- Then ONE short clause about the top pick (e.g. "this direct flight offers the best schedule and value", "this red-eye is the cheapest with reasonable timing", "this carrier has the best on-time record at this price")
+- DO NOT add any trailing context — no destination name, no trip type, no traveller info, no date phrase. End on the value clause.
+- Plain prose, no markdown, no emoji, no leading punctuation, no trailing period optional.
 - Match the user's language (same locale rules as the hero)
+- Example shape (target length): "From 388 deals checked this direct flight offers the best schedule and value"
 
 TASK 4 — Hero card bullets (exactly 3, each 5–11 words).
 - Each bullet is a single specific reason this flight wins for THIS trip
