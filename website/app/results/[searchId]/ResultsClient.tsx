@@ -900,33 +900,53 @@ export default function ResultsClient({
         }}
       />
 
-      {monitorOpen && parsed.origin && parsed.destination && parsed.date ? (
-        <MonitorModal
-          searchId={searchId}
-          origin={parsed.origin}
-          originName={parsed.origin_name || parsed.origin}
-          destination={parsed.destination}
-          destinationName={parsed.destination_name || parsed.destination}
-          departureDate={parsed.date}
-          returnDate={parsed.return_date || undefined}
-          adults={parsed.passengers || 1}
-          cabinClass={parsed.cabin || undefined}
-          currency={displayCurrency}
-          fxRates={fxRates}
-          onClose={() => setMonitorOpen(false)}
-        />
-      ) : null}
+      {/* Fall back to client-side parseNLQuery when SSR returned an empty
+        * parsed snapshot (FSW hadn't persisted the parse yet at first SSR
+        * hit, and polling doesn't update `parsed`). Without this the
+        * Alert button silently no-ops when the user lands on the page
+        * before the backend finishes the parse. */}
+      {(() => {
+        const fallback = (!parsed.origin || !parsed.destination || !parsed.date)
+          ? parseNLQuery(query)
+          : null
+        const origin = parsed.origin || fallback?.origin
+        const destination = parsed.destination || fallback?.destination
+        const date = parsed.date || fallback?.date
+        const originName = parsed.origin_name || fallback?.origin_name || origin
+        const destinationName = parsed.destination_name || fallback?.destination_name || destination
+        const returnDate = parsed.return_date || fallback?.return_date || undefined
+        const passengers = parsed.passengers || 1
+        const cabin = parsed.cabin || fallback?.cabin || undefined
+        const routeLabel = [originName, destinationName].filter(Boolean).join(' → ')
+        return (
+          <>
+            {monitorOpen && origin && destination && date ? (
+              <MonitorModal
+                searchId={searchId}
+                origin={origin}
+                originName={originName || origin}
+                destination={destination}
+                destinationName={destinationName || destination}
+                departureDate={date}
+                returnDate={returnDate}
+                adults={passengers}
+                cabinClass={cabin}
+                currency={displayCurrency}
+                fxRates={fxRates}
+                onClose={() => setMonitorOpen(false)}
+              />
+            ) : null}
 
-      {confirmedMonitorId ? (
-        <MonitorConfirmedOverlay
-          monitorId={confirmedMonitorId}
-          routeLabel={[
-            parsed.origin_name || parsed.origin,
-            parsed.destination_name || parsed.destination,
-          ].filter(Boolean).join(' → ')}
-          onClose={() => setConfirmedMonitorId(null)}
-        />
-      ) : null}
+            {confirmedMonitorId ? (
+              <MonitorConfirmedOverlay
+                monitorId={confirmedMonitorId}
+                routeLabel={routeLabel}
+                onClose={() => setConfirmedMonitorId(null)}
+              />
+            ) : null}
+          </>
+        )
+      })()}
     </main>
   )
 }
