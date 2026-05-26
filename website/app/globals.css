@@ -2002,7 +2002,7 @@ input {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  text-align: left;
+  align-items: center;
 }
 
 .lp-hero-agent-steps > li {
@@ -2245,6 +2245,8 @@ input {
 
 @media (min-width: 720px) {
   .cf-body {
+    flex: 0 0 auto;
+    margin: auto;
     padding: 56px 24px 80px;
   }
 
@@ -2701,6 +2703,8 @@ input {
 
 @media (min-width: 720px) {
   .rf-body {
+    flex: 0 0 auto;
+    margin: auto;
     padding: 36px 24px 80px;
   }
 
@@ -6132,6 +6136,7 @@ body:has(.results-scope) {
 .res-hero--searching .res-hero-inner {
   flex: 1;
   gap: 28px;
+  justify-content: center;
 }
 
 @media (max-width: 640px) {
