@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
 import SearchingLoadingScene from '../SearchingLoadingScene'
@@ -50,17 +50,17 @@ interface LoadingQuestion {
   suggested_answers?: LoadingSuggestedAnswer[] | null
 }
 
-// Icon + sublabel hardcoded by topic+key. Backend only knows label/key —
-// we enrich here so design changes don't require a backend deploy.
-const OPTION_META: Record<string, { emoji: string; sublabel: string }> = {
-  'baggage:carry_on': { emoji: '🎒', sublabel: 'Cheapest options' },
-  'baggage:1_bag': { emoji: '🧳', sublabel: 'Most common' },
-  'baggage:2_bags': { emoji: '🧳🧳', sublabel: 'For longer trips' },
-  'baggage:unsure': { emoji: '❓', sublabel: "I'll decide later" },
-  'seat_selection:together': { emoji: '👫', sublabel: 'Adjacent seats' },
-  'seat_selection:pick': { emoji: '🎯', sublabel: 'Choose from seat map' },
-  'seat_selection:any_window_aisle': { emoji: '🪟', sublabel: 'Window or aisle' },
-  'seat_selection:auto': { emoji: '🎲', sublabel: 'Cheapest tickets' },
+// Icon + sublabel key hardcoded by topic+key — sublabels resolve to
+// translations at render time. Backend only knows label/key.
+const OPTION_META: Record<string, { emoji: string; sublabelKey: string }> = {
+  'baggage:carry_on': { emoji: '🎒', sublabelKey: 'optCarryOnSub' },
+  'baggage:1_bag': { emoji: '🧳', sublabelKey: 'opt1BagSub' },
+  'baggage:2_bags': { emoji: '🧳🧳', sublabelKey: 'opt2BagsSub' },
+  'baggage:unsure': { emoji: '❓', sublabelKey: 'optUnsureSub' },
+  'seat_selection:together': { emoji: '👫', sublabelKey: 'optSeatTogetherSub' },
+  'seat_selection:pick': { emoji: '🎯', sublabelKey: 'optSeatPickSub' },
+  'seat_selection:any_window_aisle': { emoji: '🪟', sublabelKey: 'optSeatWindowAisleSub' },
+  'seat_selection:auto': { emoji: '🎲', sublabelKey: 'optSeatAutoSub' },
 }
 
 function readCachedLoadingQuestions(query: string): LoadingQuestion[] {
@@ -84,8 +84,9 @@ function readCachedLoadingQuestions(query: string): LoadingQuestion[] {
 }
 
 function HomeLogo({ locale }: { locale: string }) {
+  const t = useTranslations('Pending')
   return (
-    <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label="LetsFG home">
+    <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label={t('homeLogoAria')}>
       <Image
         src="/lfg_ban.png"
         alt="LetsFG"
@@ -103,6 +104,7 @@ function PendingResultsInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const locale = useLocale()
+  const t = useTranslations('Pending')
   const searchParamString = searchParams.toString()
   const query = searchParams.get('q')?.trim() || ''
   const probeMode = searchParams.get('probe') === '1'
@@ -339,7 +341,7 @@ function PendingResultsInner() {
         {showAgent ? (
           <div className={`pend-agent${questionVisible ? ' pend-agent--in' : ''}`}>
             <div className="pend-agent-card">
-              <div className="pend-agent-prelude">While I search, one quick question:</div>
+              <div className="pend-agent-prelude">{t('agentPrelude')}</div>
               <p className="pend-agent-question">{currentQuestion!.question}</p>
               <div className="pend-agent-grid">
                 {(currentQuestion!.suggested_answers ?? []).map(opt => {
@@ -359,8 +361,8 @@ function PendingResultsInner() {
                       ) : null}
                       <span className="pend-agent-opt-body">
                         <span className="pend-agent-opt-label">{opt.label || opt.key}</span>
-                        {meta?.sublabel ? (
-                          <span className="pend-agent-opt-sub">{meta.sublabel}</span>
+                        {meta?.sublabelKey ? (
+                          <span className="pend-agent-opt-sub">{t(meta.sublabelKey)}</span>
                         ) : null}
                       </span>
                     </button>
@@ -368,7 +370,7 @@ function PendingResultsInner() {
                 })}
               </div>
               <button type="button" className="pend-agent-skip" onClick={handleSkipAll}>
-                Skip all preference questions →
+                {t('skipAllQuestions')}
               </button>
             </div>
           </div>

@@ -1867,7 +1867,7 @@ input {
 }
 
 .lp-hero-headline-accent {
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: 1.38em;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -1877,7 +1877,7 @@ input {
 
 .lp-hero-tagline {
   margin: 0;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.25rem, 2.5vw, 1.55rem);
   font-weight: 400;
   line-height: 1.4;
@@ -1989,7 +1989,7 @@ input {
 }
 
 .lp-hero-agent-accent {
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: 1.15em;
   font-weight: 700;
   color: #f47a1c;
@@ -2065,7 +2065,7 @@ input {
 
 .cf-greeting {
   margin: 0 0 22px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.55rem, 4.2vw, 1.95rem);
   font-weight: 400;
   line-height: 1.3;
@@ -2310,7 +2310,7 @@ input {
 
 .rf-question {
   margin: 0 0 10px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(2.1rem, 5.8vw, 2.55rem);
   font-weight: 400;
   letter-spacing: 0;
@@ -2320,7 +2320,7 @@ input {
 
 .rf-sub {
   margin: 0 0 24px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.3rem, 3.2vw, 1.45rem);
   line-height: 1.45;
   color: rgba(0, 0, 0, 0.6);
@@ -2744,7 +2744,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.55rem, 4.4vw, 2.05rem);
   line-height: 1.25;
   color: #1a1a1a;
@@ -2822,7 +2822,7 @@ input {
 
 .pend-agent-question {
   margin: 0 0 16px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.55rem, 4vw, 1.95rem);
   font-weight: 400;
   color: #1a1a1a;
@@ -2946,7 +2946,7 @@ input {
  * agent introducing the picks (matches the question style on /pending). */
 .res2-title {
   margin: 4px 0 -4px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(2.35rem, 6.8vw, 2.8rem);
   font-weight: 400;
   color: #1a1a1a;
@@ -2957,7 +2957,7 @@ input {
 /* Subtitle — same handwriting font as the title; neutral dark colour. */
 .res2-subtitle {
   margin: 0 0 8px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.32rem, 3.4vw, 1.55rem);
   font-weight: 400;
   color: rgba(20, 45, 60, 0.72);
@@ -3153,7 +3153,7 @@ input {
 .res2-hero-bullet {
   position: relative;
   padding-left: 22px;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: clamp(1.2rem, 2.9vw, 1.35rem);
   font-weight: 400;
   line-height: 1.4;
@@ -8977,7 +8977,7 @@ body:has(.results-scope) {
   display: inline-block;
   margin-left: 0;
   color: #f47a1c;
-  font-family: var(--font-script), 'Segoe Script', 'Brush Script MT', cursive;
+  font-family: var(--font-script), var(--font-script-jp), var(--font-script-zh), 'Segoe Script', 'Brush Script MT', cursive;
   font-size: 1.22em;
   font-weight: 700;
   letter-spacing: -0.01em;

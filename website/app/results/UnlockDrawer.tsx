@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { calculateFee } from '../../lib/pricing'
 import { convertCurrencyAmount, type FxRateTable } from '../../lib/display-price'
 import { formatCurrencyAmount } from '../../lib/user-currency'
@@ -120,10 +121,10 @@ function fmtDuration(mins: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`
 }
 
-function stopsLabel(stops: number): string {
-  if (stops === 0) return 'Direct'
-  if (stops === 1) return '1 stop'
-  return `${stops} stops`
+function stopsLabel(stops: number, t: ReturnType<typeof useTranslations>): string {
+  if (stops === 0) return t('stops_direct')
+  if (stops === 1) return t('stops_one')
+  return t('stops_many', { count: stops })
 }
 
 const BAG_OPTED_IN = new Set(['1_bag', '2_bags'])
@@ -147,6 +148,9 @@ export default function UnlockDrawer({
   onUnlocked,
   onClose,
 }: UnlockDrawerProps) {
+  const t = useTranslations('Drawer')
+  // stopsLabel reads from the Results namespace (shared across cards).
+  const tResults = useTranslations('Results')
   // Animation state machine — CSS transitions drive the motion (not
   // keyframes; keyframes were swapping mid-flight when the user opened+
   // closed quickly, causing a visible snap to translateY(0) before the
@@ -262,7 +266,7 @@ export default function UnlockDrawer({
         const verifyData = await verifyRes.json().catch(() => null) as { unlocked?: boolean; error?: string } | null
         if (cancelled) return
         if (!verifyRes.ok || !verifyData?.unlocked) {
-          setVerifyError(verifyData?.error ?? 'Could not verify your payment.')
+          setVerifyError(verifyData?.error ?? t('couldNotVerify'))
           setUnlockState('failed')
           return
         }
@@ -280,7 +284,7 @@ export default function UnlockDrawer({
         const linkData = await linkRes.json().catch(() => null) as BookingLinkResponse | null
         if (cancelled) return
         if (!linkRes.ok || !linkData?.booking_url) {
-          setVerifyError('Payment confirmed, but we could not fetch the booking link. Please refresh.')
+          setVerifyError(t('errorPaymentConfirmed'))
           setUnlockState('failed')
           return
         }
@@ -291,7 +295,7 @@ export default function UnlockDrawer({
         onUnlocked()
       } catch (e) {
         if (cancelled) return
-        setVerifyError(e instanceof Error ? e.message : 'Network error verifying payment.')
+        setVerifyError(e instanceof Error ? e.message : t('errorVerifyNetwork'))
         setUnlockState('failed')
       }
     })()
@@ -327,7 +331,7 @@ export default function UnlockDrawer({
         const linkData = await linkRes.json().catch(() => null) as BookingLinkResponse | null
         if (cancelled) return
         if (!linkRes.ok || !linkData?.booking_url) {
-          setVerifyError('Could not fetch the booking link for this offer.')
+          setVerifyError(t('errorFetchBookingLink'))
           setUnlockState('failed')
           return
         }
@@ -335,7 +339,7 @@ export default function UnlockDrawer({
         setUnlockState('unlocked')
       } catch (e) {
         if (cancelled) return
-        setVerifyError(e instanceof Error ? e.message : 'Network error.')
+        setVerifyError(e instanceof Error ? e.message : t('errorNetwork'))
         setUnlockState('failed')
       }
     })()
@@ -446,7 +450,7 @@ export default function UnlockDrawer({
       }
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(text)
-        alert('Booking link copied to clipboard.')
+        alert(t('alertCopied'))
       }
     } catch {
       // User cancelled native share — ignore.
@@ -456,7 +460,7 @@ export default function UnlockDrawer({
   // Monitor stub — wires into the existing /api/monitor endpoints in a
   // follow-up. For now, just signal the feature.
   const handleMonitor = () => {
-    alert('Price monitoring coming soon — feature in development.')
+    alert(t('alertMonitorComingSoon'))
   }
 
   // Click → POST /api/checkout/create-session with return_to=drawer →
@@ -486,14 +490,14 @@ export default function UnlockDrawer({
       })
       const data = await res.json().catch(() => null) as { url?: string; error?: string } | null
       if (!res.ok || !data?.url) {
-        setUnlockError(data?.error ?? 'Could not start checkout. Please try again.')
+        setUnlockError(data?.error ?? t('errorCheckoutStart'))
         setIsUnlocking(false)
         return
       }
       // Full-page redirect to Stripe's hosted checkout.
       window.location.href = data.url
     } catch (e) {
-      setUnlockError(e instanceof Error ? e.message : 'Network error.')
+      setUnlockError(e instanceof Error ? e.message : t('errorNetwork'))
       setIsUnlocking(false)
     }
   }
@@ -508,7 +512,7 @@ export default function UnlockDrawer({
     : `${src.airline}${dateHeadline ? ` · ${dateHeadline}` : ''}`
   const routeLine =
     `${src.origin} ${fmtTime(src.departure_time, locale)} → ${src.destination} ${fmtTime(src.arrival_time, locale)} · ` +
-    `${stopsLabel(src.stops)} · ${fmtDuration(src.duration_minutes)}`
+    `${stopsLabel(src.stops, tResults)} · ${fmtDuration(src.duration_minutes)}`
 
   return (
     <div
@@ -527,10 +531,10 @@ export default function UnlockDrawer({
             summary and the old title would read odd next to it. */}
         {!isAlreadyUnlocked && !verifyStripeSession && unlockState !== 'unlocked' ? (
           <h2 id="udrw-title" className="udrw-title">
-            Unlock booking details
+            {t('unlockTitle')}
           </h2>
         ) : (
-          <span id="udrw-title" className="sr-only">Booking details</span>
+          <span id="udrw-title" className="sr-only">{t('bookingDetailsSr')}</span>
         )}
 
         {/* ── Flight summary: outbound + (optional) return ───────────── */}
@@ -554,14 +558,14 @@ export default function UnlockDrawer({
             </div>
             <div className="udrw-flight-meta">
               <div className="udrw-flight-headline">
-                Return · {fmtDate(src.inbound.departure_time, locale)}
+                {t('returnLabel')} · {fmtDate(src.inbound.departure_time, locale)}
               </div>
               <div className="udrw-flight-sub">
                 {(src.inbound.origin ?? src.destination)} {fmtTime(src.inbound.departure_time, locale)}
                 {' → '}
                 {(src.inbound.destination ?? src.origin)} {fmtTime(src.inbound.arrival_time, locale)}
                 {' · '}
-                {stopsLabel(src.inbound.stops ?? 0)}
+                {stopsLabel(src.inbound.stops ?? 0, tResults)}
                 {typeof src.inbound.duration_minutes === 'number' && src.inbound.duration_minutes > 0
                   ? ` · ${fmtDuration(src.inbound.duration_minutes)}`
                   : ''}
@@ -576,53 +580,54 @@ export default function UnlockDrawer({
               and showing "0 USD base fare" with a placeholder offer is
               actively confusing. ─────────────────────────────────────── */}
         {!isAlreadyUnlocked && !verifyStripeSession ? (
-          <div className="udrw-section-heading">Price breakdown</div>
+          <div className="udrw-section-heading">{t('priceBreakdown')}</div>
         ) : null}
 
         {breakdown && !isAlreadyUnlocked && !verifyStripeSession ? (
           <div className="udrw-breakdown">
             <BreakdownRow
-              label="Base fare (incl. taxes)"
+              label={t('rowBaseFare')}
               amount={breakdown.baseFare}
               currency={displayCurrency}
               included
             />
             {breakdown.bagAvail ? (
               <BreakdownRow
-                label="23 kg checked bag"
+                label={t('rowCheckedBag')}
                 amount={breakdown.bagCost}
                 currency={displayCurrency}
                 included={breakdown.bagInTotal}
-                mutedNote={!breakdown.bagInTotal ? 'not added' : undefined}
+                mutedNote={!breakdown.bagInTotal ? t('notAdded') : undefined}
               />
             ) : null}
             {breakdown.seatAvail ? (
               <BreakdownRow
-                label="Seat selection"
+                label={t('rowSeatSelection')}
                 amount={breakdown.seatCost}
                 currency={displayCurrency}
                 included={breakdown.seatInTotal}
-                mutedNote={!breakdown.seatInTotal ? 'not added' : undefined}
+                mutedNote={!breakdown.seatInTotal ? t('notAdded') : undefined}
               />
             ) : null}
             <BreakdownRow
-              label="LetsFG concierge fee"
+              label={t('rowConciergeFee')}
               amount={breakdown.unlockFee}
               currency={displayCurrency}
               included
             />
 
             <div className="udrw-total-row">
-              <span className="udrw-total-label">Total per person</span>
+              <span className="udrw-total-label">{t('rowTotal')}</span>
               <span className="udrw-total-amount">
                 {formatCurrencyAmount(breakdown.grandTotal, displayCurrency)}
               </span>
             </div>
 
             <p className="udrw-split-note">
-              You pay {formatCurrencyAmount(breakdown.unlockFee, displayCurrency)} now to LetsFG
-              {' · '}
-              {formatCurrencyAmount(breakdown.airlineSubtotal, displayCurrency)} to the airline at booking
+              {t('paymentSplit', {
+                fee: formatCurrencyAmount(breakdown.unlockFee, displayCurrency),
+                airline: formatCurrencyAmount(breakdown.airlineSubtotal, displayCurrency),
+              })}
             </p>
           </div>
         ) : null}
@@ -630,9 +635,7 @@ export default function UnlockDrawer({
         {/* ── CTA / verifying / unlocked / failed states ─────────────── */}
         {unlockState === 'verifying' ? (
           <div className="udrw-status udrw-status--verifying">
-            {verifyStripeSession
-              ? 'Confirming your payment with Stripe…'
-              : 'Loading your booking link…'}
+            {verifyStripeSession ? t('confirmingStripe') : t('loadingBookingLink')}
           </div>
         ) : unlockState === 'unlocked' && bookingLink ? (
           <>
@@ -644,15 +647,13 @@ export default function UnlockDrawer({
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-              <h3 className="udrw-unlocked-title">Your flight is unlocked!</h3>
-              <p className="udrw-unlocked-sub">
-                Complete the booking — prices as shown, paid directly to the airline.
-              </p>
+              <h3 className="udrw-unlocked-title">{t('unlockedHeroTitle')}</h3>
+              <p className="udrw-unlocked-sub">{t('unlockedHeroSubtitle')}</p>
             </div>
 
             {breakdown ? (
               <div className="udrw-unlocked-total">
-                Total at airline ·{' '}
+                {t('totalAtAirline')}{' '}
                 <strong>{formatCurrencyAmount(breakdown.airlineSubtotal, displayCurrency)}</strong>
               </div>
             ) : null}
@@ -674,8 +675,10 @@ export default function UnlockDrawer({
                       rel="noopener noreferrer"
                       className="udrw-cta"
                     >
-                      {opt.leg ? `${opt.leg.charAt(0).toUpperCase()}${opt.leg.slice(1)} · ` : ''}
-                      {opt.airline ?? 'Booking link'}
+                      {opt.leg
+                        ? `${opt.leg === 'outbound' ? tResults('legOutbound') : t('returnLabel')} · `
+                        : ''}
+                      {opt.airline ?? t('bookingLinkFallback')}
                       {opt.booking_site ? ` · ${opt.booking_site}` : ''}
                     </a>
                   ) : null,
@@ -688,7 +691,7 @@ export default function UnlockDrawer({
                 rel="noopener noreferrer"
                 className="udrw-cta"
               >
-                Open booking link
+                {t('openBookingLink')}
                 {bookingLink.booking_site ? ` · ${bookingLink.booking_site}` : ''}
               </a>
             )}
@@ -699,31 +702,31 @@ export default function UnlockDrawer({
             <div className="udrw-utility-row">
               <button type="button" className="udrw-utility-btn" onClick={handleShare}>
                 <span aria-hidden="true">📤</span>
-                Share with travel partner
+                {t('shareWithPartner')}
               </button>
               <button type="button" className="udrw-utility-btn" onClick={handleMonitor}>
                 <span aria-hidden="true">🔔</span>
-                Monitor price changes
+                {t('monitorPriceChanges')}
               </button>
             </div>
 
             {googleSavings ? (
               <div className="udrw-unlocked-savings">
                 <span className="udrw-unlocked-savings-main">
-                  ✓ You saved {formatCurrencyAmount(googleSavings.amount, displayCurrency)} vs booking on {googleSavings.comparedTo}
+                  {t('savedVsGoogleFlights', {
+                    amount: formatCurrencyAmount(googleSavings.amount, displayCurrency),
+                  })}
                 </span>
-                <span className="udrw-unlocked-savings-sub">All fees included — no surprises at checkout</span>
+                <span className="udrw-unlocked-savings-sub">{t('allFeesIncluded')}</span>
               </div>
             ) : null}
 
-            <p className="udrw-caption">
-              Link valid 15 min · paid directly to airline at booking
-            </p>
+            <p className="udrw-caption">{t('linkValid15Min')}</p>
           </>
         ) : unlockState === 'failed' ? (
           <>
             <div className="udrw-status udrw-status--failed">
-              {verifyError ?? 'Could not verify your payment.'}
+              {verifyError ?? t('couldNotVerify')}
             </div>
             <button
               type="button"
@@ -733,7 +736,7 @@ export default function UnlockDrawer({
                 setVerifyError(null)
               }}
             >
-              Try again
+              {t('tryAgain')}
             </button>
           </>
         ) : (
@@ -746,15 +749,15 @@ export default function UnlockDrawer({
             >
               <span className="udrw-cta-icon" aria-hidden="true">🔓</span>
               {isUnlocking
-                ? 'Opening secure payment…'
-                : `Unlock & get booking link · ${breakdown ? formatCurrencyAmount(breakdown.unlockFee, displayCurrency) : '…'}`}
+                ? t('openingPayment')
+                : t('unlockGetLink', {
+                    fee: breakdown ? formatCurrencyAmount(breakdown.unlockFee, displayCurrency) : '…',
+                  })}
             </button>
             {unlockError ? (
               <p className="udrw-error" style={{ marginTop: 10 }}>{unlockError}</p>
             ) : null}
-            <p className="udrw-caption">
-              One-time unlock · Booking link valid 15 min · directly to airline
-            </p>
+            <p className="udrw-caption">{t('oneTimeUnlockCaption')}</p>
           </>
         )}
       </div>
