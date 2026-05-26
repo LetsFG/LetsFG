@@ -1,15 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { Skyline, FlightArc, hashStr } from './[searchId]/SearchingTasks'
 
-// Cross-faded above the graphic. Edit freely — pure copy.
-const ROTATING_PHRASES = [
-  'Comparing every fee, seat cost, and baggage charge…',
-  'Checking baggage prices across carriers…',
-  'Hunting cheaper one-way combos…',
-  'Comparing change & cancellation policies…',
-  'Surfacing hidden ancillary costs…',
+// Cross-faded above the graphic. Translated at render time.
+const ROTATING_PHRASE_KEYS = [
+  'phraseCompareFees',
+  'phraseCheckBaggage',
+  'phraseHuntCombos',
+  'phraseChangeCxlPolicies',
+  'phraseHiddenAncillary',
 ]
 const PHRASE_INTERVAL_MS = 3400
 
@@ -39,10 +40,11 @@ export default function SearchingLoadingScene({
   destinationCode,
   destinationName,
 }: SearchingLoadingSceneProps) {
+  const t = useTranslations('Loading')
   const [phraseIdx, setPhraseIdx] = useState(0)
   useEffect(() => {
     const id = setInterval(
-      () => setPhraseIdx((i) => (i + 1) % ROTATING_PHRASES.length),
+      () => setPhraseIdx((i) => (i + 1) % ROTATING_PHRASE_KEYS.length),
       PHRASE_INTERVAL_MS,
     )
     return () => clearInterval(id)
@@ -66,19 +68,19 @@ export default function SearchingLoadingScene({
   return (
     <>
       <div className="pend-headline" aria-live="polite">
-        {ROTATING_PHRASES.map((phrase, i) => (
+        {ROTATING_PHRASE_KEYS.map((key, i) => (
           <span
-            key={phrase}
+            key={key}
             className={`pend-headline-phrase${i === phraseIdx ? ' pend-headline-phrase--active' : ''}`}
           >
-            {phrase}
+            {t(key)}
           </span>
         ))}
       </div>
 
       <div
         className="pend-graphic st-scene"
-        aria-label={`Searching flights from ${oName} to ${dName}`}
+        aria-label={t('ariaSearchingRoute', { origin: oName, destination: dName })}
       >
         <div className="st-city st-city--origin">
           <div className="st-city-meta">
@@ -111,7 +113,7 @@ export default function SearchingLoadingScene({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(barWidth)}
-        aria-label="Searching"
+        aria-label={t('ariaSearching')}
       >
         <div className="pend-bar-fill" style={{ width: `${barWidth}%` }} />
       </div>
