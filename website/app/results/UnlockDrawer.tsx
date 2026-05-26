@@ -84,6 +84,7 @@ export interface UnlockDrawerProps {
    *  its own isUnlocked flag so the NEXT drawer open (different offer in
    *  the same search) also skips the Stripe flow without a page refresh. */
   onUnlocked: () => void
+  onMonitor?: () => void
   onClose: () => void
 }
 
@@ -146,6 +147,7 @@ export default function UnlockDrawer({
   verifyStripeSession,
   isAlreadyUnlocked,
   onUnlocked,
+  onMonitor,
   onClose,
 }: UnlockDrawerProps) {
   const t = useTranslations('Drawer')
@@ -212,6 +214,11 @@ export default function UnlockDrawer({
 
   const [isUnlocking, setIsUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
+  // Stable ref so the verify/link effects don't need onUnlocked in their
+  // deps — inline arrow functions in JSX create a new reference every render,
+  // which would cancel the in-flight verify on every polling update.
+  const onUnlockedRef = useRef(onUnlocked)
+  onUnlockedRef.current = onUnlocked
 
   // Post-Stripe-redirect lifecycle:
   //   'idle'      — pre-unlock state, breakdown + CTA visible
@@ -243,14 +250,18 @@ export default function UnlockDrawer({
   // call /api/checkout/verify to record the unlock cookie server-side, then
   // fetch the booking link(s) and morph the drawer into the unlocked state.
   //
-  // CRITICAL: deps must NOT include `unlockState` — setting it to 'verifying'
-  // would re-trigger this effect, cancel the in-flight verify, and leave the
-  // drawer stuck on "Confirming…" forever. We instead use a ref keyed by
-  // (offerId|sessionId) so we only ever fire one verify per Stripe return.
+  // CRITICAL: `offer` must NOT be in deps. The Stripe-return flow opens the
+  // drawer with a lightweight placeholder first, then a background fetch
+  // swaps in the real offer data. If `offer` were a dep, that swap would run
+  // the effect cleanup → set `cancelled = true` → kill the in-flight verify,
+  // leaving the drawer stuck on "Confirming…" forever. We capture offer.id
+  // at fire-time and read the latest offer_ref from lastOfferRef so we get
+  // the real ref once the background fetch lands.
   const verifyStartedForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!offer || !verifyStripeSession) return
-    const key = `${offer.id}|${verifyStripeSession}`
+    const offerId = offer.id
+    const key = `${offerId}|${verifyStripeSession}`
     if (verifyStartedForRef.current === key) return
     verifyStartedForRef.current = key
     let cancelled = false
@@ -271,14 +282,14 @@ export default function UnlockDrawer({
           return
         }
         // Unlock cookie is now set — fetch the booking link.
-        // Forward the signed offer_ref so the server can reconstruct the
-        // offer when the in-memory cache has rolled (Cloud Run cold start,
-        // dev restart, instance fan-out after Stripe redirect) — otherwise
-        // clicks on subsequent cards 404 with "Offer not found".
+        // Read offer_ref from lastOfferRef so we pick up the real ref if the
+        // background fetch finished while verify was in-flight (placeholder
+        // won't have offer_ref; the real offer will).
         const linkParams = new URLSearchParams({ from: searchId, view: 'booking-link' })
-        if (offer.offer_ref) linkParams.set('ref', offer.offer_ref)
+        const latestRef = lastOfferRef.current?.offer_ref
+        if (latestRef) linkParams.set('ref', latestRef)
         const linkRes = await fetch(
-          `/api/offer/${encodeURIComponent(offer.id)}?${linkParams.toString()}`,
+          `/api/offer/${encodeURIComponent(offerId)}?${linkParams.toString()}`,
           { cache: 'no-store' },
         )
         const linkData = await linkRes.json().catch(() => null) as BookingLinkResponse | null
@@ -292,7 +303,7 @@ export default function UnlockDrawer({
         setUnlockState('unlocked')
         // Tell parent so subsequent drawer opens for other offers in the
         // same search skip the Stripe flow without a refresh.
-        onUnlocked()
+        onUnlockedRef.current()
       } catch (e) {
         if (cancelled) return
         setVerifyError(e instanceof Error ? e.message : t('errorVerifyNetwork'))
@@ -302,7 +313,8 @@ export default function UnlockDrawer({
     return () => {
       cancelled = true
     }
-  }, [offer, verifyStripeSession, searchId, onUnlocked])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifyStripeSession, searchId])
 
   // Search already unlocked (from a previous successful Stripe payment in
   // this browser): skip the breakdown + CTA entirely, fetch the booking
@@ -457,10 +469,9 @@ export default function UnlockDrawer({
     }
   }
 
-  // Monitor stub — wires into the existing /api/monitor endpoints in a
-  // follow-up. For now, just signal the feature.
   const handleMonitor = () => {
-    alert(t('alertMonitorComingSoon'))
+    onClose()
+    onMonitor?.()
   }
 
   // Click → POST /api/checkout/create-session with return_to=drawer →

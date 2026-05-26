@@ -237,6 +237,7 @@ export default async function ResultsPage({ params, searchParams }: { params: Pr
         searchedAt={searched_at || sp?.started}
         fswSession={sp?._fss}
         initialIsUnlocked={initialIsUnlocked}
+        initialGemini={gemini_justification}
       />
     </>
   )

@@ -107,6 +107,7 @@
     "priceMeta": "{trip} · お一人様合計 · 全費用込み",
     "savingsVsGoogleFlights": "↓ Google Flights平均より{diff}安い（比較：{comparedTo}）",
     "unlockAndBook": "解除して予約",
+    "bookNow": "Book",
     "alertCta": "アラート",
     "alertCtaAria": "このルートの価格アラートを設定",
     "runnerTagCheapest": "最安値オプション",

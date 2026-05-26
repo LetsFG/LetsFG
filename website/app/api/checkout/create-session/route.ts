@@ -145,6 +145,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: session.url })
   } catch (err) {
     console.error('[checkout] create-session error:', err)
-    return NextResponse.json({ error: 'Stripe error' }, { status: 500 })
+    const detail = process.env.NODE_ENV === 'development'
+      ? String((err as any)?.message ?? err)
+      : undefined
+    return NextResponse.json({ error: 'Stripe error', ...(detail ? { detail } : {}) }, { status: 500 })
   }
 }

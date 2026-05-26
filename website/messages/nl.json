@@ -107,6 +107,7 @@
     "priceMeta": "{trip} · totaalprijs per persoon · alle kosten inbegrepen",
     "savingsVsGoogleFlights": "↓ {diff} minder dan het gemiddelde van Google Flights ({comparedTo})",
     "unlockAndBook": "Ontgrendelen & Boeken",
+    "bookNow": "Book",
     "alertCta": "Alert",
     "alertCtaAria": "Prijsalarm instellen voor deze route",
     "runnerTagCheapest": "Goedkoopste optie",

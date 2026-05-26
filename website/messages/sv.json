@@ -107,6 +107,7 @@
     "priceMeta": "{trip} · totalpris per person · alla avgifter ingår",
     "savingsVsGoogleFlights": "↓ {diff} mindre än Google Flights-snittet ({comparedTo})",
     "unlockAndBook": "Lås upp & boka",
+    "bookNow": "Book",
     "alertCta": "Avisering",
     "alertCtaAria": "Ange prisavisering för den här rutten",
     "runnerTagCheapest": "Billigaste alternativet",

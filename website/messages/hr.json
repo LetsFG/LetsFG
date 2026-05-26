@@ -107,6 +107,7 @@
     "priceMeta": "{trip} · ukupna cijena po osobi · sve naknade uključene",
     "savingsVsGoogleFlights": "↓ {diff} manje od prosjeka Google Flights-a ({comparedTo})",
     "unlockAndBook": "Otključaj i rezerviraj",
+    "bookNow": "Book",
     "alertCta": "Alert",
     "alertCtaAria": "Postavi cjenovni alert za ovu rutu",
     "runnerTagCheapest": "Najjeftinija opcija",

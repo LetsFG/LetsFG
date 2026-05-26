@@ -8,7 +8,6 @@ import { useLocale, useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
-import SearchingLoadingScene from '../SearchingLoadingScene'
 import UnlockDrawer from '../UnlockDrawer'
 
 // Heavy modals — load only when the user actually opens an alert.
@@ -34,6 +33,10 @@ import { getOfferInstanceKey, rankOffers, type RankingContext, type RankOffer } 
 const POLL_FIRST_PHASE_MS = 2000
 const POLL_LATER_PHASE_MS = 5000
 const POLL_FIRST_PHASE_HORIZON_MS = 15000
+// After 3 minutes of client-side polling with no status flip, stop and
+// treat the search as done — show whatever offers arrived. Prevents the
+// "Still scanning…" chip from displaying indefinitely when FSW gets stuck.
+const POLL_MAX_DURATION_MS = 3 * 60 * 1000
 // Render the "Other flights" list this many at a time. "Show more" reveals
 // the next OTHER_PAGE_SIZE items until we run out.
 const OTHER_PAGE_SIZE = 20
@@ -116,6 +119,19 @@ export interface ResultsClientProps {
    *  SSR-side from the lfg_unlocks cookie. When true, every offer's drawer
    *  skips the Stripe flow and goes straight to the booking-link state. */
   initialIsUnlocked: boolean
+  /** Server-cached Gemini justification. When locale+currency match, the
+   *  client skips the /api/rank call and renders this directly. */
+  initialGemini?: {
+    title?: string
+    subtitle?: string
+    hero: string
+    hero_bullets?: string[]
+    runners: string[]
+    offer_ids?: string[]
+    ts: number
+    locale?: string
+    display_currency?: string
+  }
 }
 
 function dedup(offers: FlightOffer[]): FlightOffer[] {
@@ -221,12 +237,13 @@ function HeroCard({
   displayCurrency,
   fxRates,
   hrefSuffix: _hrefSuffix,
+  isUnlocked,
   bullets,
   googleFlightsLowest,
   locale,
   onUnlock,
   onAlert,
-}: CardProps & { bullets: string[]; googleFlightsLowest?: number; locale: string; onUnlock: () => void; onAlert: () => void }) {
+}: CardProps & { bullets: string[]; googleFlightsLowest?: number; locale: string; isUnlocked?: boolean; onUnlock: () => void; onAlert: () => void }) {
   const t = useTranslations('Results')
   const price = getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
   const priceFmt = formatCurrencyAmount(price, displayCurrency)
@@ -324,7 +341,7 @@ function HeroCard({
           className="res2-hero-cta res2-hero-cta--primary"
           onClick={onUnlock}
         >
-          {t('unlockAndBook')}
+          {isUnlocked ? t('bookNow') : t('unlockAndBook')}
         </button>
         <button
           type="button"
@@ -463,11 +480,20 @@ export default function ResultsClient({
   searchedAt,
   fswSession,
   initialIsUnlocked,
+  initialGemini,
 }: ResultsClientProps) {
   const router = useRouter()
   const locale = useLocale()
   const searchParams = useSearchParams()
   const t = useTranslations('Results')
+
+  // True when the server already has a Gemini result for this exact locale+currency.
+  // Used to seed rankCopy immediately and skip the /api/rank call.
+  const geminiCacheHit = !!(
+    initialGemini &&
+    (initialGemini.locale ?? 'en') === locale &&
+    (initialGemini.display_currency ?? '') === initialCurrency
+  )
 
   const [status, setStatus] = useState(initialStatus)
   // Seed offers from the SSR snapshot, but also try the session/local cache
@@ -490,7 +516,17 @@ export default function ResultsClient({
   }, [searchId, offers])
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>(initialCurrency)
   const [otherLimit, setOtherLimit] = useState(OTHER_PAGE_SIZE)
-  const [rankCopy, setRankCopy] = useState<RankResponse | null>(null)
+  const [rankCopy, setRankCopy] = useState<RankResponse | null>(() => {
+    if (!geminiCacheHit || !initialGemini) return null
+    return {
+      title: initialGemini.title,
+      subtitle: initialGemini.subtitle,
+      hero: initialGemini.hero,
+      hero_bullets: initialGemini.hero_bullets,
+      runners: initialGemini.runners,
+      offer_ids: initialGemini.offer_ids,
+    }
+  })
   const [unlockingOffer, setUnlockingOffer] = useState<FlightOffer | null>(null)
   // When the user comes back from Stripe Checkout, the URL carries
   // `unlocked=<offerId>&stripe_session=<cs_...>`. We feed the session ID
@@ -501,6 +537,8 @@ export default function ResultsClient({
   // MonitorModal handles the configure+create flow, which redirects to
   // Stripe; on return the URL carries `monitor_active=<id>` and we show
   // the MonitorConfirmedOverlay so the user can attach notification channels.
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => setIsMounted(true), [])
   const [monitorOpen, setMonitorOpen] = useState(false)
   const [confirmedMonitorId, setConfirmedMonitorId] = useState<string | null>(null)
   // SSR-derived; we flip it client-side once a successful Stripe verify
@@ -508,7 +546,9 @@ export default function ResultsClient({
   // without waiting for a page refresh.
   const [isUnlocked, setIsUnlocked] = useState(initialIsUnlocked)
   const stripeReturnHandledRef = useRef(false)
-  const finalRankFiredRef = useRef(false)
+  const finalRankFiredRef = useRef(geminiCacheHit)
+  const prevLocaleRef = useRef(locale)
+  const prevCurrencyRef = useRef(initialCurrency)
 
   // Currency switcher events.
   useEffect(() => {
@@ -516,6 +556,18 @@ export default function ResultsClient({
     window.addEventListener(CURRENCY_CHANGE_EVENT, handler)
     return () => window.removeEventListener(CURRENCY_CHANGE_EVENT, handler)
   }, [initialCurrency])
+
+  // Locale or currency changed after initial render — regenerate Gemini copy.
+  useEffect(() => {
+    const localeChanged = prevLocaleRef.current !== locale
+    const currencyChanged = prevCurrencyRef.current !== displayCurrency
+    prevLocaleRef.current = locale
+    prevCurrencyRef.current = displayCurrency
+    if ((localeChanged || currencyChanged) && rankCopy !== null) {
+      void fetchRankCopy('final', true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale, displayCurrency])
 
   // Stripe return: when the URL carries ?unlocked=<id>&stripe_session=<cs_...>
   // we open the drawer for that offer IMMEDIATELY so the user doesn't have to
@@ -596,12 +648,27 @@ export default function ResultsClient({
   useEffect(() => {
     if (status !== 'searching') return
 
+    // If we know when this search started and it's already past the max poll
+    // window, don't poll at all — show what we have and call it done.
+    if (searchedAt) {
+      const age = Date.now() - new Date(searchedAt).getTime()
+      if (age > POLL_MAX_DURATION_MS) {
+        setStatus('completed')
+        return
+      }
+    }
+
     const pollStart = Date.now()
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout>
 
     const poll = async () => {
       if (cancelled) return
+      // Hard client-side timeout — stop polling after 3 minutes regardless.
+      if (Date.now() - pollStart > POLL_MAX_DURATION_MS) {
+        setStatus('completed')
+        return
+      }
       try {
         const params = new URLSearchParams()
         appendProbeParam(params, isTestSearch)
@@ -642,7 +709,7 @@ export default function ResultsClient({
       cancelled = true
       if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [displayCurrency, fswSession, isTestSearch, query, searchId, status])
+  }, [displayCurrency, fswSession, isTestSearch, query, searchId, status, searchedAt])
 
   // Ranked offers — first 3 cheapest by total price after the current
   // r_baggage / r_seat_selection wiring applied upstream by /api/results.
@@ -682,7 +749,7 @@ export default function ResultsClient({
   // Fires once when we have ≥3 offers, and again on 'completed' for the
   // final pass over the full offer set (per user spec).
   const fetchRankCopy = useCallback(
-    async (phase: 'partial' | 'final') => {
+    async (phase: 'partial' | 'final', forceRegenerate?: boolean) => {
       if (offers.length < 1) return
       try {
         // Re-rank locally so the topOffers payload includes score/breakdown/
@@ -707,6 +774,7 @@ export default function ResultsClient({
           context: rankingContext,
           locale,
           displayCurrency,
+          ...(forceRegenerate ? { forceRegenerate: true } : {}),
         }
         const res = await fetch('/api/rank', {
           method: 'POST',
@@ -723,7 +791,7 @@ export default function ResultsClient({
     [offers, rankingContext, query, searchId, locale, displayCurrency, status],
   )
 
-  const rankCopyFiredOnceRef = useRef(false)
+  const rankCopyFiredOnceRef = useRef(geminiCacheHit)
   useEffect(() => {
     if (top3.length >= 3 && !rankCopyFiredOnceRef.current) {
       rankCopyFiredOnceRef.current = true
@@ -777,8 +845,6 @@ export default function ResultsClient({
   // skip the loading scene even if no offers have rendered yet — the
   // drawer is the focus, the background should be the results layout
   // (empty / minimal is fine) rather than a flashy "searching…" view.
-  const isWaitingForFirstOffer =
-    top3.length === 0 && status === 'searching' && !verifyStripeSession
   const isEmpty = top3.length === 0 && status !== 'searching'
 
   return (
@@ -797,23 +863,13 @@ export default function ResultsClient({
         </div>
       </header>
 
-      {isWaitingForFirstOffer ? (
-        <section className="pend-body">
-          <SearchingLoadingScene
-            originCode={parsed.origin ?? undefined}
-            originName={parsed.origin_name ?? parsed.origin ?? undefined}
-            destinationCode={parsed.destination ?? undefined}
-            destinationName={parsed.destination_name ?? parsed.destination ?? undefined}
-          />
-        </section>
-      ) : (
-        <section className="res2-body">
+      <section className="res2-body">
           <h1 className="res2-title">
-            {t('heroTitle', { n: Math.min(3, Math.max(1, top3.length)) })}
+            {isMounted ? t('heroTitle', { n: Math.min(3, Math.max(1, top3.length)) }) : ' '}
           </h1>
-          <p className="res2-subtitle">{subtitle}</p>
+          <p className="res2-subtitle">{isMounted ? subtitle : ' '}</p>
 
-          {status === 'searching' ? (
+          {status === 'searching' && !verifyStripeSession ? (
             <div className="res2-streaming" role="status" aria-live="polite">
               <span className="res2-streaming-dot" aria-hidden="true" />
               <span className="res2-streaming-text">
@@ -831,6 +887,7 @@ export default function ResultsClient({
               bullets={rankCopy?.hero_bullets ?? []}
               googleFlightsLowest={googleFlightsLowest}
               locale={locale}
+              isUnlocked={isUnlocked}
               onUnlock={() => setUnlockingOffer(heroOffer)}
               onAlert={() => setMonitorOpen(true)}
             />
@@ -892,8 +949,7 @@ export default function ResultsClient({
               ) : null}
             </>
           ) : null}
-        </section>
-      )}
+      </section>
 
       <UnlockDrawer
         offer={unlockingOffer}
@@ -907,33 +963,32 @@ export default function ResultsClient({
         verifyStripeSession={verifyStripeSession}
         isAlreadyUnlocked={isUnlocked}
         onUnlocked={() => setIsUnlocked(true)}
+        onMonitor={() => setMonitorOpen(true)}
         onClose={() => {
           setUnlockingOffer(null)
           setVerifyStripeSession(null)
         }}
       />
 
-      {/* Fall back to client-side parseNLQuery when SSR returned an empty
-        * parsed snapshot (FSW hadn't persisted the parse yet at first SSR
-        * hit, and polling doesn't update `parsed`). Without this the
-        * Alert button silently no-ops when the user lands on the page
-        * before the backend finishes the parse. */}
+      {/* Fall back to client-side parseNLQuery, then to the hero offer itself,
+        * when SSR returned an empty parsed snapshot. Without this the Alert
+        * button silently no-ops when the backend parse hasn't landed yet. */}
       {(() => {
-        const fallback = (!parsed.origin || !parsed.destination || !parsed.date)
+        const nlFallback = (!parsed.origin || !parsed.destination || !parsed.date)
           ? parseNLQuery(query)
           : null
-        const origin = parsed.origin || fallback?.origin
-        const destination = parsed.destination || fallback?.destination
-        const date = parsed.date || fallback?.date
-        const originName = parsed.origin_name || fallback?.origin_name || origin
-        const destinationName = parsed.destination_name || fallback?.destination_name || destination
-        const returnDate = parsed.return_date || fallback?.return_date || undefined
+        const origin = parsed.origin || nlFallback?.origin || heroOffer?.origin || ''
+        const destination = parsed.destination || nlFallback?.destination || heroOffer?.destination || ''
+        const date = parsed.date || nlFallback?.date || heroOffer?.departure_time?.split('T')[0] || ''
+        const originName = parsed.origin_name || nlFallback?.origin_name || heroOffer?.origin_name || origin
+        const destinationName = parsed.destination_name || nlFallback?.destination_name || heroOffer?.destination_name || destination
+        const returnDate = parsed.return_date || nlFallback?.return_date || undefined
         const passengers = parsed.passengers || 1
-        const cabin = parsed.cabin || fallback?.cabin || undefined
+        const cabin = parsed.cabin || nlFallback?.cabin || undefined
         const routeLabel = [originName, destinationName].filter(Boolean).join(' → ')
         return (
           <>
-            {monitorOpen && origin && destination && date ? (
+            {monitorOpen && origin && destination ? (
               <MonitorModal
                 searchId={searchId}
                 origin={origin}
