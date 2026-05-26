@@ -157,6 +157,17 @@ function normalizeOffer(raw: any, idx: number): any {
     }
   }
 
+  // Virtual interlining / combo: this flight ships as TWO (or more)
+  // separate bookings the user has to complete one after the other rather
+  // than a single ticket. We surface a flag so the UI can warn — booking
+  // URLs themselves stay server-side. Mirrors the canonical derivation in
+  // lib/trusted-offer.ts so a public list and a /api/offer/[id] fetch agree.
+  const isCombo = Boolean(
+    raw.conditions?.combo_type === 'virtual_interlining'
+    || (typeof raw.source === 'string' && raw.source.startsWith('combo:'))
+    || (Array.isArray(raw.booking_options) && raw.booking_options.length > 0),
+  )
+
   return {
     id,
     price: Math.round((raw.price || 0) * 100) / 100,
@@ -176,6 +187,7 @@ function normalizeOffer(raw: any, idx: number): any {
     stops: ob.stopovers ?? Math.max(0, segs.length - 1),
     segments: normSegs.length > 1 ? normSegs : undefined,
     inbound,
+    is_combo: isCombo,
   }
 }
 

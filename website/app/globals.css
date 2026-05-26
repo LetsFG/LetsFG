@@ -3277,6 +3277,16 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
+.res2-runner-price-meta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(20, 45, 60, 0.5);
+  margin-top: 1px;
+  text-transform: uppercase;
+}
+
+
 /* Other flights list */
 
 .res2-other-list {
@@ -3335,10 +3345,47 @@ input {
 
 .res2-other-price {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.res2-other-price-val {
   font-size: 1rem;
   font-weight: 800;
   color: #0d0d0d;
   font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.res2-other-price-meta {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(20, 45, 60, 0.5);
+  text-transform: uppercase;
+}
+
+/* Flat icon + label in brand orange — used on hero, runner, and other
+ * cards alike. Deliberately understated: no chip background, normal
+ * weight. Longer explanation stays in the hover tooltip. */
+.res2-combo-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  color: #f47a1c;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  cursor: help;
+  opacity: 0.9;
+  transition: opacity 0.15s ease;
+}
+
+.res2-combo-icon:hover {
+  opacity: 1;
 }
 
 .res2-show-more {
@@ -3390,6 +3437,34 @@ input {
 
 .res2-empty-cta:hover {
   background: #df6a0e;
+}
+
+/* SSR skeleton — shown only briefly on hard-refresh while page.tsx fetches
+ * the initial offer snapshot. Continuous slide of an orange bar across a
+ * grey track, no text, no SearchingTasks. ResultsClient takes over once
+ * its first paint lands. */
+.res2-skeleton-bar {
+  position: relative;
+  height: 6px;
+  width: min(420px, 100%);
+  margin: 24px auto;
+  background: rgba(20, 45, 60, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.res2-skeleton-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent 0%, #f47a1c 50%, transparent 100%);
+  border-radius: 999px;
+  animation: res2-skeleton-slide 1.4s linear infinite;
+}
+
+@keyframes res2-skeleton-slide {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(350%); }
 }
 
 @media (min-width: 720px) {

@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale } from 'next-intl'
 import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
-import { Skyline, FlightArc, hashStr } from '../[searchId]/SearchingTasks'
+import SearchingLoadingScene from '../SearchingLoadingScene'
 import { normalizeCurrencyCode } from '../../../lib/currency-preference'
 import { buildLocaleHomePath, setResultsLocaleSearchParam } from '../../../lib/locale-routing'
 import {
@@ -24,24 +24,9 @@ const PREFIRE_ROUTE_WAIT_MS = 2500
 // Gemini parse so we don't re-fetch /api/parse-query on every page.
 const REFINE_HANDOFF_KEY = 'lfg_refine_handoff'
 
-// Cross-faded above the graphic. Free to edit — purely a copy decision.
-const ROTATING_PHRASES = [
-  'Comparing every fee, seat cost, and baggage charge…',
-  'Checking baggage prices across carriers…',
-  'Hunting cheaper one-way combos…',
-  'Comparing change & cancellation policies…',
-  'Surfacing hidden ancillary costs…',
-]
-const PHRASE_INTERVAL_MS = 3400
-
 // Reveal the agent question card this long after mount so it doesn't compete
 // with the rotating headline and graphic for the user's first glance.
 const AGENT_REVEAL_DELAY_MS = 1200
-
-// Loading bar ease horizon. Pure visual — we don't have a live progress feed
-// at this stage and the search itself takes ~60–120s.
-const BAR_HORIZON_S = 95
-const BAR_MAX_PERCENT = 95
 
 // Poll /api/results/{searchId} this often once we have a searchId, until the
 // first offers arrive (or the search completes / errors out). Keeps the user
@@ -154,23 +139,7 @@ function PendingResultsInner() {
     return () => clearTimeout(t)
   }, [loadingQuestions.length, questionsSkipped])
 
-  const [phraseIdx, setPhraseIdx] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setPhraseIdx(i => (i + 1) % ROTATING_PHRASES.length), PHRASE_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
-
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    const startedAt = Date.now()
-    const id = setInterval(() => setElapsed((Date.now() - startedAt) / 1000), 200)
-    return () => clearInterval(id)
-  }, [])
-  const barWidth = (() => {
-    const tNorm = Math.min(elapsed / BAR_HORIZON_S, 1)
-    const eased = 1 - Math.pow(1 - tNorm, 3)
-    return Math.min(BAR_MAX_PERCENT, eased * BAR_MAX_PERCENT)
-  })()
+  // Phrase rotation, loading bar, graphic — all owned by SearchingLoadingScene now.
 
   // Two-phase navigation. Phase 1 (handoff) resolves a searchId. Phase 2
   // polls /api/results/{searchId} and only redirects once the first partial
@@ -360,56 +329,12 @@ function PendingResultsInner() {
       </header>
 
       <section className="pend-body">
-        <div className="pend-headline" aria-live="polite">
-          {ROTATING_PHRASES.map((phrase, i) => (
-            <span
-              key={phrase}
-              className={`pend-headline-phrase${i === phraseIdx ? ' pend-headline-phrase--active' : ''}`}
-            >
-              {phrase}
-            </span>
-          ))}
-        </div>
-
-        <div
-          className="pend-graphic st-scene"
-          aria-label={`Searching flights from ${originName} to ${destinationName}`}
-        >
-          <div className="st-city st-city--origin">
-            <div className="st-city-meta">
-              <span className="st-city-name">{originName}</span>
-              {originCode ? <span className="st-city-code">{originCode}</span> : null}
-            </div>
-            <Skyline seed={hashStr(originCode ?? originName)} cityCode={originCode ?? ''} />
-          </div>
-
-          <div className="st-flight-path">
-            <FlightArc />
-          </div>
-
-          <div className="st-city st-city--destination">
-            <div className="st-city-meta st-city-meta--right">
-              <span className="st-city-name">{destinationName}</span>
-              {destinationCode ? <span className="st-city-code">{destinationCode}</span> : null}
-            </div>
-            <Skyline
-              mirrored
-              seed={hashStr(destinationCode ?? destinationName)}
-              cityCode={destinationCode ?? ''}
-            />
-          </div>
-        </div>
-
-        <div
-          className="pend-bar"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(barWidth)}
-          aria-label="Searching"
-        >
-          <div className="pend-bar-fill" style={{ width: `${barWidth}%` }} />
-        </div>
+        <SearchingLoadingScene
+          originCode={originCode}
+          originName={originName}
+          destinationCode={destinationCode}
+          destinationName={destinationName}
+        />
 
         {showAgent ? (
           <div className={`pend-agent${questionVisible ? ' pend-agent--in' : ''}`}>

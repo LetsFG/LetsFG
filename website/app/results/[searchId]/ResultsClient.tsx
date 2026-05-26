@@ -7,6 +7,7 @@ import { useLocale } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
+import SearchingLoadingScene from '../SearchingLoadingScene'
 import {
   CURRENCY_CHANGE_EVENT,
   readBrowserCurrencyPreference,
@@ -45,6 +46,12 @@ interface FlightOffer {
   arrival_time: string
   duration_minutes: number
   stops: number
+  /** Present only on round-trip offers — used to render "Round trip" vs
+   *  "One way" under the price. We don't read the inbound details here. */
+  inbound?: { departure_time?: string }
+  /** Virtual interlining — flight ships as TWO or more separate bookings
+   *  rather than a single ticket. Surface with a "Separate tickets" badge. */
+  is_combo?: boolean
 }
 
 interface ParsedQuery {
@@ -146,6 +153,25 @@ function buildBookHref(offer: FlightOffer, suffix: string): string {
   return suffix ? `${base}?${suffix}` : base
 }
 
+// Single understated "⚠ Separate tickets" label used on every card type
+// when an offer is virtual-interlining (is_combo). Brand orange, normal
+// weight, no chip background. Hover tooltip carries the full caveat.
+function ComboTicketsLabel() {
+  return (
+    <span
+      className="res2-combo-icon"
+      title="Booked as two separate fares — you'll complete two checkouts"
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+      Separate tickets
+    </span>
+  )
+}
+
 function HeroCard({
   offer,
   displayCurrency,
@@ -198,7 +224,10 @@ function HeroCard({
 
       <div className="res2-hero-price-block">
         <div className="res2-hero-price">{priceFmt}</div>
-        <div className="res2-hero-price-meta">Total per person · all fees included</div>
+        <div className="res2-hero-price-meta">
+          {offer.inbound ? 'Round trip' : 'One way'} · total per person · all fees included
+        </div>
+        {offer.is_combo ? <ComboTicketsLabel /> : null}
         {savings ? (
           <div className="res2-hero-savings">
             ↓ {formatCurrencyAmount(savings.diff, displayCurrency)} less than Google Flights avg ({formatCurrencyAmount(savings.comparedTo, displayCurrency)})
@@ -251,6 +280,7 @@ function RunnerCard({
   const priceFmt = formatCurrencyAmount(price, displayCurrency)
   const href = buildBookHref(offer, hrefSuffix)
   const tag = deriveRunnerTag(offer, heroOffer)
+  const tripType = offer.inbound ? 'Round trip' : 'One way'
   return (
     <Link href={href} className="res2-runner" prefetch={false}>
       <div className="res2-runner-main">
@@ -268,6 +298,8 @@ function RunnerCard({
       </div>
       <div className="res2-runner-price">
         <div className="res2-runner-price-val">{priceFmt}</div>
+        <div className="res2-runner-price-meta">{tripType}</div>
+        {offer.is_combo ? <ComboTicketsLabel /> : null}
       </div>
     </Link>
   )
@@ -277,6 +309,7 @@ function OtherCard({ offer, displayCurrency, fxRates, hrefSuffix }: CardProps) {
   const price = getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
   const priceFmt = formatCurrencyAmount(price, displayCurrency)
   const href = buildBookHref(offer, hrefSuffix)
+  const tripType = offer.inbound ? 'Round trip' : 'One way'
   return (
     <Link href={href} className="res2-other" prefetch={false}>
       <div className="res2-other-main">
@@ -289,7 +322,11 @@ function OtherCard({ offer, displayCurrency, fxRates, hrefSuffix }: CardProps) {
           {offer.airline} · {stopsLabel(offer.stops)} · {formatDuration(offer.duration_minutes)}
         </div>
       </div>
-      <div className="res2-other-price">{priceFmt}</div>
+      <div className="res2-other-price">
+        <div className="res2-other-price-val">{priceFmt}</div>
+        <div className="res2-other-price-meta">{tripType}</div>
+        {offer.is_combo ? <ComboTicketsLabel /> : null}
+      </div>
     </Link>
   )
 }
@@ -504,7 +541,10 @@ export default function ResultsClient({
   const visibleOthers = others.slice(0, otherLimit)
   const moreLeft = others.length - visibleOthers.length
 
-  // Empty hero state — search returned no offers (or still loading first one)
+  // Three states: still loading first offer (show pending-style scene),
+  // search ended with no offers at all (show empty state with CTA),
+  // or we have offers (show results layout).
+  const isWaitingForFirstOffer = top3.length === 0 && status === 'searching'
   const isEmpty = top3.length === 0 && status !== 'searching'
 
   return (
@@ -523,83 +563,90 @@ export default function ResultsClient({
         </div>
       </header>
 
-      <section className="res2-body">
-        <h1 className="res2-title">
-          Your {Math.min(3, Math.max(1, top3.length))} best flights
-        </h1>
-        <p className="res2-subtitle">{subtitle}</p>
-
-        {heroOffer ? (
-          <HeroCard
-            offer={heroOffer}
-            displayCurrency={displayCurrency}
-            fxRates={fxRates}
-            hrefSuffix={bookHrefSuffix}
-            bullets={rankCopy?.hero_bullets ?? []}
-            googleFlightsLowest={googleFlightsLowest}
-            onAlert={() => alert('Price alerts coming soon — feature in development')}
+      {isWaitingForFirstOffer ? (
+        <section className="pend-body">
+          <SearchingLoadingScene
+            originCode={parsed.origin ?? undefined}
+            originName={parsed.origin_name ?? parsed.origin ?? undefined}
+            destinationCode={parsed.destination ?? undefined}
+            destinationName={parsed.destination_name ?? parsed.destination ?? undefined}
           />
-        ) : status === 'searching' ? (
-          <div className="res2-empty res2-empty--loading">
-            Still scanning… your top pick will appear here in a moment.
-          </div>
-        ) : isEmpty ? (
-          <div className="res2-empty">
-            We couldn’t find flights for this search.
-            <button
-              type="button"
-              className="res2-empty-cta"
-              onClick={() => router.push(`/${locale}?q=${encodeURIComponent(query)}`)}
-            >
-              Try a different search
-            </button>
-          </div>
-        ) : null}
+        </section>
+      ) : (
+        <section className="res2-body">
+          <h1 className="res2-title">
+            Your {Math.min(3, Math.max(1, top3.length))} best flights
+          </h1>
+          <p className="res2-subtitle">{subtitle}</p>
 
-        {runnerOffers.length > 0 ? (
-          <>
-            <h2 className="res2-section-heading">Also worth considering</h2>
-            <div className="res2-runner-list">
-              {runnerOffers.map((offer) => (
-                <RunnerCard
-                  key={offer.id}
-                  offer={offer}
-                  displayCurrency={displayCurrency}
-                  fxRates={fxRates}
-                  hrefSuffix={bookHrefSuffix}
-                  heroOffer={heroOffer}
-                />
-              ))}
-            </div>
-          </>
-        ) : null}
-
-        {others.length > 0 ? (
-          <>
-            <h2 className="res2-section-heading">Other flights</h2>
-            <div className="res2-other-list">
-              {visibleOthers.map((offer) => (
-                <OtherCard
-                  key={offer.id}
-                  offer={offer}
-                  displayCurrency={displayCurrency}
-                  fxRates={fxRates}
-                  hrefSuffix={bookHrefSuffix}
-                />
-              ))}
-            </div>
-            {moreLeft > 0 ? (
+          {heroOffer ? (
+            <HeroCard
+              offer={heroOffer}
+              displayCurrency={displayCurrency}
+              fxRates={fxRates}
+              hrefSuffix={bookHrefSuffix}
+              bullets={rankCopy?.hero_bullets ?? []}
+              googleFlightsLowest={googleFlightsLowest}
+              onAlert={() => alert('Price alerts coming soon — feature in development')}
+            />
+          ) : isEmpty ? (
+            <div className="res2-empty">
+              We couldn’t find flights for this search.
               <button
                 type="button"
-                className="res2-show-more"
-                onClick={() => setOtherLimit((n) => n + OTHER_PAGE_SIZE)}
+                className="res2-empty-cta"
+                onClick={() => router.push(`/${locale}?q=${encodeURIComponent(query)}`)}
               >
-                Show {Math.min(moreLeft, OTHER_PAGE_SIZE)} more
+                Try a different search
               </button>
-            ) : null}
-          </>
-        ) : null}
-      </section>
+            </div>
+          ) : null}
+
+          {runnerOffers.length > 0 ? (
+            <>
+              <h2 className="res2-section-heading">Also worth considering</h2>
+              <div className="res2-runner-list">
+                {runnerOffers.map((offer) => (
+                  <RunnerCard
+                    key={offer.id}
+                    offer={offer}
+                    displayCurrency={displayCurrency}
+                    fxRates={fxRates}
+                    hrefSuffix={bookHrefSuffix}
+                    heroOffer={heroOffer}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {others.length > 0 ? (
+            <>
+              <h2 className="res2-section-heading">Other flights</h2>
+              <div className="res2-other-list">
+                {visibleOthers.map((offer) => (
+                  <OtherCard
+                    key={offer.id}
+                    offer={offer}
+                    displayCurrency={displayCurrency}
+                    fxRates={fxRates}
+                    hrefSuffix={bookHrefSuffix}
+                  />
+                ))}
+              </div>
+              {moreLeft > 0 ? (
+                <button
+                  type="button"
+                  className="res2-show-more"
+                  onClick={() => setOtherLimit((n) => n + OTHER_PAGE_SIZE)}
+                >
+                  Show {Math.min(moreLeft, OTHER_PAGE_SIZE)} more
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </section>
+      )}
     </main>
   )
 }
