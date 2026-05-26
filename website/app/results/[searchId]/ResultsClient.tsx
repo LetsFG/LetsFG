@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useRouter, useSearchParams } from 'next/navigation'
 import CurrencyButton from '../../currency-button'
 import GlobeButton from '../../globe-button'
@@ -147,10 +147,10 @@ function formatLegDate(iso: string, locale: string): string {
   }
 }
 
-function stopsLabel(stops: number): string {
-  if (stops === 0) return 'Direct'
-  if (stops === 1) return '1 stop'
-  return `${stops} stops`
+function stopsLabel(stops: number, t: ReturnType<typeof useTranslations>): string {
+  if (stops === 0) return t('stops_direct')
+  if (stops === 1) return t('stops_one')
+  return t('stops_many', { count: stops })
 }
 
 function lowestGoogleFlightsPrice(offers: FlightOffer[]): number | undefined {
@@ -165,8 +165,9 @@ function lowestGoogleFlightsPrice(offers: FlightOffer[]): number | undefined {
 }
 
 function HomeLogo({ locale }: { locale: string }) {
+  const t = useTranslations('Results')
   return (
-    <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label="LetsFG home">
+    <Link href={`/${locale}`} className="lp-topbar-brand-link" aria-label={t('homeLogoAria')}>
       <Image
         src="/lfg_ban.png"
         alt="LetsFG"
@@ -199,17 +200,18 @@ function buildBookHref(offer: FlightOffer, suffix: string): string {
 // when an offer is virtual-interlining (is_combo). Brand orange, normal
 // weight, no chip background. Hover tooltip carries the full caveat.
 function ComboTicketsLabel() {
+  const t = useTranslations('Results')
   return (
     <span
       className="res2-combo-icon"
-      title="Booked as two separate fares — you'll complete two checkouts"
+      title={t('comboSeparateTicketsTitle')}
     >
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
-      Separate tickets
+      {t('comboSeparateTickets')}
     </span>
   )
 }
@@ -225,6 +227,7 @@ function HeroCard({
   onUnlock,
   onAlert,
 }: CardProps & { bullets: string[]; googleFlightsLowest?: number; locale: string; onUnlock: () => void; onAlert: () => void }) {
+  const t = useTranslations('Results')
   const price = getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
   const priceFmt = formatCurrencyAmount(price, displayCurrency)
   const savings = (() => {
@@ -240,7 +243,7 @@ function HeroCard({
       <div className="res2-hero-leg">
         {hasReturn ? (
           <div className="res2-hero-leg-label">
-            Outbound · {formatLegDate(offer.departure_time, locale)}
+            {t('legOutbound')} · {formatLegDate(offer.departure_time, locale)}
           </div>
         ) : null}
         <div className="res2-hero-times">
@@ -261,7 +264,7 @@ function HeroCard({
       {hasReturn && offer.inbound ? (
         <div className="res2-hero-leg">
           <div className="res2-hero-leg-label">
-            Return · {formatLegDate(offer.inbound.departure_time!, locale)}
+            {t('legReturn')} · {formatLegDate(offer.inbound.departure_time!, locale)}
           </div>
           <div className="res2-hero-times">
             <div className="res2-hero-time-col">
@@ -281,7 +284,7 @@ function HeroCard({
 
       <div className="res2-hero-pills">
         <span className={`res2-pill res2-pill--stops${offer.stops === 0 ? ' res2-pill--direct' : ''}`}>
-          {stopsLabel(offer.stops)}
+          {stopsLabel(offer.stops, t)}
         </span>
         <span className="res2-pill res2-pill--airline">{offer.airline}</span>
         <span className="res2-pill">
@@ -302,12 +305,15 @@ function HeroCard({
       <div className="res2-hero-price-block">
         <div className="res2-hero-price">{priceFmt}</div>
         <div className="res2-hero-price-meta">
-          {offer.inbound ? 'Round trip' : 'One way'} · total per person · all fees included
+          {t('priceMeta', { trip: offer.inbound ? t('tripRoundTrip') : t('tripOneWay') })}
         </div>
         {offer.is_combo ? <ComboTicketsLabel /> : null}
         {savings ? (
           <div className="res2-hero-savings">
-            ↓ {formatCurrencyAmount(savings.diff, displayCurrency)} less than Google Flights avg ({formatCurrencyAmount(savings.comparedTo, displayCurrency)})
+            {t('savingsVsGoogleFlights', {
+              diff: formatCurrencyAmount(savings.diff, displayCurrency),
+              comparedTo: formatCurrencyAmount(savings.comparedTo, displayCurrency),
+            })}
           </div>
         ) : null}
       </div>
@@ -318,16 +324,16 @@ function HeroCard({
           className="res2-hero-cta res2-hero-cta--primary"
           onClick={onUnlock}
         >
-          Unlock &amp; Book
+          {t('unlockAndBook')}
         </button>
         <button
           type="button"
           className="res2-hero-cta res2-hero-cta--secondary"
           onClick={onAlert}
-          aria-label="Set price alert for this route"
+          aria-label={t('alertCtaAria')}
         >
           <span className="res2-hero-cta-icon" aria-hidden="true">🔔</span>
-          Alert
+          {t('alertCta')}
         </button>
       </div>
     </div>
@@ -338,14 +344,18 @@ function HeroCard({
 // Returns at most two `·`-separated chips, mockup-style ("Cheapest option ·
 // hand luggage only"). When nothing differentiates, falls back to a plain
 // "Direct" / "1 stop" so the line is never empty.
-function deriveRunnerTag(offer: FlightOffer, heroOffer: FlightOffer | undefined): string | null {
+function deriveRunnerTag(
+  offer: FlightOffer,
+  heroOffer: FlightOffer | undefined,
+  t: ReturnType<typeof useTranslations>,
+): string | null {
   if (!heroOffer || offer.id === heroOffer.id) return null
   const tags: string[] = []
-  if (offer.price < heroOffer.price) tags.push('Cheapest option')
-  if (offer.stops < heroOffer.stops) tags.push('Fewer stops')
-  if (offer.duration_minutes < heroOffer.duration_minutes - 15) tags.push('Faster')
+  if (offer.price < heroOffer.price) tags.push(t('runnerTagCheapest'))
+  if (offer.stops < heroOffer.stops) tags.push(t('runnerTagFewerStops'))
+  if (offer.duration_minutes < heroOffer.duration_minutes - 15) tags.push(t('runnerTagFaster'))
   if (tags.length === 0) {
-    tags.push(offer.stops === 0 ? 'Direct alternative' : 'Alternative option')
+    tags.push(offer.stops === 0 ? t('runnerTagDirectAlt') : t('runnerTagAlt'))
   }
   return tags.slice(0, 2).join(' · ')
 }
@@ -358,10 +368,11 @@ function RunnerCard({
   heroOffer,
   onUnlock,
 }: CardProps & { heroOffer: FlightOffer | undefined; onUnlock: () => void }) {
+  const t = useTranslations('Results')
   const price = getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
   const priceFmt = formatCurrencyAmount(price, displayCurrency)
-  const tag = deriveRunnerTag(offer, heroOffer)
-  const tripType = offer.inbound ? 'Round trip' : 'One way'
+  const tag = deriveRunnerTag(offer, heroOffer, t)
+  const tripType = offer.inbound ? t('tripRoundTrip') : t('tripOneWay')
   const hasReturn = !!(offer.inbound && offer.inbound.departure_time && offer.inbound.arrival_time)
   return (
     <button type="button" onClick={onUnlock} className="res2-runner">
@@ -384,7 +395,7 @@ function RunnerCard({
           </div>
         ) : null}
         <div className="res2-runner-meta">
-          {offer.airline} · {stopsLabel(offer.stops)} · {formatDuration(offer.duration_minutes)}
+          {offer.airline} · {stopsLabel(offer.stops, t)} · {formatDuration(offer.duration_minutes)}
         </div>
         {tag ? <div className="res2-runner-reason">✓ {tag}</div> : null}
       </div>
@@ -404,9 +415,10 @@ function OtherCard({
   hrefSuffix: _hrefSuffix,
   onUnlock,
 }: CardProps & { onUnlock: () => void }) {
+  const t = useTranslations('Results')
   const price = getOfferDisplayTotalPrice(offer, displayCurrency, fxRates)
   const priceFmt = formatCurrencyAmount(price, displayCurrency)
-  const tripType = offer.inbound ? 'Round trip' : 'One way'
+  const tripType = offer.inbound ? t('tripRoundTrip') : t('tripOneWay')
   const hasReturn = !!(offer.inbound && offer.inbound.departure_time && offer.inbound.arrival_time)
   return (
     <button type="button" onClick={onUnlock} className="res2-other">
@@ -425,7 +437,7 @@ function OtherCard({
           </div>
         ) : null}
         <div className="res2-other-meta">
-          {offer.airline} · {stopsLabel(offer.stops)} · {formatDuration(offer.duration_minutes)}
+          {offer.airline} · {stopsLabel(offer.stops, t)} · {formatDuration(offer.duration_minutes)}
         </div>
       </div>
       <div className="res2-other-price">
@@ -455,6 +467,7 @@ export default function ResultsClient({
   const router = useRouter()
   const locale = useLocale()
   const searchParams = useSearchParams()
+  const t = useTranslations('Results')
 
   const [status, setStatus] = useState(initialStatus)
   // Seed offers from the SSR snapshot, but also try the session/local cache
@@ -732,8 +745,8 @@ export default function ResultsClient({
     if (rankCopy?.subtitle) return rankCopy.subtitle
     const total = offers.length
     return total > 0
-      ? `From ${total.toLocaleString()} option${total === 1 ? '' : 's'} across 180 airlines · all prices include baggage & seat`
-      : 'Comparing every fee, seat cost, and baggage charge…'
+      ? t('subtitleFallback', { n: total })
+      : t('subtitleScanning')
   })()
 
   // Carry the same search-state params through to /book/<id> so the checkout
@@ -796,7 +809,7 @@ export default function ResultsClient({
       ) : (
         <section className="res2-body">
           <h1 className="res2-title">
-            Your {Math.min(3, Math.max(1, top3.length))} best flights
+            {t('heroTitle', { n: Math.min(3, Math.max(1, top3.length)) })}
           </h1>
           <p className="res2-subtitle">{subtitle}</p>
 
@@ -804,7 +817,7 @@ export default function ResultsClient({
             <div className="res2-streaming" role="status" aria-live="polite">
               <span className="res2-streaming-dot" aria-hidden="true" />
               <span className="res2-streaming-text">
-                Still scanning · {offers.length.toLocaleString()} deal{offers.length === 1 ? '' : 's'} so far
+                {t('streamingChip', { n: offers.length })}
               </span>
             </div>
           ) : null}
@@ -823,20 +836,20 @@ export default function ResultsClient({
             />
           ) : isEmpty ? (
             <div className="res2-empty">
-              We couldn’t find flights for this search.
+              {t('emptyState')}
               <button
                 type="button"
                 className="res2-empty-cta"
                 onClick={() => router.push(`/${locale}?q=${encodeURIComponent(query)}`)}
               >
-                Try a different search
+                {t('emptyStateCta')}
               </button>
             </div>
           ) : null}
 
           {runnerOffers.length > 0 ? (
             <>
-              <h2 className="res2-section-heading">Also worth considering</h2>
+              <h2 className="res2-section-heading">{t('sectionAlsoWorth')}</h2>
               <div className="res2-runner-list">
                 {runnerOffers.map((offer) => (
                   <RunnerCard
@@ -855,7 +868,7 @@ export default function ResultsClient({
 
           {others.length > 0 ? (
             <>
-              <h2 className="res2-section-heading">Other flights</h2>
+              <h2 className="res2-section-heading">{t('sectionOther')}</h2>
               <div className="res2-other-list">
                 {visibleOthers.map((offer) => (
                   <OtherCard
@@ -874,7 +887,7 @@ export default function ResultsClient({
                   className="res2-show-more"
                   onClick={() => setOtherLimit((n) => n + OTHER_PAGE_SIZE)}
                 >
-                  Show {Math.min(moreLeft, OTHER_PAGE_SIZE)} more
+                  {t('showMore', { n: Math.min(moreLeft, OTHER_PAGE_SIZE) })}
                 </button>
               ) : null}
             </>
