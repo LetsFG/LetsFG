@@ -443,6 +443,8 @@ export default function HomeSearchForm({
   const rowRef = useRef<HTMLDivElement>(null)
   const suppressDropdownRef = useRef(false)
   const userEditedAutoPrefillRef = useRef(false)
+  const legalRef = useRef<HTMLSpanElement>(null)
+  const [tipRect, setTipRect] = useState<DOMRect | null>(null)
 
   const DESTINATIONS = DESTINATION_KEYS.map((d) => ({
     ...d,
@@ -754,18 +756,43 @@ export default function HomeSearchForm({
     <div className={`lp-sf-wrap${compact ? ' lp-sf-wrap--compact' : ''}`}>
       {!compact && (
         <div className="lp-sf-disclosure" aria-hidden="false">
-          <span className="lp-sf-legal" tabIndex={0} role="note">
+          <span
+            ref={legalRef}
+            className="lp-sf-legal"
+            tabIndex={0}
+            role="note"
+            onMouseEnter={() => legalRef.current && setTipRect(legalRef.current.getBoundingClientRect())}
+            onMouseLeave={() => setTipRect(null)}
+            onFocus={() => legalRef.current && setTipRect(legalRef.current.getBoundingClientRect())}
+            onBlur={() => setTipRect(null)}
+          >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.4" />
               <path d="M7 6v4M7 4.5v.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
-            <span className="lp-sf-legal-tip" role="tooltip">
+          </span>
+        </div>
+      )}
+      {mounted && tipRect && createPortal(
+        (() => {
+          const TIP_W = 272
+          const iconCenter = tipRect.left + tipRect.width / 2
+          const naturalLeft = iconCenter - TIP_W / 2
+          const clampedLeft = Math.max(8, Math.min(naturalLeft, (typeof window !== 'undefined' ? window.innerWidth : 800) - TIP_W - 8))
+          const arrowLeftPct = `${((iconCenter - clampedLeft) / TIP_W * 100).toFixed(1)}%`
+          return (
+            <span
+              className="lp-sf-legal-tip"
+              role="tooltip"
+              style={{ top: tipRect.bottom + 10, left: clampedLeft, ['--tip-arrow-left' as string]: arrowLeftPct }}
+            >
               By searching, you authorise AI agents to act on your behalf — they connect to airline
               websites and search for flights as you instructed. You are the one directing these
               agents. LetsFG provides the automation; you are responsible for the searches you initiate.
             </span>
-          </span>
-        </div>
+          )
+        })(),
+        document.body
       )}
 
       <form ref={formRef} id="home-search-form" onSubmit={handleSearch} className="lp-sf-form">

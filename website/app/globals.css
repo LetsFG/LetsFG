@@ -8599,18 +8599,8 @@ body:has(.results-scope) {
   border-color: rgba(157, 197, 213, 0.64);
 }
 
-.lp-sf-legal:hover .lp-sf-legal-tip,
-.lp-sf-legal:focus .lp-sf-legal-tip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  pointer-events: auto;
-}
-
 .lp-sf-legal-tip {
-  position: absolute;
-  bottom: calc(100% + 14px);
-  left: 50%;
-  transform: translateX(-50%) translateY(6px);
+  position: fixed;
   width: 272px;
   padding: 13px 16px;
   border-radius: 16px;
@@ -8622,22 +8612,26 @@ body:has(.results-scope) {
   font-size: 0.73rem;
   line-height: 1.62;
   font-weight: 400;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.18s, transform 0.18s;
   text-align: left;
   white-space: normal;
-  z-index: 200;
+  z-index: 9999;
+  animation: lp-tip-in 0.15s ease forwards;
+}
+
+@keyframes lp-tip-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .lp-sf-legal-tip::after {
   content: '';
   position: absolute;
-  top: 100%;
-  left: 50%;
+  bottom: 100%;
+  top: auto;
+  left: var(--tip-arrow-left, 50%);
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: rgba(8, 8, 8, 0.94);
+  border-bottom-color: rgba(8, 8, 8, 0.94);
 }
 
 /* ─── Searching task-list card (replaces spinner on results page) ────────── */

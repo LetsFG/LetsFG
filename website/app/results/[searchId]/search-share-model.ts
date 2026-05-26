@@ -79,7 +79,9 @@ export interface SearchResult {
   expires_at?: string
   gemini_justification?: {
     title?: string
+    subtitle?: string
     hero: string
+    hero_bullets?: string[]
     runners: string[]
     offer_ids?: string[]
     ts: number

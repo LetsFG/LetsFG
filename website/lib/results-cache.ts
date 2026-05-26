@@ -15,7 +15,7 @@ export interface PersistedSearchResult {
   searched_at?: string
   expires_at?: string
   stored_at: number
-  gemini_justification?: { title?: string; hero: string; runners: string[]; offer_ids?: string[]; ts: number; locale?: string; display_currency?: string }
+  gemini_justification?: { title?: string; subtitle?: string; hero: string; hero_bullets?: string[]; runners: string[]; offer_ids?: string[]; ts: number; locale?: string; display_currency?: string }
 }
 
 // ── Search-time metadata sidecar ─────────────────────────────────────
@@ -289,7 +289,7 @@ export function findOfferInCachedResults(offerId: string, searchId?: string | nu
 
 export function updateGeminiJustification(
   searchId: string,
-  gemini: { title?: string; hero: string; runners: string[]; offer_ids?: string[] },
+  gemini: { title?: string; subtitle?: string; hero: string; hero_bullets?: string[]; runners: string[]; offer_ids?: string[] },
   locale?: string,
   displayCurrency?: string,
 ): void {
@@ -305,7 +305,11 @@ export function updateGeminiJustification(
   resultsCache.set(searchId, {
     ...existing,
     gemini_justification: {
-      ...gemini,
+      title: gemini.title,
+      subtitle: gemini.subtitle,
+      hero: gemini.hero,
+      hero_bullets: gemini.hero_bullets,
+      runners: gemini.runners,
       offer_ids: offerIds,
       ts: Date.now(),
       locale,

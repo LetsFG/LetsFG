@@ -3,7 +3,7 @@ import type { RankedOffer, RankOffer, RankingContext } from '../../lib/rankOffer
 import { normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
 import { getOfferDetailPromptNotes } from '../../../lib/offer-details'
 import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../lib/letsfg-api'
-import { updateGeminiJustification } from '../../../lib/results-cache'
+import { updateGeminiJustification, getCachedSearchResult } from '../../../lib/results-cache'
 import { normalizeTripPurposes } from '../../lib/trip-purpose'
 
 // ── Request / response types ──────────────────────────────────────────────
@@ -45,6 +45,10 @@ interface RankRequestBody {
    * nearest hub (e.g. user typed Pretoria → we searched JNB). Gemini must
    * surface this honestly in its justification so the user understands. */
   fallbackNotes?: { origin?: FallbackNotePayload; destination?: FallbackNotePayload }
+  /** Client sets this when the user explicitly changes locale or currency.
+   * Bypasses the server-side Gemini cache to regenerate in the new language/currency,
+   * subject to per-IP rate limiting. */
+  forceRegenerate?: boolean
 }
 
 interface RankResponseBody {
@@ -134,6 +138,43 @@ function offerBreakdown(
 // ── Allowed origins ─────────────────────────────────────────────────────
 const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$|^https:\/\/[\w-]+\.ngrok(?:-free)?\.(?:app|io)$/
 
+// ── Per-IP forced-regeneration rate limiting ─────────────────────────────
+// Escalating blocks: 5 free language/currency changes per searchId per IP,
+// then 3h → 12h → 24h blocks on each subsequent attempt.
+interface RateEntry {
+  freeUses: number
+  blockedUntil?: number
+  blockLevel: number
+}
+const BLOCK_DURATIONS_MS = [3 * 3_600_000, 12 * 3_600_000, 24 * 3_600_000]
+const FREE_QUOTA = 5
+const regenRateMap = new Map<string, RateEntry>()
+
+function checkRegenRateLimit(ip: string, searchId: string): boolean {
+  const key = `${ip}:${searchId}`
+  const now = Date.now()
+  const entry = regenRateMap.get(key) ?? { freeUses: FREE_QUOTA, blockLevel: 0 }
+
+  if (entry.blockedUntil) {
+    if (now < entry.blockedUntil) return false
+    // Block expired — consume it but don't grant a new free use
+    const nextLevel = Math.min(entry.blockLevel, BLOCK_DURATIONS_MS.length - 1)
+    const duration = BLOCK_DURATIONS_MS[nextLevel]
+    regenRateMap.set(key, { freeUses: 0, blockLevel: entry.blockLevel + 1, blockedUntil: now + duration })
+    return false
+  }
+
+  if (entry.freeUses > 0) {
+    regenRateMap.set(key, { ...entry, freeUses: entry.freeUses - 1 })
+    return true
+  }
+
+  // Quota gone — apply next block tier
+  const level = Math.min(entry.blockLevel, BLOCK_DURATIONS_MS.length - 1)
+  regenRateMap.set(key, { freeUses: 0, blockLevel: entry.blockLevel + 1, blockedUntil: now + BLOCK_DURATIONS_MS[level] })
+  return false
+}
+
 // ── Route handler ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // Block requests that don't originate from our own domains
@@ -154,6 +195,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { searchId } = body
   const locale = body.locale ?? 'en'
   const displayCurrency = (body.displayCurrency ?? '').toUpperCase()
+  const forceRegenerate = body.forceRegenerate === true
+
+  // ── Cache-first: return stored Gemini if locale+currency match ────────────
+  if (searchId && phase !== 'early') {
+    const cached = getCachedSearchResult(searchId)
+    const g = cached?.gemini_justification
+    const localeMatch = (g?.locale ?? 'en') === locale
+    const currMatch = (g?.display_currency ?? '') === displayCurrency
+    if (g && localeMatch && currMatch) {
+      if (!forceRegenerate) {
+        return NextResponse.json({
+          title: g.title,
+          subtitle: (g as any).subtitle,
+          hero: g.hero,
+          hero_bullets: (g as any).hero_bullets,
+          runners: g.runners,
+          offer_ids: g.offer_ids ?? [],
+        })
+      }
+      // forceRegenerate: check rate limit
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? 'unknown'
+      if (!checkRegenRateLimit(ip, searchId)) {
+        // Rate-limited — silently return cached rather than showing an error
+        return NextResponse.json({
+          title: g.title,
+          subtitle: (g as any).subtitle,
+          hero: g.hero,
+          hero_bullets: (g as any).hero_bullets,
+          runners: g.runners,
+          offer_ids: g.offer_ids ?? [],
+        })
+      }
+    }
+  }
+
   // Enforce max 3 offers server-side regardless of what the client sends
   const topOffers = (body.topOffers ?? []).slice(0, 3)
   if (!topOffers.length) {

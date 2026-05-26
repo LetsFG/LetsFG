@@ -106,6 +106,7 @@
     "priceMeta": "{trip} · total per person · all fees included",
     "savingsVsGoogleFlights": "↓ {diff} less than Google Flights avg ({comparedTo})",
     "unlockAndBook": "Unlock & Book",
+    "bookNow": "Book",
     "alertCta": "Alert",
     "alertCtaAria": "Set price alert for this route",
     "runnerTagCheapest": "Cheapest option",

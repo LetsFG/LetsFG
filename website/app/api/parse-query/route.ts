@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { vertexClarify } from '../../lib/vertex-parse'
-import { resolveCity } from '../../lib/searchParsing'
+import { parseNLQuery, resolveCity } from '../../lib/searchParsing'
+import { needsDateClarification } from '../../lib/home-search-assist'
 import { decideSkipRefineQuestion } from '../../lib/refine-decision'
 import { getInflight, setInflight } from '../../lib/date-grid-cache'
 import { scrapeDateGrid } from '../../lib/date-grid-scrape'
@@ -33,6 +34,19 @@ export async function POST(request: NextRequest) {
 
     if (!ai) {
       return NextResponse.json({ error: 'AI parse unavailable' }, { status: 503 })
+    }
+
+    // Suppress Gemini's 'date' follow-up if the local parser already has
+    // enough date context (e.g. "in August, 10-14 days" → date_month_only +
+    // min_trip_days is actionable). Mirrors the same guard in /api/search.
+    const localParsed = parseNLQuery(query)
+    if (!needsDateClarification(localParsed)) {
+      if (ai.follow_up_topics) {
+        ai.follow_up_topics = ai.follow_up_topics.filter(t => t !== 'date')
+      }
+      if (ai.follow_up_questions) {
+        ai.follow_up_questions = ai.follow_up_questions.filter(q => q?.topic !== 'date')
+      }
     }
 
     const originCity = typeof ai.origin_city === 'string' ? ai.origin_city : null
