@@ -90,6 +90,42 @@ test('Rule 0 green: a one-way offer (no inbound) is not flagged by Rule 0', () =
   assert.equal(reason, null)
 })
 
+test('Rule 0 red: inbound_midnight_sentinel flagged when both inbound times are T00:00 stubs', () => {
+  // Origin: 2026-05-26 LHR→BCN+BCN→LGW combo. The connector returned literal
+  // midnight timestamps for both legs of the inbound — passes the non-empty
+  // string check, fails this one. Single midnight (e.g. genuine red-eye)
+  // does NOT trip this rule.
+  const reason = detectSuspectReason(offer({
+    inbound: {
+      ...validInbound,
+      departure_time: '2026-06-04T00:00:00Z',
+      arrival_time:   '2026-06-04T00:00:00Z',
+    },
+  } as any))
+  assert.equal(reason, 'inbound_midnight_sentinel')
+})
+
+test('Rule 0 green: a single midnight (legit red-eye return) is NOT flagged', () => {
+  // Real-world red-eyes land at 00:30 / depart at 23:55 etc. The rule must
+  // only trigger when BOTH dep and arr are exactly hour=0 minute=0.
+  const reason = detectSuspectReason(offer({
+    inbound: {
+      ...validInbound,
+      departure_time: '2026-05-31T00:00:00Z',
+      arrival_time:   '2026-05-31T02:20:00Z',
+    },
+  } as any))
+  assert.equal(reason, null)
+})
+
+test('Rule 0d red: outbound_midnight_sentinel flagged when both outbound times are T00:00 stubs', () => {
+  const reason = detectSuspectReason(offer({
+    departure_time: '2026-05-29T00:00:00Z',
+    arrival_time:   '2026-05-29T00:00:00Z',
+  } as any))
+  assert.equal(reason, 'outbound_midnight_sentinel')
+})
+
 test('validateOfferBatch sorts the placeholder-return offer into the suspect bucket', () => {
   const offers: PublicOffer[] = [
     offer({ id: 'good-1', inbound: validInbound } as any),

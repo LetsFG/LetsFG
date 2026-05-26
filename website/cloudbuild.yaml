@@ -81,6 +81,7 @@ steps:
       - '--project=sms-caller'
       - '--no-traffic'
       - '--tag=$_DEPLOY_TAG'
+      - '--min-instances=0'
       - '--quiet'
 
 images:

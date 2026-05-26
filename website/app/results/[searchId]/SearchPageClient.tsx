@@ -1056,8 +1056,25 @@ export default function SearchPageClient({
     return h * 60 + (m || 0)
   }, [parsed.ai_depart_before])
 
-  const requireSeatPerPerson = !!(nlParsed?.require_seat_selection)
-  const requireBagPerPerson = !!(parsed.ai_bags_included ?? nlParsed?.require_checked_baggage)
+  // Loading-page agent answers carried in as r_<topic>=<value> by /results/pending.
+  // Priority: explicit Gemini parse > loading-page click > heuristic from raw NL.
+  // Bag keys: carry_on → false; 1_bag / 2_bags → true; unsure → fall through.
+  // Seat keys: together / pick → true (usually require paid selection);
+  //            any_window_aisle → false (typical free preference);
+  //            auto → false; otherwise fall through.
+  const loadingBagAnswer = searchParams.get('r_baggage')
+  const loadingBagExplicit: boolean | undefined =
+    loadingBagAnswer === '1_bag' || loadingBagAnswer === '2_bags' ? true
+    : loadingBagAnswer === 'carry_on' ? false
+    : undefined
+  const loadingSeatAnswer = searchParams.get('r_seat_selection')
+  const loadingSeatExplicit: boolean | undefined =
+    loadingSeatAnswer === 'together' || loadingSeatAnswer === 'pick' ? true
+    : loadingSeatAnswer === 'any_window_aisle' || loadingSeatAnswer === 'auto' ? false
+    : undefined
+
+  const requireSeatPerPerson = !!(loadingSeatExplicit ?? nlParsed?.require_seat_selection)
+  const requireBagPerPerson = !!(parsed.ai_bags_included ?? loadingBagExplicit ?? nlParsed?.require_checked_baggage)
   const requireMeals = !!(nlParsed?.require_meals)
   const requireCancellation = !!(parsed.require_cancellation ?? nlParsed?.require_cancellation)
   const defaultSort: 'price' | 'price_with_bag' | 'price_with_seat' | 'price_with_all' =

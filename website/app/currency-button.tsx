@@ -2,7 +2,6 @@
 
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Coins } from 'lucide-react'
 import {
   CURRENCY_CHANGE_EVENT,
   DISPLAY_CURRENCIES,
@@ -242,7 +241,7 @@ export default function CurrencyButton({
               disabled={isNavigating}
               onClick={() => persistAndNavigate(row.code)}
             >
-              <span className="lp-lang-flag" aria-hidden="true">{row.code}</span>
+              <span className="lp-currency-option-code" aria-hidden="true">{row.code}</span>
               <span className="lp-lang-name">{row.label}</span>
               {row.code === current && (
                 <svg className="lp-lang-check" viewBox="0 0 16 16" fill="currentColor" width="13" height="13" aria-hidden="true">
@@ -271,7 +270,7 @@ export default function CurrencyButton({
         onClick={() => setOpen((value) => !value)}
       >
         <span className="lp-currency-btn-inner" aria-hidden="true">
-          <Coins className="lp-currency-trigger-icon" size={15} strokeWidth={2} />
+          <span className="lp-currency-trigger-code">{current}</span>
         </span>
       </button>
 

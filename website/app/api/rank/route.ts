@@ -3,7 +3,7 @@ import type { RankedOffer, RankOffer, RankingContext } from '../../lib/rankOffer
 import { normalizeGoogleFlightsComparisonPrice } from '../../../lib/google-flights-savings'
 import { getOfferDetailPromptNotes } from '../../../lib/offer-details'
 import { getLetsfgApiBase, withLetsfgWebsiteApiHeaders } from '../../../lib/letsfg-api'
-import { updateGeminiJustification } from '../../../lib/results-cache'
+import { updateGeminiJustification, getCachedSearchResult } from '../../../lib/results-cache'
 import { normalizeTripPurposes } from '../../lib/trip-purpose'
 
 // ── Request / response types ──────────────────────────────────────────────
@@ -45,11 +45,23 @@ interface RankRequestBody {
    * nearest hub (e.g. user typed Pretoria → we searched JNB). Gemini must
    * surface this honestly in its justification so the user understands. */
   fallbackNotes?: { origin?: FallbackNotePayload; destination?: FallbackNotePayload }
+  /** Client sets this when the user explicitly changes locale or currency.
+   * Bypasses the server-side Gemini cache to regenerate in the new language/currency,
+   * subject to per-IP rate limiting. */
+  forceRegenerate?: boolean
 }
 
 interface RankResponseBody {
   title?: string
+  /** One-line page subtitle under "Your 3 best flights". Gemini-written so it
+   *  weaves search breadth + the value prop (all-fees-included) in the user's
+   *  language. Optional — clients fall back to a deterministic string. */
+  subtitle?: string
+  /** Existing single-string hero justification (kept for back-compat / SEO). */
   hero: string
+  /** Three short bullets shown on the hero card. Each 5–11 words, single
+   *  specific fact. Replaces the long `hero` paragraph in the new layout. */
+  hero_bullets?: string[]
   runners: string[]
   offer_ids: string[]
 }
@@ -124,7 +136,44 @@ function offerBreakdown(
 }
 
 // ── Allowed origins ─────────────────────────────────────────────────────
-const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$/
+const ALLOWED_ORIGIN_RE = /^https:\/\/(www\.)?letsfg\.co$|^https:\/\/(\w[\w-]*---)?letsfg-website[\w-]*(?:\.[\w-]+)*\.run\.app$|^http:\/\/localhost(:\d+)?$|^https:\/\/[\w-]+\.ngrok(?:-free)?\.(?:app|io)$/
+
+// ── Per-IP forced-regeneration rate limiting ─────────────────────────────
+// Escalating blocks: 5 free language/currency changes per searchId per IP,
+// then 3h → 12h → 24h blocks on each subsequent attempt.
+interface RateEntry {
+  freeUses: number
+  blockedUntil?: number
+  blockLevel: number
+}
+const BLOCK_DURATIONS_MS = [3 * 3_600_000, 12 * 3_600_000, 24 * 3_600_000]
+const FREE_QUOTA = 5
+const regenRateMap = new Map<string, RateEntry>()
+
+function checkRegenRateLimit(ip: string, searchId: string): boolean {
+  const key = `${ip}:${searchId}`
+  const now = Date.now()
+  const entry = regenRateMap.get(key) ?? { freeUses: FREE_QUOTA, blockLevel: 0 }
+
+  if (entry.blockedUntil) {
+    if (now < entry.blockedUntil) return false
+    // Block expired — consume it but don't grant a new free use
+    const nextLevel = Math.min(entry.blockLevel, BLOCK_DURATIONS_MS.length - 1)
+    const duration = BLOCK_DURATIONS_MS[nextLevel]
+    regenRateMap.set(key, { freeUses: 0, blockLevel: entry.blockLevel + 1, blockedUntil: now + duration })
+    return false
+  }
+
+  if (entry.freeUses > 0) {
+    regenRateMap.set(key, { ...entry, freeUses: entry.freeUses - 1 })
+    return true
+  }
+
+  // Quota gone — apply next block tier
+  const level = Math.min(entry.blockLevel, BLOCK_DURATIONS_MS.length - 1)
+  regenRateMap.set(key, { freeUses: 0, blockLevel: entry.blockLevel + 1, blockedUntil: now + BLOCK_DURATIONS_MS[level] })
+  return false
+}
 
 // ── Route handler ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -146,6 +195,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { searchId } = body
   const locale = body.locale ?? 'en'
   const displayCurrency = (body.displayCurrency ?? '').toUpperCase()
+  const forceRegenerate = body.forceRegenerate === true
+
+  // ── Cache-first: return stored Gemini if locale+currency match ────────────
+  if (searchId && phase !== 'early') {
+    const cached = getCachedSearchResult(searchId)
+    const g = cached?.gemini_justification
+    const localeMatch = (g?.locale ?? 'en') === locale
+    const currMatch = (g?.display_currency ?? '') === displayCurrency
+    if (g && localeMatch && currMatch) {
+      if (!forceRegenerate) {
+        return NextResponse.json({
+          title: g.title,
+          subtitle: (g as any).subtitle,
+          hero: g.hero,
+          hero_bullets: (g as any).hero_bullets,
+          runners: g.runners,
+          offer_ids: g.offer_ids ?? [],
+        })
+      }
+      // forceRegenerate: check rate limit
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? 'unknown'
+      if (!checkRegenRateLimit(ip, searchId)) {
+        // Rate-limited — silently return cached rather than showing an error
+        return NextResponse.json({
+          title: g.title,
+          subtitle: (g as any).subtitle,
+          hero: g.hero,
+          hero_bullets: (g as any).hero_bullets,
+          runners: g.runners,
+          offer_ids: g.offer_ids ?? [],
+        })
+      }
+    }
+  }
+
   // Enforce max 3 offers server-side regardless of what the client sends
   const topOffers = (body.topOffers ?? []).slice(0, 3)
   if (!topOffers.length) {
@@ -217,8 +301,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const heroPriceStr = hOfferExt.display_price_formatted || `${hTotal} ${hDispCur}`
   const normalizedGoogle = normalizeGoogleFlightsComparisonPrice(h.google_flights_price, context.travelerCount)
   const dispGoogle = normalizedGoogle ? fxConvert(normalizedGoogle, h.currency, hDispCur) : 0
+  const fmtCurrency = (amount: number) =>
+    new Intl.NumberFormat(locale, { style: 'currency', currency: hDispCur, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
   const savingsLine = dispGoogle && dispGoogle > hTotal + 8
-    ? `\n- Saves ${Math.round(dispGoogle - hTotal)} ${hDispCur} vs Google Flights (Google charges ~${Math.round(dispGoogle)} ${hDispCur})`
+    ? `\n- Saves ${fmtCurrency(Math.round((dispGoogle - hTotal) * 100) / 100)} vs Google Flights (Google charges ~${fmtCurrency(Math.round(dispGoogle * 100) / 100)})`
     : ''
   // Price breakdown block for prompt (only show lines that are non-zero / relevant)
   const bdLines: string[] = [`  ✈ Ticket:      ${dispTicket} ${hDispCur}`]
@@ -416,8 +502,26 @@ TASK 2 — For each runner-up, write exactly 2 sentences.
 - If a runner is listed with "tradeoffs: none" or similar, still find something that makes #1 better
 - Max 70 words total per runner
 
+TASK 3 — Page subtitle (one short line, MAX 12 WORDS, ~75 characters).
+- MUST start with the breadth signal using EXACTLY this phrasing: "From ${formattedScannedDealsCount} deals checked"
+- Then ONE short clause about the top pick (e.g. "this direct flight offers the best schedule and value", "this red-eye is the cheapest with reasonable timing", "this carrier has the best on-time record at this price")
+- DO NOT add any trailing context — no destination name, no trip type, no traveller info, no date phrase. End on the value clause.
+- Plain prose, no markdown, no emoji, no leading punctuation, no trailing period optional.
+- Match the user's language (same locale rules as the hero)
+- Example shape (target length): "From 388 deals checked this direct flight offers the best schedule and value"
+
+TASK 4 — Hero card bullets (exactly 3, each 5–11 words).
+- Each bullet is a single specific reason this flight wins for THIS trip
+- DO NOT repeat info that's already visible elsewhere on the card (departure/arrival times, the airline name, the price, the stop pill, the duration pill)
+- Prefer concrete data the user can't see at a glance: ancillary inclusions, airport-of-choice tradeoffs, schedule fit relative to the destination's typical activities, savings vs alternatives, arrival-time advantages, etc.
+- Bullet 1: stops/timing/schedule fit angle
+- Bullet 2: total-price / ancillaries / fee-inclusion angle
+- Bullet 3: location, airline, or practical-insight angle (airport choice, baggage policy, layover quality, etc.)
+- Do NOT start any bullet with a checkmark, dash, bullet, or symbol — those are rendered separately
+- Do NOT start with "This flight" or "We've selected"
+
 Return ONLY valid JSON, no markdown, no code blocks:
-{"title": "...", "hero": "...", "runners": ["...", "..."]}`
+{"title": "...", "subtitle": "...", "hero": "...", "hero_bullets": ["...", "...", "..."], "runners": ["...", "..."]}`
 
   try {
     const rankResp = await fetch(`${getLetsfgApiBase()}/api/v1/flights/rank-copy`, {
@@ -444,7 +548,17 @@ Return ONLY valid JSON, no markdown, no code blocks:
 
     const result: RankResponseBody = {
       title: typeof parsed.title === 'string' && parsed.title.length > 3 ? parsed.title.trim() : undefined,
+      subtitle: typeof parsed.subtitle === 'string' && parsed.subtitle.trim().length > 3
+        ? parsed.subtitle.trim()
+        : undefined,
       hero: parsed.hero.trim(),
+      hero_bullets: Array.isArray(parsed.hero_bullets)
+        ? parsed.hero_bullets
+            .filter((b): b is string => typeof b === 'string')
+            .map((b) => b.trim().replace(/^[•\-•✓✓✦]+\s*/, ''))
+            .filter((b) => b.length > 0)
+            .slice(0, 3)
+        : undefined,
       runners: Array.isArray(parsed.runners)
         ? parsed.runners.filter((r): r is string => typeof r === 'string').map(r => r.trim())
         : [],
