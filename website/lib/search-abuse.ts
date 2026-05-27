@@ -108,10 +108,12 @@ export function checkSearchAbuse(
   return { blocked: false }
 }
 
-// Returns true for paths that initiate a new real search (Gemini + FSW fan-out).
+// Returns true for paths that initiate a new real search (Gemini + FSW fan-out)
+// or that are standalone Vertex AI cost vectors.
 // /api/results/* and /results/ws_... are polling paths — excluded.
 export function isSearchAbuseTarget(pathname: string, searchParams: URLSearchParams): boolean {
   if (pathname === '/api/search') return true
+  if (pathname === '/api/parse-query') return true
   if (pathname === '/results' && searchParams.has('q')) return true
   return false
 }
