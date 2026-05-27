@@ -71,15 +71,37 @@ export function ipMatchesBlockedCidr(
 }
 
 export function extractClientIp(headers: Headers): string | null {
-  // Leftmost X-Forwarded-For is the original client across all ingress paths:
-  // CF → Firebase → Cloud Run, Firebase → Cloud Run, direct .run.app.
+  // CF-Connecting-IP is set by Cloudflare and is the real user IP for letsfg.co
+  // traffic. Prefer it over XFF since XFF can be prepended by the client.
+  const cfIp = headers.get('cf-connecting-ip') || headers.get('x-real-ip')
+  if (cfIp) return stripPortAndBrackets(cfIp)
+
+  // Leftmost XFF = original client for Firebase → Cloud Run paths.
   const xff = headers.get('x-forwarded-for')
   if (xff) {
     const first = xff.split(',')[0]?.trim()
     if (first) return stripPortAndBrackets(first)
   }
-  const fallback = headers.get('cf-connecting-ip') || headers.get('x-real-ip')
-  return fallback ? stripPortAndBrackets(fallback) : null
+  return null
+}
+
+// Returns every distinct IP in the XFF chain plus CF-Connecting-IP.
+// Cloud Run always APPENDS the real connecting socket IP as the last XFF
+// entry — so even if a client spoofs the first entries, the last entry is
+// the true origin and cannot be forged.
+export function extractAllClientIps(headers: Headers): string[] {
+  const ips: string[] = []
+  const cfIp = headers.get('cf-connecting-ip') || headers.get('x-real-ip')
+  if (cfIp) ips.push(stripPortAndBrackets(cfIp))
+
+  const xff = headers.get('x-forwarded-for')
+  if (xff) {
+    for (const part of xff.split(',')) {
+      const ip = stripPortAndBrackets(part.trim())
+      if (ip) ips.push(ip)
+    }
+  }
+  return [...new Set(ips.filter(Boolean))]
 }
 
 function stripPortAndBrackets(raw: string): string {

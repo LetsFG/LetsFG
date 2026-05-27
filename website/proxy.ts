@@ -11,7 +11,7 @@ import {
   getRateLimitPolicy,
 } from './lib/rate-limit'
 import { isBlockedUserAgent } from './lib/ua-blocklist'
-import { extractClientIp, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
+import { extractAllClientIps, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
 import { isPublicShareAssetPath } from './lib/share-preview'
 import { checkSearchAbuse, getGlobalSearchAbuseStore, isSearchAbuseTarget } from './lib/search-abuse'
 import { isAllowedHost } from './lib/host-allowlist'
@@ -129,9 +129,12 @@ export default function proxy(req: NextRequest) {
   // that rotate through Google Cloud NAT egress (defeating per-IP rate limits)
   // and bypass Cloudflare by hitting the .run.app URL directly. Marketing &
   // PFP paths stay reachable so legit Googlebot keeps indexing them.
+  // Check ALL IPs in the XFF chain — Cloud Run appends the real connecting IP
+  // as the last entry, so a client that spoofs the first entries still gets
+  // caught by the last one.
   if (pathIsAbuseProtected(pathname)) {
-    const clientIp = extractClientIp(req.headers)
-    if (clientIp && ipMatchesBlockedCidr(clientIp)) {
+    const allIps = extractAllClientIps(req.headers)
+    if (allIps.some(ip => ipMatchesBlockedCidr(ip))) {
       return new NextResponse('Forbidden', {
         status: 403,
         headers: { 'Cache-Control': 'no-store' },
