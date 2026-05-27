@@ -134,26 +134,37 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 > **MCP search rate limit:** The MCP server uses cloud-based search which is rate limited to **10 requests per minute** per IP address. The server returns `rate_limit` info in every search response so you can track remaining quota. If you hit the limit, you'll get a 429 response with a `retry_after` value.
 
-### Higher rate limits: register your agent via Twitter
+### Programmatic access requires a Bearer token
 
-Agents that use letsfg.co directly (not via MCP or SDK) can register a free 90-day Bearer token tied to a Twitter/X account. Registered agents get a **separate rate-limit bucket keyed to their handle** rather than their IP — useful for high-frequency automated searches.
+The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must register a **free 90-day Bearer token** tied to a Twitter/X account. Registration takes ~2 minutes and requires no email or payment.
+
+Once registered, use `POST /api/search` (natural language or structured) instead of `GET /en?q=...`.
 
 ```bash
-# 1. Get a challenge
+# 1. Get a challenge (no auth required)
 curl -X POST https://letsfg.co/api/agent-access/request
 
-# 2. Tweet the challenge_text from the response (public tweet, 30-min window)
+# 2. Tweet the exact tweet_text from the response (public tweet, 30-min window)
 
-# 3. Verify and receive your token
+# 3. Verify and receive your Bearer token
 curl -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
   -d '{"tweet_url":"https://twitter.com/you/status/...","challenge_signed":"eyJ..."}'
 # → {"token":"eyJ...","handle":"you","expires_at":"..."}
 
-# 4. Use it
-curl https://letsfg.co/api/results/{searchId} -H "Authorization: Bearer eyJ..."
+# 4. Search with Bearer token (NL query)
+curl -X POST https://letsfg.co/api/search \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"query":"London to Barcelona June 15 2026"}'
+# → {"search_id":"ws_abc123","status":"searching","parsed":{...}}
+
+# 5. Poll for results
+curl https://letsfg.co/api/results/ws_abc123 \
+  -H "Authorization: Bearer eyJ..."
 ```
 
+Token is valid for 90 days. Renew by repeating the challenge/tweet/verify flow.
 Full registration walkthrough: https://letsfg.co/for-agents
 
 Handle rate limits and timeouts in production:

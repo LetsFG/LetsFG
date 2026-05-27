@@ -28,12 +28,14 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 |------|----------|-------|------|
 | **Local** (CLI / SDK / MCP-local) | Personal use, experimentation, local agents | 1–15 min (local browsers on your machine) | 100% free, unlimited |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | Seconds (server-side, no local browsers) | Prepaid credits |
-| **Website** ([letsfg.co](https://letsfg.co)) | Agents that can't run browsers (OpenClaw, serverless, etc.) | Seconds | Free search + small unlock fee |
+| **Website API** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Agents that can't run browsers (OpenClaw, serverless, etc.) — **Bearer token required** | Seconds | Free search + small unlock fee |
 
 **Quick decision:**
 - You have Python + Playwright on the host → **use local search** (free, unlimited, described below).
 - You're in a cloud/serverless environment or need guaranteed speed for a product → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
-- You're an OpenClaw agent or just want a quick one-off search with zero setup → **use [letsfg.co](https://letsfg.co)** directly; it's designed to not require any browser automation on your end.
+- You're an OpenClaw agent or just want server-side search → **register a Bearer token** at [letsfg.co/for-agents](https://letsfg.co/for-agents), then `POST /api/search`. The website requires Turnstile (human-only) — Bearer token is the programmatic path.
+
+> **Note:** `GET /en?q=...` no longer works for programmatic agents. The website is Turnstile-protected for human users. All agent/script access goes through `POST /api/search` with a Bearer token.
 
 ## Why Use This Instead of Building Your Own
 
