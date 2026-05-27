@@ -99,6 +99,9 @@ const ABUSE_PROTECTED_PREFIXES: ReadonlyArray<string> = [
   '/api/results',
   '/api/search',
   '/api/offer',
+  '/api/parse-query',
+  '/api/date-grid',
+  '/api/rank',
 ]
 
 export function pathIsAbuseProtected(pathname: string): boolean {

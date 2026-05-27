@@ -63,6 +63,9 @@ describe('pathIsAbuseProtected', () => {
     assert.equal(pathIsAbuseProtected('/api/results/ws_abc123'), true)
     assert.equal(pathIsAbuseProtected('/api/search'), true)
     assert.equal(pathIsAbuseProtected('/api/offer/foo'), true)
+    assert.equal(pathIsAbuseProtected('/api/parse-query'), true)
+    assert.equal(pathIsAbuseProtected('/api/date-grid'), true)
+    assert.equal(pathIsAbuseProtected('/api/rank'), true)
   })
 
   it('does NOT match marketing or PFP paths (Googlebot can still crawl)', () => {
