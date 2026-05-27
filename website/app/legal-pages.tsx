@@ -19,7 +19,7 @@ const SUPPORTED_LOCALES = new Set([
   'zh',
 ])
 
-const LAST_UPDATED = 'May 16, 2026'
+const LAST_UPDATED = 'May 27, 2026'
 const SUPPORT_EMAIL = 'contact@letsfg.co'
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`
 const COMPANY_NAME = 'Mental Balance Sp. z o.o.'
@@ -174,6 +174,14 @@ export function PrivacyPolicyPage({ locale }: { locale: string }) {
           order to show results. We may still process technical identifiers needed to operate and secure the site, but those are
           used to keep the service working rather than to identify you by name.
         </p>
+        <LegalNote>
+          To protect the site against automated bot abuse, we use Cloudflare Turnstile, an invisible bot-detection service provided
+          by Cloudflare, Inc. Turnstile may collect browser signals, IP address, and behavioral data to assess whether a visitor is
+          human. That processing is carried out by Cloudflare under their{' '}
+          <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+          {' '}and{' '}
+          <a href="https://www.cloudflare.com/cloudflare-customer-privacy-addendum/" target="_blank" rel="noopener noreferrer">Customer Privacy Addendum</a>.
+        </LegalNote>
       </LegalSection>
 
       <LegalSection id="payment-data" title="4. What changes when you pay or share contact details">
@@ -223,7 +231,7 @@ export function PrivacyPolicyPage({ locale }: { locale: string }) {
         <ul className="legal-list">
           <li>airlines, OTAs, booking systems, and other travel suppliers queried or used by the personal agent while carrying out your instructions;</li>
           <li>Stripe and other payment or anti-fraud providers involved in processing and validating a transaction;</li>
-          <li>hosting, cloud, analytics, communications, and infrastructure vendors who help us run letsfg.co;</li>
+          <li>hosting, cloud, analytics, communications, and infrastructure vendors who help us run letsfg.co, including Cloudflare, Inc. for security and bot-detection services (Turnstile);</li>
           <li>professional advisers, auditors, regulators, courts, or law-enforcement bodies where required or appropriate.</li>
         </ul>
         <p>
