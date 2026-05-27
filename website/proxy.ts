@@ -13,11 +13,14 @@ import {
 import { isBlockedUserAgent } from './lib/ua-blocklist'
 import { extractClientIp, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
 import { isPublicShareAssetPath } from './lib/share-preview'
+import { checkSearchAbuse, getGlobalSearchAbuseStore, isSearchAbuseTarget } from './lib/search-abuse'
 
 const intlMiddleware = createMiddleware(routing)
 const ANON_USER_COOKIE_MAX_AGE_SECONDS = 10 * 365 * 24 * 60 * 60
 const RATE_LIMIT_DISABLED = process.env.LETSFG_RATE_LIMIT_DISABLED === '1'
+const SEARCH_ABUSE_DISABLED = process.env.LETSFG_SEARCH_ABUSE_DISABLED === '1'
 const rateLimitStore = getGlobalRateLimitStore()
+const searchAbuseStore = getGlobalSearchAbuseStore()
 
 // Paths that are NOT locale-prefixed — they live under app/results/ and app/book/
 // directly (outside app/[locale]/). Passing them through intlMiddleware would
@@ -153,6 +156,35 @@ export default function proxy(req: NextRequest) {
 
   if (rateLimitDecision && !rateLimitDecision.allowed) {
     return tooManyRequestsResponse(req, rateLimitDecision)
+  }
+
+  if (!SEARCH_ABUSE_DISABLED && isSearchAbuseTarget(pathname, req.nextUrl.searchParams)) {
+    const abuseKey = buildRateLimitClientKey(req.headers, sessionUid)
+    const abuseDecision = checkSearchAbuse(searchAbuseStore, abuseKey)
+    if (abuseDecision.blocked) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((abuseDecision.retryAfterMs ?? 0) / 1000))
+      const headers = new Headers({
+        'Cache-Control': 'no-store',
+        'Retry-After': String(retryAfterSeconds),
+      })
+      if (pathname.startsWith('/api/')) {
+        headers.set('Content-Type', 'application/json; charset=utf-8')
+        return new NextResponse(
+          JSON.stringify({
+            error: 'Too many searches. Please wait before searching again.',
+            code: 'SEARCH_ABUSE_BLOCKED',
+            retry_after_seconds: retryAfterSeconds,
+            strikes: abuseDecision.strikes,
+          }),
+          { status: 429, headers },
+        )
+      }
+      headers.set('Content-Type', 'text/plain; charset=utf-8')
+      return new NextResponse('Too many searches. Please wait before searching again.', {
+        status: 429,
+        headers,
+      })
+    }
   }
 
   // For non-locale paths (results/book/api), skip intlMiddleware entirely.
