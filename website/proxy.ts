@@ -14,6 +14,7 @@ import { isBlockedUserAgent } from './lib/ua-blocklist'
 import { extractClientIp, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
 import { isPublicShareAssetPath } from './lib/share-preview'
 import { checkSearchAbuse, getGlobalSearchAbuseStore, isSearchAbuseTarget } from './lib/search-abuse'
+import { isAllowedHost } from './lib/host-allowlist'
 
 const intlMiddleware = createMiddleware(routing)
 const ANON_USER_COOKIE_MAX_AGE_SECONDS = 10 * 365 * 24 * 60 * 60
@@ -106,6 +107,16 @@ function tooManyRequestsResponse(
 
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
+
+  // Host-header allowlist — first gate. Public traffic must arrive via one of
+  // our real domains (letsfg.co + subdomains). Raw .run.app URLs are blocked
+  // here so bots can't bypass Cloudflare by hitting Cloud Run directly.
+  if (!isAllowedHost(resolveRequestHost(req))) {
+    return new NextResponse('Forbidden', {
+      status: 403,
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
 
   if (isBlockedUserAgent(req.headers.get('user-agent'))) {
     return new NextResponse('Forbidden', {
