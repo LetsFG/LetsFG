@@ -78,6 +78,27 @@ const OFFER_POLICY: RateLimitPolicy = {
   refillPerMinute: 90,
 }
 
+// AI/expensive endpoints — tighter than the generic API_POLICY.
+// parse-query fires 2 Gemini calls; date-grid triggers a GF scrape;
+// rank is called 3× per search (early/mid/final phases).
+const PARSE_QUERY_POLICY: RateLimitPolicy = {
+  name: 'parse-query',
+  capacity: 8,
+  refillPerMinute: 12,
+}
+
+const DATE_GRID_POLICY: RateLimitPolicy = {
+  name: 'date-grid',
+  capacity: 8,
+  refillPerMinute: 15,
+}
+
+const RANK_POLICY: RateLimitPolicy = {
+  name: 'rank',
+  capacity: 20,
+  refillPerMinute: 30,
+}
+
 const ANALYTICS_POLICY: RateLimitPolicy = {
   name: 'analytics',
   capacity: 60,
@@ -174,6 +195,9 @@ export function getRateLimitPolicy(
   if (pathname === '/api/search') return withEnvOverrides(SEARCH_POLICY, 'SEARCH', env)
   if (pathname.startsWith('/api/results/')) return withEnvOverrides(RESULTS_POLICY, 'RESULTS', env)
   if (pathname.startsWith('/api/offer/')) return withEnvOverrides(OFFER_POLICY, 'OFFER', env)
+  if (pathname === '/api/parse-query') return withEnvOverrides(PARSE_QUERY_POLICY, 'PARSE_QUERY', env)
+  if (pathname === '/api/date-grid') return withEnvOverrides(DATE_GRID_POLICY, 'DATE_GRID', env)
+  if (pathname === '/api/rank') return withEnvOverrides(RANK_POLICY, 'RANK', env)
   if (pathname.startsWith('/api/analytics/')) return withEnvOverrides(ANALYTICS_POLICY, 'ANALYTICS', env)
   if (pathname.startsWith('/api/checkout/')) return withEnvOverrides(CHECKOUT_POLICY, 'CHECKOUT', env)
   if (pathname.startsWith('/api/')) return withEnvOverrides(API_POLICY, 'API', env)
