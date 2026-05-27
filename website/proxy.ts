@@ -11,6 +11,7 @@ import {
   getRateLimitPolicy,
 } from './lib/rate-limit'
 import { isBlockedUserAgent } from './lib/ua-blocklist'
+import { extractClientIp, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
 import { isPublicShareAssetPath } from './lib/share-preview'
 
 const intlMiddleware = createMiddleware(routing)
@@ -108,6 +109,20 @@ export default function proxy(req: NextRequest) {
       status: 403,
       headers: { 'Cache-Control': 'no-store' },
     })
+  }
+
+  // IP-range block scoped to expensive search endpoints. Defends against bots
+  // that rotate through Google Cloud NAT egress (defeating per-IP rate limits)
+  // and bypass Cloudflare by hitting the .run.app URL directly. Marketing &
+  // PFP paths stay reachable so legit Googlebot keeps indexing them.
+  if (pathIsAbuseProtected(pathname)) {
+    const clientIp = extractClientIp(req.headers)
+    if (clientIp && ipMatchesBlockedCidr(clientIp)) {
+      return new NextResponse('Forbidden', {
+        status: 403,
+        headers: { 'Cache-Control': 'no-store' },
+      })
+    }
   }
 
   const legacyDocsRedirect = redirectLegacyDocsHost(req)
