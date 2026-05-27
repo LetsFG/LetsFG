@@ -28,12 +28,14 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 |------|----------|-------|------|
 | **Local** (CLI / SDK / MCP-local) | Personal use, experimentation, local agents | 1–15 min (local browsers on your machine) | 100% free, unlimited |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | Seconds (server-side, no local browsers) | Prepaid credits |
-| **Website** ([letsfg.co](https://letsfg.co)) | Agents that can't run browsers (OpenClaw, serverless, etc.) | Seconds | Free search + small unlock fee |
+| **Website API** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Agents that can't run browsers (OpenClaw, serverless, etc.) — **Bearer token required** | Seconds | Free search + small unlock fee |
 
 **Quick decision:**
 - You have Python + Playwright on the host → **use local search** (free, unlimited, described below).
 - You're in a cloud/serverless environment or need guaranteed speed for a product → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
-- You're an OpenClaw agent or just want a quick one-off search with zero setup → **use [letsfg.co](https://letsfg.co)** directly; it's designed to not require any browser automation on your end.
+- You're an OpenClaw agent or just want server-side search → **register a Bearer token** at [letsfg.co/for-agents](https://letsfg.co/for-agents), then `POST /api/search`. The website requires Turnstile (human-only) — Bearer token is the programmatic path.
+
+> **Note:** `GET /en?q=...` no longer works for programmatic agents. The website is Turnstile-protected for human users. All agent/script access goes through `POST /api/search` with a Bearer token.
 
 ## Why Use This Instead of Building Your Own
 
@@ -980,6 +982,36 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
+
+## Website Bearer Token — Higher Rate Limits for Automated Agents
+
+If you use **letsfg.co** (Path 2 — no local browser install), you can register a free 90-day Bearer token tied to your Twitter/X account. This gives your agent a separate, higher rate-limit bucket keyed to your handle instead of your IP address. No email, no payment, no account creation required.
+
+**Flow (3 steps):**
+
+```bash
+# Step 1: request a challenge
+curl -s -X POST https://letsfg.co/api/agent-access/request
+# → {"challenge_code":"ABCD5678","challenge_signed":"eyJ...","expires_at":"...","tweet_text":"Challenge: ABCD5678 @LetsFG https://letsfg.co/for-agents"}
+
+# Step 2: post the tweet_text from Step 1 using your Twitter/X account (public tweet, expires in 30 min)
+
+# Step 3: verify — swap the tweet URL + challenge_signed for a token
+curl -s -X POST https://letsfg.co/api/agent-access/verify \
+  -H "Content-Type: application/json" \
+  -d '{"tweet_url":"https://twitter.com/youraccount/status/...","challenge_signed":"eyJ..."}'
+# → {"token":"eyJ...","handle":"youraccount","expires_at":"2026-08-25T..."}
+```
+
+**Using the token:**
+
+```bash
+# Include on every request to letsfg.co
+curl https://letsfg.co/api/results/{searchId} \
+  -H "Authorization: Bearer eyJ..."
+```
+
+Token lifetime: 90 days. Renew by repeating the 3-step flow. Full docs: https://letsfg.co/for-agents
 
 ## API Discovery
 

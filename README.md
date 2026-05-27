@@ -89,7 +89,7 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 | **Runs where** | Your machine | Our servers | Our servers |
 
 - **Local (Path 1):** Fires 200+ airline connectors on your machine via Playwright. No API key required, search is free. Results include `offer_ref` and `payment_token` alongside masked booking links. To receive the direct airline URL, use the concierge unlock flow (1% fee, min $3) — the same letsfg.co checkout system as the website.
-- **letsfg.co (Path 2):** Purpose-built for agents (OpenClaw, Claude, GPT, etc.) and humans who need instant results without installing anything. Search is free. To get the direct booking link, call `POST https://letsfg.co/api/developers/checkout` with the `offer_id`, `offer_ref`, `payment_token`, and `price` — this returns a Stripe checkout URL. After paying the 1% fee (min $3.00), poll `GET https://letsfg.co/api/developers/payment-verify?token={payment_token}` until `verified: true` to receive the `booking_url`.
+- **letsfg.co (Path 2):** Purpose-built for agents (OpenClaw, Claude, GPT, etc.) and humans who need instant results without installing anything. The website is protected by Cloudflare Turnstile — **programmatic agents must register a free Bearer token** (90-day, tied to a Twitter/X account) to search: `POST https://letsfg.co/api/agent-access/request` → tweet the challenge → `POST https://letsfg.co/api/agent-access/verify` → use `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>`. Human users search normally via the browser. To get the direct booking link, call `POST https://letsfg.co/api/developers/checkout` with the `offer_id`, `offer_ref`, `payment_token`, and `price` — this returns a Stripe checkout URL. After paying the 1% fee (min $3.00), poll `GET https://letsfg.co/api/developers/payment-verify?token={payment_token}` until `verified: true` to receive the `booking_url`. Full guide: https://letsfg.co/for-agents
 - **Developer API (Path 3):** Server-side search at [letsfg.co/developers](https://letsfg.co/developers) with prepaid credits. Returns direct airline booking URLs with no concierge fee and no checkout step. Best for teams and products at volume.
 
 > **Want direct airline URLs without any per-booking fee?** Sign up for the Developer API at [letsfg.co/developers](https://letsfg.co/developers). Prepaid credits, results in seconds, no checkout layer.
@@ -117,7 +117,7 @@ We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026
 
 ## Try it right now — no install needed
 
-**Don't want to install anything?** Use [letsfg.co](https://letsfg.co) and search flights instantly in your browser:
+**Human users:** Use [letsfg.co](https://letsfg.co) and search flights instantly in your browser:
 
 <div align="center">
 
@@ -125,7 +125,9 @@ We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026
 
 </div>
 
-Search any route, compare live results, and unlock the booking links for the flights you want without installing anything.
+Search any route, compare live results, and unlock the booking links for the flights you want — no installation needed.
+
+**Agents / scripts:** Register a free Bearer token via Twitter/X → use `POST /api/search`. See [letsfg.co/for-agents](https://letsfg.co/for-agents) for the full guide.
 
 When you're ready to integrate it into your own agent, keep reading.
 
