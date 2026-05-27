@@ -981,6 +981,36 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
 
+## Website Bearer Token — Higher Rate Limits for Automated Agents
+
+If you use **letsfg.co** (Path 2 — no local browser install), you can register a free 90-day Bearer token tied to your Twitter/X account. This gives your agent a separate, higher rate-limit bucket keyed to your handle instead of your IP address. No email, no payment, no account creation required.
+
+**Flow (3 steps):**
+
+```bash
+# Step 1: request a challenge
+curl -s -X POST https://letsfg.co/api/agent-access/request
+# → {"challenge_code":"ABCD5678","challenge_signed":"eyJ...","expires_at":"...","tweet_text":"Challenge: ABCD5678 @LetsFG https://letsfg.co/for-agents"}
+
+# Step 2: post the tweet_text from Step 1 using your Twitter/X account (public tweet, expires in 30 min)
+
+# Step 3: verify — swap the tweet URL + challenge_signed for a token
+curl -s -X POST https://letsfg.co/api/agent-access/verify \
+  -H "Content-Type: application/json" \
+  -d '{"tweet_url":"https://twitter.com/youraccount/status/...","challenge_signed":"eyJ..."}'
+# → {"token":"eyJ...","handle":"youraccount","expires_at":"2026-08-25T..."}
+```
+
+**Using the token:**
+
+```bash
+# Include on every request to letsfg.co
+curl https://letsfg.co/api/results/{searchId} \
+  -H "Authorization: Bearer eyJ..."
+```
+
+Token lifetime: 90 days. Renew by repeating the 3-step flow. Full docs: https://letsfg.co/for-agents
+
 ## API Discovery
 
 | Endpoint | URL |
