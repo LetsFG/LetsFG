@@ -27,6 +27,7 @@ import { getTrackedSourcePath, isProbeModeValue } from '../../lib/probe-mode'
 import { detectPreferredCurrency } from '../../lib/user-currency'
 import { buildLocaleHomePath, setResultsLocaleSearchParam } from '../../lib/locale-routing'
 import { resolveSearchLaunchRoute } from '../../lib/search-launch-route'
+import NoCookieBootstrap from './NoCookieBootstrap'
 
 const FSW_SECRET = process.env.FSW_SECRET || ''
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://letsfg.co'
@@ -813,6 +814,16 @@ export default async function ResultsQueryPage({
   }
 
   const query = q.trim()
+
+  const hasSession = cookieStore.has('__lfg_js')
+  if (!hasSession) {
+    return (
+      <>
+        <SearchFallback query={query} isProbe={isProbe} initialCurrency={resolvedCurrency} homeHref={homeHref} />
+        <NoCookieBootstrap />
+      </>
+    )
+  }
 
   return (
     <Suspense fallback={<SearchFallback query={query} isProbe={isProbe} initialCurrency={resolvedCurrency} homeHref={homeHref} />}>

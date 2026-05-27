@@ -11,16 +11,22 @@ import {
   getRateLimitPolicy,
 } from './lib/rate-limit'
 import { isBlockedUserAgent } from './lib/ua-blocklist'
-import { extractAllClientIps, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
+import { extractClientIp, ipMatchesBlockedCidr, pathIsAbuseProtected } from './lib/ip-blocklist'
 import { isPublicShareAssetPath } from './lib/share-preview'
 import { checkSearchAbuse, getGlobalSearchAbuseStore, isSearchAbuseTarget } from './lib/search-abuse'
 import { isAllowedHost } from './lib/host-allowlist'
+import { validateAgentToken } from './lib/agent-access'
 
 const intlMiddleware = createMiddleware(routing)
 const ANON_USER_COOKIE_MAX_AGE_SECONDS = 10 * 365 * 24 * 60 * 60
 const RATE_LIMIT_DISABLED = process.env.LETSFG_RATE_LIMIT_DISABLED === '1'
 const SEARCH_ABUSE_DISABLED = process.env.LETSFG_SEARCH_ABUSE_DISABLED === '1'
 const rateLimitStore = getGlobalRateLimitStore()
+// New agent tokens (< 48 h old) get 20 % of normal rate-limit capacity.
+// Makes Twitter account farming uneconomical: 50 throwaway accounts still
+// only get 50× 20% = 10 effective tokens' worth of burst.
+const AGENT_COOLOFF_MS = 48 * 60 * 60 * 1000
+const AGENT_COOLOFF_FRACTION = 0.2
 const searchAbuseStore = getGlobalSearchAbuseStore()
 
 // Paths that are NOT locale-prefixed — they live under app/results/ and app/book/
@@ -125,16 +131,15 @@ export default function proxy(req: NextRequest) {
     })
   }
 
-  // IP-range block scoped to expensive search endpoints. Defends against bots
-  // that rotate through Google Cloud NAT egress (defeating per-IP rate limits)
-  // and bypass Cloudflare by hitting the .run.app URL directly. Marketing &
-  // PFP paths stay reachable so legit Googlebot keeps indexing them.
-  // Check ALL IPs in the XFF chain — Cloud Run appends the real connecting IP
-  // as the last entry, so a client that spoofs the first entries still gets
-  // caught by the last one.
+  // IP-range block scoped to expensive search endpoints.
+  // extractClientIp returns CF-Connecting-IP (verified real client when CF is
+  // in the path) or the leftmost XFF entry (original client for the Firebase
+  // → Cloud Run path). Checking ALL XFF entries false-positives on Firebase
+  // infrastructure IPs (66.249.x, 142.250.x, 74.125.x) which share the same
+  // Google CIDR ranges we block for bot traffic.
   if (pathIsAbuseProtected(pathname)) {
-    const allIps = extractAllClientIps(req.headers)
-    if (allIps.some(ip => ipMatchesBlockedCidr(ip))) {
+    const clientIp = extractClientIp(req.headers)
+    if (clientIp && ipMatchesBlockedCidr(clientIp)) {
       return new NextResponse('Forbidden', {
         status: 403,
         headers: { 'Cache-Control': 'no-store' },
@@ -158,12 +163,35 @@ export default function proxy(req: NextRequest) {
     return NextResponse.redirect(target)
   }
 
+  // Agent access tokens: developers tweet a challenge code to get a 90-day Bearer token.
+  // Token holders get their own rate-limit/abuse bucket keyed by Twitter handle,
+  // separate from anonymous session/IP buckets.
+  const bearerToken = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null
+  const agentValidation = bearerToken ? validateAgentToken(bearerToken) : null
+  const agentHandle = agentValidation?.valid ? agentValidation.handle : null
+  const agentIsNew = agentValidation?.valid
+    ? (Date.now() - agentValidation.issuedAt) < AGENT_COOLOFF_MS
+    : false
+
   const sessionUid = getSessionUid(req) || randomUUID()
-  const rateLimitPolicy = RATE_LIMIT_DISABLED ? null : getRateLimitPolicy(pathname)
+  // Agent requests use a stable handle-based key; others use IP or session UID.
+  const clientKey = agentHandle
+    ? `agent:${agentHandle}`
+    : buildRateLimitClientKey(req.headers, sessionUid)
+
+  const basePolicy = RATE_LIMIT_DISABLED ? null : getRateLimitPolicy(pathname)
+  // New agent tokens get a reduced quota to make account farming uneconomical.
+  const rateLimitPolicy = basePolicy && agentIsNew
+    ? {
+        name: `${basePolicy.name}:new`,
+        capacity: Math.max(1, Math.floor(basePolicy.capacity * AGENT_COOLOFF_FRACTION)),
+        refillPerMinute: Math.max(1, Math.floor(basePolicy.refillPerMinute * AGENT_COOLOFF_FRACTION)),
+      }
+    : basePolicy
   const rateLimitDecision = rateLimitPolicy
     ? checkRateLimit(
         rateLimitStore,
-        `${rateLimitPolicy.name}:${buildRateLimitClientKey(req.headers, sessionUid)}`,
+        `${rateLimitPolicy.name}:${clientKey}`,
         rateLimitPolicy,
       )
     : null
@@ -172,8 +200,8 @@ export default function proxy(req: NextRequest) {
     return tooManyRequestsResponse(req, rateLimitDecision)
   }
 
-  if (!SEARCH_ABUSE_DISABLED && isSearchAbuseTarget(pathname, req.nextUrl.searchParams)) {
-    const abuseKey = buildRateLimitClientKey(req.headers, sessionUid)
+  if (!SEARCH_ABUSE_DISABLED && !agentHandle && isSearchAbuseTarget(pathname, req.nextUrl.searchParams)) {
+    const abuseKey = clientKey
     const abuseDecision = checkSearchAbuse(searchAbuseStore, abuseKey)
     if (abuseDecision.blocked) {
       const retryAfterSeconds = Math.max(1, Math.ceil((abuseDecision.retryAfterMs ?? 0) / 1000))
