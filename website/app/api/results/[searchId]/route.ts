@@ -6,6 +6,9 @@ import { getTrackedSourcePath, getTrackingSearchId, isProbeModeValue } from '../
 import { getSessionUid } from '../../../../lib/session-uid'
 import { applyGoogleFlightsBaseline, normalizeTrustedOffer, toPublicOffer } from '../../../../lib/trusted-offer'
 import { upsertSearchSessionServer } from '../../../../lib/search-session-analytics-server'
+import { buildRecommendationQualityEventData } from '../../../../lib/search-session-analytics'
+import { deriveQualityInput } from '../../../../lib/recommendation-quality-inputs'
+import { Q1_SAMPLE_RATE, shouldSample } from '../../../../lib/flags'
 import { triggerPfpIngest } from '../../../../lib/pfp/ingest/trigger'
 
 const FSW_URL = process.env.FSW_URL || 'https://flight-search-worker-qryvus4jia-uc.a.run.app'
@@ -490,6 +493,34 @@ export async function GET(
           },
         },
       })
+
+      // Fire Q1 (recommendation_quality_assessed) — server-side, sampled
+      if (shouldSample(Q1_SAMPLE_RATE)) {
+        const connectorCount = new Set(
+          rawOffers.map((o: any) => (typeof o?.source === 'string' ? o.source : null)).filter(Boolean)
+        ).size || 1
+        const qualityInput = deriveQualityInput(
+          normalized.map(o => ({
+            price: o.price,
+            airline_code: o.airline_code,
+            stops: o.stops ?? 0,
+          })),
+          {
+            searchId: analyticsSearchId,
+            googleFlightsPrice: googleFlightsPrice ?? null,
+            searchDurationMs: data.elapsed_seconds ? Math.round(data.elapsed_seconds * 1000) : 0,
+            connectorCount,
+          },
+        )
+        void upsertSearchSessionServer({
+          search_id: analyticsSearchId,
+          event: {
+            type: 'recommendation_quality_assessed',
+            at: new Date().toISOString(),
+            data: buildRecommendationQualityEventData(qualityInput) as unknown as Record<string, unknown>,
+          },
+        })
+      }
 
       // Fire-and-forget PFP ingest — non-blocking, never throws
       if (!isProbeSearch && data.origin && data.destination) {
