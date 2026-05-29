@@ -29,13 +29,37 @@ logger = logging.getLogger(__name__)
 _TELEMETRY_URL = "https://letsfg.co/developers/api/v1/analytics/stats/record-local-search"
 
 
-def _fire_telemetry(source: str) -> None:
+def _build_telemetry_payload(
+    source: str,
+    search_count: int,
+    result_count: int,
+    duration_ms: int,
+) -> dict:
+    """Build the enriched telemetry payload dict."""
+    from letsfg import __version__ as _sdk_version  # type: ignore[attr-defined]
+    client_type = (source or "python-sdk").strip() or "python-sdk"
+    return {
+        "source": client_type,
+        "search_count": search_count,
+        "result_count": result_count,
+        "duration_ms": duration_ms,
+        "sdk_version": _sdk_version,
+    }
+
+
+def _fire_telemetry(
+    source: str,
+    search_count: int = 1,
+    result_count: int = 0,
+    duration_ms: int = 0,
+) -> None:
     """Best-effort telemetry — never raises, never blocks the caller."""
     if os.environ.get("LETSFG_NO_TELEMETRY"):
         return
     try:
-        client_type = (source or "python-sdk").strip() or "python-sdk"
-        body = json.dumps({"source": client_type}).encode()
+        payload = _build_telemetry_payload(source, search_count, result_count, duration_ms)
+        client_type = payload["source"]
+        body = json.dumps(payload).encode()
         req = _Req(_TELEMETRY_URL, data=body,
                    headers={
                        "Content-Type": "application/json",
@@ -99,15 +123,29 @@ async def search_local(
         max_stopovers=max_stopovers if max_stopovers is not None else 2,
     )
 
+    import time as _time
+    _t0 = _time.monotonic()
     resp = await multi_provider.search_flights(req, mode=mode)
+    _duration_ms = int((_time.monotonic() - _t0) * 1000)
+
+    result_data = resp.model_dump(mode="json")
+    _result_count = len(result_data.get("offers", []))
 
     # Fire-and-forget telemetry so the backend can count local searches.
     # Runs in a thread to avoid blocking the event loop. Never raises.
     source = os.environ.get("LETSFG_TELEMETRY_SOURCE", "python-sdk")
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _fire_telemetry, source)
+    loop.run_in_executor(
+        None,
+        lambda: _fire_telemetry(
+            source=source,
+            search_count=1,
+            result_count=_result_count,
+            duration_ms=_duration_ms,
+        ),
+    )
 
-    return resp.model_dump(mode="json")
+    return result_data
 
 
 # ── Location name → IATA code mapping (for local resolve_location) ────────

@@ -494,34 +494,6 @@ export async function GET(
         },
       })
 
-      // Fire Q1 (recommendation_quality_assessed) — server-side, sampled
-      if (shouldSample(Q1_SAMPLE_RATE)) {
-        const connectorCount = new Set(
-          rawOffers.map((o: any) => (typeof o?.source === 'string' ? o.source : null)).filter(Boolean)
-        ).size || 1
-        const qualityInput = deriveQualityInput(
-          normalized.map(o => ({
-            price: o.price,
-            airline_code: o.airline_code,
-            stops: o.stops ?? 0,
-          })),
-          {
-            searchId: analyticsSearchId,
-            googleFlightsPrice: googleFlightsPrice ?? null,
-            searchDurationMs: data.elapsed_seconds ? Math.round(data.elapsed_seconds * 1000) : 0,
-            connectorCount,
-          },
-        )
-        void upsertSearchSessionServer({
-          search_id: analyticsSearchId,
-          event: {
-            type: 'recommendation_quality_assessed',
-            at: new Date().toISOString(),
-            data: buildRecommendationQualityEventData(qualityInput) as unknown as Record<string, unknown>,
-          },
-        })
-      }
-
       // Fire-and-forget PFP ingest — non-blocking, never throws
       if (!isProbeSearch && data.origin && data.destination) {
         triggerPfpIngest({
@@ -534,6 +506,36 @@ export async function GET(
           rawOffers,
         }).catch(() => {})
       }
+    }
+
+    // Fire Q1 (recommendation_quality_assessed) for ALL completed searches — sampled.
+    // Must be outside the normalized.length > 0 guard: zero-result searches are valid
+    // data points that lower the quality score and should be tracked.
+    if (data.status === 'completed' && shouldSample(Q1_SAMPLE_RATE)) {
+      const connectorCount = new Set(
+        rawOffers.map((o: any) => (typeof o?.source === 'string' ? o.source : null)).filter(Boolean)
+      ).size || 1
+      const qualityInput = deriveQualityInput(
+        normalized.map(o => ({
+          price: o.price,
+          airline_code: o.airline_code,
+          stops: o.stops ?? 0,
+        })),
+        {
+          searchId: analyticsSearchId,
+          googleFlightsPrice: googleFlightsPrice ?? null,
+          searchDurationMs: data.elapsed_seconds ? Math.round(data.elapsed_seconds * 1000) : 0,
+          connectorCount,
+        },
+      )
+      void upsertSearchSessionServer({
+        search_id: analyticsSearchId,
+        event: {
+          type: 'recommendation_quality_assessed',
+          at: new Date().toISOString(),
+          data: buildRecommendationQualityEventData(qualityInput) as unknown as Record<string, unknown>,
+        },
+      })
     }
 
     const now = new Date()
