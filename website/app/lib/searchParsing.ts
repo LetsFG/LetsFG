@@ -3984,7 +3984,8 @@ const WEEKDAY_MAP: [string, number][] = ([
 const RETURN_SPLIT_RE = new RegExp(
   '\\s+(?:' + [
     // EN
-    'returning on','returning','return on','return date','return','come back on','coming back on','coming back','back on','back',
+    // Note: bare 'return' must NOT match 'return ticket/flight/trip' (those are round-trip signals, not date markers)
+    'returning on','returning','return on','return date','return(?!\\s+(?:tickets?|flights?|trip))','come back on','coming back on','coming back','back on','back',
     // DE
     'rückflug am','rückflug','zurück am','zurück','ruckreise am','ruckreise',
     // ES
