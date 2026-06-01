@@ -1,6 +1,6 @@
 import sys
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -16,7 +16,7 @@ def _make_req(**kwargs) -> FlightSearchRequest:
     defaults = dict(
         origin="DEL",
         destination="LHR",
-        date_from=date(2026, 5, 30),
+        date_from=date.today() + timedelta(days=30),
         adults=1,
         children=0,
         infants=0,
@@ -43,8 +43,8 @@ def _build_itinerary(price_list: list[dict]) -> list[dict]:
                             "flightNo": "111",
                             "departureAirportCode": "DEL",
                             "arrivalAirportCode": "LHR",
-                            "departureDateTime": "2026-05-30 10:50:00",
-                            "arrivalDateTime": "2026-05-30 17:45:00",
+                            "departureDateTime": "2028-01-15 10:50:00",
+                            "arrivalDateTime": "2028-01-15 17:45:00",
                         }
                     ],
                 }
