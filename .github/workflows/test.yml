@@ -1,10 +1,11 @@
 name: CI Tests (Tier-1 gate)
 
 # Tier-1 deterministic merge gate.
-# Both jobs are required status checks — enable them in branch protection.
-# website-critical guards the 6-link value chain (see website/tests/CRITICAL.md).
+# Required status checks: python-deterministic, typescript-packages.
+# Enable both in Settings → Branches → main → required status checks.
 # python-deterministic guards connector parsing; browser/network tests are marked
 # @pytest.mark.live and excluded here — covered by connector-smoke.yml (Tier-2).
+# typescript-packages type-checks the JS SDK and MCP server.
 
 on:
   pull_request:
@@ -21,25 +22,93 @@ permissions:
   contents: read
 
 jobs:
-  website-critical:
-    name: Website critical-path (Tier-1, required)
+  typescript-packages:
+    name: TypeScript packages (Tier-1, required)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: website
+    strategy:
+      matrix:
+        package: [sdk/js, sdk/mcp]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Critical-path tests (npm run test:critical)
-        run: npm run test:critical
+        working-directory: ${{ matrix.package }}
       - name: Type-check (tsc --noEmit)
         run: npx tsc --noEmit
+        working-directory: ${{ matrix.package }}
+      - name: Run tests
+        if: hashFiles(format('{0}/src/**/*.test.ts', matrix.package)) != ''
+        run: npm test
+        working-directory: ${{ matrix.package }}
+
+  test-coverage-gate:
+    name: Test coverage gate (new source files)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-test-gate')
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check new source files have tests
+        run: |
+          set -euo pipefail
+
+          # Watched paths: SDK source files (exclude test files and built output)
+          WATCH_PATHS="sdk/js/src sdk/mcp/src"
+
+          # Get files Added (A) or Renamed (R) in this PR vs base branch
+          NEW_FILES=$(git diff --name-only --diff-filter=AR "origin/${{ github.base_ref }}"...HEAD | \
+            grep -E '\.(ts|tsx)$' | \
+            grep -v '\.test\.(ts|tsx)$' | \
+            grep -v '\.d\.ts$' || true)
+
+          if [ -z "$NEW_FILES" ]; then
+            echo "No new source files — gate passes."
+            exit 0
+          fi
+
+          MISSING=()
+          for file in $NEW_FILES; do
+            # Only check files under watched paths
+            in_watch=false
+            for path in $WATCH_PATHS; do
+              if [[ "$file" == "$path/"* ]]; then
+                in_watch=true
+                break
+              fi
+            done
+            [ "$in_watch" = true ] || continue
+
+            # Check sibling .test.ts or __tests__/<name>.test.ts
+            dir=$(dirname "$file")
+            base=$(basename "$file" .ts)
+            base=${base%.tsx}
+            sibling_test="$dir/$base.test.ts"
+            subdir_test="$dir/__tests__/$base.test.ts"
+
+            if [ ! -f "$sibling_test" ] && [ ! -f "$subdir_test" ]; then
+              MISSING+=("$file → expected $sibling_test")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo ""
+            echo "❌ Test coverage gate failed — new source files have no corresponding test:"
+            for m in "${MISSING[@]}"; do
+              echo "  • $m"
+            done
+            echo ""
+            echo "Add test files or label the PR with 'skip-test-gate' for exceptions (hotfixes, config-only)."
+            exit 1
+          fi
+
+          echo "✓ All new source files have tests."
 
   python-deterministic:
     name: Python deterministic tests (Tier-1, required)
