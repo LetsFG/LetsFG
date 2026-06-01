@@ -21,7 +21,7 @@ LetsFG uses a three-tier test strategy across two repos to balance correctness, 
 | **1** | Private | Cloud Build pre-deploy-tests step | **Yes** (hard gate — blocks deploy) |
 | **2** | Public | `connector-smoke` (changed connectors + nightly) | No (advisory) |
 | **2** | Public | `sdk-tests` (masking, on SDK changes) | No (advisory) |
-| **3** | Private | `quality-probes.yml` (4× daily journey probes) | No (Slack/Telegram alerts) |
+| **3** | Private | `quality-probes.yml` (4× daily journey probes) | No (Telegram alerts) |
 
 **Note:** GitHub free plan cannot enforce required status checks on private repos. The Cloud Build `pre-deploy-tests` step is the hard production gate for the website. The growth-ops CI is enforced via PR convention and auto-merge settings.
 
@@ -65,8 +65,12 @@ Tested strategic decisions are logged in the table below. Tests marked `@strateg
 | Decision | Test file | Date |
 |----------|-----------|------|
 | Results show 3 ranked deals: best/cheapest/fastest | `website/tests/recommendation-quality.test.ts` | 2026-06-01 |
-| Google comparison shown on results page | `website/tests/google-comparison.test.ts` | 2026-06-01 |
-| Search is free with GitHub star unlock | `website/tests/checkout-unlock-experiment.test.ts` | 2026-06-01 |
+| Quality scoring formula weights: results 30 / price 40 / diversity 20 / speed 10 | `website/tests/recommendation-quality.test.ts` | 2026-06-01 |
+| Google comparison shown on results page; zero/negative baselines are invalid | `website/tests/google-comparison.test.ts` | 2026-06-01 |
+| Search is free; checkout unlock experiment routes traffic to payment-only path | `website/tests/checkout-unlock-experiment.test.ts` | 2026-06-01 |
+| Growth funnel measured via L1–L7 (see `growth-ops/src/models/growth-model.ts`) | `growth-ops/src/services/__tests__/` | 2026-06-01 |
+| Quality measured via Q1–Q3 composite score; Q1=recommendation quality, Q2=connector coverage, Q3=pricing accuracy | `website/tests/recommendation-quality.test.ts` | 2026-06-01 |
+| All experiments run behind feature flags with tests for both branches; winning variant replaces default without backwards shim | `website/tests/checkout-unlock-experiment.test.ts` | 2026-06-01 |
 
 To add an entry: add `@strategic` to the test name, add a row here, and open a PR with a `decision-change:` label.
 
@@ -203,7 +207,6 @@ The workflow lives in `LetsFG-private/.github/workflows/quality-probes.yml`. The
 
 Required secrets (in LetsFG-private GitHub repo settings):
 - `LETSFG_API_KEY` — Developer API key for probe searches
-- `GROWTH_OPS_SLACK_WEBHOOK_URL` — Slack incoming webhook
 - `GROWTH_OPS_TELEGRAM_BOT_TOKEN` — Telegram bot token
 - `GROWTH_OPS_TELEGRAM_CHAT_ID` — Telegram target chat
 
