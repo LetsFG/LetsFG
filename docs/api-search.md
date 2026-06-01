@@ -115,6 +115,21 @@ console.log(result.total_results, result.passenger_ids);
 - `total_results` for analytics and QA
 - the request body you used, so reruns and debugging stay reproducible
 
+## Coverage and response time
+
+The developer API uses the same 180+ airline connector fleet as the [letsfg.co](https://letsfg.co) consumer search. The fleet includes direct airline scrapers, OTA aggregators (Kiwi, Kayak, Momondo, Skyscanner), and virtual interlining — worldwide coverage including all US domestic routes.
+
+| Route type | Typical response time |
+|------------|-----------------------|
+| Europe intra-continental | 20–40 seconds |
+| Transatlantic | 30–60 seconds |
+| US domestic | 60–90 seconds |
+| Asia-Pacific / Latin America | 40–80 seconds |
+
+Response times reflect how long the relevant connectors take to return results. The API returns as soon as a useful set of offers is available — set your client timeout to at least **90 seconds** to handle the full range.
+
+Results are cached for 5 minutes. A second search for the same route and date returns immediately.
+
 ## Inspect provider visibility
 
 ```bash
@@ -123,6 +138,17 @@ curl https://letsfg.co/developers/api/v1/flights/providers \
 ```
 
 Use this endpoint when you want to understand which provider families are visible to the current public API environment.
+
+## Zero results
+
+A `200 OK` response with `total_results: 0` means the search ran successfully but no flights were found. Common reasons:
+
+- **Date in the past** — `date_from` must be today or later.
+- **Very near-term date** — same-day or next-day departures may not yet have inventory.
+- **Niche or unserved route** — some city pairs have no direct or connecting service.
+- **Cabin class filter** — `cabin_class: "F"` (first class) eliminates most LCCs; try `"M"` (economy) first.
+
+If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds. The same connector fleet is used for both; a second request will usually return cached results immediately.
 
 ## Recommended production flow
 
