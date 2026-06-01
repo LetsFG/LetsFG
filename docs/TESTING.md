@@ -205,10 +205,12 @@ Journey probes run 4× daily against production. They exercise the full critical
 
 The workflow lives in `LetsFG-private/.github/workflows/quality-probes.yml`. The probe logic is in `growth-ops/src/crons/quality-probes.cron.ts` and `growth-ops/src/services/journey-probe.ts`.
 
-Required secrets (in LetsFG-private GitHub repo settings):
-- `LETSFG_API_KEY` — Developer API key for probe searches
+Required secrets (in LetsFG-private GitHub repo settings AND Cloud Run env vars):
+- `LETSFG_INTERNAL_PROBE_SECRET` — Shared server-to-server secret for `/api/internal/probe` gateway (bypasses public developer API and anti-bot layer; same value in GH secrets + Cloud Run)
 - `GROWTH_OPS_TELEGRAM_BOT_TOKEN` — Telegram bot token
 - `GROWTH_OPS_TELEGRAM_CHAT_ID` — Telegram target chat
+
+The probe gateway lives at `website/app/api/internal/probe/route.ts`. It is not a public endpoint — it accepts requests only when `x-probe-secret` matches `INTERNAL_PROBE_SECRET` and proxies to the backend via `LETSFG_WEBSITE_API_KEY` (internal service key, no anti-bot). Rotate the secret by updating the env var in both places.
 
 ---
 
