@@ -27,15 +27,27 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
 | **Local** (CLI / SDK / MCP-local) | Personal use, experimentation, local agents | 1–15 min (local browsers on your machine) | 100% free, unlimited |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | Seconds (server-side, no local browsers) | Prepaid credits |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | Seconds (server-side, no local browsers) | Prepaid credits (monthly tiers — see below) |
 | **Website API** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Agents that can't run browsers (OpenClaw, serverless, etc.) — **Bearer token required** | Seconds | Free search + small unlock fee |
 
 **Quick decision:**
 - You have Python + Playwright on the host → **use local search** (free, unlimited, described below).
 - You're in a cloud/serverless environment or need guaranteed speed for a product → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
-- You're an OpenClaw agent or just want server-side search → **register a Bearer token** at [letsfg.co/for-agents](https://letsfg.co/for-agents), then `POST /api/search`. The website requires Turnstile (human-only) — Bearer token is the programmatic path.
+- You're an OpenClaw agent or just want server-side search → **register a Bearer token** at [letsfg.co/for-agents](https://letsfg.co/for-agents), then `POST /api/search`. The website requires Cloudflare Turnstile (human-only) — Bearer token is the only programmatic path.
 
-> **Note:** `GET /en?q=...` no longer works for programmatic agents. The website is Turnstile-protected for human users. All agent/script access goes through `POST /api/search` with a Bearer token.
+> **Important:** `GET /en?q=...` does not work for automated agents. The website is protected by Cloudflare Turnstile. All agent/script access must use `POST /api/search` with a Bearer token.
+
+### Developer API search pricing (monthly)
+
+Billing resets on the 1st of each UTC calendar month:
+
+| Monthly searches | Price per search |
+|-----------------|-----------------|
+| 1 – 10          | $0.50 (basic monthly fee) |
+| 11 – 1,000      | $0.20 |
+| 1,001+          | $0.10 (rate stays fixed) |
+
+Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/developers).
 
 ## Why Use This Instead of Building Your Own
 

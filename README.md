@@ -83,7 +83,7 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 |---|---|---|---|
 | **Best for** | Developers, personal use, agents that can run a local browser | AI agents that can't run local browsers (Claude, GPT, OpenClaw, etc.), human users, zero-install | Teams, products, agents that want raw offers without per-booking fees |
 | **Speed** | 1–15 min (local browsers) | Seconds (server-side) | Seconds (server-side) |
-| **Search cost** | Free | Free | Prepaid credits |
+| **Search cost** | Free | Free | Prepaid credits ($0.50/$0.20/$0.10 monthly tiers) |
 | **Booking URL** | 1% concierge fee (min $3) via letsfg.co | 1% concierge fee (min $3) via letsfg.co | Direct airline URLs, no per-booking fee |
 | **Setup** | `pip install letsfg` | [letsfg.co](https://letsfg.co) | [letsfg.co/developers](https://letsfg.co/developers) |
 | **Runs where** | Your machine | Our servers | Our servers |
@@ -144,7 +144,7 @@ When you're ready to integrate it into your own agent, keep reading.
 
 **Local search = free.** The CLI, Python SDK, npm packages, and local MCP server run 200+ connectors on your machine. No API key needed. Searches take 1–15 minutes. Booking links are routed through letsfg.co — the same 1% concierge fee (min $3) applies as on the website.
 
-**Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) runs searches server-side — no local Playwright, no wait, results in seconds. Built for products and teams. Prepaid credits.
+**Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) runs searches server-side — no local Playwright, no wait, results in seconds. Built for products and teams. Monthly billing: $0.50/search for the first 10 each month (basic fee), $0.20 for searches 11–1,000, then $0.10/search after that. Resets monthly. Minimum top-up: $5.
 
 **letsfg.co = free search + small unlock fee.** Search is free, and when you unlock a search you get the booking links for all flights from that search. Purpose-built for agents (OpenClaw etc.) that can't run local browser automation.
 
