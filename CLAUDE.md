@@ -298,22 +298,34 @@ npm publish
 
 Public developer onboarding and search docs are served from `https://letsfg.co/developers/api/docs` with base `https://letsfg.co/developers/api/v1`.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/agents/register` | Register for an API key |
-| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method for browserless public onboarding |
-| `GET`  | `/api/v1/agents/me` | Agent profile + usage stats |
-| `POST` | `/api/v1/agents/link-github` | Star repo for free access |
-| `POST` | `/api/v1/flights/search` | Search flights (cloud providers) |
-| `GET`  | `/api/v1/flights/locations/{q}` | Resolve city/airport to IATA codes |
-| `POST` | `/api/v1/bookings/unlock` | Unlock an offer (free) |
-| `POST` | `/api/v1/bookings/book` | Book a flight (ticket price charged via Stripe) |
-| `GET`  | `/api/v1/bookings/booking/{id}` | Get booking details |
-| `GET`  | `/.well-known/ai-plugin.json` | OpenAI Plugin manifest |
-| `GET`  | `/.well-known/agent.json` | Agent Protocol manifest |
-| `GET`  | `/llms.txt` | LLM instructions |
-| `GET`  | `/openapi.json` | OpenAPI spec |
-| `GET`  | `/mcp` | Remote MCP (Streamable HTTP) |
+| Method | Path | Description | Billed? |
+|--------|------|-------------|---------|
+| `POST` | `/api/v1/agents/register` | Register for an API key | No |
+| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method | No |
+| `GET`  | `/api/v1/agents/me` | Agent profile, balance, and usage stats | No |
+| `POST` | `/api/v1/agents/top-up` | Fund prepaid balance | No |
+| `POST` | `/api/v1/agents/billing-settings` | Configure auto-refill | No |
+| `POST` | `/api/v1/flights/parse-query` | Parse natural language query → IATA codes, dates, time prefs (Gemini) | **Free** |
+| `POST` | `/api/v1/flights/discover` | Indicative prices for up to 20 destinations, sorted cheapest-first, 2–5 s | **1 credit** |
+| `POST` | `/api/v1/flights/search` | Full 180+ connector search, single destination, 60–90 s | **1 credit** |
+| `POST` | `/api/v1/flights/search/async` | Start full search in background, returns `search_id` immediately | **1 credit** |
+| `GET`  | `/api/v1/flights/results/{id}` | Poll results of an async search | No |
+| `POST` | `/api/v1/flights/multi-search` | Full search for N destinations in parallel (max 10) | **1 credit per destination** |
+| `GET`  | `/api/v1/flights/locations/{q}` | Resolve city/airport name to IATA codes | No |
+| `GET`  | `/api/v1/flights/providers` | List active flight providers | No |
+| `POST` | `/api/v1/sandbox/flights/search` | Sandbox: fake data, same schema as /flights/search | **Free** |
+| `POST` | `/api/v1/sandbox/flights/discover` | Sandbox: fake data, same schema as /flights/discover | **Free** |
+| `POST` | `/api/v1/sandbox/flights/multi-search` | Sandbox: fake data, same schema as /flights/multi-search | **Free** |
+| `POST` | `/api/v1/sandbox/flights/parse-query` | Sandbox: stub response, same schema as /flights/parse-query | **Free** |
+| `GET`  | `/api/v1/sandbox/flights/locations/{q}` | Sandbox: stub location resolve | **Free** |
+| `POST` | `/api/v1/bookings/unlock` | Unlock an offer (confirm live price) | No |
+| `POST` | `/api/v1/bookings/book` | Book a flight (ticket price charged) | No |
+| `GET`  | `/api/v1/bookings/booking/{id}` | Get booking details | No |
+| `GET`  | `/.well-known/ai-plugin.json` | OpenAI Plugin manifest | No |
+| `GET`  | `/.well-known/agent.json` | Agent Protocol manifest | No |
+| `GET`  | `/llms.txt` | LLM instructions | No |
+| `GET`  | `/openapi.json` | OpenAPI spec | No |
+| `GET`  | `/mcp` | Remote MCP (Streamable HTTP) | No |
 
 ## Links
 
