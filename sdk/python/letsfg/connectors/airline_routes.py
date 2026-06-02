@@ -1144,6 +1144,14 @@ AIRLINE_COUNTRIES: dict[str, set[str]] = {
         "US", "CA", "MX", "BR", "AR", "CL", "CO", "PE",
         "RU",
     },
+    # Qunar: strongest for China domestic + international from/to China
+    "qunar": {
+        "CN", "HK", "MO", "TW",
+        "JP", "KR", "SG", "TH", "MY", "VN", "PH", "ID",
+        "GB", "DE", "FR", "US", "AU", "CA",
+        "AE", "SA", "QA", "TR",
+        "RU", "KZ", "UZ",
+    },
     "cleartrip": {
         "IN", "AE", "SA", "QA", "KW", "BH", "OM",
         "SG", "TH", "MY", "ID", "LK", "BD", "NP", "PK",
@@ -1435,7 +1443,7 @@ def get_relevant_connectors(
 
     # Aggregators/OTAs search many airlines — use lenient OR filter
     _AGGREGATOR_KEYS = {
-        "kiwi", "traveloka", "wego", "webjet", "tiket", "tripcom", "cleartrip", "edreams",
+        "kiwi", "traveloka", "wego", "webjet", "tiket", "tripcom", "qunar", "cleartrip", "edreams",
         "opodo", "momondo", "kayak", "cheapflights", "skyscanner",
         "skiplagged",
         "etraveli", "ixigo", "rehlat",

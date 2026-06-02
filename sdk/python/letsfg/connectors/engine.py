@@ -181,6 +181,7 @@ from .wego import WegoConnectorClient
 from .webjet import WebjetConnectorClient
 from .tiket import TiketConnectorClient
 from .tripcom import TripcomConnectorClient
+from .qunar import QunarConnectorClient
 from .cleartrip import CleartripConnectorClient
 from .edreams import EdreamsConnectorClient
 from .serpapi_google import SerpApiGoogleConnectorClient
@@ -339,6 +340,7 @@ _BROWSER_SOURCES: set[str] = {
     "tiket_ota",
     "edreams_ota",
     "tripcom_ota",
+    "qunar_ota",
     "opodo_ota",
     "momondo_meta",
     "kayak_meta",
@@ -376,7 +378,7 @@ _PRIORITY_BROWSER_SOURCES: set[str] = {
     "momondo_meta", "kayak_meta", "cheapflights_meta", "skyscanner_meta",
     "wego_meta", "aviasales_meta", "agoda_meta", "ixigo_meta",
     # ── Top-tier global OTAs — massive route coverage ──
-    "edreams_ota", "opodo_ota", "tripcom_ota", "bookingcom_ota",
+    "edreams_ota", "opodo_ota", "tripcom_ota", "qunar_ota", "bookingcom_ota",
     "traveloka_ota", "lastminute_ota",
     # Gulf carriers — frequently cheapest on long-haul international routes
     "emirates_direct", "etihad_direct", "qatar_direct",
@@ -392,7 +394,7 @@ _PRIORITY_BROWSER_SOURCES: set[str] = {
 # Includes: all OTAs, all metas, plus key direct airlines (top EU/US LCCs).
 _FAST_MODE_SOURCES: set[str] = {
     # ── OTAs (Online Travel Agencies) ──
-    "traveloka_ota", "webjet_ota", "tiket_ota", "edreams_ota", "tripcom_ota",
+    "traveloka_ota", "webjet_ota", "tiket_ota", "edreams_ota", "tripcom_ota", "qunar_ota",
     "cleartrip_ota", "opodo_ota", "despegar_ota", "etraveli_ota", "rehlat_ota",
     "travelstart_ota", "travix_ota", "travelup_ota", "lastminute_ota", "byojet_ota",
     "yatra_ota", "auntbetty_ota", "flightcatchers_ota", "traveltrolley_ota",
@@ -675,6 +677,7 @@ _DIRECT_AIRLINE_connectorS: list[tuple[str, type, float]] = [
     ("webjet_ota", WebjetConnectorClient, 55.0),
     ("tiket_ota", TiketConnectorClient, 55.0),
     ("tripcom_ota", TripcomConnectorClient, 55.0),
+    ("qunar_ota", QunarConnectorClient, 60.0),
     ("cleartrip_ota", CleartripConnectorClient, 55.0),
     ("edreams_ota", EdreamsConnectorClient, 55.0),
     ("despegar_ota", DespegarConnectorClient, 55.0),
