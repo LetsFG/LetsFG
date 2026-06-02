@@ -6,11 +6,20 @@
 
 ## Endpoints you will use
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/flights/locations/{query}` | GET | Resolve a city, airport, or metro area to IATA codes |
-| `/flights/search` | POST | Run paid public search |
-| `/flights/providers` | GET | Inspect the provider mix exposed through the public API |
+| Endpoint | Method | Purpose | Billed? |
+|----------|--------|---------|---------|
+| `/flights/locations/{query}` | GET | Resolve a city, airport, or metro area to IATA codes | No |
+| `/flights/parse-query` | POST | Parse a natural language query into search params | No |
+| `/flights/search` | POST | Run a single-destination paid search (blocking, 60–90 s) | **1 credit** |
+| `/flights/search/async` | POST | Start a search in background, returns search_id immediately | **1 credit** |
+| `/flights/results/{search_id}` | GET | Poll results of an async search | No |
+| `/flights/multi-search` | POST | Search N destinations in parallel in one call | **1 credit per destination** |
+| `/flights/providers` | GET | Inspect the provider mix exposed through the public API | No |
+
+> **Billing rule: every destination = one search credit.**  
+> `/flights/multi-search` with 10 destinations charges 10 credits — same as calling
+> `/flights/search` 10 times. There is no bundle discount. Check your balance at
+> `GET /agents/me` before running large batches.
 
 ## Resolve locations first
 
@@ -150,12 +159,81 @@ A `200 OK` response with `total_results: 0` means the search ran successfully bu
 
 If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds. The same connector fleet is used for both; a second request will usually return cached results immediately.
 
+## Departure time filters
+
+Use `departure_time_from` and `departure_time_to` (HH:MM, 24-hour) to restrict
+outbound departure to a time window. Applied server-side before results are returned.
+
+```json
+{
+  "origin": "JFK",
+  "destination": "LAX",
+  "date_from": "2026-07-15",
+  "departure_time_from": "05:00",
+  "departure_time_to": "11:00"
+}
+```
+
+> **Note:** Hard time filters can return zero results on thin routes. For discovery
+> feeds where you always want *something* to show, search without the filter and
+> sort or display by departure time client-side.
+
+## Parse natural language queries
+
+`POST /flights/parse-query` converts free-text input into structured search params —
+free, no credit consumed.
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/flights/parse-query \
+  -H "X-API-Key: trav_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "morning flight from New York to Chicago next Friday, 2 adults"}'
+```
+
+Returns `origin`, `destination`, `departure_date`, `adults`, `departure_time_from`,
+`departure_time_to`, `cabin_class`, and a `follow_up_topics` list for any fields
+that are still missing. Pass the resolved fields directly to `/flights/search`.
+
+Use `"mode": "clarify"` to get only the list of missing fields without a full parse
+— useful for building a step-by-step question flow.
+
+## Multi-destination search
+
+`POST /flights/multi-search` fires N destinations in parallel and returns all results
+in one call. Each destination is billed as one search credit.
+
+```json
+{
+  "origin": "JFK",
+  "destinations": ["LAX", "MIA", "ORD", "DFW", "SEA", "DEN", "ATL", "BOS", "LAS", "SFO"],
+  "date_from": "2026-07-15",
+  "adults": 1,
+  "currency": "USD"
+}
+```
+
+Maximum 10 destinations per call. `summary.charged_searches` in the response
+shows exactly how many credits were consumed. `departure_time_from`/`to` apply
+to all destinations in the batch.
+
+## Async search with polling
+
+For products that need a loading state while results arrive, use
+`POST /flights/search/async` → `GET /flights/results/{search_id}`.
+See [Async Search and Polling](api-polling.md) for the full guide and code examples.
+
+## Sandbox — zero-cost testing
+
+Test your integration without burning credits.
+See [Sandbox Environment](api-sandbox.md) for the full guide.
+
 ## Recommended production flow
 
-1. Resolve city names to IATA codes with `/flights/locations/{query}`.
-2. Confirm `agents/me` shows payment ready, API access enabled, and positive balance.
-3. Send `POST /flights/search` with a reproducible request body.
-4. Store `passenger_ids`, the chosen `offer.id`, and the original request metadata.
-5. Handle 401, 402, 403, 409, and 429 explicitly rather than showing a generic failure.
+1. Build and test against the [sandbox](api-sandbox.md) — free, no connectors fired.
+2. Resolve city names to IATA codes with `/flights/locations/{query}`.
+3. Confirm `agents/me` shows payment ready, API access enabled, and positive balance.
+4. Send `POST /flights/search` (or `/search/async` for a polling UI).
+5. Store `passenger_ids`, the chosen `offer.id`, and the original request metadata.
+6. Handle 401, 402, 403, 409 explicitly rather than showing a generic failure.
 
 Next: use [Errors and Limits](api-errors.md) to wire the failure states correctly.
