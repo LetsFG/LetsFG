@@ -13,13 +13,15 @@
 | `/flights/search` | POST | Run a single-destination paid search (blocking, 60–90 s) | **1 credit** |
 | `/flights/search/async` | POST | Start a search in background, returns search_id immediately | **1 credit** |
 | `/flights/results/{search_id}` | GET | Poll results of an async search | No |
-| `/flights/multi-search` | POST | Search N destinations in parallel in one call | **1 credit per destination** |
+| `/flights/discover` | POST | Indicative prices for up to 20 destinations — single call, single credit | **1 credit** |
+| `/flights/multi-search` | POST | Full search for N destinations in parallel | **1 credit per destination** |
 | `/flights/providers` | GET | Inspect the provider mix exposed through the public API | No |
 
 > **Billing rule: every destination = one search credit.**  
 > `/flights/multi-search` with 10 destinations charges 10 credits — same as calling
-> `/flights/search` 10 times. There is no bundle discount. Check your balance at
-> `GET /agents/me` before running large batches.
+> `/flights/search` 10 times. There is no bundle discount.
+> Use `/flights/discover` for cheap discovery (1 credit total), then `/flights/search`
+> on the destination you want to book. Check your balance at `GET /agents/me` before running large batches.
 
 ## Resolve locations first
 
@@ -197,7 +199,61 @@ that are still missing. Pass the resolved fields directly to `/flights/search`.
 Use `"mode": "clarify"` to get only the list of missing fields without a full parse
 — useful for building a step-by-step question flow.
 
-## Multi-destination search
+## Discovery search — 20 destinations, 1 credit
+
+`POST /flights/discover` is built for discovery feeds. It checks indicative prices for up to 20 destinations
+from one origin in a single API call, billed as **one search credit** for the whole batch.
+Results arrive in 2–5 seconds.
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/flights/discover \
+  -H "X-API-Key: trav_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "origin": "JFK",
+    "destinations": ["LAX","MIA","ORD","DFW","SEA","DEN","ATL","BOS","LAS","SFO",
+                     "PDX","AUS","PHX","MSP","DTW","CLT","SAN","TPA","MCO","BNA"],
+    "date_from": "2026-07-15",
+    "currency": "USD"
+  }'
+```
+
+Response is sorted cheapest-first:
+
+```json
+{
+  "origin": "JFK",
+  "results": [
+    { "destination": "BOS", "price": 89.00, "currency": "USD", "found": true },
+    { "destination": "CLT", "price": 112.00, "currency": "USD", "found": true },
+    { "destination": "MIA", "price": 145.00, "currency": "USD", "found": true },
+    ...
+    { "destination": "ORD", "price": null, "found": false }
+  ],
+  "summary": {
+    "destinations_checked": 20,
+    "prices_found": 19,
+    "cheapest_destination": "BOS",
+    "cheapest_price": 89.00
+  },
+  "data_note": "Indicative prices. Run POST /flights/search on your chosen destination for final accurate pricing.",
+  "billed_as": "1 search credit for the full batch"
+}
+```
+
+**Important:** These are indicative prices, not final bookable fares.
+They are useful for ranking and sorting destinations. Always run `POST /flights/search`
+on the destination the user selects before showing a booking price or CTA —
+the full search runs more data sources and will often find better prices.
+
+**Recommended discovery flow:**
+1. `POST /flights/discover` — rank 20 destinations, 1 credit
+2. Show user the top 3–5 cheapest options
+3. User picks a destination
+4. `POST /flights/search` on that destination — full accurate results, 1 credit
+5. Show offers and booking links
+
+## Multi-destination full search
 
 `POST /flights/multi-search` fires N destinations in parallel and returns all results
 in one call. Each destination is billed as one search credit.

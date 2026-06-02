@@ -16,6 +16,7 @@ stay the same.
 | Real endpoint | Sandbox equivalent |
 |---|---|
 | `POST /v1/flights/search` | `POST /v1/sandbox/flights/search` |
+| `POST /v1/flights/discover` | `POST /v1/sandbox/flights/discover` |
 | `POST /v1/flights/multi-search` | `POST /v1/sandbox/flights/multi-search` |
 | `POST /v1/flights/parse-query` | `POST /v1/sandbox/flights/parse-query` |
 | `GET /v1/flights/locations/{q}` | `GET /v1/sandbox/flights/locations/{q}` |
