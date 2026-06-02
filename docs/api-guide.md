@@ -48,7 +48,12 @@ The live public schema currently documents these groups of endpoints:
 - account registration and hosted checkout
 - Stripe payment attachment, billing portal, billing settings, and key rotation
 - prepaid top-up and account inspection
+- NL query parsing (`/flights/parse-query` — free, Gemini-powered)
 - flight search, location resolution, and provider inspection
+- discovery search — indicative prices for up to 20 destinations in one call (`/flights/discover` — 1 credit)
+- parallel full search for N destinations (`/flights/multi-search` — 1 credit per destination)
+- async search with polling (`/flights/search/async` + `/flights/results/{id}`)
+- sandbox equivalents of all flight endpoints (free, fake data, same schema — for integration testing)
 
 ## Search activation checklist
 
@@ -78,6 +83,18 @@ Before you send paid search traffic, make sure `GET /agents/me` shows all of the
         <p class="docs-card-kicker">Step 3</p>
         <h3>Errors and limits</h3>
         <p>Map account state and request-body mistakes to the status codes your integration will actually see.</p>
+    </a>
+
+    <a class="docs-resource-card" href="api-sandbox/">
+        <p class="docs-card-kicker">Testing</p>
+        <h3>Sandbox environment</h3>
+        <p>Test your integration for free — same schema, realistic fake data, zero credits charged.</p>
+    </a>
+
+    <a class="docs-resource-card" href="api-polling/">
+        <p class="docs-card-kicker">Async</p>
+        <h3>Async search and polling</h3>
+        <p>Start a search and poll for results — show a loading state while the full fleet runs.</p>
     </a>
 
     <a class="docs-resource-card" href="openapi/">

@@ -30,13 +30,13 @@ LetsFG has three distinct access paths — pick the one that matches your setup:
 
 | Path | How | Speed | Search cost | Booking URL |
 |------|-----|-------|-------------|-------------|
-| **1 — Local** (CLI / SDK / MCP-local) | 200+ connectors run on your machine via Playwright | 1–15 min | Free | 1% concierge fee (min $3) via letsfg.co |
-| **2 — letsfg.co** (website + agent API) | Runs on our servers; works for humans and AI agents that can't run local browsers | Seconds | Free | 1% concierge fee (min $3) via letsfg.co |
-| **3 — Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | Seconds | Prepaid credits | Direct airline booking URLs, no per-booking fee |
+| **1 — Local** (CLI / SDK / MCP-local) | 200+ connectors run on your machine via Playwright | 20–40 s (fast mode) · 1–15 min (full) | Free | 1% concierge fee (min $3) via letsfg.co |
+| **2 — PFS** (Programmatic Flight Search via letsfg.co) | Server-side search via the letsfg.co engine; one-time Twitter/X challenge → 90-day Bearer token | 60–90 s | Free (Twitter/X token) | 1% concierge fee (min $3) via letsfg.co |
+| **3 — Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
 - Use **Path 1** if you can run a local browser — search is free and unlimited. Booking links go through the same letsfg.co concierge checkout as Path 2 (1% fee, min $3).
-- Use **Path 2** if you're an AI agent (Claude, GPT, OpenClaw, etc.) or a user who can't run local browsers. Search is free; the concierge unlock flow delivers the direct airline URL after a 1% fee (min $3).
+- Use **Path 2 (PFS)** if you're an AI agent (Claude, GPT, OpenClaw, etc.) that can't run local browsers. Register a free 90-day Bearer token via a one-time Twitter/X challenge ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search server-side. The concierge unlock flow delivers the direct airline URL after a 1% fee (min $3).
 - Use **Path 3** if you're building a product or need high volume without per-booking fees. Prepaid credits, results in seconds, direct airline URLs every time.
 
 ---

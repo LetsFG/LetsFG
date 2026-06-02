@@ -121,11 +121,11 @@ LetsFG is an agent-native flight search & booking platform. This public reposito
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **Local** (CLI / SDK / MCP-local) | 200+ connectors run on the user's machine via Playwright | 1–15 min | Free, unlimited |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Server-side search, no local browsers needed | Seconds | Prepaid credits |
-| **Website** ([letsfg.co](https://letsfg.co)) | Purpose-built for agents/humans who can't run local browsers (OpenClaw, etc.) | Seconds | Free search + small unlock fee |
+| **Local** (CLI / SDK / MCP-local) | 200+ connectors run on the user's machine via Playwright | 20–40 s (fast mode) · 1–15 min (full) | Free search; unlock 1% of ticket (min $3) |
+| **PFS — Programmatic Flight Search** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Server-side search via the letsfg.co engine; one-time Twitter/X challenge → 90-day Bearer token | 60–90 s | Free search; unlock 1% (min $3) |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Server-side search with prepaid credits, no local browsers needed | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
-The local SDK is what this repository primarily contains. The Developer API and website backend live in the private repository (`LetsFG-private`).
+The local SDK is what this repository primarily contains. The Developer API, PFS, and website backend live in the private repository (`LetsFG-private`).
 
 ## Repository Structure
 
@@ -192,8 +192,8 @@ LetsFG/
 
 ### Three-Step Flow
 1. **Search** (free) → Returns flight offers from 180+ airlines (all local connectors)
-2. **Unlock** (free with GitHub star) → Confirms live price, locks offer for booking
-3. **Book** (free after unlock) → Creates the actual booking with the airline
+2. **Unlock** (1% of ticket, min $3 — Stripe card or MPP crypto; free on the prepaid Developer API) → Confirms live price, reveals the direct booking URL
+3. **Book** → Complete the booking on the airline's site via the returned booking URL
 
 ### Search Architecture
 All search runs locally on the user's machine via 180+ airline connectors (Playwright + httpx). No cloud providers are used. The backend API handles only:
@@ -228,8 +228,8 @@ Key infrastructure files in `connectors/`:
 ### Zero Price Bias
 The API returns raw airline prices — no demand-based inflation, no cookie tracking, no surge pricing. This is a core selling point.
 
-### 100% Free
-Everything is free — just star the GitHub repo (https://github.com/LetsFG/LetsFG) and verify via link-github.
+### Free Search
+Search is always free and unlimited (local connectors and PFS). Unlock reveals the direct booking URL for 1% of the ticket price (min $3); the prepaid Developer API returns direct booking URLs with no per-booking fee.
 
 ### Real Passenger Details Required
 When booking, agents MUST use real passenger email and legal name. Airlines send e-tickets to the email provided. Placeholder/fake data will cause booking failures.
@@ -298,22 +298,34 @@ npm publish
 
 Public developer onboarding and search docs are served from `https://letsfg.co/developers/api/docs` with base `https://letsfg.co/developers/api/v1`.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/agents/register` | Register for an API key |
-| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method for browserless public onboarding |
-| `GET`  | `/api/v1/agents/me` | Agent profile + usage stats |
-| `POST` | `/api/v1/agents/link-github` | Star repo for free access |
-| `POST` | `/api/v1/flights/search` | Search flights (cloud providers) |
-| `GET`  | `/api/v1/flights/locations/{q}` | Resolve city/airport to IATA codes |
-| `POST` | `/api/v1/bookings/unlock` | Unlock an offer (free) |
-| `POST` | `/api/v1/bookings/book` | Book a flight (ticket price charged via Stripe) |
-| `GET`  | `/api/v1/bookings/booking/{id}` | Get booking details |
-| `GET`  | `/.well-known/ai-plugin.json` | OpenAI Plugin manifest |
-| `GET`  | `/.well-known/agent.json` | Agent Protocol manifest |
-| `GET`  | `/llms.txt` | LLM instructions |
-| `GET`  | `/openapi.json` | OpenAPI spec |
-| `GET`  | `/mcp` | Remote MCP (Streamable HTTP) |
+| Method | Path | Description | Billed? |
+|--------|------|-------------|---------|
+| `POST` | `/api/v1/agents/register` | Register for an API key | No |
+| `POST` | `/api/v1/agents/setup-payment` | Attach Stripe payment method | No |
+| `GET`  | `/api/v1/agents/me` | Agent profile, balance, and usage stats | No |
+| `POST` | `/api/v1/agents/top-up` | Fund prepaid balance | No |
+| `POST` | `/api/v1/agents/billing-settings` | Configure auto-refill | No |
+| `POST` | `/api/v1/flights/parse-query` | Parse natural language query → IATA codes, dates, time prefs (Gemini) | **Free** |
+| `POST` | `/api/v1/flights/discover` | Indicative prices for up to 20 destinations, sorted cheapest-first, 2–5 s | **1 credit** |
+| `POST` | `/api/v1/flights/search` | Full 180+ connector search, single destination, 60–90 s | **1 credit** |
+| `POST` | `/api/v1/flights/search/async` | Start full search in background, returns `search_id` immediately | **1 credit** |
+| `GET`  | `/api/v1/flights/results/{id}` | Poll results of an async search | No |
+| `POST` | `/api/v1/flights/multi-search` | Full search for N destinations in parallel (max 10) | **1 credit per destination** |
+| `GET`  | `/api/v1/flights/locations/{q}` | Resolve city/airport name to IATA codes | No |
+| `GET`  | `/api/v1/flights/providers` | List active flight providers | No |
+| `POST` | `/api/v1/sandbox/flights/search` | Sandbox: fake data, same schema as /flights/search | **Free** |
+| `POST` | `/api/v1/sandbox/flights/discover` | Sandbox: fake data, same schema as /flights/discover | **Free** |
+| `POST` | `/api/v1/sandbox/flights/multi-search` | Sandbox: fake data, same schema as /flights/multi-search | **Free** |
+| `POST` | `/api/v1/sandbox/flights/parse-query` | Sandbox: stub response, same schema as /flights/parse-query | **Free** |
+| `GET`  | `/api/v1/sandbox/flights/locations/{q}` | Sandbox: stub location resolve | **Free** |
+| `POST` | `/api/v1/bookings/unlock` | Unlock an offer (confirm live price) | No |
+| `POST` | `/api/v1/bookings/book` | Book a flight (ticket price charged) | No |
+| `GET`  | `/api/v1/bookings/booking/{id}` | Get booking details | No |
+| `GET`  | `/.well-known/ai-plugin.json` | OpenAI Plugin manifest | No |
+| `GET`  | `/.well-known/agent.json` | Agent Protocol manifest | No |
+| `GET`  | `/llms.txt` | LLM instructions | No |
+| `GET`  | `/openapi.json` | OpenAPI spec | No |
+| `GET`  | `/mcp` | Remote MCP (Streamable HTTP) | No |
 
 ## Links
 

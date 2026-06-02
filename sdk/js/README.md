@@ -7,12 +7,12 @@
 
 ## Three ways to use LetsFG
 
-| | **Local** (this SDK) | **letsfg.co** (website / agent API) | **Developer API** |
+| | **Local** (this SDK) | **PFS** (Programmatic Flight Search via letsfg.co) | **Developer API** |
 |---|---|---|---|
-| **Search cost** | Free | Free | Prepaid credits |
+| **Search cost** | Free | Free (Twitter/X token, one-time setup) | Prepaid credits |
 | **Booking URL** | 1% concierge fee (min $3) via letsfg.co | 1% concierge fee (min $3) via letsfg.co | Direct airline URL, no fee |
-| **Speed** | 1–15 min (local browsers) | Seconds | Seconds |
-| **Setup** | `npm install letsfg` | [letsfg.co](https://letsfg.co) | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Speed** | 20–40 s (fast mode) · 1–15 min (full) | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
+| **Setup** | `npm install letsfg` | Twitter/X challenge → [letsfg.co/for-agents](https://letsfg.co/for-agents) | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
 
