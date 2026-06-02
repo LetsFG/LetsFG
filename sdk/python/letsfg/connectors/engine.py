@@ -412,6 +412,8 @@ _FAST_MODE_SOURCES: set[str] = {
     "emirates_direct", "turkish_direct", "finnair_direct",
     # ── Kiwi is always included (global aggregator) ──
     "kiwi_connector",
+    # ── Google Flights — always included (pricing baseline + global coverage) ──
+    "serpapi_google",
 }
 
 # ── Cabin class support ─────────────────────────────────────────────────────
