@@ -84,10 +84,10 @@ flights = bt.search("LHR", "JFK", "2026-04-15")
 letsfg register --name my-agent --email agent@example.com
 ```
 
-Then star the repo and verify for free unlock/book access:
+Then attach a payment method (required before unlock):
 
 ```bash
-letsfg star --github your-username
+letsfg setup-payment --token tok_visa
 ```
 
 ## Workflow
@@ -146,13 +146,14 @@ Search returns structured offers:
 }
 ```
 
-### 3. Unlock (FREE with GitHub Star)
+### 3. Unlock (1% of ticket, min $3)
 
-Confirms live price with airline. Locks offer for 30 minutes.
+Confirms live price with airline and reveals the direct booking URL. Locks offer for 30 minutes. Charged to your card (or paid via MPP crypto); free on the prepaid Developer API.
 
 ```python
 unlocked = bt.unlock(flights.cheapest.id)
 print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
+print(f"Booking URL: {unlocked.booking_url}")
 print(f"Expires: {unlocked.offer_expires_at}")
 ```
 
@@ -244,7 +245,7 @@ good_connections = [
 | `RATE_LIMITED` (429) | Transient | Wait and retry |
 | `INVALID_IATA` (422) | Validation | Use `resolve_location()` to fix |
 | `OFFER_EXPIRED` (410) | Business | Search again for fresh offers |
-| `PAYMENT_REQUIRED` (402) | Business | Run `letsfg star --github <username>` |
+| `PAYMENT_REQUIRED` (402) | Business | Attach a card: `letsfg setup-payment` (or pay via MPP on the 402 challenge) |
 | `FARE_CHANGED` (409) | Business | Re-unlock to get current price |
 
 ```python
@@ -256,8 +257,8 @@ except OfferExpiredError:
     # Airline sold the seats — search again
     flights = bt.search(origin, dest, date)
 except PaymentRequiredError:
-    # GitHub star not verified
-    print("Star the repo: letsfg star --github <username>")
+    # No card on file — attach one (or pay via MPP crypto on the 402 challenge)
+    print("Attach a card: letsfg setup-payment")
 ```
 
 ## Search Flags

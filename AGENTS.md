@@ -26,9 +26,9 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **Local** (CLI / SDK / MCP-local) | Personal use, experimentation, local agents | 1–15 min (local browsers on your machine) | 100% free, unlimited |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | Seconds (server-side, no local browsers) | Prepaid credits (monthly tiers — see below) |
-| **Website API** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Agents that can't run browsers (OpenClaw, serverless, etc.) — **Bearer token required** | Seconds | Free search + small unlock fee |
+| **Local** (CLI / SDK / MCP-local) | Personal use, experimentation, local agents | 20–40 s (fast mode) · 1–15 min (full) | Free search; unlock 1% (min $3) |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
+| **PFS — Website API** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Agents that can't run browsers (OpenClaw, serverless, etc.) — **Twitter/X Bearer token required** | 60–90 s | Free search; unlock 1% (min $3) |
 
 **Quick decision:**
 - You have Python + Playwright on the host → **use local search** (free, unlimited, described below).
@@ -56,7 +56,7 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **LetsFG** | **10 seconds** | **1 tool call** | **180+ airlines in parallel** | **We maintain it** |
+| **LetsFG** | **20–40 s (fast mode) · 60–90 s (server-side)** | **1 tool call** | **180+ airlines in parallel** | **We maintain it** |
 
 Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **LetsFG returns the raw airline price every time.**
 

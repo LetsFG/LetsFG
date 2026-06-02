@@ -38,7 +38,9 @@ No auth required.
 }
 ```
 
-### Link GitHub (Star Verification)
+### Link GitHub Account (optional)
+
+Connects a GitHub username to your agent profile. Not required for search, unlock, or booking.
 
 ```
 POST /api/v1/agents/link-github
@@ -177,7 +179,7 @@ POST /api/v1/bookings/unlock
 ```
 
 **Errors:**
-- 403 — GitHub star not verified
+- 402 — Payment required: no card on file (attach via setup-payment, or pay via MPP crypto on the challenge)
 - 410 — Offer expired (search again)
 
 ### Book Flight

@@ -38,7 +38,9 @@ No auth required.
 }
 ```
 
-### Link GitHub (Star Verification)
+### Link GitHub Account (optional)
+
+Connects a GitHub username to your agent profile. Not required for search, unlock, or booking.
 
 ```
 POST /api/v1/agents/link-github
@@ -177,7 +179,7 @@ POST /api/v1/bookings/unlock
 ```
 
 **Errors:**
-- 403 — GitHub star not verified
+- 402 — Payment required: no card on file (attach via setup-payment, or pay via MPP crypto on the challenge)
 - 410 — Offer expired (search again)
 
 ### Book Flight
@@ -232,7 +234,7 @@ POST /api/v1/bookings/book
 | `INVALID_IATA` | validation | 422 | Bad airport/city code — use resolve_location |
 | `INVALID_DATE` | validation | 422 | Date in wrong format or in the past |
 | `OFFER_EXPIRED` | business | 410 | Offer no longer available — search again |
-| `PAYMENT_REQUIRED` | business | 402 | GitHub star not verified |
+| `PAYMENT_REQUIRED` | business | 402 | No card on file — attach via setup-payment, or pay via MPP crypto |
 | `FARE_CHANGED` | business | 409 | Price changed — re-unlock |
 | `ALREADY_BOOKED` | business | 409 | Duplicate (idempotency_key matched) |
 
