@@ -56,6 +56,8 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 
 **The same flight costs $20–$50 less** because you skip OTA inflation, cookie tracking, and surge pricing.
 
+**Don't want to run anything locally?** Search server-side instead: **PFS — Programmatic Flight Search** is free (one Twitter/X challenge unlocks a 90-day token), and the **Developer API** is paid but returns direct airline booking URLs with no fee. → [Get started](#get-started)
+
 <br>
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
@@ -176,42 +178,67 @@ When you're ready to integrate it into your own agent, keep reading.
 
 ---
 
-## Get started in 30 seconds
+## Get started
+
+Pick where you want search to run. **Local** runs on your machine for free; **PFS** and the **Developer API** run on our servers.
+
+### 🖥️ Local — free, on your machine (no account)
 
 ```bash
 pip install letsfg
-```
-
-Search flights immediately — **no API key, no registration, no account needed**:
-
-```bash
 letsfg search LHR BCN 2026-06-15
 ```
 
-That single command fires 200+ connectors on your machine and returns real-time prices from 400+ airlines. **Free. Unlimited. Zero setup.**
-
-**Short on time?** Use `--mode fast` to search only OTAs + key airlines (~25 connectors, 20-40s instead of 6+ min):
+One command fires 200+ connectors locally and returns real-time prices from 400+ airlines. **Free, unlimited, zero setup.**
 
 ```bash
-letsfg search LHR BCN 2026-06-15 --mode fast
+letsfg search LHR BCN 2026-06-15 --mode fast   # ~25 connectors, 20–40s instead of 6+ min
+letsfg search LHR JFK 2026-06-15 --cabin C     # cabin class: M economy, W premium, C business, F first
 ```
 
-**Flying business or first?** Filter by cabin class — only get results that match:
+**Booking from local search:** you get a **letsfg.co booking link**, not a direct airline URL. Unlock it through the letsfg.co concierge checkout (1% fee, min $3) to reveal the airline link. Want **direct airline URLs with no fee**? Use the Developer API below.
+
+### 🐦 PFS — Programmatic Flight Search (free, server-side)
+
+Run LetsFG's full search on our servers — no local browser, no install. **Access requires a one-time Twitter/X challenge:** letsfg.co is human-only (Cloudflare Turnstile), so a Bearer token is the only programmatic way in. The token is free and lasts 90 days.
 
 ```bash
-letsfg search LHR JFK 2026-06-15 --cabin C    # business class
-letsfg search LHR JFK 2026-06-15 --cabin F    # first class
-letsfg search LHR JFK 2026-06-15 --cabin W    # premium economy
+# 1. Request a challenge code
+curl -X POST https://letsfg.co/api/agent-access/request
+
+# 2. Tweet the returned challenge code to @LetsFG_
+
+# 3. Verify the tweet → receive a 90-day Bearer token
+curl -X POST https://letsfg.co/api/agent-access/verify \
+  -H "Content-Type: application/json" \
+  -d '{"tweet_url":"https://x.com/you/status/123","challenge_signed":"..."}'
+
+# 4. Search with the token
+curl -X POST https://letsfg.co/api/search \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}'
 ```
 
-Want to unlock and book? Register an API key and attach a payment method:
+Search is free; booking links go through letsfg.co (1% fee, min $3). Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents).
+
+### ⚡ Developer API — paid, server-side, direct booking URLs
+
+For products and teams. Prepaid credits, results in seconds, **direct airline booking URLs with no concierge fee** — plus `/discover` (20 destinations in one call, 1 credit), async polling, NL query parsing, and a free sandbox.
 
 ```bash
-letsfg register --name my-agent --email you@example.com
-letsfg setup-payment --token tok_visa   # or attach a real card
+# Register, then search with your API key
+curl -X POST https://letsfg.co/developers/api/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"my-agent","email":"you@example.com"}'
+
+curl -X POST https://letsfg.co/developers/api/v1/flights/search \
+  -H "X-API-Key: trav_..." \
+  -H "Content-Type: application/json" \
+  -d '{"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}'
 ```
 
-The CLI saves your key to `~/.letsfg/config.json`. Unlock costs 1% of the ticket price (min $3). To skip that fee entirely, use the [Developer API](https://letsfg.co/developers) — it returns direct booking URLs on every search result.
+Pricing: $0.50/search for the first 10 each month, $0.20 for 11–1,000, $0.10 beyond. Minimum top-up $5. Test for free in the sandbox first. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
 
 <details>
 <summary><strong>Full search → unlock → book flow</strong></summary>
