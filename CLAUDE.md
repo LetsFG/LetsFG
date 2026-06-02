@@ -121,11 +121,11 @@ LetsFG is an agent-native flight search & booking platform. This public reposito
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **Local** (CLI / SDK / MCP-local) | 200+ connectors run on the user's machine via Playwright | 1–15 min | Free, unlimited |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Server-side search, no local browsers needed | Seconds | Prepaid credits |
-| **Website** ([letsfg.co](https://letsfg.co)) | Purpose-built for agents/humans who can't run local browsers (OpenClaw, etc.) | Seconds | Free search + small unlock fee |
+| **Local** (CLI / SDK / MCP-local) | 200+ connectors run on the user's machine via Playwright | 20–40 s (fast mode) · 1–15 min (full) | Free search; unlock 1% of ticket (min $3) |
+| **PFS — Programmatic Flight Search** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Server-side search via the letsfg.co engine; one-time Twitter/X challenge → 90-day Bearer token | 60–90 s | Free search; unlock 1% (min $3) |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Server-side search with prepaid credits, no local browsers needed | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
-The local SDK is what this repository primarily contains. The Developer API and website backend live in the private repository (`LetsFG-private`).
+The local SDK is what this repository primarily contains. The Developer API, PFS, and website backend live in the private repository (`LetsFG-private`).
 
 ## Repository Structure
 
@@ -192,8 +192,8 @@ LetsFG/
 
 ### Three-Step Flow
 1. **Search** (free) → Returns flight offers from 180+ airlines (all local connectors)
-2. **Unlock** (free with GitHub star) → Confirms live price, locks offer for booking
-3. **Book** (free after unlock) → Creates the actual booking with the airline
+2. **Unlock** (1% of ticket, min $3 — Stripe card or MPP crypto; free on the prepaid Developer API) → Confirms live price, reveals the direct booking URL
+3. **Book** → Complete the booking on the airline's site via the returned booking URL
 
 ### Search Architecture
 All search runs locally on the user's machine via 180+ airline connectors (Playwright + httpx). No cloud providers are used. The backend API handles only:
@@ -228,8 +228,8 @@ Key infrastructure files in `connectors/`:
 ### Zero Price Bias
 The API returns raw airline prices — no demand-based inflation, no cookie tracking, no surge pricing. This is a core selling point.
 
-### 100% Free
-Everything is free — just star the GitHub repo (https://github.com/LetsFG/LetsFG) and verify via link-github.
+### Free Search
+Search is always free and unlimited (local connectors and PFS). Unlock reveals the direct booking URL for 1% of the ticket price (min $3); the prepaid Developer API returns direct booking URLs with no per-booking fee.
 
 ### Real Passenger Details Required
 When booking, agents MUST use real passenger email and legal name. Airlines send e-tickets to the email provided. Placeholder/fake data will cause booking failures.

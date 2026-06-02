@@ -58,17 +58,16 @@ bt = LetsFG(api_key="trav_...")
 # Option B: Set LETSFG_API_KEY env var, then:
 bt = LetsFG()
 
-# Setup payment (required before unlock) — three options:
+# Setup payment (required before unlock) — two options:
 
 # Option 1: Stripe test token (for development)
 bt.setup_payment(token="tok_visa")
 
 # Option 2: Stripe PaymentMethod ID (from Stripe.js or Elements)
 bt.setup_payment(payment_method_id="pm_1234567890")
-
-# Option 3: Raw card details (requires PCI-compliant Stripe account)
-bt.setup_payment(card_number="4242424242424242", exp_month=12, exp_year=2027, cvc="123")
 ```
+
+> The API accepts only Stripe-generated tokens or `payment_method_id` values — raw card numbers are not accepted.
 
 The API key is sent as `X-API-Key` header on every request. The SDK handles this automatically.
 

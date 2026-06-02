@@ -21,9 +21,9 @@ description: "LetsFG — Agent-native flight search, hotel search, and booking A
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **Local** (CLI / `pip install letsfg` / MCP-local) | Personal use, local agents | 1–15 min (local browsers) | Free, unlimited |
-| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | Seconds (server-side) | Prepaid credits |
-| **Website** (`https://letsfg.co`) | Agents without local browser access (OpenClaw, etc.) | Seconds | Free search + small unlock fee |
+| **Local** (CLI / `pip install letsfg` / MCP-local) | Personal use, local agents | 20–40 s (fast mode) · 1–15 min (full) | Free search; unlock 1% of ticket (min $3) |
+| **PFS — Programmatic Flight Search** (`https://letsfg.co/for-agents`) | Agents without local browser access (OpenClaw, serverless, etc.) | 60–90 s | Free search (Twitter/X Bearer token); unlock 1% (min $3) |
+| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
 ## Skills
 
@@ -80,15 +80,15 @@ Override auto-detected browser concurrency limit for local search.
 - **JS:** `await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 })`
 
 ### unlock_flight_offer
-Confirm live price with airline and reserve offer for 30 minutes. FREE with GitHub star.
-- **Cost:** FREE (requires GitHub star verification)
+Confirm live price with airline and reveal the direct booking URL. Reserves the offer for 30 minutes.
+- **Cost:** 1% of ticket price (min $3) — Stripe card or MPP crypto. Free with the prepaid Developer API.
 - **Endpoint:** `POST /api/v1/bookings/unlock`
 - **Input:** offer_id from search results (only required parameter)
-- **Output:** confirmed_price, confirmed_currency, offer_expires_at
-- **Prerequisite:** GitHub star verified via `link_github` first
-- **HTTP 403:** GitHub star not verified — call link_github first
+- **Output:** confirmed_price, confirmed_currency, booking_url, offer_expires_at
+- **Prerequisite:** A payment method on file (`setup_payment`) for the Stripe path, or an MPP-capable client for the crypto path.
+- **HTTP 402:** No card on file. With MPP support, response carries a `WWW-Authenticate: Payment` challenge — pay via Tempo USDC.e and retry. Otherwise add a card via `setup_payment`.
 - **HTTP 410:** Offer expired — airline sold the seats, search again (OfferExpiredError)
-- **Note:** confirmed_price may differ from search price (airline prices change in real-time). After unlock, you have 30 minutes to call book. If the window expires, search again (free) and unlock again (free).
+- **Note:** confirmed_price may differ from search price (airline prices change in real-time). After unlock, you have 30 minutes to complete the booking. If the window expires, search again (free) and unlock again.
 - **Python:** `unlocked = bt.unlock(offer_id)` → returns UnlockResult
 - **CLI:** `letsfg unlock off_xxx`
 - **JS/TS:** `const unlocked = await bt.unlock(offerId)`
@@ -154,30 +154,28 @@ X-API-Key: trav_...
 
 Get your key by calling `POST /api/v1/agents/register` with agent_name and email. The key is permanent — save it once.
 
-After registration, star the GitHub repo and link your account via `POST /api/v1/agents/link-github` to unlock and book for free.
+Before your first unlock, attach a payment method via `POST /api/v1/agents/setup-payment` (or use the MPP crypto path on the `402` challenge).
 
 ## Complete Workflow
 
-### Flight Booking (6 API calls)
+### Flight Booking (5 API calls)
 
 ```
 1. POST /api/v1/agents/register        → Get API key (once)
-2. POST /api/v1/agents/link-github     → Star repo + verify (once)
-3. POST /api/v1/agents/setup-payment   → Attach payment card (once)
-4. POST /api/v1/flights/search         → Search flights (FREE)
-5. POST /api/v1/bookings/unlock        → Unlock offer (FREE)
-6. POST /api/v1/bookings/book          → Book flight (ticket price charged via Stripe)
+2. POST /api/v1/agents/setup-payment   → Attach payment card (once)
+3. POST /api/v1/flights/search         → Search flights (FREE)
+4. POST /api/v1/bookings/unlock        → Unlock offer (1% fee, min $3) → returns booking_url
+5. POST /api/v1/bookings/book          → Book flight (ticket price charged via Stripe)
 ```
 
-### Hotel Booking (6 API calls)
+### Hotel Booking (5 API calls)
 
 ```
 1. POST /api/v1/agents/register        → Get API key (once)
-2. POST /api/v1/agents/link-github     → Star repo + verify (once)
-3. POST /api/v1/hotels/search          → Search hotels (FREE)
-4. POST /api/v1/hotels/checkrate       → Confirm price (if rate_type=RECHECK)
-5. POST /api/v1/hotels/book            → Book room
-6. GET  /api/v1/hotels/voucher/{ref}   → Get guest voucher
+2. POST /api/v1/hotels/search          → Search hotels (FREE)
+3. POST /api/v1/hotels/checkrate       → Confirm price (if rate_type=RECHECK)
+4. POST /api/v1/hotels/book            → Book room
+5. GET  /api/v1/hotels/voucher/{ref}   → Get guest voucher
 ```
 
 ## CLI Usage
@@ -268,10 +266,9 @@ LETSFG_API_KEY=trav_... letsfg-mcp
 |------|-------------|------|
 | `search_flights` | Search 400+ airlines worldwide | FREE |
 | `resolve_location` | City name → IATA code | FREE |
-| `link_github` | Star repo for free access (once) | FREE |
-| `unlock_flight_offer` | Confirm price, reserve 30min | FREE |
+| `unlock_flight_offer` | Confirm price, reveal booking URL, reserve 30min | 1% of ticket (min $3) |
 | `book_flight` | Create real airline reservation | Ticket price |
-| `setup_payment` | Attach payment card (required for booking) | FREE |
+| `setup_payment` | Attach payment card (required for unlock/booking) | FREE |
 | `get_agent_profile` | View usage stats | FREE |
 
 ## Search Flags Reference
@@ -321,8 +318,7 @@ except AuthenticationError:
     # API key invalid or expired — re-register
     creds = LetsFG.register("my-agent", "agent@example.com")
     bt = LetsFG(api_key=creds["api_key"])
-    # Don't forget to link GitHub
-    bt.link_github("your-github-username")
+    bt.setup_payment(token="tok_visa")  # re-attach payment on the new key
 ```
 
 ### Rate Limit and Timeout Handling
@@ -349,7 +345,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 | Endpoint | Rate Limit | Typical Latency |
 |----------|-----------|------------------|
-| Search flights | 60 req/min | 2-15s |
+| Search flights | No hard limit (billing is the natural governor) | 20–90 s |
 | Resolve location | 120 req/min | <1s |
 | Unlock | 20 req/min | 2-5s |
 | Book | 10 req/min | 3-10s |
@@ -365,7 +361,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 | Register agent | **Free** |
 | Setup payment | **Free** |
 | View profile | **Free** |
-| Unlock offer | **Free** |
+| Unlock offer | **1% of ticket (min $3)** — Stripe card or MPP crypto. Free with the prepaid Developer API. |
 | Book flight (after unlock) | **Ticket price** (zero markup, Stripe processing fee only) |
 | Hotel booking | Room price only |
 | Hotel cancellation | Per cancellation policy |
@@ -379,5 +375,5 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 - Real airline PNR codes and hotel confirmations
 - E-tickets sent directly to passenger email
 - Search is always free and unlimited
-- Only requirement: star our GitHub repo for unlimited access
+- Unlock reveals the direct booking URL for 1% of the ticket (min $3); free with the prepaid Developer API
 - API designed for machines, not browsers

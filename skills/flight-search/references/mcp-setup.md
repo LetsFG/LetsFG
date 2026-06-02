@@ -9,8 +9,8 @@ pip install letsfg
 letsfg register --name my-agent --email you@example.com
 # Save the trav_xxx key
 
-# Star the repo for free access
-letsfg star --github your-username
+# Attach a payment method (required before unlock)
+letsfg setup-payment --token tok_visa
 ```
 
 Or via cURL:
@@ -147,7 +147,7 @@ export LETSFG_API_KEY=trav_your_api_key
 | `resolve_location` | Convert city names to IATA codes |
 | `unlock_flight_offer` | Confirm live price and reserve for 30 min |
 | `book_flight` | Book with passenger details |
-| `link_github` | Verify GitHub star for free access |
+| `link_github` | Link a GitHub username to your profile (optional) |
 | `system_info` | Get system profile and recommended concurrency |
 
 ## Verification
