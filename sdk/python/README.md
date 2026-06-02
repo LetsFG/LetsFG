@@ -7,12 +7,12 @@
 
 ## Three ways to use LetsFG
 
-| | **Local** (this SDK) | **letsfg.co** (website / agent API) | **Developer API** |
+| | **Local** (this SDK) | **PFS** (Programmatic Flight Search via letsfg.co) | **Developer API** |
 |---|---|---|---|
-| **Search cost** | Free | Free | Prepaid credits |
+| **Search cost** | Free | Free (Twitter/X token, one-time setup) | Prepaid credits |
 | **Booking URL** | 1% concierge fee (min $3) via letsfg.co | 1% concierge fee (min $3) via letsfg.co | Direct airline URL, no fee |
-| **Speed** | 1–15 min (local browsers) | Seconds | Seconds |
-| **Setup** | `pip install letsfg` | [letsfg.co](https://letsfg.co) | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Speed** | 20–40 s (fast mode) · 1–15 min (full) | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
+| **Setup** | `pip install letsfg` | Twitter/X challenge → [letsfg.co/for-agents](https://letsfg.co/for-agents) | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
 
@@ -109,7 +109,7 @@ bt = LetsFG(api_key="trav_...")
 flights = bt.search("GDN", "BER", "2026-03-03")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 
-# Unlock — FREE
+# Unlock booking link (1% fee, min $3, charged via letsfg.co)
 unlock = bt.unlock(flights.cheapest.id)
 print(f"Confirmed price: {unlock.confirmed_currency} {unlock.confirmed_price}")
 
@@ -277,10 +277,10 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 | Endpoint | Rate Limit | Typical Latency |
 |----------|-----------|------------------|
-| Search | 60 req/min | 2-15s |
-| Resolve location | 120 req/min | <1s |
-| Unlock | 20 req/min | 2-5s |
-| Book | 10 req/min | 3-10s |
+| Search | No hard limit (billing is the natural governor) | 60–90 s |
+| Resolve location | 120 req/min | < 1 s |
+| Unlock | 20 req/min | 2–5 s |
+| Book | 10 req/min | 3–10 s |
 
 ## Minimizing Unlock Costs
 
@@ -295,10 +295,10 @@ for date in dates:
     if result.offers and (best is None or result.cheapest.price < best[1].price):
         best = (date, result.cheapest)
 
-# Unlock only the winner (free)
+# Unlock only the winner (1% fee, min $3)
 if best:
     unlocked = bt.unlock(best[1].id)
-    # Book within 30 minutes (free)
+    # Book within 30 minutes (ticket price only)
     booking = bt.book(offer_id=unlocked.offer_id, passengers=[...], contact_email="...")
 ```
 

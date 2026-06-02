@@ -204,14 +204,14 @@ letsfg search LHR JFK 2026-06-15 --cabin F    # first class
 letsfg search LHR JFK 2026-06-15 --cabin W    # premium economy
 ```
 
-Want to unlock and book? Star the repo for free access:
+Want to unlock and book? Register an API key and attach a payment method:
 
 ```bash
-# Star the repo on GitHub, then verify
-letsfg star --github your-username
+letsfg register --name my-agent --email you@example.com
+letsfg setup-payment --token tok_visa   # or attach a real card
 ```
 
-The CLI auto-registers behind the scenes and saves your API key to `~/.letsfg/config.json`. No manual steps.
+The CLI saves your key to `~/.letsfg/config.json`. Unlock costs 1% of the ticket price (min $3). To skip that fee entirely, use the [Developer API](https://letsfg.co/developers) — it returns direct booking URLs on every search result.
 
 <details>
 <summary><strong>Full search → unlock → book flow</strong></summary>
@@ -220,7 +220,7 @@ The CLI auto-registers behind the scenes and saves your API key to `~/.letsfg/co
 # Search (free, unlimited)
 letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
 
-# Unlock (confirms live price, holds for 30 min — free)
+# Unlock (confirms live price, holds for 30 min — 1% fee, min $3)
 letsfg unlock off_xxx
 
 # Book (ticket price only, zero markup)
@@ -330,12 +330,12 @@ for offer in result.offers[:5]:
 
 | Command | Description |
 |---------|-------------|
-| `letsfg star --github <username>` | **⭐ Verify GitHub star (required for free access)** |
 | `letsfg search <origin> <dest> <date>` | Search flights (free) |
-| `letsfg register` | Get your API key |
+| `letsfg register` | Register an account and get your API key |
+| `letsfg setup-payment` | Attach a payment method (required for unlock) |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
-| `letsfg unlock <offer_id>` | Confirm live price & pay unlock fee (Stripe card or MPP crypto) |
+| `letsfg unlock <offer_id>` | Confirm live price & pay unlock fee (1% of ticket, min $3) |
 | `letsfg book <offer_id>` | Book the flight |
 | `letsfg me` | View profile & usage stats |
 
