@@ -60,10 +60,10 @@ LetsFG gives your AI agent flight search and booking superpowers. 200+ connector
 
 <br>
 
-[![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
+[![GitHub stars](https://letsfg.co/api/stars/badge)](https://github.com/LetsFG/LetsFG)
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
 [![npm](https://img.shields.io/npm/v/letsfg-mcp?label=npm%20%28MCP%29)](https://www.npmjs.com/package/letsfg-mcp)
-[![Connector Health](https://letsfg.co/developers/api/v1/analytics/connectors/health/badge)](https://letsfg.co/developers/api/v1/analytics/connectors/health)
+[![Connector Health](https://letsfg.co/developers/api/v1/analytics/connectors/health/badge)](https://letsfg.co/developers/connectors/health)
 [![smithery badge](https://smithery.ai/badge/letsfg)](https://smithery.ai/servers/letsfg)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
