@@ -1,23 +1,34 @@
 """
 LetsFG Programmatic Flight Search — quickstart.
 
-1. Get a free 90-day Bearer token at https://letsfg.co/for-agents
-2. Save it:  letsfg auth --token <your-token>
-             or set LETSFG_BEARER_TOKEN=<your-token>
-3. Run this script.
+Auth is free (Twitter/X challenge, ~30s) and lasts 90 days.
+Once authenticated, searches return in seconds from 400+ airlines.
 
-Results come back in seconds from 400+ airlines — same schema as before,
-no local browsers required.
+Run:
+    pip install letsfg
+    python quickstart.py
 """
 
 from __future__ import annotations
 
 import asyncio
+from letsfg.connectors.auth import twitter_auth, get_bearer_token, BearerTokenError
 from letsfg.local import search_local
 
 
-async def main():
-    print("Searching WAW → BCN on 2026-07-15...")
+def ensure_auth() -> None:
+    """Authenticate if no valid token exists."""
+    try:
+        get_bearer_token()
+    except BearerTokenError:
+        print("No token found — starting Twitter/X auth...")
+        twitter_auth()
+
+
+async def main() -> None:
+    ensure_auth()
+
+    print("\nSearching WAW → BCN on 2026-07-15...")
     result = await search_local("WAW", "BCN", "2026-07-15", currency="EUR", limit=5)
 
     offers = result.get("offers", [])
@@ -34,7 +45,7 @@ async def main():
         print(f"  {i}. {currency} {price:.2f}  {airlines:<20}  {route}")
 
     if offers:
-        print(f"\nTo reveal the booking link:")
+        print(f"\nUnlock offer #{1} (reveals direct booking link):")
         print(f"  letsfg unlock {offers[0].get('id', '<offer_id>')}\n")
 
 

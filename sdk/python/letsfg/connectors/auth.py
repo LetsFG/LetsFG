@@ -1,15 +1,19 @@
 """
-LetsFG Programmatic Flight Search (PFS) — token management.
+Twitter/X authentication for LetsFG Programmatic Flight Search (PFS).
 
-Get your free 90-day Bearer token at:
-    https://letsfg.co/for-agents
+Flow (one-time, ~30 seconds):
+  1. POST https://letsfg.co/api/agent-access/request
+     → { challenge_code, tweet_text, expires_at }
+  2. Post the tweet_text from your Twitter/X account.
+  3. POST https://letsfg.co/api/agent-access/verify  { challenge_code }
+     → { token, expires_at }   (90-day Bearer token)
 
-Once you have it:
-    letsfg auth --token <your-token>
-    # or
-    export LETSFG_BEARER_TOKEN=<your-token>
+After that, every search call uses:
+    Authorization: Bearer <token>
+    POST https://letsfg.co/api/search
+    GET  https://letsfg.co/api/results/<search_id>
 
-The token is passed as "Authorization: Bearer <token>" on every API call.
+Run `letsfg auth` to do all of this interactively.
 """
 
 from __future__ import annotations
@@ -18,10 +22,15 @@ import json
 import os
 import time
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+
+_BASE_URL = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
+_TOKEN_TTL = 90 * 24 * 3600  # 90 days
 
 
 class BearerTokenError(Exception):
-    """No valid Bearer token. Get one at https://letsfg.co/for-agents"""
+    """No valid Bearer token. Run `letsfg auth` to authenticate via Twitter/X."""
     pass
 
 
@@ -65,16 +74,75 @@ def get_bearer_token() -> str:
 
     raise BearerTokenError(
         "No valid LetsFG Bearer token.\n"
-        "  Get one: https://letsfg.co/for-agents\n"
-        "  Then:    letsfg auth --token <token>\n"
-        "  Or:      export LETSFG_BEARER_TOKEN=<token>"
+        "  Run:  letsfg auth\n"
+        "  Or:   export LETSFG_BEARER_TOKEN=<token>"
     )
 
 
 def save_token(token: str, expires_at: float | None = None) -> None:
-    """Save a Bearer token to the local config."""
+    """Save a Bearer token to ~/.letsfg/config.json."""
     if expires_at is None:
-        expires_at = time.time() + 90 * 24 * 3600
+        expires_at = time.time() + _TOKEN_TTL
     cfg = _load_config()
     cfg["pfs_auth"] = {"token": token, "expires_at": expires_at}
     _save_config(cfg)
+
+
+def _post_json(path: str, payload: dict, timeout: int = 30) -> dict:
+    body = json.dumps(payload).encode()
+    req = Request(
+        f"{_BASE_URL}{path}",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def twitter_auth() -> str:
+    """
+    Interactive auth flow — call this once to get a 90-day Bearer token.
+
+    Steps:
+      1. Calls POST /api/agent-access/request to get a challenge.
+      2. Prints the exact tweet to post.
+      3. Waits for you to post it, then calls POST /api/agent-access/verify.
+      4. Saves the token to ~/.letsfg/config.json and returns it.
+    """
+    print("\n  Connecting to LetsFG...")
+    data = _post_json("/api/agent-access/request", {})
+    challenge_code = data["challenge_code"]
+    tweet_text = data.get("tweet_text") or f"@letsfg {challenge_code}"
+
+    print(f"\n  Step 1 — post this tweet from your Twitter/X account:\n")
+    print(f"     {tweet_text}\n")
+    print(f"  Step 2 — press Enter once it's live.")
+    input()
+
+    print("  Verifying... ", end="", flush=True)
+    try:
+        result = _post_json("/api/agent-access/verify", {"challenge_code": challenge_code})
+    except HTTPError as e:
+        body = e.read().decode(errors="replace")
+        raise BearerTokenError(
+            f"Verification failed (HTTP {e.code}). "
+            "Make sure you posted the exact tweet above.\n"
+            f"Server: {body[:200]}"
+        )
+
+    token = result["token"]
+    raw_exp = result.get("expires_at")
+    if isinstance(raw_exp, (int, float)):
+        expires_at = float(raw_exp)
+    elif isinstance(raw_exp, str):
+        from datetime import datetime, timezone
+        expires_at = datetime.fromisoformat(raw_exp.replace("Z", "+00:00")).timestamp()
+    else:
+        expires_at = time.time() + _TOKEN_TTL
+
+    save_token(token, expires_at)
+    from datetime import datetime
+    exp_str = datetime.fromtimestamp(expires_at).strftime("%Y-%m-%d")
+    print(f"done. Token valid until {exp_str}.")
+    return token
