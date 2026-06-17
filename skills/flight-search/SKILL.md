@@ -1,9 +1,9 @@
 ---
 name: flight-search
 description: >-
-  Search and book flights across 180+ airlines with zero markup — $20–50 cheaper
-  than OTAs. Returns raw airline prices via local connectors (Ryanair, EasyJet,
-  Wizz Air, Southwest, AirAsia, and 175+ more). Use when user asks to "find flights",
+  Search and book flights across hundreds of airlines with zero markup — $20–50 cheaper
+  than OTAs. Returns raw airline prices via the letsfg.co server-side search engine.
+  Use when user asks to "find flights",
   "search flights", "book a flight", "compare airline prices", "find cheap flights",
   "fly from X to Y", "find connections", "find layover options", or any flight-related
   travel query. Do NOT use for hotel-only searches, car rentals, or non-flight travel
@@ -15,14 +15,14 @@ metadata:
 
 # Flight Search
 
-Agent-native flight search and booking. 180+ airline connectors, zero markup,
+Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines, zero markup,
 $20–50 cheaper than travel websites.
 
-**Three-step flow:** Search (free) → Unlock (free) → Book (ticket price only)
+**Three-step flow:** Search (free) → Unlock (1% of ticket, min $3) → Book (ticket price only)
 
 ## Why Use This
 
-- **180+ airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously
+- **Hundreds of airlines** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously
 - **Zero price bias** — no demand inflation, no cookie tracking, no surge pricing. Raw airline prices every time
 - **Virtual interlining** — finds cross-airline connections (e.g., Ryanair outbound + Wizz Air return) that save 30–50%
 - **One tool call** — replaces thousands of tokens of browser automation, scraping, and HTML parsing
@@ -116,8 +116,6 @@ flights = bt.search("LON", "BCN", "2026-04-01")
 flights = bt.search("LON", "BCN", "2026-04-01", return_date="2026-04-08")
 # Multi-passenger, business class:
 flights = bt.search("LHR", "SIN", "2026-06-01", adults=2, children=1, cabin_class="C")
-# Fast mode (~25 connectors, 20-40s instead of 6+ min):
-flights = bt.search("LON", "BCN", "2026-04-01", mode="fast")
 ```
 
 ```bash
@@ -273,7 +271,6 @@ except PaymentRequiredError:
 | `--currency` | `EUR` | Currency code |
 | `--limit` / `-l` | `20` | Max results (1–100) |
 | `--sort` | `price` | `price` or `duration` |
-| `--mode` / `-m` | _(full)_ | `fast` = OTAs + key airlines only (~25 connectors, 20-40s) |
 | `--json` / `-j` | | JSON output |
 
 ## Safety
@@ -282,7 +279,7 @@ except PaymentRequiredError:
 |-----------|------|---------------|------------|
 | `search` | Free | Yes | Yes |
 | `resolve_location` | Free | Yes | Yes |
-| `unlock` | Free | No — may charge fee | No |
+| `unlock` | 1% of ticket (min $3) | No — charges fee | No |
 | `book` | Ticket price | Only with `idempotency_key` | With key: yes |
 
 ## Reference Files

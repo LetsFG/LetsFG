@@ -1,0 +1,1446 @@
+/**
+ * LetsFG Personalized Flight Ranking Engine
+ *
+ * Open-source implementation of the scoring algorithm that powers letsfg.co.
+ * Scores each offer across 9 dimensions with personalization weights that shift
+ * based on trip context and purpose. Pure TypeScript — no external dependencies,
+ * safe to run in both Node and browser.
+ *
+ * Usage:
+ *   import { rankOffers, type RankingContext } from 'letsfg/ranking'
+ *   const ranked = rankOffers(offers, { tripContext: 'family', requireBag: true })
+ *   // ranked[0].offer is the best pick, ranked[0].heroFacts explains why
+ *
+ * Companion modules in the same package:
+ *   - trip-purpose.ts — TripPurpose type + normalization helpers
+ *   - offer-details.ts — extractOfferDetailSignals, getOfferDetailBadges, etc.
+ */
+
+import { extractOfferDetailSignals } from './offer-details'
+import { getPrimaryTripPurpose, normalizeTripPurposes, type TripPurpose } from './trip-purpose'
+
+// Google Flights savings comparison is disabled in this public build.
+// The ranking engine still reads google_flights_price for the savings score
+// dimension but the user-facing "X cheaper than Google Flights" hero copy
+// is suppressed.
+const GF_SAVINGS_COMPARISON_ENABLED = false
+
+function normalizeGoogleFlightsComparisonPrice(
+  googleFlightsPrice: number | null | undefined,
+  _travelerCount = 1,
+): number | null {
+  if (!Number.isFinite(googleFlightsPrice)) {
+    return null
+  }
+  // google_flights_price is sourced from a like-for-like Google itinerary match,
+  // so it is already on the same per-traveler basis as offer.price.
+  const normalized = Math.round((googleFlightsPrice as number) * 100) / 100
+  return normalized > 0 ? normalized : null
+}
+
+interface RankOfferSegment {
+  layover_minutes?: number
+  airline?: string
+  flight_number?: string
+  aircraft?: string
+  origin?: string
+  destination?: string
+}
+
+// ── Minimal offer shape (subset of FlightOffer in ResultsPanel) ───────────
+export interface RankOffer {
+  id: string
+  price: number
+  /** Display total in the user's chosen currency (ticket + fee + ancillaries).
+   * When provided, this is used for all price scoring and penalty calculations
+   * instead of `price`. Callers should populate this so the ranking reflects
+   * exactly what the user will pay. */
+  displayPrice?: number
+  google_flights_price?: number
+  currency: string
+  airline: string
+  origin?: string
+  destination?: string
+  departure_time: string
+  arrival_time: string
+  duration_minutes: number
+  stops: number
+  segments?: RankOfferSegment[]
+  inbound?: {
+    departure_time?: string
+    arrival_time?: string
+    origin?: string
+    destination?: string
+    stops?: number
+    /** Inbound-leg duration in minutes. Required for round-trip scoring to
+     *  see the return leg in `scoreDuration`. When absent the inbound is
+     *  treated as zero-duration (best case for the offer). */
+    duration_minutes?: number
+    segments?: RankOfferSegment[]
+  }
+  ancillaries?: {
+    cabin_bag?: { included?: boolean; price?: number; currency?: string; description?: string }
+    checked_bag?: { included?: boolean; price?: number; currency?: string; description?: string }
+    seat_selection?: { included?: boolean; price?: number; currency?: string; description?: string }
+  }
+  conditions?: {
+    refund_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+    change_before_departure?: 'allowed' | 'not_allowed' | 'allowed_with_fee' | 'unknown'
+    [key: string]: string | undefined
+  }
+  /** Quality tag set by upstream validateOfferBatch when the offer's intrinsic
+   *  data is untrustworthy (date drift from search criteria, asymmetric leg
+   *  durations, etc.). The ranker uses this as the highest-priority hero gate:
+   *  a suspect offer can never be hero unless every offer in the pool is suspect.
+   *  Rank-not-filter — suspect offers still appear as runner-ups. */
+  quality?: 'suspect' | string
+}
+
+export interface RankingContext {
+  tripContext?: 'solo' | 'couple' | 'family' | 'group' | 'business_traveler'
+  tripPurpose?: TripPurpose
+  tripPurposes?: ReadonlyArray<TripPurpose>
+  travelerCount?: number
+  depTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
+  retTimePref?: 'early_morning' | 'morning' | 'afternoon' | 'evening' | 'night' | 'red_eye'
+  arrivalTimePref?: 'morning' | 'afternoon' | 'evening'
+  requireBag?: boolean
+  requireSeat?: boolean
+  requireMeals?: boolean
+  requireCancellation?: boolean
+  preferredAirline?: string
+  preferQuickFlight?: boolean
+  /** User said "direct" or "nonstop" — strongly boost stops weight but don't filter.
+   *  If no directs exist, 1-stop will naturally float to the top over 3-stop. */
+  preferDirect?: boolean
+  /** User explicitly asked for cheapest / lowest price — price dominates all other factors. */
+  preferCheapest?: boolean
+  /** User asked for "1 stop" / "max 2 stops" / "at most 1 connection" — a soft cap
+   *  on the number of stops. Offers exceeding the cap are gated out of the HERO slot
+   *  (rank-not-filter: they still appear as runner-ups, just below within-cap offers).
+   *  When no offer satisfies the cap it is relaxed like the other gates. preferDirect
+   *  (an implicit cap of 0) is handled by the dedicated 'direct' path; this covers
+   *  explicit caps >= 1, where the user tolerates a connection but not a 3-leg odyssey. */
+  maxStops?: number
+  /** User explicitly wants — or is happy with — a LONG layover (a stopover to break
+   *  the journey or see a city). Inverts the default short-layover preference in
+   *  scoreLayover so longer connections score higher, and boosts the layover weight.
+   *  Default (undefined/false) leaves the normal short-layover scoring intact. */
+  preferLongLayover?: boolean
+  /** Hard lower bound on departure time, in minutes from midnight.
+   *  Flights departing before this time receive a heavy score penalty (effectively filtered out). */
+  departAfterMins?: number
+  /** Hard upper bound on departure time, in minutes from midnight. */
+  departBeforeMins?: number
+}
+
+/** True when a stored/derived parse indicates the user wants direct flights.
+ *  Reads every producer's field: ai_direct_only (server mirror in the results
+ *  route), direct_only (Vertex parse), prefer_direct, and stops===0 (local
+ *  parseNLQuery). Used to set RankingContext.preferDirect on EVERY ranking path
+ *  — the user-facing client ranker previously derived preferDirect only from the
+ *  r_priority URL param, which is never set when "direct" is baked into the query
+ *  (the priority refine question is then suppressed), so the direct gate silently
+ *  never fired and long 1-stops won the hero slot. */
+export function parsedWantsDirect(parsed: Record<string, unknown> | null | undefined): boolean {
+  if (!parsed) return false
+  return parsed.ai_direct_only === true
+    || parsed.direct_only === true
+    || parsed.prefer_direct === true
+    || parsed.stops === 0
+}
+
+export interface ScoreBreakdown {
+  price: number
+  stops: number
+  duration: number
+  depTime: number
+  arrivalTime: number
+  baggage: number
+  savings: number
+  comfortHours: number
+  layover: number
+}
+
+export interface RankedOffer<T extends RankOffer = RankOffer> {
+  offer: T
+  score: number       // 0–100, higher = better
+  rank: number        // 1-based rank in the result set
+  breakdown: ScoreBreakdown
+  heroFacts: string[] // key reasons why this offer was selected
+  tradeoffs: string[] // what's not ideal (for runner-up explanations)
+  /** Hero only: names of user-stated criteria gates that had to be relaxed to
+   *  find a hero (no offer satisfied them all). Surfaced so the UI can banner
+   *  the mismatch — e.g. "No direct flights on this route" or "No refundable
+   *  fare available". Empty/undefined means the hero satisfied every stated
+   *  criterion. Relax order: refund -> bag -> time -> direct. */
+  relaxedGates?: string[]
+}
+
+export function getOfferInstanceKey(offer: Pick<RankOffer, 'id' | 'departure_time' | 'arrival_time' | 'stops' | 'inbound'>): string {
+  return [
+    offer.id,
+    offer.departure_time,
+    offer.arrival_time,
+    offer.stops,
+    offer.inbound?.departure_time ?? '',
+    offer.inbound?.arrival_time ?? '',
+    offer.inbound?.stops ?? '',
+  ].join('|')
+}
+
+// ── Weight profiles ────────────────────────────────────────────────────────
+// All rows must sum to 1.0.
+// Columns: price, stops, duration, depTime, arrivalTime, baggage, savings, comfortHours, layover
+interface Weights {
+  price: number; stops: number; duration: number; depTime: number
+  arrivalTime: number; baggage: number; savings: number; comfortHours: number; layover: number
+}
+
+const W: Record<string, Weights> = {
+  // Generic solo / default — price-driven
+  default: {
+    price: 0.34, stops: 0.22, duration: 0.12, depTime: 0.08,
+    arrivalTime: 0.04, baggage: 0.02, savings: 0.06, comfortHours: 0.04, layover: 0.08,
+  },
+  // Business — time and directness > price; long layovers are unacceptable
+  business_traveler: {
+    price: 0.10, stops: 0.26, duration: 0.20, depTime: 0.18,
+    arrivalTime: 0.04, baggage: 0.06, savings: 0.00, comfortHours: 0.06, layover: 0.10,
+  },
+  // Family — directness + baggage practicality; kids + 8h layover = nightmare
+  family: {
+    price: 0.12, stops: 0.20, duration: 0.16, depTime: 0.08,
+    arrivalTime: 0.04, baggage: 0.20, savings: 0.04, comfortHours: 0.08, layover: 0.08,
+  },
+  // Couple — balance of price, comfort, arrival time, savings
+  couple: {
+    price: 0.22, stops: 0.20, duration: 0.12, depTime: 0.10,
+    arrivalTime: 0.14, baggage: 0.02, savings: 0.10, comfortHours: 0.04, layover: 0.06,
+  },
+  // Honeymoon — direct > everything; no one wants a 10h layover on their honeymoon
+  honeymoon: {
+    price: 0.08, stops: 0.28, duration: 0.10, depTime: 0.14,
+    arrivalTime: 0.18, baggage: 0.02, savings: 0.02, comfortHours: 0.08, layover: 0.10,
+  },
+  // Special occasion — still prioritize smooth timing/directness, but keep price meaningful.
+  special_occasion: {
+    price: 0.14, stops: 0.24, duration: 0.10, depTime: 0.12,
+    arrivalTime: 0.16, baggage: 0.02, savings: 0.06, comfortHours: 0.08, layover: 0.08,
+  },
+  // Ski — bag essential (equipment); early arrival to maximize slopes
+  ski: {
+    price: 0.12, stops: 0.16, duration: 0.10, depTime: 0.16,
+    arrivalTime: 0.08, baggage: 0.24, savings: 0.04, comfortHours: 0.02, layover: 0.08,
+  },
+  // Beach — arrive early to enjoy the day; price matters
+  beach: {
+    price: 0.24, stops: 0.16, duration: 0.10, depTime: 0.10,
+    arrivalTime: 0.14, baggage: 0.10, savings: 0.06, comfortHours: 0.04, layover: 0.06,
+  },
+  // City break — maximize time on the ground; 2-day trip loses half a day to a 6h layover
+  city_break: {
+    price: 0.26, stops: 0.20, duration: 0.08, depTime: 0.12,
+    arrivalTime: 0.16, baggage: 0.02, savings: 0.04, comfortHours: 0.04, layover: 0.08,
+  },
+  // Quick flight — user explicitly wants shortest possible total duration
+  quick_flight: {
+    price: 0.14, stops: 0.20, duration: 0.40, depTime: 0.06,
+    arrivalTime: 0.04, baggage: 0.02, savings: 0.04, comfortHours: 0.04, layover: 0.06,
+  },
+  // Cheapest — user explicitly asked for lowest price; price overwhelms all other factors
+  cheapest: {
+    price: 0.88, stops: 0.06, duration: 0.03, depTime: 0.01,
+    arrivalTime: 0.01, baggage: 0.01, savings: 0.00, comfortHours: 0.00, layover: 0.00,
+  },
+  // Cheapest direct — user asked for BOTH cheapest AND direct/nonstop.
+  // Stops must dominate enough that a direct flight wins even if it costs more;
+  // price wins within the same stop tier (all directs sorted by price, all 1-stops sorted
+  // by price below them, etc.). The scoreStops delta between 0-stop (1.00) and 1-stop (0.40)
+  // is 0.60; with stops weight 0.38 that gap is worth 0.228, which means a 1-stop would
+  // need an enormous price advantage to beat a direct — effectively "direct first".
+  cheapest_direct: {
+    price: 0.52, stops: 0.38, duration: 0.04, depTime: 0.02,
+    arrivalTime: 0.01, baggage: 0.01, savings: 0.00, comfortHours: 0.00, layover: 0.02,
+  },
+}
+
+const PURPOSE_WEIGHT_PROFILES: Record<TripPurpose, Weights> = {
+  honeymoon: W.honeymoon,
+  special_occasion: W.special_occasion,
+  business: W.business_traveler,
+  ski: W.ski,
+  beach: W.beach,
+  city_break: W.city_break,
+  family_holiday: W.family,
+  graduation: W.city_break,
+  concert_festival: W.city_break,
+  sports_event: W.city_break,
+  spring_break: W.beach,
+}
+
+const EARLY_ARRIVAL_PURPOSES = new Set<TripPurpose>([
+  'city_break',
+  'beach',
+  'special_occasion',
+  'graduation',
+  'concert_festival',
+  'sports_event',
+  'spring_break',
+])
+
+function blendWeights(profiles: ReadonlyArray<Weights>): Weights {
+  if (profiles.length === 0) return { ...W.default }
+
+  const blended: Weights = {
+    price: 0,
+    stops: 0,
+    duration: 0,
+    depTime: 0,
+    arrivalTime: 0,
+    baggage: 0,
+    savings: 0,
+    comfortHours: 0,
+    layover: 0,
+  }
+
+  for (const profile of profiles) {
+    blended.price += profile.price
+    blended.stops += profile.stops
+    blended.duration += profile.duration
+    blended.depTime += profile.depTime
+    blended.arrivalTime += profile.arrivalTime
+    blended.baggage += profile.baggage
+    blended.savings += profile.savings
+    blended.comfortHours += profile.comfortHours
+    blended.layover += profile.layover
+  }
+
+  return {
+    price: blended.price / profiles.length,
+    stops: blended.stops / profiles.length,
+    duration: blended.duration / profiles.length,
+    depTime: blended.depTime / profiles.length,
+    arrivalTime: blended.arrivalTime / profiles.length,
+    baggage: blended.baggage / profiles.length,
+    savings: blended.savings / profiles.length,
+    comfortHours: blended.comfortHours / profiles.length,
+    layover: blended.layover / profiles.length,
+  }
+}
+
+function resolveWeights(ctx: RankingContext): Weights {
+  // When the user asked for BOTH cheapest AND direct, use the combined profile so stops
+  // still dominate (direct first) while price rules within the same stop tier.
+  if (ctx.preferCheapest && ctx.preferDirect) return { ...W.cheapest_direct }
+
+  // preferCheapest alone — user just wants the lowest price, stops don't matter much
+  if (ctx.preferCheapest) return { ...W.cheapest }
+
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+  const purposeProfiles = tripPurposes.map((purpose) => PURPOSE_WEIGHT_PROFILES[purpose])
+
+  // tripPurpose takes precedence for specific categories
+  const w: Weights =
+    ctx.preferQuickFlight                ? { ...W.quick_flight }
+    : purposeProfiles.length > 0         ? blendWeights(purposeProfiles)
+    : ctx.tripContext === 'business_traveler' ? { ...W.business_traveler }
+    : ctx.tripContext === 'family'      ? { ...W.family }
+    : ctx.tripContext === 'couple'      ? { ...W.couple }
+    : { ...W.default }
+
+  // When user explicitly asked for direct/nonstop flights, heavily boost stops weight.
+  // We don't filter — if no directs exist, 1-stop naturally beats 3-stop via this weight.
+  if (ctx.preferDirect) {
+    const boost = 0.20
+    w.stops = Math.min(0.50, w.stops + boost)
+    // Absorb from price first, then duration
+    const fromPrice    = Math.min(boost * 0.60, Math.max(0.04, w.price)    - 0.04)
+    const fromDuration = Math.min(boost - fromPrice, Math.max(0.02, w.duration) - 0.02)
+    w.price    -= fromPrice
+    w.duration -= fromDuration
+  }
+
+  // Soft stop-cap ("1 stop", "max 2 stops"): boost the stops weight so within-cap
+  // offers float up, mirroring preferDirect but milder — the cap is >=1, so the user
+  // tolerates a connection, they just don't want a 3-leg odyssey. Skipped when
+  // preferDirect already owns the stops dimension (an implicit cap of 0).
+  if (ctx.maxStops !== undefined && !ctx.preferDirect) {
+    const boost = 0.12
+    w.stops = Math.min(0.44, w.stops + boost)
+    const fromPrice    = Math.min(boost * 0.60, Math.max(0.04, w.price)    - 0.04)
+    const fromDuration = Math.min(boost - fromPrice, Math.max(0.02, w.duration) - 0.02)
+    w.price    -= fromPrice
+    w.duration -= fromDuration
+  }
+
+  // "Long layover" wanted — make the layover dimension actually count, otherwise the
+  // inverted scoreLayover curve barely moves the needle at the default 0.08 weight.
+  if (ctx.preferLongLayover) {
+    const boost = 0.12
+    w.layover = Math.min(0.24, w.layover + boost)
+    const fromPrice    = Math.min(boost * 0.60, Math.max(0.04, w.price)    - 0.04)
+    const fromDuration = Math.min(boost - fromPrice, Math.max(0.02, w.duration) - 0.02)
+    w.price    -= fromPrice
+    w.duration -= fromDuration
+  }
+
+  // When the user explicitly stated a departure time preference ("evening", "morning",
+  // etc.), honour it strongly — base profiles treat it as a soft preference but a
+  // stated pref is a hard preference and must dominate arrivalTime.
+  if (ctx.depTimePref) {
+    const boost = 0.13
+    w.depTime = Math.min(0.36, w.depTime + boost)
+    // Absorb cost from arrivalTime first, then duration
+    const fromArrival = Math.min(boost * 0.65, Math.max(0, w.arrivalTime - 0.03))
+    const fromDuration = Math.min(boost - fromArrival, Math.max(0, w.duration - 0.03))
+    w.arrivalTime -= fromArrival
+    w.duration    -= fromDuration
+  }
+
+  // If user needs checked bag and the profile doesn't already weight it highly,
+  // boost baggage importance at the cost of price and duration.
+  if (ctx.requireBag && w.baggage < 0.15) {
+    const boost = 0.12
+    w.baggage += boost
+    w.price    = Math.max(0.04, w.price    - boost * 0.60)
+    w.duration = Math.max(0.02, w.duration - boost * 0.40)
+  }
+
+  return w
+}
+
+/** Heavy penalty applied when a flight violates a hard departure time constraint
+ *  ("departure after 10am", "departure before 9am"). Score multiplier -> 0.05,
+ *  so these flights sink to the bottom without completely vanishing from results. */
+function timeConstraintPenalty(depMins: number, afterMins: number | undefined, beforeMins: number | undefined): number {
+  if (afterMins !== undefined && depMins < afterMins) return 0.05
+  if (beforeMins !== undefined && depMins > beforeMins) return 0.05
+  return 1.0
+}
+
+/** Soft multiplier for departure time mismatch when the user explicitly stated
+ *  a time preference ("evening", "morning", etc.). Acts as a strong nudge rather
+ *  than a filter — flights at the clearly wrong time are significantly demoted
+ *  but still appear in results so the user can see what's available. */
+function depTimeMismatchMultiplier(depMins: number, depTimePref: string | undefined): number {
+  if (!depTimePref) return 1.0
+  const s = scoreDepTime(depMins, depTimePref)
+  if (s >= 0.55) return 1.0   // ok or good match — no penalty
+  if (s >= 0.30) return 0.80  // slightly off — gentle nudge
+  return 0.55                  // clearly wrong time window (e.g. 7:35am when user asked for evening)
+}
+
+/** Same multiplier logic as depTimeMismatchMultiplier but applied to the return
+ *  departure time vs retTimePref. Penalty is softer than outbound because return
+ *  availability is more constrained — we don't want to bury an otherwise ideal
+ *  flight just because the Sunday return is at 10am instead of evening. */
+function retDepTimeMismatchMultiplier(offer: RankOffer, retTimePref: string | undefined): number {
+  if (!retTimePref) return 1.0
+  const retDep = offer.inbound?.departure_time
+  if (!retDep) return 1.0  // one-way or no return info — can't penalize
+  const retDepMins = isoToMins(retDep)
+  const s = scoreDepTime(retDepMins, retTimePref)
+  if (s >= 0.55) return 1.0   // ok or good match — no penalty
+  if (s >= 0.15) return 0.88  // near-miss (e.g. 16:40 for evening) — gentle nudge
+  return 0.70                  // clearly wrong time window (softer than outbound 0.55)
+}
+
+/** Remove near-duplicate offers: when multiple connectors return the same physical
+ *  flight (e.g. Ryanair FR1234 from both the direct connector and Kiwi/Skyscanner),
+ *  keep only the cheapest. Two offers are considered identical only when they share
+ *  the same calendar date, route, airline, outbound timing buckets, inbound timing
+ *  buckets (for round-trips), stop counts, and core fare conditions. Including the
+ *  inbound leg prevents collapsing distinct return options for the same outbound. */
+export function deduplicateOffers<T extends RankOffer>(offers: T[]): T[] {
+  type RankAncillary = NonNullable<RankOffer['ancillaries']>[keyof NonNullable<RankOffer['ancillaries']>]
+  const mergeAncillary = (current: RankAncillary | undefined, next: RankAncillary | undefined): RankAncillary | undefined => {
+    if (!current) return next ? { ...next } : undefined
+    if (!next) return current
+
+    return {
+      included: typeof current.included === 'boolean' ? current.included : next.included,
+      price: typeof current.price === 'number' ? current.price : next.price,
+      currency: current.currency || next.currency,
+      description: current.description || next.description,
+    }
+  }
+  const mergeOfferDetails = (representative: T, bucketOffers: T[], representativePrice: number): T => {
+    const samePriceMatches = bucketOffers.filter((candidate) => Math.abs((candidate.displayPrice ?? candidate.price) - representativePrice) < 0.01)
+    if (samePriceMatches.length <= 1) {
+      return representative
+    }
+
+    let mergedAncillaries = representative.ancillaries
+      ? {
+          cabin_bag: representative.ancillaries.cabin_bag,
+          checked_bag: representative.ancillaries.checked_bag,
+          seat_selection: representative.ancillaries.seat_selection,
+        }
+      : undefined
+    let mergedConditions = representative.conditions ? { ...representative.conditions } : undefined
+
+    for (const candidate of samePriceMatches) {
+      if (candidate.ancillaries) {
+        mergedAncillaries = {
+          cabin_bag: mergeAncillary(mergedAncillaries?.cabin_bag, candidate.ancillaries.cabin_bag),
+          checked_bag: mergeAncillary(mergedAncillaries?.checked_bag, candidate.ancillaries.checked_bag),
+          seat_selection: mergeAncillary(mergedAncillaries?.seat_selection, candidate.ancillaries.seat_selection),
+        }
+      }
+
+      if (candidate.conditions) {
+        const nextConditions = { ...(mergedConditions ?? {}) }
+        for (const [conditionKey, conditionValue] of Object.entries(candidate.conditions)) {
+          if (!conditionValue) continue
+          const currentValue = nextConditions[conditionKey]
+          if (!currentValue || currentValue === 'unknown') {
+            nextConditions[conditionKey] = conditionValue
+          }
+        }
+        mergedConditions = nextConditions
+      }
+    }
+
+    return {
+      ...representative,
+      ancillaries: mergedAncillaries,
+      conditions: mergedConditions,
+    }
+  }
+  const bucket = (iso: string) => Math.round(isoToMins(iso) / 30)
+  const dayKey = (iso: string | undefined) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
+  }
+  const legKey = (
+    departureTime: string | undefined,
+    arrivalTime: string | undefined,
+    origin: string | undefined,
+    destination: string | undefined,
+    stops: number | undefined,
+    segments?: Array<{ origin?: string; destination?: string }> | undefined,
+  ) => {
+    // For itineraries with >1 segment, include sorted intermediate airport codes
+    // so that LHR->FRA->JFK and LHR->CDG->JFK with the same dep/arr slot are not
+    // collapsed into the same dedup bucket.
+    const intermediate = segments && segments.length > 1
+      ? segments
+          .slice(0, -1)
+          .map((s) => (s.destination ?? '').toUpperCase())
+          .filter(Boolean)
+          .sort()
+          .join(',')
+      : ''
+    return [
+      dayKey(departureTime),
+      (origin ?? '').toUpperCase(),
+      (destination ?? '').toUpperCase(),
+      departureTime ? bucket(departureTime) : '',
+      arrivalTime ? bucket(arrivalTime) : '',
+      stops ?? '',
+      intermediate,
+    ].join('_')
+  }
+  // Normalize the refund condition so that 'unknown' and 'not_allowed' land in the
+  // same dedup bucket. Different connectors report the same non-refundable fare as
+  // either value — without normalization, the same physical flight shows up many times.
+  // 'allowed' and 'allowed_with_fee' stay distinct so that a refundable fare variant
+  // is never silently collapsed with a non-refundable one.
+  const normRefund = (c: string | undefined): string =>
+    (c === 'allowed' || c === 'allowed_with_fee') ? c : 'nonrefundable'
+
+  const key = (o: T) => [
+    (o.airline ?? '').toUpperCase(),
+    legKey(o.departure_time, o.arrival_time, o.origin, o.destination, o.stops, o.segments),
+    o.inbound
+      ? legKey(
+        o.inbound.departure_time,
+        o.inbound.arrival_time,
+        o.inbound.origin,
+        o.inbound.destination,
+        o.inbound.stops,
+        o.inbound.segments,
+      )
+      : 'oneway',
+    normRefund(o.conditions?.refund_before_departure),
+  ].join('_')
+  const buckets = new Map<string, { minPrice: number; representative: T; representativeIndex: number; offers: T[] }>()
+
+  offers.forEach((offer, index) => {
+    const offerKey = key(offer)
+    const effectivePrice = offer.displayPrice ?? offer.price
+    const bucketState = buckets.get(offerKey)
+
+    if (!bucketState) {
+      buckets.set(offerKey, {
+        minPrice: effectivePrice,
+        representative: offer,
+        representativeIndex: index,
+        offers: [offer],
+      })
+      return
+    }
+
+    bucketState.offers.push(offer)
+    if (effectivePrice < bucketState.minPrice - 0.01) {
+      bucketState.minPrice = effectivePrice
+      bucketState.representative = offer
+      bucketState.representativeIndex = index
+    }
+  })
+
+  return [...buckets.values()]
+    .sort((left, right) => left.representativeIndex - right.representativeIndex)
+    .map((bucketState) => mergeOfferDetails(bucketState.representative, bucketState.offers, bucketState.minPrice))
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function isoToMins(iso: string | undefined): number {
+  if (!iso) return 0
+  // Extract local airport time directly from the ISO string literal.
+  // "2026-06-01T10:15:00+02:00" -> 615 (10h15m local, not 495 UTC).
+  // Timestamps without timezone info are by convention the local airport time,
+  // so the T-prefixed HH:MM in the string is always what we want.
+  const match = /T(\d{2}):(\d{2})/.exec(iso)
+  if (match) return parseInt(match[1], 10) * 60 + parseInt(match[2], 10)
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return 0
+  return d.getUTCHours() * 60 + d.getUTCMinutes()
+}
+
+/** Number of calendar days between departure and arrival (UTC). 0 = same day, 1 = next day, etc. */
+function daysBetween(depIso: string | undefined, arrIso: string | undefined): number {
+  if (!depIso || !arrIso) return 0
+  const dep = new Date(depIso)
+  const arr = new Date(arrIso)
+  if (isNaN(dep.getTime()) || isNaN(arr.getTime())) return 0
+  const depDay = Math.floor(dep.getTime() / 86400000)
+  const arrDay = Math.floor(arr.getTime() / 86400000)
+  return Math.max(0, arrDay - depDay)
+}
+
+function formatMins(mins: number): string {
+  const h = Math.floor(mins / 60) % 24
+  const m = mins % 60
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}:${m.toString().padStart(2, '0')}${ampm}`
+}
+
+/** 5th and 95th percentile — clips outliers from distorting normalization */
+function p5p95(arr: number[]): [number, number] {
+  if (arr.length === 0) return [0, 0]
+  const s = [...arr].sort((a, b) => a - b)
+  const lo = s[Math.floor(s.length * 0.05)] ?? s[0]
+  const hi = s[Math.min(s.length - 1, Math.ceil(s.length * 0.95) - 1)]
+  return [lo, hi]
+}
+
+// ── Dimension scorers (all return 0–1, higher = better) ───────────────────
+
+function scorePrice(price: number, lo: number, hi: number): number {
+  if (hi <= lo) return 1.0
+  return 1.0 - Math.max(0, Math.min(1, (price - lo) / (hi - lo)))
+}
+
+function scoreDuration(mins: number, lo: number, hi: number): number {
+  if (hi <= lo) return 0.8
+  return 1.0 - Math.max(0, Math.min(1, (mins - lo) / (hi - lo)))
+}
+
+function scoreStops(stops: number): number {
+  if (stops === 0) return 1.00
+  if (stops === 1) return 0.40
+  if (stops === 2) return 0.14
+  return 0.04
+}
+
+const TIME_RANGES: Record<string, [number, number, number, number]> = {
+  // [perfectLo, perfectHi, okLo, okHi] — all in minutes from midnight
+  early_morning: [0, 330, 330, 420],
+  morning:       [360, 660, 300, 750],
+  afternoon:     [720, 1020, 660, 1140],
+  evening:       [1080, 1320, 1020, 1380],
+  // "night" is later/stricter than "evening" — when a user says "Sunday night
+  // back" they mean ~21:00+, not 18:00. Perfect 21:00–23:30, ok 20:00–23:59.
+  // A 18:20 return fails this gate while still passing the evening gate.
+  night:         [1260, 1410, 1200, 1439],
+  red_eye:       [1320, 1439, 0, 420],
+}
+
+function scoreDepTime(depMins: number, pref: string | undefined): number {
+  if (!pref) {
+    // No preference: score by general reasonableness (avoid very early/late)
+    if (depMins >= 360 && depMins <= 1260) return 0.80  // 6am–9pm: great
+    if (depMins >= 270 && depMins <= 1380) return 0.50  // 4:30am–11pm: ok
+    return 0.20                                           // middle of night
+  }
+  const r = TIME_RANGES[pref]
+  if (!r) return 0.5
+  const [pLo, pHi, oLo, oHi] = r
+  if (depMins >= pLo && depMins <= pHi) return 1.00
+  if (depMins >= oLo && depMins <= oHi) return 0.60
+  // Outside ok range: graduated falloff proportional to distance from the nearest ok/perfect
+  // boundary. Closer = higher score; farther = lower. Floor at 0.05.
+  // This means 16:40 BCN scores meaningfully higher than 07:30 BCN when the user wants
+  // an evening return — both are outside the range, but one is near-miss, not totally wrong.
+  const distBelowOk = Math.max(0, oLo - depMins)   // minutes before ok window
+  const distAboveOk = Math.max(0, depMins - oHi)    // minutes after ok window
+  const dist = distBelowOk > 0 ? distBelowOk : distAboveOk
+  const span = oHi - oLo   // ok window size in minutes
+  return Math.max(0.05, 0.20 * Math.exp(-dist / Math.max(span * 1.5, 60)))
+}
+
+function scoreArrivalTime(
+  arrMins: number,
+  pref: string | undefined,
+  tripPurposes: ReadonlyArray<TripPurpose> | undefined,
+  dayOffset: number = 0,
+): number {
+  const isExploring = (tripPurposes ?? []).some((purpose) => EARLY_ARRIVAL_PURPOSES.has(purpose))
+  if (!pref && !isExploring) return 0.50  // neutral when no preference & not time-sensitive
+
+  let base: number
+
+  if (pref === 'morning') {
+    if (arrMins < 720) base = 1.00
+    else if (arrMins < 900) base = 0.65
+    else base = 0.25
+  } else if (pref === 'afternoon') {
+    if (arrMins >= 720 && arrMins < 1020) base = 1.00
+    else if (arrMins < 1140) base = 0.65
+    else base = 0.25
+  } else if (pref === 'evening') {
+    if (arrMins >= 1020 && arrMins < 1320) base = 1.00
+    else if (arrMins >= 900) base = 0.65
+    else base = 0.25
+  } else {
+    // Exploring/tourism trips: earlier arrival = more day to enjoy.
+    // IMPORTANT: arriving before 6am is a red-eye — you go to sleep and lose your first
+    // morning. Don't score 02:40am as "amazing" just because it's before 10am. Reserve
+    // the top score for genuine morning arrivals (6am+) when you can actually start the day.
+    if (arrMins < 360) {
+      // Red-eye / wee-hours arrival: you can't do anything until morning.
+      // Next-day red-eye (e.g. 02:40+1) is especially bad — you've already lost
+      // a full calendar day compared to a same-day afternoon arrival.
+      base = dayOffset >= 1 ? 0.15 : 0.30
+    } else if (arrMins < 600)  base = 1.00  // 6am–10am: genuinely great morning arrival
+    else if (arrMins < 720)    base = 0.85  // 10am–noon
+    else if (arrMins < 900)    base = 0.70  // noon–3pm
+    else if (arrMins < 1080)   base = 0.55  // 3pm–6pm
+    else if (arrMins < 1260)   base = 0.35  // 6pm–9pm
+    else                       base = 0.15  // after 9pm: barely any evening left
+  }
+
+  // Penalise flights arriving a full day later than the earliest possible.
+  // day+0 and day+1 are both treated as baseline (long-haul routinely arrives
+  // the next day). day+2 means a full extra day of travel compared to the
+  // fastest options, which matters a lot for city breaks and beach trips.
+  if (dayOffset >= 2) {
+    const extraDays = dayOffset - 1  // how many days beyond "next day"
+    const penalty = isExploring
+      ? Math.min(base, extraDays * 0.45)  // steeper for tourism trips
+      : Math.min(base, extraDays * 0.25)
+    base = Math.max(0, base - penalty)
+  }
+
+  return base
+}
+
+function scoreBaggage(offer: RankOffer, requireBag: boolean | undefined): number {
+  const bag = offer.ancillaries?.checked_bag
+  const isIncluded = bag?.included === true
+  const fee = bag?.included === false ? (bag?.price ?? null) : null
+
+  if (!requireBag) {
+    // Slight preference for included bag even when not required
+    return isIncluded ? 0.80 : 0.50
+  }
+
+  // User explicitly needs checked bag — reward it heavily
+  if (isIncluded) return 1.0
+  if (fee === null) return 0.30  // unknown fee is a risk
+
+  // Score relative to ticket price — cheaper bag = better
+  const ratio = fee / Math.max(offer.price, 1)
+  if (ratio < 0.05) return 0.72
+  if (ratio < 0.12) return 0.52
+  if (ratio < 0.22) return 0.32
+  return 0.12
+}
+
+function scoreSavings(offer: RankOffer, travelerCount: number | undefined): number {
+  const gfp = normalizeGoogleFlightsComparisonPrice(offer.google_flights_price, travelerCount)
+  if (!gfp || gfp <= 0) return 0.50  // neutral — no comparison available
+
+  const pct = (gfp - offer.price) / gfp
+  if (pct >= 0.20) return 1.00  // 20%+ cheaper than GF: excellent
+  if (pct >= 0.12) return 0.85
+  if (pct >= 0.06) return 0.72
+  if (pct >= 0.01) return 0.60  // slightly cheaper
+  if (pct >= -0.05) return 0.48 // roughly same as GF
+  return 0.22                    // more expensive than GF
+}
+
+function scoreComfortHours(depMins: number): number {
+  if (depMins >= 360 && depMins <= 1320) return 1.00  // 6am–10pm: no alarm clock required
+  if (depMins >= 270 && depMins <= 1380) return 0.60  // 4:30am or 11pm: early/late
+  if (depMins >= 180) return 0.30                      // 3am ish: very early
+  return 0.10                                           // dead of night
+}
+
+function scoreLayover(offer: RankOffer, preferLong: boolean = false): number {
+  // Round-trip aware: consider layovers across BOTH legs. A 20h layover on the
+  // return leg is just as bad as one on the outbound — historically the inbound
+  // segments were ignored entirely, masking 28h-return offers behind a clean
+  // direct outbound.
+  const outStops = offer.stops ?? 0
+  const inStops = offer.inbound?.stops ?? 0
+  // A direct flight has no layover at all. When the user is fine with — or wants —
+  // a connection, a direct still isn't a *bad* outcome, so we keep it neutral-high
+  // rather than rewarding it as the layover ideal (we don't bury directs, but we
+  // also don't pretend a non-stop satisfies a "long layover" wish).
+  if (outStops === 0 && inStops === 0) return preferLong ? 0.70 : 1.0
+
+  const layoverMins = [
+    ...(offer.segments ?? []),
+    ...(offer.inbound?.segments ?? []),
+  ]
+    .filter(s => (s.layover_minutes ?? 0) > 0)
+    .map(s => s.layover_minutes!)
+
+  // If we have at least one stop but no segment detail at all, stay neutral.
+  if (layoverMins.length === 0) return 0.50
+
+  const worst = Math.max(...layoverMins)
+
+  if (preferLong) {
+    // User explicitly wants a long layover (stopover to explore / break the trip).
+    // INVERT the default curve: a quick connection is the *bad* outcome here, and
+    // a generous layover is the goal. A tight (<40m) connection is still risky.
+    if (worst < 40)   return 0.10  // dangerously tight — still a miss-risk
+    if (worst < 120)  return 0.30  // <2h: too short to do anything
+    if (worst < 240)  return 0.55  // 2–4h: getting there
+    if (worst < 480)  return 0.78  // 4–8h: a real stopover
+    if (worst <= 900) return 1.00  // 8–15h: ideal long layover
+    if (worst <= 1440) return 0.92 // 15–24h: a day in the city — great for a stopover
+    return 0.75                     // 24h+: long, but they asked for it
+  }
+
+  if (worst < 40)  return 0.10  // dangerously tight connection
+  if (worst < 60)  return 0.35  // risky
+  if (worst <= 180) return 1.00  // ideal 1–3h: sweet spot
+  if (worst <= 240) return 0.82  // 3–4h: fine
+  if (worst <= 360) return 0.55  // 4–6h: starts to drag
+  if (worst <= 480) return 0.28  // 6–8h: genuinely bad
+  if (worst <= 660) return 0.12  // 8–11h: awful
+  return 0.04                     // 11h+ layover: borderline unusable
+}
+
+/** Round-trip stops signal: take the worse leg. A direct outbound paired with
+ *  a 1-stop return is, for ranking purposes, a 1-stop trip. */
+function combinedStops(offer: RankOffer): number {
+  const out = offer.stops ?? 0
+  const inb = offer.inbound?.stops ?? 0
+  return Math.max(out, inb)
+}
+
+/** Round-trip total duration in minutes. Falls back to outbound-only when no
+ *  inbound is present (one-way) or when inbound duration is missing. */
+function totalRoundTripDuration(offer: RankOffer): number {
+  const out = offer.duration_minutes ?? 0
+  if (!offer.inbound) return out
+  const inb = offer.inbound.duration_minutes ?? 0
+  return out + inb
+}
+
+function refundabilityMultiplier(offer: RankOffer, requireCancellation: boolean | undefined): number {
+  if (!requireCancellation) return 1.0
+
+  const refundability = offer.conditions?.refund_before_departure
+  if (refundability === 'allowed') return 1.0
+  if (refundability === 'allowed_with_fee') return 0.82
+  if (refundability === 'unknown' || refundability === undefined) return 0.58
+  return 0.08
+}
+
+function mealPreferenceMultiplier(offer: RankOffer, requireMeals: boolean | undefined): number {
+  if (!requireMeals) return 1.0
+
+  const mealSignal = extractOfferDetailSignals(offer).meals
+  if (mealSignal === 'included') return 1.0
+  if (mealSignal === 'available') return 0.84
+  return 0.56
+}
+
+// ── Fact generation ────────────────────────────────────────────────────────
+function generateFacts(
+  offer: RankOffer,
+  bd: ScoreBreakdown,
+  refPrice: number,
+  fastestMins: number,
+  ctx: RankingContext,
+  travelerCount: number | undefined,
+  isHero: boolean,
+): { heroFacts: string[]; tradeoffs: string[] } {
+  const heroFacts: string[] = []
+  const tradeoffs: string[] = []
+  const cur = offer.currency
+
+  // ── Price ─────────────────────────────────────────────────────────────────
+  const priceDiff = Math.round(offer.price - refPrice)
+  if (isHero) {
+    // Hero: compare vs cheapest in the full set
+    if (priceDiff <= 5) {
+      heroFacts.push(`cheapest available (${Math.round(offer.price)} ${cur})`)
+    } else {
+      // Hero won despite not being cheapest — note the small premium is worth it
+      tradeoffs.push(`${priceDiff} ${cur} above the cheapest option`)
+    }
+  } else {
+    // Runner: compare vs the hero
+    if (priceDiff < -5) {
+      heroFacts.push(`${Math.abs(priceDiff)} ${cur} cheaper than the top pick`)
+    } else if (priceDiff > 5) {
+      tradeoffs.push(`${priceDiff} ${cur} more expensive than the top pick`)
+    }
+    // within +-5: skip the price note (essentially the same price)
+  }
+
+  // ── Stops ────────────────────────────────────────────────────────────────
+  if (offer.stops === 0) {
+    heroFacts.push('direct flight — no layovers or connections')
+  } else if (offer.stops === 1) {
+    tradeoffs.push('1 stop')
+  } else {
+    tradeoffs.push(`${offer.stops} stops`)
+  }
+
+  // ── Google Flights savings ───────────────────────────────────────────────
+  // GF comparison copy is suppressed in this build (GF_SAVINGS_COMPARISON_ENABLED=false).
+  // Ranking still consumes google_flights_price via scoreSavings.
+  const normalizedGooglePrice = normalizeGoogleFlightsComparisonPrice(offer.google_flights_price, travelerCount)
+  if (GF_SAVINGS_COMPARISON_ENABLED && normalizedGooglePrice && normalizedGooglePrice > offer.price + 8) {
+    const saving = Math.round(normalizedGooglePrice - offer.price)
+    heroFacts.push(
+      `${saving} ${cur} cheaper than Google Flights (Google shows ${Math.round(normalizedGooglePrice)} ${cur})`
+    )
+  } else if (GF_SAVINGS_COMPARISON_ENABLED && normalizedGooglePrice && offer.price > normalizedGooglePrice + 8) {
+    const extra = Math.round(offer.price - normalizedGooglePrice)
+    tradeoffs.push(`${extra} ${cur} more expensive than Google Flights shows`)
+  }
+
+  // ── Duration vs fastest ──────────────────────────────────────────────────
+  const durDiff = offer.duration_minutes - fastestMins
+  if (durDiff === 0) {
+    heroFacts.push(
+      `fastest flight on this route (${Math.floor(offer.duration_minutes / 60)}h ${offer.duration_minutes % 60}m)`
+    )
+  } else if (durDiff > 90) {
+    tradeoffs.push(
+      `${Math.floor(durDiff / 60)}h ${durDiff % 60}m longer than the fastest option`
+    )
+  }
+
+  // ── Departure time ───────────────────────────────────────────────────────
+  const depMins = isoToMins(offer.departure_time)
+  if (bd.depTime >= 0.88 && ctx.depTimePref) {
+    heroFacts.push(
+      `departs ${formatMins(depMins)} — matches your ${ctx.depTimePref.replace('_', ' ')} preference`
+    )
+  } else if (bd.depTime <= 0.25 && ctx.depTimePref) {
+    tradeoffs.push(
+      `departure at ${formatMins(depMins)} doesn't match your ${ctx.depTimePref.replace('_', ' ')} preference`
+    )
+  }
+
+  // ── Arrival time ─────────────────────────────────────────────────────────
+  const arrMins = isoToMins(offer.arrival_time)
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+  const isExploring = tripPurposes.some((purpose) => EARLY_ARRIVAL_PURPOSES.has(purpose))
+  if (bd.arrivalTime >= 0.88) {
+    heroFacts.push(
+      `arrives ${formatMins(arrMins)}${isExploring ? ' — full day to explore' : ''}`
+    )
+  } else if (bd.arrivalTime <= 0.25) {
+    tradeoffs.push(`late arrival (${formatMins(arrMins)})`)
+  }
+
+  // ── Baggage ──────────────────────────────────────────────────────────────
+  const bagIncluded = offer.ancillaries?.checked_bag?.included === true
+  const bagFee = offer.ancillaries?.checked_bag?.included === false
+    ? offer.ancillaries.checked_bag.price
+    : null
+  if (ctx.requireBag && bagIncluded) {
+    heroFacts.push('checked bag already included in the ticket price')
+  } else if (ctx.requireBag && bagFee != null) {
+    tradeoffs.push(
+      `bag costs extra (${Math.round(bagFee)} ${offer.ancillaries?.checked_bag?.currency ?? cur})`
+    )
+  } else if (ctx.requireBag && bagFee === null && !bagIncluded) {
+    tradeoffs.push('bag fee unknown — check at booking')
+  }
+
+  // ── Refundability ───────────────────────────────────────────────────────
+  const refundability = offer.conditions?.refund_before_departure
+  if (ctx.requireCancellation && refundability === 'allowed') {
+    heroFacts.push('refundable before departure')
+  } else if (ctx.requireCancellation && refundability === 'allowed_with_fee') {
+    tradeoffs.push('refunds allowed with a fee')
+  } else if (ctx.requireCancellation && refundability === 'not_allowed') {
+    tradeoffs.push('not refundable before departure')
+  } else if (ctx.requireCancellation) {
+    tradeoffs.push('refund policy not shown in the fare data')
+  }
+
+  // ── Meals / food ─────────────────────────────────────────────────────────
+  const mealSignal = extractOfferDetailSignals(offer).meals
+  if (ctx.requireMeals && mealSignal === 'included') {
+    heroFacts.push('meal included in fare')
+  } else if (ctx.requireMeals && mealSignal === 'available') {
+    heroFacts.push('meal option shown in fare data')
+  } else if (ctx.requireMeals) {
+    tradeoffs.push('meal availability not shown in the fare data')
+  }
+
+  // ── Preferred airline ────────────────────────────────────────────────────
+  if (ctx.preferredAirline) {
+    const airLower = offer.airline.toLowerCase()
+    const prefLower = ctx.preferredAirline.toLowerCase()
+    if (airLower.includes(prefLower) || prefLower.includes(airLower.split(' ')[0])) {
+      heroFacts.push(`with ${offer.airline} as you mentioned`)
+    } else {
+      tradeoffs.push(`not ${ctx.preferredAirline} (which you mentioned)`)
+    }
+  }
+
+  return { heroFacts, tradeoffs }
+}
+
+// ── Main export ────────────────────────────────────────────────────────────
+/**
+ * Price-premium penalty: clamps a score down when an offer costs
+ * significantly more than the cheapest option.
+ *
+ * Uses RELATIVE % so it works correctly in any currency (JPY, EUR, USD, etc.).
+ * A 50% premium hurts the same whether the flight is ¥40k or €300.
+ */
+function premiumPenalty(offerPrice: number, cheapestPrice: number): number {
+  if (cheapestPrice <= 0) return 1
+  const ratio = (offerPrice - cheapestPrice) / cheapestPrice  // 0 = cheapest, 0.5 = 50% more
+  if (ratio <= 0) return 1.00      // cheapest (or tied)
+  if (ratio <= 0.08) return 1.00   // within 8% — noise, no penalty
+  if (ratio <= 0.18) return 0.96   // 8–18% more — tiny nudge
+  if (ratio <= 0.30) return 0.88   // 18–30% more — modest
+  if (ratio <= 0.50) return 0.76   // 30–50% more — noticeable
+  if (ratio <= 0.80) return 0.58   // 50–80% more — strong
+  if (ratio <= 1.20) return 0.40   // 80–120% more (2x price)
+  if (ratio <= 2.00) return 0.26   // 2–3x cheapest
+  return 0.14                       // 3x+: essentially out of contention
+}
+
+/**
+ * Builds hard gates from user-stated criteria, then finds the highest-scoring
+ * offer that passes all gates. When no offer passes them all, relaxes gates
+ * in priority order: refund -> bag -> time -> direct. Returns the chosen hero
+ * and the list of gates relaxed to find it.
+ *
+ * Gates only fire when the user explicitly stated the corresponding criterion.
+ * Unstated criteria do not gate the hero — the regular weighted score still
+ * picks the best offer among those passing the (possibly empty) gate set.
+ */
+function selectHeroByGates<T extends RankOffer>(
+  sorted: RankedOffer<T>[],
+  ctx: RankingContext,
+): { hero: RankedOffer<T>; relaxed: string[] } {
+  if (sorted.length === 0) throw new Error('selectHeroByGates: empty input')
+
+  // Gates ordered LOWEST priority first (= dropped first when no offer matches).
+  // refund < bag < time < direct. Direct is sacred; refund is most relaxable.
+  const gates: Array<{ name: string; pred: (o: T) => boolean }> = []
+
+  if (ctx.requireCancellation) {
+    gates.push({
+      name: 'refund',
+      pred: o => o.conditions?.refund_before_departure === 'allowed',
+    })
+  }
+
+  if (ctx.requireBag) {
+    gates.push({
+      name: 'bag',
+      pred: o => o.ancillaries?.checked_bag?.included === true,
+    })
+  }
+
+  // Time gate combines all stated time prefs into a single predicate. Any one
+  // failing fails the whole time gate — relaxing time drops all three at once,
+  // which matches the user's mental model ("I'm flexible on time").
+  const timePreds: Array<(o: T) => boolean> = []
+  if (ctx.depTimePref) {
+    timePreds.push(o => scoreDepTime(isoToMins(o.departure_time), ctx.depTimePref) >= 0.55)
+  }
+  if (ctx.retTimePref) {
+    timePreds.push(o => {
+      const retDep = o.inbound?.departure_time
+      // One-way (no inbound) — no return time to violate; pass.
+      if (!retDep) return true
+      return scoreDepTime(isoToMins(retDep), ctx.retTimePref) >= 0.55
+    })
+  }
+  if (ctx.arrivalTimePref) {
+    const tripPurposes = normalizeTripPurposes({
+      tripPurpose: ctx.tripPurpose,
+      tripPurposes: ctx.tripPurposes,
+    })
+    timePreds.push(o => {
+      const arrMins = isoToMins(o.arrival_time)
+      const dayOffset = daysBetween(o.departure_time, o.arrival_time)
+      return scoreArrivalTime(arrMins, ctx.arrivalTimePref, tripPurposes, dayOffset) >= 0.55
+    })
+  }
+  if (timePreds.length > 0) {
+    gates.push({ name: 'time', pred: o => timePreds.every(p => p(o)) })
+  }
+
+  // Soft stop-cap gate: the hero must respect the user's stated max ("1 stop").
+  // Sits just below 'direct' in priority (relaxed before direct, after time).
+  // Skipped when preferDirect is set — that's a stricter cap of 0 handled below.
+  if (ctx.maxStops !== undefined && !ctx.preferDirect) {
+    const cap = ctx.maxStops
+    gates.push({ name: 'max_stops', pred: o => combinedStops(o) <= cap })
+  }
+
+  if (ctx.preferDirect) {
+    // Both legs must be direct. A direct outbound paired with a 1-stop return
+    // is NOT direct from the user's perspective.
+    gates.push({ name: 'direct', pred: o => combinedStops(o) === 0 })
+  }
+
+  // not_suspect is ALWAYS active and sits at the highest priority (last to
+  // relax). The hero must come from offers whose data is trustworthy. Only
+  // when every offer in the pool is suspect (e.g. all connectors returned
+  // wrong-date results) does this gate drop. Rank-not-filter: suspect offers
+  // still appear as runner-ups, just never as hero.
+  gates.push({ name: 'not_suspect', pred: o => o.quality !== 'suspect' })
+
+  // Highest-scoring offer by raw score, independent of any sort-order hard
+  // partitions (e.g. preferDirect promotes all directs above all 1-stops in
+  // sort order regardless of score — sorted[0] may not be the best scorer).
+  const topByScore = sorted.reduce((best, s) => (s.score > best.score ? s : best), sorted[0])
+
+  // Report a gate as "relaxed" ONLY when the chosen hero actually violates it.
+  // The relaxation loop drops gates lowest-priority-first, so when the binding
+  // constraint is a HIGH-priority gate (e.g. not_suspect in an all-suspect pool),
+  // every lower gate gets dropped on the way down even though the hero still
+  // satisfies them. Without this filter the hero would falsely banner "we relaxed
+  // your stop limit" while actually respecting it (the sort partition keeps
+  // within-cap offers on top). Only surface genuine mismatches.
+  const gateByName = new Map(gates.map(g => [g.name, g.pred]))
+  const trulyRelaxed = (names: string[], hero: RankedOffer<T>): string[] =>
+    names.filter(name => {
+      const pred = gateByName.get(name)
+      return pred ? !pred(hero.offer) : true
+    })
+
+  const relaxed: string[] = []
+  for (let dropCount = 0; dropCount <= gates.length; dropCount++) {
+    const active = gates.slice(dropCount)
+    const candidate = sorted.find(s => active.every(g => g.pred(s.offer)))
+    if (candidate) {
+      // Bag-gate regression guard: when the bag gate is still active, check
+      // whether it is the SOLE reason the overall best-scoring offer can't be
+      // selected. Bag is the only ancillary a traveller can add separately
+      // after booking — unlike "direct" or "morning departure", a checked bag
+      // can always be purchased at the counter. If the bag-included winner
+      // scores < 75% of the best-scoring alternative (i.e. the premium penalty
+      // is crushing it due to a 60%+ price gap), relax the bag gate and let
+      // the premium penalty already baked into the scores take over.
+      if (!relaxed.includes('bag') && ctx.requireBag) {
+        const otherActive = active.filter(g => g.name !== 'bag')
+        const altCandidate = sorted.find(s => otherActive.every(g => g.pred(s.offer)))
+        // Only fire when the bag-excluded best offer is also the overall
+        // top scorer — meaning bag is the single constraint holding back the
+        // definitively best offer in the pool (not just the cheapest direct,
+        // or the best time-matched flight, etc.).
+        if (altCandidate && altCandidate !== candidate && altCandidate === topByScore) {
+          const ratio = candidate.score / altCandidate.score
+          if (ratio < 0.75) {
+            relaxed.push('bag')
+            continue
+          }
+        }
+      }
+      return { hero: candidate, relaxed: trulyRelaxed(relaxed, candidate) }
+    }
+    // No candidate at this gate set — relax the next lowest-priority gate.
+    if (dropCount < gates.length) relaxed.push(gates[dropCount].name)
+  }
+  // Unreachable: dropping all gates leaves `active=[]`, every offer matches.
+  return { hero: sorted[0], relaxed: trulyRelaxed(relaxed, sorted[0]) }
+}
+
+/**
+ * Rank an array of flight offers by personalized score.
+ * Returns a new array sorted best-first. The original array is not mutated.
+ *
+ * @param offers  Array of flight offers (any type extending RankOffer)
+ * @param ctx     User intent context from the NL query parser
+ */
+export function rankOffers<T extends RankOffer>(
+  offers: T[],
+  ctx: RankingContext,
+  options?: { skipDedup?: boolean },
+): RankedOffer<T>[] {
+  if (offers.length === 0) return []
+
+  // By default remove near-identical offers (same physical flight from multiple
+  // sources). Pass skipDedup: true to rank all offers as-is — useful when the
+  // caller wants to show every offer found rather than one per physical flight.
+  const pool = options?.skipDedup ? offers : deduplicateOffers(offers)
+
+  // Pre-filter obvious duration outliers that would distort normalisation and
+  // produce nonsensical scores. We guard both per-leg (no single leg over 48h —
+  // that's corrupt data, even ULH flights are <20h) and the round-trip total
+  // (96h ceiling so a legit 14h+14h LON->TYO round-trip survives).
+  const plausible = pool.filter(o => {
+    const out = o.duration_minutes ?? 0
+    if (out < 10 || out > 2880) return false
+    // Only check inbound when its duration was actually populated. Some
+    // upstream paths (and tests) omit inbound.duration_minutes; missing data
+    // is not a corruption signal.
+    const inb = o.inbound?.duration_minutes
+    if (typeof inb === 'number' && (inb < 10 || inb > 2880)) return false
+    return totalRoundTripDuration(o) <= 5760
+  })
+
+  const weights = resolveWeights(ctx)
+  // Use displayPrice when available — it reflects what the user actually pays
+  // (ticket + LetsFG fee + ancillaries, in their display currency).
+  const effectivePrice = (o: RankOffer) => o.displayPrice ?? o.price
+  const prices = plausible.map(effectivePrice)
+  const durations = plausible.map(totalRoundTripDuration)
+  const [pLo, pHi] = p5p95(prices)
+  const [dLo, dHi] = p5p95(durations)
+  const cheapestPrice = Math.min(...prices)
+  // When preferDirect, use cheapest direct offer as penalty reference so that
+  // premiumPenalty doesn't crush directs relative to cheap 1-stops — without this
+  // a €35 stopover becomes the baseline and a €80 direct gets a 0.26x multiplier
+  // that wipes out the stops weight advantage entirely.
+  const cheapestDirectPrice = ctx.preferDirect
+    ? (() => {
+        const dp = plausible.filter(o => (o.stops ?? 0) === 0).map(effectivePrice).filter(p => isFinite(p))
+        return dp.length > 0 ? Math.min(...dp) : cheapestPrice
+      })()
+    : cheapestPrice
+  // Fastest in the pool — used by fact generation to label the top pick as
+  // "fastest on this route". Operates on round-trip totals to match scoreDuration.
+  const fastestMins = Math.min(...durations)
+  const outboundDurations = plausible.map(o => o.duration_minutes)
+  const fastestOutboundMins = outboundDurations.length > 0 ? Math.min(...outboundDurations) : 0
+  // When preferQuickFlight, use cheapest "fast enough" offer as penalty ref so that
+  // premiumPenalty doesn't crush a 2h direct just because a 24h 1-stop is $50 cheaper.
+  // "Fast enough" = within 2.5x the fastest duration in the pool.
+  const cheapestQuickPrice = ctx.preferQuickFlight
+    ? (() => {
+        const qp = plausible.filter(o => totalRoundTripDuration(o) <= fastestMins * 2.5).map(effectivePrice).filter(p => isFinite(p))
+        return qp.length > 0 ? Math.min(...qp) : cheapestPrice
+      })()
+    : cheapestPrice
+  const tripPurposes = normalizeTripPurposes({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+
+  // Score every offer
+  const scored: RankedOffer<T>[] = plausible.map(offer => {
+    const depMins = isoToMins(offer.departure_time)
+    const arrMins = isoToMins(offer.arrival_time)
+    const dayOffset = daysBetween(offer.departure_time, offer.arrival_time)
+    const ep = effectivePrice(offer)
+
+    const bd: ScoreBreakdown = {
+      price:        scorePrice(ep, pLo, pHi),
+      stops:        scoreStops(combinedStops(offer)),
+      duration:     scoreDuration(totalRoundTripDuration(offer), dLo, dHi),
+      depTime:      scoreDepTime(depMins, ctx.depTimePref),
+      arrivalTime:  scoreArrivalTime(arrMins, ctx.arrivalTimePref, tripPurposes, dayOffset),
+      baggage:      scoreBaggage(offer, ctx.requireBag),
+      savings:      scoreSavings(offer, ctx.travelerCount),
+      comfortHours: scoreComfortHours(depMins),
+      layover:      scoreLayover(offer, ctx.preferLongLayover),
+    }
+
+    const rawScore = (
+      bd.price        * weights.price +
+      bd.stops        * weights.stops +
+      bd.duration     * weights.duration +
+      bd.depTime      * weights.depTime +
+      bd.arrivalTime  * weights.arrivalTime +
+      bd.baggage      * weights.baggage +
+      bd.savings      * weights.savings +
+      bd.comfortHours * weights.comfortHours +
+      bd.layover      * weights.layover
+    ) * 100
+
+    // Apply price-premium penalty so no flight can leapfrog a much cheaper one
+    // purely on arrival time / stops when the price gap is unreasonable.
+    const penaltyRef = (ctx.preferDirect && (offer.stops ?? 0) === 0) ? cheapestDirectPrice
+      : (ctx.preferQuickFlight && totalRoundTripDuration(offer) <= fastestMins * 2.5) ? cheapestQuickPrice
+      : cheapestPrice
+    const score = rawScore * premiumPenalty(ep, penaltyRef)
+      * timeConstraintPenalty(depMins, ctx.departAfterMins, ctx.departBeforeMins)
+      * depTimeMismatchMultiplier(depMins, ctx.depTimePref)
+      * retDepTimeMismatchMultiplier(offer, ctx.retTimePref)
+      * mealPreferenceMultiplier(offer, ctx.requireMeals)
+      * refundabilityMultiplier(offer, ctx.requireCancellation)
+
+    return { offer, score, rank: 0, breakdown: bd, heroFacts: [], tradeoffs: [] }
+  })
+
+  // Sort best-first with deterministic tie-breakers so refreshes don't reshuffle
+  // equivalent offers just because upstream sources arrived in a different order.
+  scored.sort((a, b) => {
+    // Hard partition: when user explicitly asked for direct, ALL directs rank above ALL
+    // non-directs regardless of score. Weight boosts alone can't guarantee this because
+    // a sufficiently large price gap can always overcome a stops-weight advantage.
+    if (ctx.preferDirect) {
+      const aDirect = combinedStops(a.offer) === 0 ? 0 : 1
+      const bDirect = combinedStops(b.offer) === 0 ? 0 : 1
+      if (aDirect !== bDirect) return aDirect - bDirect
+    }
+
+    // Soft stop-cap partition: offers within the cap rank above offers that exceed
+    // it, regardless of score (rank-not-filter — over-cap offers still appear, just
+    // below). Mirrors the preferDirect partition; the two are mutually exclusive.
+    if (ctx.maxStops !== undefined && !ctx.preferDirect) {
+      const aIn = combinedStops(a.offer) <= ctx.maxStops ? 0 : 1
+      const bIn = combinedStops(b.offer) <= ctx.maxStops ? 0 : 1
+      if (aIn !== bIn) return aIn - bIn
+    }
+
+    const scoreDelta = b.score - a.score
+    if (Math.abs(scoreDelta) > 0.001) return scoreDelta
+
+    const priceDelta = effectivePrice(a.offer) - effectivePrice(b.offer)
+    if (Math.abs(priceDelta) > 0.001) return priceDelta
+
+    const stopsDelta = a.offer.stops - b.offer.stops
+    if (stopsDelta !== 0) return stopsDelta
+
+    const durationDelta = a.offer.duration_minutes - b.offer.duration_minutes
+    if (durationDelta !== 0) return durationDelta
+
+    const depDelta = isoToMins(a.offer.departure_time) - isoToMins(b.offer.departure_time)
+    if (depDelta !== 0) return depDelta
+
+    return a.offer.id.localeCompare(b.offer.id)
+  })
+
+  // Constraint-gate hero selection: top-1 must satisfy every user-stated
+  // criterion. If no offer does, gates are relaxed in priority order. Runner-
+  // ups keep their score-based positions so the user can still see the
+  // cheaper-but-non-matching alternatives for context.
+  if (scored.length > 0) {
+    const { hero, relaxed } = selectHeroByGates(scored, ctx)
+    const idx = scored.indexOf(hero)
+    if (idx > 0) {
+      scored.splice(idx, 1)
+      scored.unshift(hero)
+    }
+    if (relaxed.length > 0) scored[0].relaxedGates = relaxed
+  }
+
+  // Assign 1-based ranks and generate human-readable facts
+  // Hero compares vs cheapest in set; runners compare vs the hero price
+  const heroPrice = scored[0]?.offer.price ?? cheapestPrice
+  for (let i = 0; i < scored.length; i++) {
+    scored[i].rank = i + 1
+    const isHero = i === 0
+    const refPrice = isHero ? cheapestPrice : heroPrice
+    const { heroFacts, tradeoffs } = generateFacts(
+      scored[i].offer, scored[i].breakdown, refPrice, fastestOutboundMins, ctx, ctx.travelerCount, isHero,
+    )
+    scored[i].heroFacts = heroFacts
+    scored[i].tradeoffs = tradeoffs
+  }
+
+  return scored
+}
+
+/**
+ * From an already-ranked list, picks the top N offers that are genuinely
+ * different from each other — so runner-ups are real propositions, not just
+ * the same flight at +$3 from a different booking source.
+ *
+ * Two offers are considered "the same" for this purpose if both their
+ * departure time slot (3-hour window) AND their stop count are identical.
+ * Diversity requires differing in at least one of those dimensions.
+ *
+ * Falls back to next-best-ranked when the pool lacks enough diverse options.
+ */
+export function selectDiverseTop<T extends RankOffer>(
+  ranked: RankedOffer<T>[],
+  n: number,
+): RankedOffer<T>[] {
+  if (ranked.length === 0) return []
+  const result: RankedOffer<T>[] = [ranked[0]]  // hero always first
+  const depSlot = (iso: string) => Math.floor(isoToMins(iso) / 180)  // 3-hour slots
+
+  for (const candidate of ranked.slice(1)) {
+    if (result.length >= n) break
+    // Candidate is diverse if it differs from EVERY already-selected offer
+    // in departure slot OR stop count (at least one dimension must differ).
+    const isDiverse = result.every(sel =>
+      Math.abs(depSlot(candidate.offer.departure_time) - depSlot(sel.offer.departure_time)) >= 1 ||
+      Math.abs(candidate.offer.stops - sel.offer.stops) >= 1,
+    )
+    if (isDiverse) result.push(candidate)
+  }
+
+  // Not enough diverse options — fill remaining slots with next-best
+  for (const candidate of ranked.slice(1)) {
+    if (result.length >= n) break
+    if (!result.some(r => getOfferInstanceKey(r.offer) === getOfferInstanceKey(candidate.offer))) {
+      result.push(candidate)
+    }
+  }
+
+  return result
+}
+
+/**
+ * Returns a short human-readable label describing the ranking profile
+ * that was applied (e.g. "City break", "Family holiday"). Returns null
+ * if the default generic profile is used.
+ */
+export function getProfileLabel(ctx: RankingContext): string | null {
+  const tripPurpose = getPrimaryTripPurpose({
+    tripPurpose: ctx.tripPurpose,
+    tripPurposes: ctx.tripPurposes,
+  })
+  if (tripPurpose === 'honeymoon')         return 'Honeymoon'
+  if (tripPurpose === 'special_occasion')  return 'Special occasion'
+  if (tripPurpose === 'business')          return 'Business travel'
+  if (tripPurpose === 'ski')               return 'Ski trip'
+  if (tripPurpose === 'beach')             return 'Beach holiday'
+  if (tripPurpose === 'city_break')        return 'City break'
+  if (tripPurpose === 'family_holiday')    return 'Family holiday'
+  if (tripPurpose === 'graduation')        return 'Graduation trip'
+  if (tripPurpose === 'concert_festival')  return 'Concert / festival'
+  if (tripPurpose === 'sports_event')      return 'Sports event'
+  if (tripPurpose === 'spring_break')      return 'Spring break'
+  if (ctx.tripContext === 'family')            return 'Family trip'
+  if (ctx.tripContext === 'couple')            return 'Couple'
+  if (ctx.tripContext === 'business_traveler') return 'Business traveler'
+  if (ctx.requireBag)                         return 'Checked bag needed'
+  return null
+}

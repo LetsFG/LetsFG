@@ -4,13 +4,15 @@ Practical guides for building travel applications with LetsFG in Python and Java
 
 ## Python: Concurrent Multi-Route Search
 
-Search multiple routes simultaneously using `asyncio.gather`. The engine already parallelizes connectors internally, but you can also parallelize across different routes at the application level.
+Search multiple routes simultaneously using `asyncio.gather`. The server-side engine already searches all airlines in parallel, but you can also parallelize across different routes at the application level.
 
 ### Search Multiple Routes in Parallel
 
 ```python
 import asyncio
-from letsfg.local import search_local
+from letsfg import LetsFG
+
+bt = LetsFG()  # uses LETSFG_BEARER_TOKEN or LETSFG_API_KEY from environment
 
 async def search_multiple_routes(routes: list[dict]) -> list[dict]:
     """Search several origin-destination pairs in parallel.
@@ -22,7 +24,7 @@ async def search_multiple_routes(routes: list[dict]) -> list[dict]:
         List of search results, one per route (failures excluded).
     """
     tasks = [
-        search_local(r["origin"], r["destination"], r["date"])
+        asyncio.to_thread(bt.search, r["origin"], r["destination"], r["date"])
         for r in routes
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -30,7 +32,7 @@ async def search_multiple_routes(routes: list[dict]) -> list[dict]:
     successful = []
     for route, result in zip(routes, results):
         if isinstance(result, Exception):
-            print(f"  ⚠ {route['origin']}→{route['destination']}: {result}")
+            print(f"  {route['origin']}→{route['destination']}: {result}")
         else:
             successful.append(result)
     return successful
@@ -57,14 +59,16 @@ Search the same route across multiple dates to find the cheapest day:
 ```python
 import asyncio
 from datetime import date, timedelta
-from letsfg.local import search_local
+from letsfg import LetsFG
+
+bt = LetsFG()
 
 async def price_calendar(origin: str, dest: str, start: date, days: int = 7):
     """Get the cheapest price for each day in a date range."""
     dates = [start + timedelta(days=i) for i in range(days)]
 
     tasks = [
-        search_local(origin, dest, d.isoformat())
+        asyncio.to_thread(bt.search, origin, dest, d.isoformat())
         for d in dates
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -229,13 +233,13 @@ for (let i = 0; i < routes.length; i++) {
 
 ### Understanding GDS and NDC Sources
 
-LetsFG aggregates from multiple distribution channels:
+LetsFG aggregates from multiple distribution channels, all server-side at letsfg.co:
 
 | Source type | What it is | Airlines covered |
 |------------|------------|-----------------|
 | **GDS** (Global Distribution System) | Traditional airline inventory systems | Most legacy carriers (BA, Lufthansa, Delta, United) |
 | **NDC** (New Distribution Capability) | Modern direct-connect API standard | Airlines with NDC feeds (Vueling, Condor, Air Canada) |
-| **LCC Direct** | LetsFG's own airline connectors | 200 airline connectors (Ryanair, EasyJet, Spirit, Southwest, Qatar, LATAM) |
+| **LCC Direct** | LetsFG's own airline connectors, server-side | Hundreds of airlines (Ryanair, EasyJet, Spirit, Southwest, Qatar, LATAM, and more) |
 | **Aggregators** | Meta-search APIs | Kiwi.com (covers 800+ airlines) |
 
 A single `search()` call queries **all available sources** and returns merged, deduplicated results. You don't need to specify which source to query.

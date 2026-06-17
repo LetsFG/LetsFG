@@ -6,8 +6,8 @@ hide:
 <section class="docs-hero">
   <div class="docs-hero-inner">
     <p class="docs-kicker">Official LetsFG documentation</p>
-    <h1>Start with free local connector search. Move to the prepaid public API only when you need managed cloud access.</h1>
-    <p class="docs-lead">LetsFG now has a clean split. If you cloned the repo or installed the SDK, search locally right away. If you want account-managed website API access, use the developer surface on letsfg.co, attach Stripe, top up balance, and then search with your developer key.</p>
+    <h1>Search hundreds of airlines server-side at letsfg.co. Free with a Bearer token. Move to the prepaid Developer API for direct booking URLs and volume access.</h1>
+    <p class="docs-lead">LetsFG has two paths. If you installed the SDK, run <code>letsfg auth</code> once to get a free 90-day Bearer token and start searching. If you want account-managed access, direct airline booking URLs, or billing controls, use the developer surface on letsfg.co, attach Stripe, top up balance, and then search with your developer key.</p>
     <div class="docs-command"><span class="docs-command-prompt">$</span> pip install letsfg</div>
     <div class="docs-action-row">
       <a href="getting-started/" class="docs-button docs-button--primary">Get started</a>
@@ -16,28 +16,26 @@ hide:
       <a href="https://letsfg.co/en/developers" class="docs-button docs-button--ghost" target="_blank">Developers page</a>
     </div>
     <div class="docs-chip-row">
-      <span class="docs-chip">200+ local connectors</span>
+      <span class="docs-chip">Server-side search engine at letsfg.co</span>
       <span class="docs-chip">Canonical API at letsfg.co/developers/api</span>
-      <span class="docs-chip">Prepaid public search</span>
+      <span class="docs-chip">Free Bearer token or prepaid credits</span>
       <span class="docs-chip">CLI, SDK, and MCP</span>
     </div>
   </div>
 </section>
 
-## Three paths to LetsFG
+## Two paths to LetsFG
 
-LetsFG has three distinct access paths — pick the one that matches your setup:
+LetsFG has two access paths — pick the one that matches your setup:
 
 | Path | How | Speed | Search cost | Booking URL |
 |------|-----|-------|-------------|-------------|
-| **1 — Local** (CLI / SDK / MCP-local) | 200+ connectors run on your machine via Playwright | 20–40 s (fast mode) · 1–15 min (full) | Free | 1% concierge fee (min $3) via letsfg.co |
-| **2 — PFS** (Programmatic Flight Search via letsfg.co) | Server-side search via the letsfg.co engine; one-time Twitter/X challenge → 90-day Bearer token | 60–90 s | Free (Twitter/X token) | 1% concierge fee (min $3) via letsfg.co |
-| **3 — Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
+| **CLI / SDK** (`letsfg auth`) | Server-side search via the letsfg.co engine; one-time Twitter/X challenge → 90-day Bearer token | 60–90 s | Free | 1% concierge fee (min $3) via letsfg.co |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
-- Use **Path 1** if you can run a local browser — search is free and unlimited. Booking links go through the same letsfg.co concierge checkout as Path 2 (1% fee, min $3).
-- Use **Path 2 (PFS)** if you're an AI agent (Claude, GPT, OpenClaw, etc.) that can't run local browsers. Register a free 90-day Bearer token via a one-time Twitter/X challenge ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search server-side. The concierge unlock flow delivers the direct airline URL after a 1% fee (min $3).
-- Use **Path 3** if you're building a product or need high volume without per-booking fees. Prepaid credits, results in seconds, direct airline URLs every time.
+- Use **CLI / SDK** if you want free search — run `letsfg auth` once for a 90-day Bearer token ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search server-side for free. The concierge unlock flow delivers the direct airline URL after a 1% fee (min $3).
+- Use the **Developer API** if you're building a product or need high volume without per-booking fees. Prepaid credits, results in seconds, direct airline URLs every time.
 
 ---
 
@@ -45,15 +43,15 @@ LetsFG has three distinct access paths — pick the one that matches your setup:
 
 <div class="docs-mode-grid">
   <article class="docs-mode-card">
-    <p class="docs-card-kicker">Local mode</p>
-    <h2>Search immediately after install</h2>
-    <p>Use this path if you installed the SDK or cloned the repo. The default CLI and local Python helpers run connectors on your machine and stay free.</p>
+    <p class="docs-card-kicker">CLI / SDK mode</p>
+    <h2>Search free after a one-time auth step</h2>
+    <p>Use this path after installing the SDK. Run <code>letsfg auth</code> once to complete the Twitter/X challenge and get a 90-day Bearer token. All search runs server-side at letsfg.co — no local browsers required.</p>
     <ul class="docs-check-list">
-      <li><code>letsfg search</code> and <code>search_local()</code> work without signup</li>
-      <li>Local telemetry can still report analytics in the background</li>
-      <li>Best for prototyping, connector debugging, and broad local sweeps</li>
+      <li><code>letsfg search</code> and <code>bt.search()</code> work with the Bearer token</li>
+      <li>Search is free and unlimited for the 90-day token lifetime</li>
+      <li>Best for prototyping, agents, and general flight search</li>
     </ul>
-    <a href="getting-started/#option-a-free-local-search" class="docs-text-link">Go to local setup</a>
+    <a href="getting-started/#option-a-free-search-with-bearer-token" class="docs-text-link">Go to setup</a>
   </article>
 
   <article class="docs-mode-card">
@@ -141,7 +139,7 @@ The canonical public surfaces are:
   <a class="docs-resource-card" href="agent-guide/">
     <p class="docs-card-kicker">Agents</p>
     <h3>AI agent guide</h3>
-    <p>Build agents that use local search for cheap exploration and the public API when managed cloud access matters.</p>
+    <p>Build agents that use the Bearer token for free search and the Developer API when managed cloud access matters.</p>
   </a>
 
   <a class="docs-resource-card" href="cli-reference/">

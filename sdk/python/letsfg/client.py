@@ -8,10 +8,7 @@ Search is free. Booking charges the ticket price via Stripe (zero markup).
 
     bt = LetsFG(api_key="trav_...")
     
-    # Link GitHub (one-time — star the repo first)
-    bt.link_github("myusername")
-    
-    # Setup payment (one-time — required before booking)
+    # Setup payment (one-time — required before booking via PFS path)
     bt.setup_payment(token="tok_visa")
     
     # Search (FREE)
@@ -351,13 +348,14 @@ class LetsFG:
     """
     LetsFG API client — for autonomous agents.
 
-    Get an API key: POST /api/v1/agents/register
-    Or set LETSFG_API_KEY environment variable.
+    Auth options:
+      - PFS Bearer token (free search): run `letsfg auth` once, or set LETSFG_BEARER_TOKEN.
+      - Developer API key (prepaid credits): set LETSFG_API_KEY or pass api_key=.
 
     Pricing:
-      - Search: FREE (unlimited)
-      - Unlock: FREE (confirms price, reserves 30min)
-      - Book: FREE after unlock (creates real airline reservation)
+      - Search: FREE (unlimited, requires Bearer token or API key)
+      - Unlock: 1% of ticket price (min $3) via Stripe or MPP crypto. Free with Developer API.
+      - Book: Ticket price via Stripe. Developer API only.
     """
 
     def __init__(
@@ -383,11 +381,10 @@ class LetsFG:
         if not self.api_key:
             raise AuthenticationError(
                 "API key required for this operation. Set api_key parameter or "
-                "LETSFG_API_KEY env var. Get one: POST /api/v1/agents/register\n"
-                "Note: search_local() works without an API key."
+                "LETSFG_API_KEY env var. Get one: letsfg register"
             )
 
-    # ── Local search (75 airline connectors, no API key needed) ────────────────
+    # ── Cloud search (server-side engine, Bearer token) ────────────────────────
 
     def search_local(
         self,
@@ -402,17 +399,13 @@ class LetsFG:
         cabin_class: str | None = None,
         currency: str = "EUR",
         limit: int = 50,
-        max_browsers: int | None = None,
-        country_filter: frozenset[str] | set[str] | list[str] | None = None,
-        include_global: bool = False,
+        **_kwargs,
     ) -> FlightSearchResult:
         """
-        Search flights using 73 local airline connectors — FREE, no API key needed.
+        Search flights via the LetsFG cloud engine.
 
-        Runs Ryanair, EasyJet, Spring Airlines, Lucky Air, and 54 more
-        airline connectors directly on your machine. No backend call.
-
-        Requires: playwright install chromium  (one-time setup)
+        Requires a Bearer token — run `letsfg auth` once to authenticate via Twitter/X.
+        Results take 60-90 s (async polling handled internally).
 
         Args:
             origin: IATA code (e.g., "SHA", "GDN", "JFK")
@@ -423,12 +416,9 @@ class LetsFG:
             cabin_class: "M" (economy), "W" (premium), "C" (business), "F" (first)
             currency: 3-letter currency code
             limit: Max results (1-200)
-            max_browsers: Max concurrent browser processes (1-32, default: auto-detect).
-            country_filter: ISO alpha-2 country codes used to filter source markets.
-            include_global: Include global aggregators when country_filter is active.
 
         Returns:
-            FlightSearchResult with offers from local scrapers.
+            FlightSearchResult with offers from the cloud engine.
         """
         import asyncio
         from letsfg.local import search_local as _search
@@ -444,9 +434,6 @@ class LetsFG:
             cabin_class=cabin_class,
             currency=currency,
             limit=limit,
-            max_browsers=max_browsers,
-            country_filter=country_filter,
-            include_global=include_global,
         ))
         return FlightSearchResult.from_dict(result_dict)
 
@@ -467,15 +454,13 @@ class LetsFG:
         currency: str = "EUR",
         limit: int = 20,
         sort: str = "price",
-        max_browsers: int | None = None,
         departure_time_from: str | None = None,
         departure_time_to: str | None = None,
     ) -> FlightSearchResult:
         """
-        Search for flights — completely FREE, runs locally on your machine.
+        Search for flights via the LetsFG cloud engine. FREE.
 
-        Fires 102 airline connectors (Ryanair, EasyJet, Wizz Air, etc.)
-        directly on your machine via Playwright + httpx. No API key needed.
+        Requires a Bearer token (`letsfg auth`). Results in 60-90 s (async polling).
 
         Args:
             origin: IATA code (e.g., "LON", "GDN", "JFK")
@@ -489,8 +474,7 @@ class LetsFG:
             max_stopovers: Max connections per direction (0-4)
             currency: 3-letter currency code
             limit: Max results (1-100)
-            sort: "price", "duration", or "departure_time"
-            max_browsers: Max concurrent browser processes (1-32, default: auto-detect).
+            sort: "price" or "duration"
             departure_time_from: Earliest departure time "HH:MM" (e.g. "06:00")
             departure_time_to: Latest departure time "HH:MM" (e.g. "14:00")
 
@@ -508,7 +492,6 @@ class LetsFG:
             cabin_class=cabin_class,
             currency=currency,
             limit=limit,
-            max_browsers=max_browsers,
         )
 
     def resolve_location(self, query: str) -> list[dict]:
@@ -529,28 +512,12 @@ class LetsFG:
             return data
         return [data] if data else []
 
-    def link_github(self, github_username: str) -> dict:
-        """
-        Link your GitHub account for free unlimited access.
-
-        Star https://github.com/LetsFG/LetsFG first, then call this
-        with your GitHub username. Once verified, you get free access
-        to unlock, book, and checkout — forever.
-
-        Args:
-            github_username: Your GitHub username.
-
-        Returns:
-            Dict with verification status and message.
-        """
-        self._require_api_key()
-        return self._post("/api/v1/agents/link-github", {"github_username": github_username})
-
     def unlock(self, offer_id: str) -> UnlockResult:
         """
-        Unlock a flight offer — confirms live price and reserves for 30 minutes.
+        Unlock a flight offer — confirms live price, reveals direct booking URL.
 
-        FREE with GitHub star (link your account first via link_github()).
+        Cost: 1% of ticket price (min $3) via Stripe or MPP crypto.
+        Free with Developer API.
         Required before booking.
 
         Args:
@@ -686,9 +653,7 @@ class LetsFG:
         Run checkout locally using Playwright — drives the airline website
         on your machine. Stops at the payment page (no charge).
 
-        This is the local-first version: the connector runs on your device,
-        but the checkout token is still verified with the backend to enforce
-        the star-gating (you must have linked your GitHub first).
+        The checkout token is verified with the backend before proceeding.
 
         Requires: playwright install chromium
 

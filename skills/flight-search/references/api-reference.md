@@ -38,20 +38,6 @@ No auth required.
 }
 ```
 
-### Link GitHub Account (optional)
-
-Connects a GitHub username to your agent profile. Not required for search, unlock, or booking.
-
-```
-POST /api/v1/agents/link-github
-```
-
-```json
-{
-  "github_username": "your-username"
-}
-```
-
 ### Setup Payment
 
 ```

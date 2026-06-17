@@ -1,6 +1,6 @@
 # letsfg-mcp — Your AI agent just learned to book flights.
 
-**200 airlines. Real prices. One tool call.** The largest open flight-search MCP server. 200 ready-to-run airline connectors fire in parallel on your machine — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Qantas, and 194 more — plus enterprise GDS/NDC providers (Amadeus, Duffel, Sabre) through the LetsFG backend.
+**Hundreds of airlines. Real prices. One tool call.** The largest open flight-search MCP server. Search is powered server-side at letsfg.co — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Qantas, and 194 more — plus enterprise GDS/NDC providers (Amadeus, Duffel, Sabre) through the LetsFG backend.
 
 **Your agent doesn't need to build a flight integration. Just add this MCP server.**
 
@@ -14,15 +14,15 @@
 
 LetsFG is not a scraper wrapper. It's a production-grade **agent-to-airline connector layer**:
 
-- **200 airline connectors** run locally on your machine via Python + Playwright — no API key needed for search
-- **Enterprise GDS/NDC feeds** (Amadeus, Duffel, Sabre, Travelport, Kiwi) run through the LetsFG backend — these are contract-only data sources that require enterprise agreements, made available to everyone through our API
+- **Hundreds of airlines** searched server-side at letsfg.co — authenticate once with a free Bearer token via `letsfg auth`
+- **Enterprise GDS/NDC feeds** (Amadeus, Duffel, Sabre, Travelport, Kiwi) are included in every search — contract-only data sources made available to everyone through the LetsFG backend
 - **Virtual interlining** — the combo engine mixes one-way fares across airlines (e.g., Ryanair outbound + Wizz Air return) to find deals no single airline offers
 - **City-wide airport expansion** — search `LON` and it auto-searches LHR, LGW, STN, LTN, SEN, LCY. Works for 25+ major cities worldwide
 - **Zero price bias** — no cookie tracking, no demand-based inflation, no surge pricing. Same raw airline price every time
 
 **Why agents should use this instead of building their own:**
 - Saves thousands of tokens vs. browser automation or scraping
-- 180 connectors fire in parallel — scans airlines across Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously
+- Server-side engine scans airlines across Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously
 - Finds deals on carriers your agent wouldn't think to check (Lucky Air, 9 Air, Jazeera Airways, FlySafair...)
 - Enterprise-contracted GDS deals that require contracts worth $50k+/year — available for free on search
 
@@ -36,13 +36,13 @@ npx letsfg-mcp
 
 That's it. The MCP server starts on stdio, ready for any MCP-compatible client.
 
-**Prerequisites for local search:**
+**Prerequisites:**
 ```bash
 pip install letsfg
-playwright install chromium
+letsfg auth
 ```
 
-**Tip:** For faster searches, use the `mode: "fast"` parameter in `search_flights` — fires only ~25 OTAs + key airlines (20-40s instead of 6+ min).
+Run `letsfg auth` once to complete the Twitter/X challenge and store a 90-day Bearer token. Search is then free and unlimited.
 
 ---
 
@@ -65,8 +65,6 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   }
 }
 ```
-
-> **Note:** Add `"LETSFG_MAX_BROWSERS": "4"` to `env` to limit browser concurrency on constrained machines.
 
 ### Cursor
 
@@ -182,52 +180,31 @@ To avoid unexpected updates:
 
 | Tool | Description | Cost | Side Effects |
 |------|-------------|------|--------------|
-| `search_flights` | Search 400+ airlines worldwide | FREE | None (read-only) |
+| `search_flights` | Search hundreds of airlines via server-side engine | FREE | None (read-only) |
 | `search_hotels` | Search 300,000+ hotels worldwide | FREE | None (read-only) |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
-| `link_github` | Link your GitHub account | FREE | Updates profile |
 | `unlock_flight_offer` | Confirm live price, reserve 30 min | — | Confirms price |
 | `book_flight` | Create real airline reservation (PNR) | Ticket price | Creates booking |
 | `setup_payment` | Attach payment card (required for booking) | FREE | Updates payment |
 | `get_agent_profile` | Usage stats & payment status | FREE | None (read-only) |
-| `start_checkout` | Automate LCC checkout to payment page | — | Browser automation |
-| `system_info` | System resources & concurrency tier | FREE | None (read-only) |
 
 ### Booking Flow
 
-**Local connectors (Path 1 — default, free):**
-
-```
-search_flights  →  [concierge unlock]  →  booking_url
-    (free)          POST /checkout + pay    direct airline link
-                     1% fee (min $3)
-```
-
-Local search results include `offer_ref` and `payment_token` on each offer. Booking links are masked by default. To get the direct airline URL:
-
-1. Call `POST https://letsfg.co/api/developers/checkout` with `offer_id`, `offer_ref`, `payment_token`, `currency`, and `price` (no API key needed) — returns a Stripe `checkout_url`.
-2. Present `checkout_url` to the user. Fee = max(price × 1%, $3.00).
-3. Poll `GET https://letsfg.co/api/developers/payment-verify?token={payment_token}` until `verified: true`. The response contains `booking_url` — the direct airline link.
-
-**Developer API (Path 3 — prepaid credits, no per-booking fee):**
-
-Search via the [Developer API](https://letsfg.co/developers) returns direct airline booking URLs on every result — no concierge flow, no per-booking checkout step. Use this path when you want raw offers at volume without per-booking fees.
-
-**Full MCP flow with local connectors:**
+**PFS (free Bearer token via `letsfg auth`):**
 
 ```
 search_flights  →  unlock_flight_offer  →  setup_payment (once)  →  book_flight
     (free)              (quote)              (attach card)        (ticket price, creates PNR)
 ```
 
-1. `search_flights("LON", "BCN", "2026-06-15")` — returns offers with prices from 200+ airlines
+1. `search_flights("LON", "BCN", "2026-06-15")` — server-side search returns offers from hundreds of airlines in 60–90 s
 2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min
 3. `setup_payment(token)` — attach a payment card once (required before booking)
 4. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket
 
-The `search_flights` tool accepts an optional `max_browsers` parameter (1–32) to limit concurrent browser instances. Omit it to auto-detect based on system RAM.
+**Developer API (prepaid credits, no per-booking fee):**
 
-The `system_info` tool returns your system profile (RAM, CPU, tier, recommended max browsers) — useful for agents to decide concurrency before searching.
+Search via the [Developer API](https://letsfg.co/developers) returns direct airline booking URLs on every result — no per-booking checkout step. Use this path when you want raw offers at volume without per-booking fees.
 
 The agent has native tools — no API docs needed, no URL building, no token-burning browser automation.
 
@@ -272,7 +249,6 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 ```
 
-Optionally, link your GitHub account with `link_github` to connect your profile.
 
 ---
 
@@ -281,41 +257,37 @@ Optionally, link your GitHub account with `link_github` to connect your profile.
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  MCP Client  (Claude Desktop / Cursor / Windsurf / etc.)     │
-│     ↕ stdio (JSON-RPC, local only)                           │
+│     ↕ stdio (JSON-RPC)                                       │
 ├──────────────────────────────────────────────────────────────┤
 │  letsfg-mcp  (this package, runs on YOUR machine)            │
 │     │                                                        │
-│     ├─→ Python subprocess (local connectors)                 │
-│     │     200 airline connectors via Playwright + httpx        │
-│     │     Data goes: your machine → airline website → back    │
-│     │                                                        │
-│     └─→ HTTPS to letsfg.co/developers/api (public API)       │
-│           unlock, book, payment, enterprise GDS search        │
+│     └─→ HTTPS to letsfg.co (all search + booking)           │
+│           search, unlock, book, payment, GDS/NDC feeds        │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+All search runs server-side at letsfg.co. No local browsers or scrapers are involved. Authenticate once with `letsfg auth` (free 90-day Bearer token via Twitter/X).
 
 ### What data goes where
 
 | Operation | Where data flows | What is sent |
 |-----------|-----------------|--------------|
-| `search_flights` (local) | Your machine → airline websites | Route, date, passenger count |
-| `search_flights` (GDS) | Your machine → letsfg.co/developers/api → GDS providers | Route, date, passenger count, API key |
-| `resolve_location` | Your machine → letsfg.co/developers/api | City/airport name |
-| `unlock_flight_offer` | Your machine → letsfg.co/developers/api → airline | Offer ID, payment token |
-| `book_flight` | Your machine → letsfg.co/developers/api → airline | Passenger name, DOB, email, phone |
-| `setup_payment` | Your machine → letsfg.co/developers/api → Stripe | Payment token (card handled by Stripe) |
+| `search_flights` | Your machine → letsfg.co → airlines + GDS providers | Route, date, passenger count |
+| `resolve_location` | Your machine → letsfg.co | City/airport name |
+| `unlock_flight_offer` | Your machine → letsfg.co → airline | Offer ID, payment token |
+| `book_flight` | Your machine → letsfg.co → airline | Passenger name, DOB, email, phone |
+| `setup_payment` | Your machine → letsfg.co → Stripe | Payment token (card handled by Stripe) |
 
 ---
 
 ## Security & Privacy
 
-- **TLS everywhere** — all backend communication uses HTTPS. Local connectors connect to airline websites over HTTPS.
+- **TLS everywhere** — all communication uses HTTPS. The server-side engine connects to airline websites over HTTPS.
 - **No card storage** — payment cards are tokenized by Stripe. LetsFG never sees or stores raw card numbers.
 - **API key scoping** — `LETSFG_API_KEY` grants access only to your agent's account. Keys are prefixed `trav_` for easy identification and revocation.
 - **PII handling** — passenger names, emails, and DOBs are sent to the airline for booking (required by airlines). LetsFG does not store passenger PII after forwarding to the airline.
 - **No tracking** — no cookies, no session-based pricing, no fingerprinting. Every search returns the same raw airline price.
-- **Local search is fully local** — when searching without an API key, zero data leaves your machine except direct HTTPS requests to airline websites. The MCP server and Python connectors run entirely on your hardware.
-- **Open source** — all connector code is MIT-licensed and auditable at [github.com/LetsFG/LetsFG](https://github.com/LetsFG/LetsFG).
+- **Open source** — the SDK and MCP server code is MIT-licensed and auditable at [github.com/LetsFG/LetsFG](https://github.com/LetsFG/LetsFG).
 
 ---
 
@@ -345,16 +317,15 @@ Or install globally and use `node` directly (see Windows config above).
 
 - Check IATA codes are correct — use `resolve_location` first
 - Try a date 2+ weeks in the future (airlines don't sell last-minute on all routes)
-- Ensure `pip install letsfg && playwright install chromium` completed successfully
-- Check Python is available: the MCP server spawns a Python subprocess for local search
+- Run `letsfg auth` if you haven't authenticated yet — a valid Bearer token is required for free search
 
-### How do I search without an API key?
+### How do I get free search without a Developer API key?
 
-Just omit `LETSFG_API_KEY` from your config. Local search (200 airline connectors) works without any key. You'll only miss the enterprise GDS/NDC sources (Amadeus, Duffel, etc.).
+Run `letsfg auth` once to complete the Twitter/X challenge. This gives you a free 90-day Bearer token for `POST /api/search`. No email or payment required. Renew by repeating the challenge.
 
 ### Can I use this for commercial projects?
 
-Yes. MIT license. The local connectors and SDK are fully open source.
+Yes. MIT license. The SDK, MCP server, and ranking engine are fully open source.
 
 ### MCP server hangs on start
 
@@ -363,7 +334,7 @@ Ensure Node.js 18+ is installed. The server communicates via stdio (stdin/stdout
 ---
 
 <details>
-<summary><strong>200 airline connectors — full list</strong></summary>
+<summary><strong>Airlines covered — sample list</strong></summary>
 
 | Region | Airlines |
 |--------|----------|

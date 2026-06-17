@@ -34,11 +34,8 @@ describe('LetsFG class', () => {
     assert.equal(typeof client.unlock, 'function');
     assert.equal(typeof client.book, 'function');
     assert.equal(typeof client.resolveLocation, 'function');
-    assert.equal(typeof client.linkGithub, 'function');
     assert.equal(typeof client.me, 'function');
     assert.equal(typeof client.setupPayment, 'function');
-    assert.equal(typeof client.startCheckout, 'function');
-    assert.equal(typeof client.startCheckoutLocal, 'function');
   });
 
   it('exposes static register method', () => {

@@ -1,28 +1,30 @@
-# Self-Hosting: HTTP Endpoints for Local Connectors
+# Backend Integration
 
-Deploy LetsFG's 200 airline connectors as HTTP endpoints on your own infrastructure. This guide covers wrapping the local search in a web server and calling it from any backend (Node.js, Next.js, Go, etc.).
+Integrate the LetsFG API into your own backend or proxy layer. All flight search runs
+server-side at letsfg.co — no local connectors or browser automation required.
 
 ---
 
-## Quick Start: FastAPI Server
+## Quick Start: FastAPI Proxy
 
-The fastest way to expose local connectors as an HTTP API.
+Wrap the LetsFG API in a FastAPI service to add caching, auth, or custom logic.
 
 ### Install
 
 ```bash
-pip install letsfg fastapi uvicorn
-playwright install chromium
+pip install fastapi uvicorn httpx
 ```
 
 ### Server (`server.py`)
 
 ```python
+import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from letsfg.local import search_local
 
-app = FastAPI(title="LetsFG Local Search")
+app = FastAPI(title="LetsFG Proxy")
+LETSFG_API_KEY = "trav_your_api_key"
+LETSFG_BASE = "https://letsfg.co/developers/api/v1"
 
 
 class SearchRequest(BaseModel):
@@ -32,30 +34,21 @@ class SearchRequest(BaseModel):
     return_date: str | None = None
     adults: int = 1
     children: int = 0
-    infants: int = 0
     currency: str = "EUR"
     limit: int = 50
-    max_browsers: int | None = None
 
 
 @app.post("/search")
 async def search(req: SearchRequest):
-    try:
-        result = await search_local(
-            origin=req.origin,
-            destination=req.destination,
-            date_from=req.date_from,
-            return_date=req.return_date,
-            adults=req.adults,
-            children=req.children,
-            infants=req.infants,
-            currency=req.currency,
-            limit=req.limit,
-            max_browsers=req.max_browsers,
+    async with httpx.AsyncClient(timeout=120) as client:
+        r = await client.post(
+            f"{LETSFG_BASE}/flights/search",
+            json=req.model_dump(exclude_none=True),
+            headers={"X-API-Key": LETSFG_API_KEY},
         )
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        return r.json()
 
 
 @app.get("/health")
@@ -79,60 +72,19 @@ curl -X POST http://localhost:8000/search \
 
 ---
 
-## Flask Alternative
-
-If you prefer Flask (lighter, simpler):
-
-```python
-import asyncio
-from flask import Flask, request, jsonify
-from letsfg.local import search_local
-
-app = Flask(__name__)
-
-
-@app.route("/search", methods=["POST"])
-def search():
-    data = request.get_json()
-    result = asyncio.run(search_local(
-        origin=data["origin"],
-        destination=data["destination"],
-        date_from=data["date_from"],
-        return_date=data.get("return_date"),
-        adults=data.get("adults", 1),
-        children=data.get("children", 0),
-        infants=data.get("infants", 0),
-        currency=data.get("currency", "EUR"),
-        limit=data.get("limit", 50),
-        max_browsers=data.get("max_browsers"),
-    ))
-    return jsonify(result)
-
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-```
-
-```bash
-pip install letsfg flask gunicorn
-gunicorn server:app --bind 0.0.0.0:8000 --workers 2 --timeout 120
-```
-
-> **Note:** Use `--timeout 120` — searches can take 10-30 seconds depending on the number of connectors matching the route.
-
----
-
 ## Calling from Node.js / Next.js
 
-Once your Python server is running, call it from any backend:
+Call the LetsFG API directly or via your proxy.
 
 ### Node.js (fetch)
 
 ```javascript
-const response = await fetch("http://localhost:8000/search", {
+const response = await fetch("https://letsfg.co/developers/api/v1/flights/search", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": process.env.LETSFG_API_KEY,
+  },
   body: JSON.stringify({
     origin: "LHR",
     destination: "BCN",
@@ -155,14 +107,17 @@ for (const offer of data.offers.slice(0, 5)) {
 // app/api/flights/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const LETSFG_URL = process.env.LETSFG_URL || "http://localhost:8000";
+const LETSFG_BASE = "https://letsfg.co/developers/api/v1";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  const res = await fetch(`${LETSFG_URL}/search`, {
+  const res = await fetch(`${LETSFG_BASE}/flights/search`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": process.env.LETSFG_API_KEY!,
+    },
     body: JSON.stringify({
       origin: body.origin,
       destination: body.destination,
@@ -212,197 +167,71 @@ interface SearchResult {
   search_id: string;
   total_results: number;
   offers: FlightOffer[];
-  elapsed_seconds: number;
+  passenger_ids: string[];
 }
 ```
 
 ---
 
-## Deployment on Dokku
+## Async Search (Polling)
 
-### Procfile
+For user-facing products that need a loading state, use the async endpoint:
 
-```
-web: uvicorn server:app --host 0.0.0.0 --port $PORT --workers 2 --timeout 120
-```
+```typescript
+async function searchWithPolling(params: object, apiKey: string) {
+  const base = "https://letsfg.co/developers/api/v1";
 
-### Aptfile (for Playwright system deps)
+  // Start async search
+  const startRes = await fetch(`${base}/flights/search/async`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+    body: JSON.stringify(params),
+  });
+  const { search_id } = await startRes.json();
 
-Create an `Aptfile` in your repo root or use the `heroku-buildpack-apt`:
-
-```
-libnss3
-libnspr4
-libatk1.0-0
-libatk-bridge2.0-0
-libcups2
-libdrm2
-libdbus-1-3
-libxkbcommon0
-libxcomposite1
-libxdamage1
-libxfixes3
-libxrandr2
-libgbm1
-libpango-1.0-0
-libcairo2
-libasound2
-```
-
-### Dockerfile (recommended for Dokku)
-
-```dockerfile
-FROM python:3.13-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-    libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
-    libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
-    libasound2 fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install chromium
-
-COPY . .
-
-EXPOSE 8000
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-keep-alive", "120"]
-```
-
-### requirements.txt
-
-```
-letsfg
-fastapi
-uvicorn
-```
-
-### Deploy
-
-```bash
-git push dokku main
+  // Poll until complete
+  while (true) {
+    await new Promise(r => setTimeout(r, 5_000));
+    const pollRes = await fetch(`${base}/flights/results/${search_id}`, {
+      headers: { "X-API-Key": apiKey },
+    });
+    const data = await pollRes.json();
+    if (data.status === "complete") return data;
+    if (data.status === "error") throw new Error(data.error);
+  }
+}
 ```
 
 ---
 
-## Performance Tips
+## Caching
 
-### Split Connectors Across Instances
-
-For maximum throughput, clone the LetsFG repository directly and split connectors into groups deployed on separate Dokku apps:
-
-```
-letsfg-eu (European carriers: Ryanair, EasyJet, Wizz, Norwegian, etc.)
-letsfg-asia (Asian carriers: AirAsia, Cebu Pacific, IndiGo, etc.)
-letsfg-americas (Americas: Southwest, JetBlue, Volaris, etc.)
-letsfg-gds (GDS/NDC connectors: Amadeus, Duffel, etc.)
-```
-
-Then aggregate results in your backend:
-
-```javascript
-// Call all connector groups in parallel
-const groups = ["http://letsfg-eu:8000", "http://letsfg-asia:8000", "http://letsfg-americas:8000"];
-
-const results = await Promise.all(
-  groups.map((url) =>
-    fetch(`${url}/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ origin: "LHR", destination: "BKK", date_from: "2026-06-15" }),
-    }).then((r) => r.json())
-  )
-);
-
-// Merge and sort by price
-const allOffers = results.flatMap((r) => r.offers);
-allOffers.sort((a, b) => a.price - b.price);
-```
-
-### Concurrency Tuning
-
-- **2 GB RAM VPS:** `max_browsers=2` — slow but works
-- **4 GB RAM VPS:** `max_browsers=4` — good balance
-- **8 GB+ RAM VPS:** `max_browsers=8` or omit (auto-detect) — fast
-- Set via request param or environment variable: `LETSFG_MAX_BROWSERS=4`
-
-### Caching
-
-Cache search results for 5-15 minutes — flight prices don't change that frequently and it reduces load on your server:
+Cache search results to reduce API credit usage. Prices are stable for 5-15 minutes.
 
 ```python
-from functools import lru_cache
-from datetime import datetime
-import hashlib, json
+import hashlib, json, time
 
-_cache = {}
+_cache: dict = {}
 
-async def cached_search(**params):
+async def cached_search(api_key: str, **params) -> dict:
     key = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()
-    now = datetime.now().timestamp()
-    if key in _cache and now - _cache[key]["ts"] < 600:  # 10 min
+    now = time.time()
+    if key in _cache and now - _cache[key]["ts"] < 600:  # 10 min TTL
         return _cache[key]["data"]
-    result = await search_local(**params)
+    result = await call_letsfg_api(api_key, **params)
     _cache[key] = {"data": result, "ts": now}
     return result
 ```
 
-### Health Checks
+---
 
-For Dokku/Docker health checks, the `/health` endpoint returns `{"status": "ok"}`. Configure your container orchestrator to check it:
+## Environment Variable
+
+Store your API key securely:
 
 ```bash
-# Dokku
-dokku checks:set letsfg-search CHECKS /health
+# .env
+LETSFG_API_KEY=trav_your_api_key
 ```
 
----
-
-## Response Format
-
-All endpoints return the same JSON structure:
-
-```json
-{
-  "search_id": "abc123",
-  "total_results": 42,
-  "elapsed_seconds": 12.5,
-  "offers": [
-    {
-      "id": "offer_xyz",
-      "price": 45.99,
-      "currency": "EUR",
-      "airlines": ["FR"],
-      "source": "ryanair",
-      "outbound": {
-        "segments": [
-          {
-            "airline": "FR",
-            "flight_no": "FR1234",
-            "origin": "STN",
-            "destination": "BCN",
-            "departure": "2026-06-15T06:30:00",
-            "arrival": "2026-06-15T09:45:00"
-          }
-        ],
-        "total_duration_seconds": 9900,
-        "stopovers": 0
-      },
-      "booking_url": "https://www.ryanair.com/..."
-    }
-  ]
-}
-```
-
----
-
-## Need Help?
-
-We provide hands-on support for deployment and integration:
-
-- **Email:** contact@letsfg.co
-- **Response time:** Typically under 1 hour
-- **GitHub Issues:** [github.com/LetsFG/LetsFG/issues](https://github.com/LetsFG/LetsFG/issues)
+Never hardcode API keys in source code or commit them to version control.

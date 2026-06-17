@@ -22,8 +22,8 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 |---------|-------------|
 | `letsfg register` | Create account and get API key |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
-| `letsfg search <origin> <dest> <date>` | Search flights (free, runs 180+ local connectors) |
-| `letsfg system-info` | Show system resources & concurrency tier |
+| `letsfg auth` | Authenticate via Twitter/X challenge to get a free 90-day Bearer token |
+| `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | Unlock offer details (payment required) |
 | `letsfg book <offer_id>` | Book the flight after unlock |
@@ -44,8 +44,6 @@ All commands accept `--json` for structured output and `--api-key` to override t
 | `--currency` | | `EUR` | 3-letter currency code |
 | `--limit` | `-l` | `20` | Maximum number of results (1–100) |
 | `--sort` | | `price` | Sort by `price` or `duration` |
-| `--mode` | `-m` | _(full)_ | `fast` = OTAs + key airlines only (~25 connectors, 20-40s) |
-| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search (1–32) |
 | `--json` | `-j` | | Output raw JSON (for agents/scripts) |
 
 ## Cabin Class Codes
@@ -64,7 +62,7 @@ If omitted, the search returns all cabin classes.
 ### Basic Search
 
 ```bash
-# One-way London to New York — queries 180+ local airline connectors
+# One-way London to New York
 letsfg search LHR JFK 2026-04-15
 
 # Round-trip with cabin class
@@ -72,15 +70,9 @@ letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
 
 # Direct flights only, JSON output
 letsfg search LON BCN 2026-04-01 --max-stops 0 --json
-
-# Limit browser concurrency for constrained environments
-letsfg search LHR BCN 2026-04-15 --max-browsers 4
-
-# Fast mode — OTAs + key airlines only (~25 connectors, 20-40s instead of 6+ min)
-letsfg search LHR BCN 2026-06-15 --mode fast
 ```
 
-All search is local — queries 180+ airline websites directly. No API key needed, just install and search.
+Search runs server-side at letsfg.co. Run `letsfg auth` once to get a free Bearer token, then search is free and unlimited.
 
 ### Multi-Passenger
 
@@ -149,18 +141,6 @@ Unlock pricing and payment mechanics follow the live public contract in Swagger.
 !!! warning "Real Passenger Details Required"
     Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.
 
-### System Info
-
-```bash
-# Show system resources and concurrency tier
-letsfg system-info
-
-# Machine-readable output
-letsfg system-info --json
-```
-
-Output includes platform, CPU cores, total/available RAM, tier name, recommended max browsers, and current setting.
-
 ### Account Recovery
 
 Lost your API key? Recover it via email verification:
@@ -179,7 +159,6 @@ The code expires in 15 minutes. Once verified, a new API key is issued and your 
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_API_KEY` | Your developer API key (for public search, account actions, unlock, and book) |
+| `LETSFG_BEARER_TOKEN` | Bearer token from `letsfg auth` (free PFS search via Twitter/X) |
+| `LETSFG_API_KEY` | Developer API key for prepaid account search, unlock, and book |
 | `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co/developers`) |
-| `LETSFG_MAX_BROWSERS` | Max concurrent browser instances for local search (1–32). Auto-detected from RAM if not set. |
-| `LETSFG_BROWSER_VISIBLE` | Set to `1` to show browser windows for debugging |

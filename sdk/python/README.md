@@ -1,20 +1,20 @@
 # LetsFG — Your AI agent just learned to book flights.
 
-**200+ airline connectors. Real prices. One function call.** Search 400+ airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs.
+**Server-side engine. Real prices. One function call.** Search hundreds of airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
 
-## Three ways to use LetsFG
+## Two ways to use LetsFG
 
-| | **Local** (this SDK) | **PFS** (Programmatic Flight Search via letsfg.co) | **Developer API** |
-|---|---|---|---|
-| **Search cost** | Free | Free (Twitter/X token, one-time setup) | Prepaid credits |
-| **Booking URL** | 1% concierge fee (min $3) via letsfg.co | 1% concierge fee (min $3) via letsfg.co | Direct airline URL, no fee |
-| **Speed** | 20–40 s (fast mode) · 1–15 min (full) | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
-| **Setup** | `pip install letsfg` | Twitter/X challenge → [letsfg.co/for-agents](https://letsfg.co/for-agents) | [letsfg.co/developers](https://letsfg.co/developers) |
+| | **CLI / SDK** (PFS Bearer token) | **Developer API** |
+|---|---|---|
+| **Search cost** | Free (Twitter/X token, one-time `letsfg auth`) | Prepaid credits |
+| **Booking URL** | 1% fee (min $3) via letsfg.co | Direct airline URL, no fee |
+| **Speed** | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
+| **Setup** | `pip install letsfg && letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
 
-> **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
+> **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no per-booking fee.
 
 ## Install
 
@@ -22,26 +22,14 @@
 pip install letsfg
 ```
 
-Search flights immediately — no account, no API key:
+Authenticate once with a free Twitter/X challenge, then search is free and unlimited:
 
 ```bash
-letsfg search-local LHR BCN 2026-06-15
+letsfg auth           # one-time Twitter/X challenge → 90-day Bearer token
+letsfg search LHR BCN 2026-06-15
 ```
 
-That fires 200+ airline connectors on your machine. **Search is free.** Booking links are delivered via the letsfg.co concierge flow (1% fee, min $3) — see [Unlocking offer results](#unlocking-offer-results) below.
-
-```bash
-# Search using only Brazilian sites
-letsfg search BSB SDU 2026-05-24 --country BR
-# Or by region
-letsfg search GRU LIM 2026-06-15 --region latin-america
-```
-
-**Short on time?** Use `--mode fast` to search only OTAs + key airlines (~25 connectors, 20-40s instead of 6+ min):
-
-```bash
-letsfg search-local LHR BCN 2026-06-15 --mode fast
-```
+**Search is free.** Booking links require unlock (1% fee, min $3) — see [Unlocking offer results](#minimizing-unlock-costs) below.
 
 ## Authentication
 
@@ -246,7 +234,7 @@ except LetsFGError as e:
 
 ### Timeout and Retry Pattern
 
-Airline APIs can be slow (2–15s for search). Use retry with backoff for production:
+Full cloud search takes 60–90 s (async polling). Use retry with backoff for transient errors:
 
 ```python
 import time
@@ -283,7 +271,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Minimizing Unlock Costs
 
-Searching is **free and unlimited**. Unlock via the Developer API is also free; via the local/website path the concierge fee (1% of ticket price, min $3) applies once per offer. Strategy:
+Searching is **free and unlimited**. Unlock via the Developer API is free; via the PFS / CLI path the fee (1% of ticket price, min $3) applies once per offer. Strategy:
 
 ```python
 # Search multiple dates (free) — compare before unlocking
@@ -301,82 +289,11 @@ if best:
     booking = bt.book(offer_id=unlocked.offer_id, passengers=[...], contact_email="...")
 ```
 
-## Local Search (No API Key)
-
-> **Note:** Local search results return masked booking links by default. Each offer includes `offer_ref` and `payment_token` fields. To get a direct airline booking URL, you have two options: use the **concierge unlock flow** (1% fee, min $3 — no API key needed) or sign up for the **Developer API** at [letsfg.co/developers](https://letsfg.co/developers) for fee-free direct links.
-
-The SDK includes 200 connectors for airlines that run directly on your machine. No API key, no backend, completely free:
-
-```python
-from letsfg.local import search_local
-
-# Fires all relevant airline connectors — Ryanair, Wizz Air, EasyJet, etc.
-result = await search_local("GDN", "BCN", "2026-06-15")
-print(f"{result['total_results']} offers from local connectors")
-
-# Limit browser concurrency for constrained environments
-result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
-```
-
-The full search (`bt.search()`) runs both local connectors and cloud providers simultaneously and merges results.
-
-## Unlocking offer results
-
-Local search results include `offer_ref` and `payment_token` on each offer. Use these to get the direct airline booking URL via the concierge flow (no API key required):
-
-```python
-import httpx
-import time
-
-# 1. Pick an offer from local search results
-offer = result["offers"][0]
-offer_id      = offer["id"]
-offer_ref     = offer["offer_ref"]
-payment_token = offer["payment_token"]
-price         = offer["price"]        # ticket price as string, e.g. "312.50"
-currency      = offer["currency"]     # e.g. "USD"
-
-# 2. Initiate checkout — returns a Stripe checkout URL
-# Fee = max(price × 1%, $3.00). No API key needed.
-resp = httpx.post(
-    "https://letsfg.co/api/developers/checkout",
-    json={
-        "offer_id":      offer_id,
-        "offer_ref":     offer_ref,
-        "payment_token": payment_token,
-        "currency":      currency,
-        "price":         price,
-    },
-)
-resp.raise_for_status()
-checkout = resp.json()
-checkout_url = checkout["checkout_url"]
-
-# 3. Present the checkout URL to the user (or open it in a browser)
-print(f"Pay here: {checkout_url}")
-
-# 4. Poll until payment is confirmed
-booking_url = None
-while not booking_url:
-    time.sleep(3)
-    verify = httpx.get(
-        "https://letsfg.co/api/developers/payment-verify",
-        params={"token": payment_token},
-    )
-    data = verify.json()
-    if data.get("verified"):
-        booking_url = data["booking_url"]
-
-# 5. booking_url is the direct airline link — no further fees
-print(f"Book here: {booking_url}")
-```
-
-To skip the per-booking fee entirely, use the [Developer API](https://letsfg.co/developers) — it returns direct airline booking URLs on every search result.
-
 ## Quick Start (CLI)
 
 ```bash
-export LETSFG_API_KEY=trav_...
+# Auth (one-time — saves Bearer token to ~/.letsfg/config.json)
+letsfg auth
 
 # Search (1 adult, one-way, economy — defaults)
 letsfg search GDN BER 2026-03-03 --sort price
@@ -420,14 +337,13 @@ letsfg locations "Berlin"
 
 | Command | Description | Cost |
 |---------|-------------|------|
+| `auth` | One-time Twitter/X challenge → 90-day Bearer token | FREE |
 | `search` | Search flights between any two airports | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
-| `unlock` | Unlock offer (confirms price, reserves 30min) | FREE |
+| `unlock` | Unlock offer (confirms price, reveals booking URL) | 1% of ticket, min $3 |
 | `book` | Book flight (creates real airline PNR) | Ticket price |
-| `search-local` | Search 200 local airline connectors | FREE |
-| `system-info` | Show system resources & concurrency tier | FREE |
-| `register` | Register new agent, get API key | FREE |
-| `setup-payment` | Attach payment card (payment token) | FREE |
+| `register` | Register new Developer API key | FREE |
+| `setup-payment` | Attach payment card (required for unlock) | FREE |
 | `me` | Show agent profile and usage stats | FREE |
 
 Every command supports `--json` for machine-readable output.
@@ -436,54 +352,14 @@ Every command supports `--json` for machine-readable output.
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_API_KEY` | Your agent API key |
-| `LETSFG_BASE_URL` | API URL (default: `https://letsfg.co/developers`) |
-| `LETSFG_MAX_BROWSERS` | Max concurrent browser instances (1–32). Auto-detected from RAM if not set. |
-
-## Performance Tuning
-
-LetsFG auto-detects your system's available RAM and scales browser concurrency:
-
-| Available RAM | Tier | Max Browsers |
-|-------------|------|-------------|
-| < 2 GB | Minimal | 2 |
-| 2–4 GB | Low | 3 |
-| 4–8 GB | Moderate | 5 |
-| 8–16 GB | Standard | 8 |
-| 16–32 GB | High | 12 |
-| 32+ GB | Maximum | 16 |
-
-```python
-from letsfg import get_system_profile, configure_max_browsers
-
-# Check system resources and recommended concurrency
-profile = get_system_profile()
-print(f"RAM: {profile['ram_available_gb']:.1f} GB available")
-print(f"Tier: {profile['tier']} → {profile['recommended_max_browsers']} browsers")
-
-# Override auto-detection
-configure_max_browsers(4)  # clamps to 1–32
-```
-
-```bash
-# Via CLI
-letsfg system-info
-letsfg system-info --json  # machine-readable
-
-# Override via env var
-export LETSFG_MAX_BROWSERS=4
-letsfg search-local LHR BCN 2026-04-15
-
-# Override via CLI flag
-letsfg search-local LHR BCN 2026-04-15 --max-browsers 4
-```
-
-Priority: env var > explicit config/flag > auto-detect.
+| `LETSFG_BEARER_TOKEN` | PFS Bearer token (from `letsfg auth`). Takes priority over `~/.letsfg/config.json`. |
+| `LETSFG_API_KEY` | Developer API key (prepaid credits path) |
+| `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co`) |
 
 ## How It Works
 
-1. **Search** — Free. 200+ connectors fire on your machine and return real-time offers.
-2. **Unlock booking URL** — Pay the concierge fee (1% of ticket price, min $3) via letsfg.co to receive the direct airline booking link. Or use the [Developer API](https://letsfg.co/developers) (prepaid credits) for fee-free direct links.
+1. **Search** — Free. The server-side engine queries hundreds of airlines and returns real-time offers.
+2. **Unlock booking URL** — Pay the concierge fee (1% of ticket price, min $3) to receive the direct airline booking link. Or use the [Developer API](https://letsfg.co/developers) (prepaid credits) for fee-free direct links.
 3. **Book** — Open the direct airline URL and complete the booking on the airline's own site.
 
 Prices are cheaper because we connect directly to airlines — no OTA markup.

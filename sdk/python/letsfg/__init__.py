@@ -1,7 +1,7 @@
 """
 LetsFG — Agent-native flight search & booking SDK.
 
-Search 400+ airlines via the LetsFG cloud API. Authenticate once with Twitter/X
+Search hundreds of airlines via the LetsFG cloud engine. Authenticate once with Twitter/X
 for a free 90-day Bearer token, then search instantly.
 
 Quick start (CLI):
@@ -33,7 +33,6 @@ from letsfg.client import (
     ErrorCode,
     ErrorCategory,
 )
-from letsfg.config import StarRequiredError
 from letsfg.models import (
     FlightOffer,
     FlightSearchResult,
@@ -51,12 +50,11 @@ __all__ = [
     "LetsFG",
     "LetsFGError",
     "BoostedTravel",      # deprecated alias
-    "BoostedTravelError", # deprecated alias,
+    "BoostedTravelError", # deprecated alias
     "AuthenticationError",
     "PaymentRequiredError",
     "OfferExpiredError",
     "ValidationError",
-    "StarRequiredError",
     "ErrorCode",
     "ErrorCategory",
     "FlightOffer",
@@ -67,12 +65,6 @@ __all__ = [
     "BookingResult",
     "Passenger",
     "AgentProfile",
-    "get_system_profile",
     "PublicFlightOffer",
     "to_public_offer",
 ]
-
-def get_system_profile():
-    """Detect system resources (RAM, CPU) and return optimal concurrency settings."""
-    from letsfg.system_info import get_system_profile as _get
-    return _get()

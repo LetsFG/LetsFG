@@ -6,11 +6,11 @@ LetsFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP 
 
 | Package | Install | What it is | API Key Required? |
 |---------|---------|------------|-------------------|
-| **Python SDK + CLI** | `pip install letsfg` | SDK + CLI + 200 local airline connectors | No (local search). Yes (cloud search, unlock, book) |
-| **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Yes |
-| **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | No (local search). Yes (cloud search, unlock, book) |
-| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed | Yes |
-| **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install | No (local search). Yes (cloud search) |
+| **Python SDK + CLI** | `pip install letsfg` | SDK + CLI, server-side search via letsfg.co | Free Bearer token (`letsfg auth`) or Developer API key |
+| **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Free Bearer token or Developer API key |
+| **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | Free Bearer token or Developer API key |
+| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed | Developer API key |
+| **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install | Developer API key |
 
 ## Python SDK
 
@@ -23,13 +23,8 @@ pip install letsfg
 Provides:
 
 - `LetsFG` client class with `search()`, `unlock()`, `book()`, `me()`, `resolve_location()`, `setup_payment()`
-- **200 local airline connectors** — run directly on your machine (Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, Qatar Airways, LATAM, Finnair, and 190+ more)
-- `search_local()` — free local-only search, no API key needed
-- `get_system_profile()` — detect system RAM/CPU and recommended concurrency
-- `configure_max_browsers(n)` — set max concurrent browser instances (1–32)
-- CLI command `letsfg` with all operations
-- Virtual interlining engine — cross-airline round-trips from one-way fares
-- Shared browser infrastructure — stealth Chrome launcher, CDP sessions, anti-bot handling
+- Server-side search via letsfg.co — Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, Qatar Airways, LATAM, Finnair, and 190+ more
+- CLI command `letsfg` with all operations, including `letsfg auth` for Bearer token setup
 - Typed response models: `FlightSearchResponse`, `UnlockResponse`, `BookingResponse`, `AgentProfile`
 - Exception classes: `AuthenticationError`, `PaymentRequiredError`, `OfferExpiredError`
 
@@ -38,15 +33,6 @@ from letsfg import LetsFG
 
 bt = LetsFG(api_key="trav_...")
 flights = bt.search("LHR", "JFK", "2026-04-15")
-```
-
-### Local Search (No API Key)
-
-```python
-from letsfg.local import search_local
-
-# Free, runs all relevant LCC connectors on your machine
-result = await search_local("GDN", "BCN", "2026-06-15")
 ```
 
 [Full Python SDK docs →](https://github.com/LetsFG/LetsFG/tree/main/sdk/python)
@@ -86,16 +72,7 @@ Model Context Protocol server for AI assistants like Claude Desktop, Cursor, and
 npx letsfg-mcp
 ```
 
-By default, the npm MCP server runs search locally on your machine by spawning `python -m letsfg.local`. That gives you free local connector search without routing flight search through the paid public API.
-
-### Local prerequisites
-
-```bash
-pip install letsfg
-playwright install chromium
-```
-
-Add `LETSFG_API_KEY` only when you want account-linked operations such as payment setup, unlock, booking, or profile inspection.
+The MCP server connects to the letsfg.co server-side engine. Add `LETSFG_BEARER_TOKEN` (from `letsfg auth`) for free search, or `LETSFG_API_KEY` for the Developer API.
 
 ### Configuration
 
@@ -119,9 +96,9 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LETSFG_API_KEY` | (none) | API key for account, payment, unlock, and booking operations |
+| `LETSFG_BEARER_TOKEN` | (none) | Bearer token from `letsfg auth` (free PFS search) |
+| `LETSFG_API_KEY` | (none) | Developer API key for account, payment, unlock, and booking |
 | `LETSFG_BASE_URL` | `https://letsfg.co/developers` | Override the website-owned public API base |
-| `LETSFG_PYTHON` | `python3` | Override the Python executable used for local search |
 
 ### Remote MCP (Streamable HTTP)
 
@@ -139,10 +116,9 @@ For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 
 | Tool | Description |
 |------|-------------|
-| `search_flights` | Search locally by default; remote MCP uses the paid public developer API |
+| `search_flights` | Search via the letsfg.co server-side engine |
 | `get_agent_profile` | View account info and usage stats |
 | `resolve_location` | Convert city names to IATA codes |
-| `system_info` | System resources & recommended concurrency |
 | `setup_payment` | Attach a Stripe payment method |
 | `unlock_flight_offer` | Confirm price and reserve (payment required) |
 | `book_flight` | Create airline booking after unlock |
@@ -151,10 +127,10 @@ For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 
 ### Which MCP path should you use?
 
-| Path | Search mode | Billing | Best for |
-|------|-------------|---------|----------|
-| `npx letsfg-mcp` | Local on your machine | Optional for account-linked actions | Free connector search in Claude, Cursor, and Windsurf |
-| `https://letsfg.co/developers/api/mcp` | Managed public search | Required | Hosted, account-managed search through the paid public API |
+| Path | Search mode | Auth | Best for |
+|------|-------------|------|----------|
+| `npx letsfg-mcp` | Server-side at letsfg.co | Bearer token (`letsfg auth`) or Developer API key | Free search in Claude, Cursor, and Windsurf |
+| `https://letsfg.co/developers/api/mcp` | Server-side at letsfg.co | Developer API key required | Account-managed search through the paid public API |
 
 ## API Endpoints
 

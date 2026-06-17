@@ -4,19 +4,19 @@
 
 ## What is LetsFG?
 
-LetsFG is the largest agent-native flight search and booking toolkit. It gives your agent **ready-to-run connectors to 180+ airlines** — not scrapers you have to maintain, but production-grade integrations that work out of the box. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
+LetsFG is the largest agent-native flight search and booking toolkit. It gives your agent access to a server-side search engine covering hundreds of airlines — production-grade, maintained by LetsFG, not scrapers you have to keep alive. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
 
-**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. LetsFG replaces all of that with a single function call that fires 180+ airline connectors in parallel, scanning the entire world for the best deals — including airlines your agent has never heard of.
+**Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. LetsFG replaces all of that with a single function call that triggers hundreds of airline connectors in parallel on our servers, scanning the entire world for the best deals — including airlines your agent has never heard of.
 
 ### How it works:
 
-**180+ local airline connectors** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and 170+ more. These run directly on your machine via Python + Playwright. No API key needed, completely free, unlimited searches.
+**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Authenticate once with a free Twitter/X Bearer token (or a Developer API key), then search is free and unlimited.
 
 ### What makes this different from flight websites:
 
 - **Zero price bias** — no demand-based inflation, no cookie tracking, no surge pricing. The same flight that costs $350 on a travel website is typically **$20–$50 cheaper** here because you're getting the raw airline price.
-- **180+ airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
-- **Virtual interlining** — the combo engine builds cross-airline round-trips (e.g., Ryanair outbound + Wizz Air return) that save 30-50% vs booking with either airline alone.
+- **Hundreds of airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
+- **Virtual interlining** — the server-side combo engine builds cross-airline round-trips (e.g., Ryanair outbound + Wizz Air return) that save 30-50% vs booking with either airline alone.
 - **Token-efficient** — one tool call replaces what would take thousands of tokens of browser automation, scraping setup, and HTML parsing. Results come back as structured JSON.
 - **Works with any agent** — OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, or any MCP-compatible client. Also available as Python SDK, JS SDK, and CLI.
 
@@ -26,14 +26,12 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **Local** (CLI / SDK / MCP-local) | Personal use, experimentation, local agents | 20–40 s (fast mode) · 1–15 min (full) | Free search; unlock 1% (min $3) |
+| **CLI / SDK / MCP** (PFS Bearer token) | Personal use, experimentation, any agent | 60–90 s | Free search; unlock 1% (min $3) |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
-| **PFS — Website API** ([letsfg.co/for-agents](https://letsfg.co/for-agents)) | Agents that can't run browsers (OpenClaw, serverless, etc.) — **Twitter/X Bearer token required** | 60–90 s | Free search; unlock 1% (min $3) |
 
 **Quick decision:**
-- You have Python + Playwright on the host → **use local search** (free, unlimited, described below).
-- You're in a cloud/serverless environment or need guaranteed speed for a product → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
-- You're an OpenClaw agent or just want server-side search → **register a Bearer token** at [letsfg.co/for-agents](https://letsfg.co/for-agents), then `POST /api/search`. The website requires Cloudflare Turnstile (human-only) — Bearer token is the only programmatic path.
+- You want free search with no credits → **use the CLI / SDK** with a free PFS Bearer token (`letsfg auth`, described below).
+- You need guaranteed speed for a product, or want direct booking URLs with no per-booking fee → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
 
 > **Important:** `GET /en?q=...` does not work for automated agents. The website is protected by Cloudflare Turnstile. All agent/script access must use `POST /api/search` with a Bearer token.
 
@@ -56,7 +54,7 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **LetsFG** | **20–40 s (fast mode) · 60–90 s (server-side)** | **1 tool call** | **180+ airlines in parallel** | **We maintain it** |
+| **LetsFG** | **60–90 s** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
 
 Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **LetsFG returns the raw airline price every time.**
 
@@ -76,20 +74,28 @@ Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate price
 
 ### 1. Search (FREE, unlimited)
 ```
-POST /api/v1/flights/search
+POST /api/search                  # PFS — Bearer token
+POST /api/v1/flights/search       # Developer API — X-API-Key
 ```
-Search 180+ airlines via local connectors running on your machine. Returns real-time prices with zero markup or bias. Completely free, no limits.
+Search hundreds of airlines via the server-side engine. Returns real-time prices with zero markup or bias. Completely free, no limits.
 
-**Search runs locally** (no API key needed):
+**CLI / SDK (PFS Bearer token — free):**
 ```python
-from letsfg.local import search_local
-result = await search_local("GDN", "BCN", "2026-06-15")
+from letsfg import LetsFG
 
-# Fast mode — OTAs + key airlines only, 20-40s
-result = await search_local("GDN", "BCN", "2026-06-15", mode="fast")
+bt = LetsFG()  # reads LETSFG_BEARER_TOKEN or ~/.letsfg/config.json
+result = bt.search("GDN", "BCN", "2026-06-15")
+```
 
-# Limit concurrency on constrained machines
-result = await search_local("GDN", "BCN", "2026-06-15", max_browsers=4)
+**cURL (PFS):**
+```bash
+curl -X POST https://letsfg.co/api/search \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"origin":"GDN","destination":"BCN","date_from":"2026-06-15"}'
+# → {"search_id": "abc123"}
+# Poll every 10s:
+curl https://letsfg.co/api/results/abc123
 ```
 
 ### 2. Unlock (1% fee, min $3)
@@ -170,10 +176,13 @@ The booking URL takes you (or your user) directly to the airline's checkout with
 pip install letsfg
 ```
 
-This gives you the `letsfg` CLI command. **Everything works immediately — no API key, no registration needed:**
+This gives you the `letsfg` CLI command. Authenticate once with `letsfg auth` (free, uses Twitter/X), then search is free and unlimited:
 
 ```bash
-# Search flights — completely free, no setup
+# One-time auth (Twitter/X challenge → 90-day Bearer token)
+letsfg auth
+
+# Search flights — completely free after auth
 letsfg search LHR BCN 2026-06-15
 
 # Add a payment card (one-time setup, required before unlock)
@@ -181,9 +190,6 @@ letsfg setup-payment
 
 # Round trip
 letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
-
-# Fast mode — OTAs + key airlines only (~25 connectors, 20-40s instead of 6+ min)
-letsfg search LON BCN 2026-04-01 --mode fast
 
 # Multi-passenger: 2 adults + 1 child, business class
 letsfg search LHR SIN 2026-06-01 --adults 2 --children 1 --cabin C
@@ -220,8 +226,6 @@ letsfg search GDN BER 2026-03-03 --json
 | `--sort` | | `price` | `price`, `duration`, or `departure_time` |
 | `--departure-from` | | _(none)_ | Earliest departure time `HH:MM` (e.g. `06:00`) |
 | `--departure-to` | | _(none)_ | Latest departure time `HH:MM` (e.g. `14:00`) |
-| `--mode` | `-m` | _(full)_ | `fast` = OTAs + key airlines only (~25 connectors, 20-40s) |
-| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search (1–32) |
 | `--json` | `-j` | | JSON output for machine consumption |
 
 ### Python SDK
@@ -288,7 +292,8 @@ npx letsfg-mcp
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `letsfg register` | Get your API key | Free |
+| `letsfg auth` | One-time Twitter/X challenge → 90-day Bearer token (PFS access) | Free |
+| `letsfg register` | Get a Developer API key (prepaid credits, no per-booking fee) | Free |
 | `letsfg recover --email <email>` | Recover lost API key via email | Free |
 | `letsfg search <origin> <dest> <date>` | Search flights (no booking links) | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
@@ -710,11 +715,12 @@ if candidates:
 
 The API has generous limits. Search is completely free and unlimited.
 
-| Endpoint | Rate Limit | Typical Latency | Timeout |
-|----------|-----------|-----------------|----------|
-| Search | 60 req/min per agent | 2-15s (depends on airline APIs) | 30s |
-| Resolve location | 120 req/min per agent | <1s | 5s |
-| Unlock | 20 req/min per agent | 2-5s | 15s |
+| Endpoint | Rate Limit | Typical Latency | Notes |
+|----------|-----------|-----------------|-------|
+| Search (PFS / Dev API full) | 60 req/min per agent | 60–90 s | Async: POST returns `search_id` instantly, poll `/results/<id>` every 10 s |
+| Search (Dev API discover) | 60 req/min per agent | 2–5 s | Synchronous, up to 20 destinations |
+| Resolve location | 120 req/min per agent | <1 s | |
+| Unlock | 20 req/min per agent | 2–5 s | |
 
 **Rate limit handling:**
 
@@ -795,33 +801,41 @@ def find_cheapest_date(bt, origin, dest, dates):
 
 ### Advanced Preference Evaluation
 
-Instead of always picking the cheapest, score offers by weighted criteria:
+Instead of always picking the cheapest, use the **open-source LetsFG ranking engine** — the exact same algorithm that runs at letsfg.co. It scores offers across 9 dimensions (price, stops, duration, departure time, arrival time, baggage, savings, comfort hours, layover quality) and selects the best offer using 12 weight profiles that adapt to trip context and purpose.
+
+**JavaScript/TypeScript (npm: `letsfg`):**
+```typescript
+import { rankOffers } from 'letsfg'
+
+const { ranked } = rankOffers(flights.offers, {
+  tripPurpose: 'business',  // or 'honeymoon', 'beach', 'city_break', etc.
+  wantsDirectFlight: true,
+  requiresBag: true,
+})
+
+const best = ranked[0]
+console.log(`Best: ${best.price} ${best.currency} — score: ${best._score.total}`)
+```
+
+The ranking source is in `sdk/js/src/ranking.ts` — inspect and fork it. For Python agents that want simple weighted scoring without the full JS engine:
 
 ```python
 def score_offer(offer, weights=None):
-    """Score a flight (lower = better). Weights sum to 1.0."""
-    w = weights or {"price": 0.4, "duration": 0.3, "stops": 0.2, "airline": 0.1}
-    preferred = {"British Airways", "Delta", "United", "Lufthansa", "KLM"}
-    
+    """Simple weighted score (lower = better). For the full 9-dimension engine, use the JS SDK."""
+    w = weights or {"price": 0.4, "duration": 0.3, "stops": 0.2}
     price_norm = offer.price / 2000
     dur_norm = (offer.outbound.total_duration_seconds / 3600) / 24
     stops_norm = offer.outbound.stopovers / 3
-    airline_norm = 0 if any(a in preferred for a in offer.airlines) else 1
-    
-    return (w["price"] * price_norm + w["duration"] * dur_norm +
-            w["stops"] * stops_norm + w["airline"] * airline_norm)
+    return w["price"] * price_norm + w["duration"] * dur_norm + w["stops"] * stops_norm
 
-# Usage
 flights = bt.search("LHR", "JFK", "2026-06-01", limit=50)
-best = min(flights.offers, key=lambda o: score_offer(o, {
-    "price": 0.3, "duration": 0.4, "stops": 0.2, "airline": 0.1
-}))
+best = min(flights.offers, key=score_offer)
 ```
 
 Adjust weights based on user preferences:
-- Business traveler: `{"duration": 0.5, "stops": 0.3, "price": 0.1, "airline": 0.1}`
-- Budget traveler: `{"price": 0.7, "stops": 0.15, "duration": 0.1, "airline": 0.05}`
-- Comfort traveler: `{"stops": 0.4, "duration": 0.3, "airline": 0.2, "price": 0.1}`
+- Business traveler: `{"duration": 0.5, "stops": 0.3, "price": 0.2}`
+- Budget traveler: `{"price": 0.7, "stops": 0.15, "duration": 0.15}`
+- Comfort traveler: `{"stops": 0.4, "duration": 0.35, "price": 0.25}`
 
 ### Data Persistence for Price Tracking
 
@@ -995,35 +1009,46 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
 
-## Website Bearer Token — Higher Rate Limits for Automated Agents
+## PFS Bearer Token Auth (Free — CLI / SDK / Direct API)
 
-If you use **letsfg.co** (Path 2 — no local browser install), you can register a free 90-day Bearer token tied to your Twitter/X account. This gives your agent a separate, higher rate-limit bucket keyed to your handle instead of your IP address. No email, no payment, no account creation required.
+The CLI, Python SDK, and JS SDK all use the PFS (Programmatic Flight Search) Bearer token for authentication. This is the primary free access path — no email required, no payment, no credits. One-time Twitter/X challenge flow issues a 90-day token tied to your handle.
 
-**Flow (3 steps):**
+**CLI (recommended):**
+```bash
+letsfg auth
+# Opens Twitter/X challenge flow → saves token to ~/.letsfg/config.json
+```
 
+**cURL (manual flow):**
 ```bash
 # Step 1: request a challenge
 curl -s -X POST https://letsfg.co/api/agent-access/request
-# → {"challenge_code":"ABCD5678","challenge_signed":"eyJ...","expires_at":"...","tweet_text":"Challenge: ABCD5678 @LetsFG https://letsfg.co/for-agents"}
+# → {"challenge_code":"ABCD5678","expires_at":"...","tweet_text":"Challenge: ABCD5678 @LetsFG https://letsfg.co"}
 
-# Step 2: post the tweet_text from Step 1 using your Twitter/X account (public tweet, expires in 30 min)
+# Step 2: post the tweet_text from Step 1 using your Twitter/X account (public tweet, valid for 30 min)
 
-# Step 3: verify — swap the tweet URL + challenge_signed for a token
+# Step 3: verify — submit the challenge_code to get your token
 curl -s -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
-  -d '{"tweet_url":"https://twitter.com/youraccount/status/...","challenge_signed":"eyJ..."}'
+  -d '{"challenge_code":"ABCD5678"}'
 # → {"token":"eyJ...","handle":"youraccount","expires_at":"2026-08-25T..."}
 ```
 
 **Using the token:**
 
 ```bash
-# Include on every request to letsfg.co
-curl https://letsfg.co/api/results/{searchId} \
-  -H "Authorization: Bearer eyJ..."
+# Search
+curl -X POST https://letsfg.co/api/search \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"origin":"LHR","destination":"JFK","date_from":"2026-06-01"}'
+# → {"search_id":"abc123"}
+
+# Poll results (no auth needed)
+curl https://letsfg.co/api/results/abc123
 ```
 
-Token lifetime: 90 days. Renew by repeating the 3-step flow. Full docs: https://letsfg.co/for-agents
+Token lifetime: 90 days. Renew by repeating the 3-step flow.
 
 ## API Discovery
 

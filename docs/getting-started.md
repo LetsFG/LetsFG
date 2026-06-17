@@ -1,18 +1,19 @@
 # Getting Started
 
 <div class="docs-callout">
-  <strong>Pick the correct path first.</strong> If you only want to run local connector search from the SDK or repo, stop after Option A. You do not need to create a paid public developer account just to search locally.
+  <strong>Pick the correct path first.</strong> Use Option A (free Bearer token) if you want search with no credit card. Use Option B (Developer API) if you want direct airline booking URLs or managed billing.
 </div>
 
 ## Choose the right mode
 
 | Mode | Best for | Setup | Search cost | Booking URL |
 |------|----------|-------|-------------|-------------|
-| Local search | SDK users, repo clones, connector debugging, wide local sweeps | Install only | Free | 1% concierge fee (min $3) via letsfg.co |
-| letsfg.co (website / agent API) | Agents without local browsers, humans, zero-install | None | Free | 1% concierge fee (min $3) via letsfg.co |
+| CLI / SDK (Bearer token) | Agents, developers, zero-cost search | `pip install letsfg` then `letsfg auth` | Free | 1% concierge fee (min $3) via letsfg.co |
 | Public Developer API | Managed cloud search, products, teams, no per-booking fee | Register, attach Stripe, top up balance | Prepaid credits | Direct airline URLs, no fee |
 
-## Option A: Free local search
+## Option A: Free search with Bearer token
+
+All search runs server-side at letsfg.co. No local browsers or Playwright required.
 
 ### 1. Install
 
@@ -20,39 +21,36 @@
 pip install letsfg
 ```
 
-### 2. Run the first search
+### 2. Authenticate once
+
+```bash
+letsfg auth
+```
+
+This starts the Twitter/X challenge flow. Post the provided tweet from your account, then confirm. Your 90-day Bearer token is saved automatically. Renew by repeating this step.
+
+### 3. Run the first search
 
 ```bash
 letsfg search LHR BCN 2026-06-15
 ```
 
-That default CLI search runs connectors locally on your machine. No signup, no payment method, and no balance top-up are required.
+No payment method required. Search is free and unlimited with the Bearer token.
 
-### 3. Use Python local search when you need programmatic control
+### 4. Use the Python SDK for programmatic control
 
 ```python
-from letsfg.local import search_local
+from letsfg import LetsFG
 
-result = await search_local("GDN", "BCN", "2026-06-15")
+bt = LetsFG()  # uses LETSFG_BEARER_TOKEN from environment
+result = bt.search("GDN", "BCN", "2026-06-15")
 for offer in result.offers[:5]:
     print(f"{offer.airlines[0]}: {offer.currency} {offer.price}")
 ```
 
-### 4. Optional fast mode
+### Unlocking search results (concierge flow)
 
-```bash
-letsfg search LHR BCN 2026-06-15 --mode fast
-```
-
-Use `--mode fast` when you want a quicker local sweep across high-coverage OTAs and key airlines.
-
-## Unlocking local search results (concierge flow)
-
-Local search results (Path 1) return `offer_ref` and `payment_token` fields alongside each offer. The booking links in local results are masked by default. You have two options to get the direct airline URL:
-
-**Option 1: Concierge unlock (1% fee, min $3.00)**
-
-No API key required. Call the checkout endpoint with the offer details, pay via Stripe, then poll to receive the direct airline booking link.
+PFS search results include `offer_ref` and `payment_token` fields. To get the direct airline URL, pay the concierge fee (1% of ticket, min $3.00) via the checkout flow or use the Developer API for fee-free direct links.
 
 ```bash
 # Step 1 — initiate checkout
@@ -74,11 +72,7 @@ curl "https://letsfg.co/api/developers/payment-verify?token=<payment_token>"
 # Returns: { "verified": true, "booking_url": "https://airline.com/..." }
 ```
 
-Keep polling `payment-verify` every few seconds until `verified` is `true`. The `booking_url` in the response is the direct airline link.
-
-**Option 2: Developer API (no per-booking fee)**
-
-Sign up at [letsfg.co/developers](https://letsfg.co/developers) for prepaid credits. Developer API searches return direct airline booking URLs with no concierge fee and no checkout step. See [Option B](#option-b-public-developer-api) below for setup.
+Keep polling `payment-verify` every few seconds until `verified` is `true`.
 
 ---
 
@@ -175,7 +169,7 @@ The profile response shows whether payment is ready, whether API access is enabl
 | `403 Fund your prepaid API balance before using flight search` | The key exists but public search is not activated | Fund balance through `POST /agents/top-up` |
 | `400` on `setup-payment` | Raw card data or browser checkout fields were sent | Send only Stripe-generated `payment_method_id` or `token` |
 
-## Search flags for local CLI mode
+## Search flags
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -187,17 +181,4 @@ The profile response shows whether payment is ready, whether API access is enabl
 | `--currency` | | `EUR` | 3-letter currency code |
 | `--limit` | `-l` | `20` | Maximum number of results |
 | `--sort` | | `price` | Sort by `price` or `duration` |
-| `--mode` | `-m` | _(full)_ | `fast` reduces local search fan-out |
-| `--max-browsers` | `-b` | _(auto)_ | Max concurrent browsers for local search |
 | `--json` | `-j` | | Output raw JSON |
-
-## Performance tuning for local mode
-
-LetsFG auto-detects RAM and scales browser concurrency. Override only when you know the machine needs a smaller or larger local fan-out.
-
-```bash
-letsfg system-info
-
-export LETSFG_MAX_BROWSERS=4
-letsfg search LHR BCN 2026-06-15 --max-browsers 4
-```

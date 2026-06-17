@@ -3,20 +3,26 @@ info:
   title: LetsFG API
   version: 0.2.16
   description: |
-    Agent-native flight search & booking API. 400+ airlines, 102 direct airline connectors,
-    virtual interlining — built for AI agents (OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf) and developers.
+    Agent-native flight search & booking API. Hundreds of airlines, virtual interlining —
+    built for AI agents (OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf) and developers.
 
     ## How It Works
-    1. **Search** (free) — real-time offers from 400+ airlines
-    2. **Unlock** (free with GitHub star) — confirm live price, reserve for 30 minutes
-    3. **Book** (free) — create real airline PNR
-
-    ## Local Search
-    The Python SDK runs 140 airline connectors locally with adaptive browser concurrency
-    that auto-scales based on system RAM. Override with `LETSFG_MAX_BROWSERS` env var.
+    1. **Search** (free) — real-time offers from hundreds of airlines
+    2. **Unlock** (1% of ticket, min $3) — confirm live price, reveal direct booking URL
+    3. **Book** (ticket price, Developer API only) — create real airline PNR
 
     ## Authentication
-    Pass your API key via the `X-API-Key` header. Get one free:
+    Two paths:
+
+    **PFS Bearer token** (free search): One-time Twitter/X challenge via `letsfg auth` (90-day token).
+    ```
+    curl -X POST https://letsfg.co/api/agent-access/request
+    # post the tweet_text, then:
+    curl -X POST https://letsfg.co/api/agent-access/verify -d '{"challenge_code":"..."}'
+    # -> {"token": "eyJ..."}
+    ```
+
+    **Developer API key** (prepaid credits, no per-booking fee):
     ```
     pip install letsfg
     letsfg register --name my-agent --email you@example.com
@@ -422,8 +428,8 @@ paths:
   /api/v1/agents/setup-payment:
     post:
       operationId: setupPayment
-      summary: Set up payment method (legacy)
-      description: "Legacy Stripe payment method. Use link-github instead for free access."
+      summary: Set up payment method
+      description: "Attach a Stripe payment method. Required before unlock (PFS path) or book."
       tags: [Authentication]
       requestBody:
         required: true
@@ -437,48 +443,12 @@ paths:
         '401':
           description: Invalid or missing API key
 
-  /api/v1/agents/link-github:
-    post:
-      operationId: linkGithub
-      summary: Link GitHub account for free access
-      description: |
-        Star the LetsFG repo (https://github.com/LetsFG/LetsFG) and provide your GitHub
-        username to get free unlimited access. One-time setup — access is permanent.
-      tags: [Authentication]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [github_username]
-              properties:
-                github_username:
-                  type: string
-                  description: Your GitHub username
-                  example: "octocat"
-      responses:
-        '200':
-          description: Verification result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [verified, star_required, already_verified]
-                  github_username:
-                    type: string
-        '401':
-          description: Invalid or missing API key
-
   /api/v1/flights/search:
     post:
       operationId: searchFlights
       summary: Search flights
       description: |
-        Search 400+ airlines for flights. Free and unlimited.
+        Search hundreds of airlines for flights. Free and unlimited.
         Results include price, airlines, duration, stopovers, and booking conditions.
         City codes (LON, NYC, PAR) automatically expand to all airports in that city.
       tags: [Flights]
@@ -527,10 +497,10 @@ paths:
   /api/v1/bookings/unlock:
     post:
       operationId: unlockOffer
-      summary: Unlock a flight offer (free)
+      summary: Unlock a flight offer
       description: |
-        Confirm the live price with the airline and reserve for 30 minutes.
-        Free with GitHub star verification. Call link-github first.
+        Confirm the live price with the airline and reveal the direct booking URL.
+        Cost: 1% of ticket price (min $3) via Stripe card or MPP crypto. Free with Developer API.
         The confirmed price may differ from the search price (airline prices change in real-time).
       tags: [Bookings]
       requestBody:
@@ -558,7 +528,7 @@ paths:
       operationId: bookFlight
       summary: Book a flight
       description: |
-        Create a real airline booking (PNR). Free after unlock.
+        Create a real airline booking (PNR). Ticket price charged via Stripe.
         Passenger names must match government ID. E-ticket sent to contact email.
       tags: [Bookings]
       requestBody:

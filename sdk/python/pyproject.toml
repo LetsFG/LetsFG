@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "letsfg"
 version = "2026.5.79"
-description = "Flight search & booking for AI agents. 200+ airline connectors run locally, free. Direct booking URLs via letsfg.co concierge or Developer API."
+description = "Flight search & booking for AI agents. Server-side engine covers hundreds of airlines. Free search via Bearer token or prepaid Developer API."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -15,7 +15,7 @@ authors = [
 keywords = [
     "flights", "travel", "booking", "agent", "ai", "cli",
     "autonomous", "mcp", "openai", "airline", "ndc",
-    "scraper", "low-cost", "ryanair", "wizzair", "easyjet",
+    "low-cost", "flight-search", "pfs",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -35,12 +35,6 @@ dependencies = [
     "httpx>=0.25.0",
     "airportsdata>=20240101",
     "requests>=2.31.0",
-    "playwright>=1.40.0",
-    "beautifulsoup4>=4.12.0",
-    "lxml>=5.0.0",
-    "curl_cffi>=0.7.0",
-    "playwright_stealth>=1.0.6",
-    "aiohttp>=3.9.0",
     "typer>=0.9.0",
     "rich>=13.0.0",
     "click>=8.0,<8.2",
@@ -49,10 +43,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-]
-all = [
-    "nodriver>=0.38",
-    "patchright>=1.0",
 ]
 
 [project.scripts]
@@ -68,7 +58,7 @@ Issues = "https://github.com/LetsFG/LetsFG/issues"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "live: test performs real network or browser calls. Excluded from the deterministic Tier-1 gate (`pytest -m \"not live\"`); run nightly / on demand. See connectors/tests/smoke_harness.py for targeted live coverage.",
+    "live: test performs real network calls. Excluded from the deterministic Tier-1 gate (`pytest -m \"not live\"`); run nightly / on demand.",
 ]
 
 [tool.hatch.build.targets.wheel]

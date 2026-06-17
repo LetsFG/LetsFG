@@ -60,7 +60,7 @@ While running:
   "destination": "LAX",
   "offers": [],
   "total_results": 0,
-  "progress": "Searching across 180+ airlines…"
+  "progress": "Searching across hundreds of airlines…"
 }
 ```
 

@@ -2,7 +2,7 @@
 LetsFG Programmatic Flight Search — quickstart.
 
 Auth is free (Twitter/X challenge, ~30s) and lasts 90 days.
-Once authenticated, searches return in seconds from 400+ airlines.
+Once authenticated, searches run via the LetsFG cloud engine across hundreds of airlines.
 
 Run:
     pip install letsfg

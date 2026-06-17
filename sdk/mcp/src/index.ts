@@ -2,11 +2,9 @@
 /**
  * LetsFG MCP Server — Model Context Protocol integration.
  *
- * All search runs locally — spawns Python subprocess on your machine to run
- * 200 airline connectors. No backend calls for search or location resolution.
- * Requires: pip install letsfg && playwright install chromium
- *
- * Uses backend API only for unlock/book/payment operations (requires API key).
+ * All search runs server-side at letsfg.co — no local browsers or Python required.
+ * Authenticate once: `letsfg auth` (Twitter/X challenge) sets LETSFG_BEARER_TOKEN,
+ * or use a Developer API key (LETSFG_API_KEY) for prepaid credits.
  *
  * Usage in Claude Desktop / Cursor config:
  * {
@@ -15,63 +13,92 @@
  *       "command": "npx",
  *       "args": ["-y", "letsfg-mcp"],
  *       "env": {
- *         "LETSFG_API_KEY": "trav_your_api_key"
+ *         "LETSFG_BEARER_TOKEN": "eyJ..."
  *       }
  *     }
  *   }
  * }
- *
- * Rate limits: 10 searches/minute. The server returns rate limit info in results.
  */
 
 import * as readline from 'readline';
-import { spawn } from 'child_process';
 
 // ── Config ──────────────────────────────────────────────────────────────
 
-const BASE_URL = (process.env.LETSFG_BASE_URL || process.env.BOOSTEDTRAVEL_BASE_URL || 'https://letsfg.co/developers').replace(/\/$/, '');
-const API_KEY = process.env.LETSFG_API_KEY || process.env.BOOSTEDTRAVEL_API_KEY || '';
-const PYTHON = process.env.LETSFG_PYTHON || process.env.BOOSTEDTRAVEL_PYTHON || 'python3';
-const VERSION = '1.2.1';
+const BASE_URL = (process.env.LETSFG_BASE_URL || 'https://letsfg.co').replace(/\/$/, '');
+const BEARER_TOKEN = process.env.LETSFG_BEARER_TOKEN || '';
+const API_KEY = process.env.LETSFG_API_KEY || '';
+const VERSION = '1.3.0';
 
-// ── Local Python Search (runs on your machine, no backend) ──────────────
+const PFS_POLL_INTERVAL_MS = 10_000;
+const PFS_POLL_TIMEOUT_MS = 120_000;
 
-function searchLocal(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-  return new Promise((resolve) => {
-    const input = JSON.stringify(params);
-    // Try python3 first, fall back to python (Windows)
-    const pythonCmd = process.platform === 'win32' ? 'python' : PYTHON;
-    const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 180_000,
-    });
+// ── Cloud Search (PFS Bearer token path) ───────────────────────────────
 
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-
-    child.on('close', (code) => {
-      if (stderr) process.stderr.write(`[letsfg] ${stderr}\n`);
-      try {
-        resolve(JSON.parse(stdout));
-      } catch {
-        resolve({ error: `Python search failed (code ${code}): ${stdout || stderr}` });
-      }
-    });
-
-    child.on('error', (err) => {
-      resolve({
-        error: `Cannot start Python. Install the letsfg package:\n` +
-          `  pip install letsfg && playwright install chromium\n` +
-          `Detail: ${err.message}`,
-      });
-    });
-
-    child.stdin.write(input);
-    child.stdin.end();
+async function searchPFS(params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const resp = await fetch(`${BASE_URL}/api/search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${BEARER_TOKEN}`,
+      'User-Agent': `letsfg-mcp/${VERSION}`,
+    },
+    body: JSON.stringify(params),
   });
+
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
+    return { error: true, status_code: resp.status, detail: (data as Record<string, string>).detail || `HTTP ${resp.status}` };
+  }
+
+  const { search_id } = await resp.json() as { search_id: string };
+
+  const deadline = Date.now() + PFS_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
+    const pollResp = await fetch(`${BASE_URL}/api/results/${search_id}`, {
+      headers: { 'User-Agent': `letsfg-mcp/${VERSION}` },
+    });
+    if (pollResp.ok) {
+      const result = await pollResp.json() as Record<string, unknown>;
+      if (result.status !== 'pending') return result;
+    }
+  }
+  return { error: true, detail: 'Search timed out after 120s.' };
+}
+
+// ── API Client ──────────────────────────────────────────────────────────
+
+async function apiRequest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'User-Agent': `letsfg-mcp/${VERSION}`,
+    'X-Client-Type': 'mcp',
+  };
+
+  if (BEARER_TOKEN) {
+    headers['Authorization'] = `Bearer ${BEARER_TOKEN}`;
+  } else if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+
+  const resp = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const data = await resp.json();
+  if (resp.status >= 400) {
+    return { error: true, status_code: resp.status, detail: (data as Record<string, string>).detail || JSON.stringify(data) };
+  }
+  return data;
+}
+
+async function resolveLocationCloud(query: string): Promise<unknown> {
+  const path = API_KEY
+    ? `/developers/api/v1/flights/locations/${encodeURIComponent(query)}`
+    : `/api/locations?q=${encodeURIComponent(query)}`;
+  return apiRequest('GET', path);
 }
 
 // ── Resources ───────────────────────────────────────────────────────────
@@ -80,20 +107,23 @@ const GUIDE_TEXT =
   '# LetsFG — Flight Search & Booking Guide\n' +
   '\n' +
   '## How It Works (3-Step Flow)\n' +
-  '1. **search_flights** (FREE, unlimited) — Searches 200+ airline connectors locally on your machine. Returns prices, airlines, times, durations, stopovers. No API key needed.\n' +
-  '2. **unlock_flight_offer** (FREE with GitHub star) — Confirms live price with the airline. Locks offer for 30 minutes. Call link_github first.\n' +
-  '3. **book_flight** (ticket price only) — Creates real airline reservation. Charges ticket price via Stripe (2.9% + 30¢ processing). Zero markup.\n' +
+  '1. **search_flights** (FREE, unlimited) — Searches hundreds of airlines server-side. Returns prices, airlines, times, durations, stopovers. Requires Bearer token or API key.\n' +
+  '2. **unlock_flight_offer** (1% fee, min $3) — Confirms live price with the airline. Reserves offer for 30 minutes. Charges via Stripe card or MPP crypto.\n' +
+  '3. **book_flight** (ticket price only, Developer API only) — Creates real airline reservation with PNR. Charges ticket price via Stripe.\n' +
+  '\n' +
+  '## Authentication\n' +
+  '- **PFS Bearer token** (free): Run `letsfg auth` to get a 90-day token via Twitter/X challenge. Set LETSFG_BEARER_TOKEN.\n' +
+  '- **Developer API key** (prepaid credits): Register at letsfg.co/developers. Set LETSFG_API_KEY. Enables book_flight and no per-booking fee on unlock.\n' +
   '\n' +
   '## Pricing\n' +
-  '- Search: FREE, unlimited, no API key needed\n' +
-  '- Unlock: FREE (requires GitHub star — call link_github once)\n' +
-  '- Book: Exact airline price + Stripe processing fee. Zero markup.\n' +
-  '- setup_payment: Attach card once before first booking\n' +
+  '- Search: FREE, unlimited\n' +
+  '- Unlock: 1% of ticket price (min $3) — Stripe card or MPP crypto. Free with Developer API.\n' +
+  '- Book: Exact airline price + Stripe processing fee. Zero markup. Developer API only.\n' +
   '\n' +
   '## Critical Rules\n' +
   '- **Resolve locations first**: City names are ambiguous. "London" = 5+ airports. Use resolve_location to get IATA codes before searching.\n' +
   '- **Real passenger details REQUIRED**: Airlines send e-tickets to the email provided. Names must match passport/government ID exactly. NEVER use placeholder emails, agent emails, or fake names.\n' +
-  '- **Idempotency keys for booking**: Always provide idempotency_key when calling book_flight to prevent double-bookings on retry. Use any unique string (e.g., UUID).\n' +
+  '- **Idempotency keys for booking**: Always provide idempotency_key when calling book_flight to prevent double-bookings on retry.\n' +
   '- **Price changes**: The unlock step confirms the real-time airline price, which may differ from search. Always inform the user if confirmed_price differs.\n' +
   '- **30-minute window**: After unlock, the offer is held for 30 minutes. If expired, search + unlock again.\n' +
   '\n' +
@@ -107,15 +137,9 @@ const GUIDE_TEXT =
   '\n' +
   '## Search Tips\n' +
   '- Search is free — search multiple dates, cabin classes, airport combos liberally\n' +
-  '- Use mode="fast" for quick results (~25 connectors, 20-40s) vs full search (200+ connectors, 3-6 min)\n' +
-  '- Multi-airport city expansion: searching one London airport auto-checks all 5\n' +
+  '- Search takes 60-90s (async: POST /api/search -> poll /api/results/<id> every 10s)\n' +
   '- Filter search results (stops, duration, airline) before unlocking\n' +
-  '- Covers 180+ airlines across all continents including low-cost carriers most agents don\'t know\n' +
-  '\n' +
-  '## GitHub Star Verification\n' +
-  '1. User stars https://github.com/LetsFG/LetsFG\n' +
-  '2. Call link_github with their GitHub username\n' +
-  '3. Once verified, all tools unlocked forever\n';
+  '- Covers hundreds of airlines across all continents including low-cost carriers\n';
 
 const RESOURCES = [
   {
@@ -132,12 +156,12 @@ const TOOLS = [
   {
     name: 'search_flights',
     description:
-      'Search 200+ airline connectors for live flight prices — completely FREE, unlimited, read-only.\n\n' +
-      'Returns structured offers with prices, airlines, times, durations, stopovers, and booking URLs. ' +
-      'Covers 180+ airlines across all continents (Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, and 170+ more).\n\n' +
-      'Multi-airport city expansion: searching one London airport auto-checks all 5. Works for 25+ major cities.\n\n' +
-      'Rate limited to 10 req/min. Safe to call multiple times, results are never cached. ' +
-      'See letsfg://guide resource for the full search→unlock→book workflow.',
+      'Search hundreds of airlines for live flight prices — completely FREE, unlimited, read-only.\n\n' +
+      'Returns structured offers with prices, airlines, times, durations, and stopovers. ' +
+      'Covers airlines across all continents including low-cost carriers.\n\n' +
+      'Search is async (60-90s): this tool handles the polling automatically.\n\n' +
+      'Requires LETSFG_BEARER_TOKEN or LETSFG_API_KEY. ' +
+      'See letsfg://guide resource for the full search->unlock->book workflow.',
     inputSchema: {
       type: 'object',
       required: ['origin', 'destination', 'date_from'],
@@ -151,8 +175,6 @@ const TOOLS = [
         cabin_class: { type: 'string', description: 'M=economy, W=premium, C=business, F=first', enum: ['M', 'W', 'C', 'F'] },
         currency: { type: 'string', description: 'Currency code (EUR, USD, GBP)', default: 'EUR' },
         max_results: { type: 'integer', description: 'Max offers to return', default: 10 },
-        max_browsers: { type: 'integer', description: 'Max concurrent browser processes (1-32). Default: auto-detect from system RAM.' },
-        mode: { type: 'string', description: "Omit for full search (200+ connectors). 'fast' = ~25 connectors, 20-40s.", enum: ['fast'] },
       },
     },
   },
@@ -172,9 +194,10 @@ const TOOLS = [
   {
     name: 'unlock_flight_offer',
     description:
-      'Confirm live price with the airline and reserve offer for 30 minutes (step 2 of 3). FREE with GitHub star.\n\n' +
+      'Confirm live price with the airline and reserve offer for 30 minutes (step 2 of 3).\n\n' +
+      'Cost: 1% of ticket price (min $3) via Stripe card or MPP crypto. Free with Developer API.\n\n' +
       'This is the "quote" step — ALWAYS call before book_flight. The confirmed_price may differ from search price; ' +
-      'if so, inform the user before proceeding. Requires GitHub star (call link_github first).\n\n' +
+      'if so, inform the user before proceeding.\n\n' +
       'Not idempotent — calling twice on the same offer may charge twice.',
     inputSchema: {
       type: 'object',
@@ -187,12 +210,12 @@ const TOOLS = [
   {
     name: 'book_flight',
     description:
-      'Book an unlocked flight — creates real airline reservation with PNR (step 3 of 3).\n\n' +
-      'FLOW: search_flights → unlock_flight_offer → setup_payment (once) → book_flight\n' +
-      'CHARGES: Ticket price via Stripe (2.9% + 30¢ processing). Zero markup.\n' +
+      'Book an unlocked flight — creates real airline reservation with PNR (step 3 of 3). Developer API only.\n\n' +
+      'FLOW: search_flights -> unlock_flight_offer -> setup_payment (once) -> book_flight\n' +
+      'CHARGES: Ticket price via Stripe (2.9% + 30c processing). Zero markup.\n' +
       'SAFETY: Always provide idempotency_key to prevent double-bookings. Use REAL passenger details — ' +
       'names must match passport, email receives the e-ticket.\n\n' +
-      'Errors include error_code/error_category: transient → retry, validation → fix input, business → ask user.',
+      'Errors include error_code/error_category: transient -> retry, validation -> fix input, business -> ask user.',
     inputSchema: {
       type: 'object',
       required: ['offer_id', 'passengers', 'contact_email'],
@@ -238,56 +261,6 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
-    name: 'start_checkout',
-    description:
-      'Automate airline checkout up to payment page — NEVER submits payment or enters card info.\n\n' +
-      'Supported: Ryanair, Wizz Air, EasyJet (drives browser through flight selection + passenger forms). ' +
-      'Other airlines return booking URL only. Uses safe test data if passengers omitted.\n' +
-      'Requires checkout_token from unlock_flight_offer.',
-    inputSchema: {
-      type: 'object',
-      required: ['offer_id', 'checkout_token'],
-      properties: {
-        offer_id: { type: 'string', description: 'Offer ID from search results (off_xxx)' },
-        checkout_token: { type: 'string', description: 'Token from unlock_flight_offer response' },
-        passengers: {
-          type: 'array',
-          description: 'Passenger details. If omitted, uses safe test data (John Doe, test@example.com)',
-          items: {
-            type: 'object',
-            properties: {
-              given_name: { type: 'string' },
-              family_name: { type: 'string' },
-              born_on: { type: 'string', description: 'DOB YYYY-MM-DD' },
-              gender: { type: 'string', description: 'm or f' },
-              title: { type: 'string', description: 'mr, ms, mrs' },
-              email: { type: 'string' },
-              phone_number: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  },
-  {
-    name: 'link_github',
-    description:
-      'Verify GitHub star for free unlimited access. User must star https://github.com/LetsFG/LetsFG first. ' +
-      'Only needs to be called once.',
-    inputSchema: {
-      type: 'object',
-      required: ['github_username'],
-      properties: {
-        github_username: { type: 'string', description: "User's GitHub username (e.g., 'octocat')" },
-      },
-    },
-  },
-  {
-    name: 'system_info',
-    description: 'Get system RAM, CPU cores, and recommended max_browsers for search_flights. Read-only, instant.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
     name: 'load_resources',
     description:
       'Load the LetsFG workflow guide (3-step booking flow, pricing, passenger rules, error handling). ' +
@@ -297,34 +270,17 @@ const TOOLS = [
   },
 ];
 
-// ── API Client ──────────────────────────────────────────────────────────
-
-async function apiRequest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'User-Agent': `letsfg-mcp/${VERSION}`,
-    'X-Client-Type': 'mcp',
-  };
-  if (API_KEY) headers['X-API-Key'] = API_KEY;
-
-  const resp = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  const data = await resp.json();
-  if (resp.status >= 400) {
-    return { error: true, status_code: resp.status, detail: (data as Record<string, string>).detail || JSON.stringify(data) };
-  }
-  return data;
-}
-
 // ── Tool Handlers ───────────────────────────────────────────────────────
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
   switch (name) {
     case 'search_flights': {
+      if (!BEARER_TOKEN && !API_KEY) {
+        return JSON.stringify({
+          error: 'Authentication required. Set LETSFG_BEARER_TOKEN (from `letsfg auth`) or LETSFG_API_KEY.',
+        });
+      }
+
       const params: Record<string, unknown> = {
         origin: args.origin,
         destination: args.destination,
@@ -336,74 +292,49 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       };
       if (args.return_from) params.return_from = args.return_from;
       if (args.cabin_class) params.cabin_class = args.cabin_class;
-      if (args.max_browsers) params.max_browsers = args.max_browsers;
-      if (args.mode) params.mode = args.mode;
 
-      // Always local — runs 200 connectors on user's machine, zero backend cost
-      const result = await searchLocal(params) as Record<string, unknown>;
+      let result: Record<string, unknown>;
+      if (BEARER_TOKEN) {
+        result = await searchPFS(params);
+      } else {
+        result = await apiRequest('POST', '/developers/api/v1/flights/search', params) as Record<string, unknown>;
+      }
 
       if (result.error) return JSON.stringify(result, null, 2);
 
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
-      const rateLimitInfo = result.rate_limit as Record<string, unknown> | undefined;
       const summary: Record<string, unknown> = {
         total_offers: offers.length,
-        source: 'local (200 airline connectors on your machine)',
+        search_id: result.search_id,
         offers: offers.map(o => {
-          // Handle both compact DM format and rich MCP format
-          const hasRichFormat = o.outbound !== undefined;
-          if (hasRichFormat) {
-            // Rich format: {id, price (num), currency, airlines, outbound: {segments: [...]}, ...}
-            const ob = o.outbound as Record<string, unknown> | undefined;
-            const segs = (ob?.segments || []) as Array<Record<string, string>>;
-            return {
-              offer_id: o.id,
-              price: `${o.price} ${o.currency}`,
-              airlines: o.airlines,
-              source: o.source,
-              booking_url: o.booking_url,
-              outbound: segs.length ? {
-                from: segs[0].origin,
-                to: segs[segs.length - 1].destination,
-                departure: segs[0].departure,
-                flight: segs[0].flight_no,
-                airline: segs[0].airline_name || segs[0].airline,
-                stops: ob?.stopovers,
-              } : null,
-            };
-          }
-          // Compact DM format: {price: "14.99 GBP", airlines, route, departure, arrival, duration, stops, book}
+          const ob = o.outbound as Record<string, unknown> | undefined;
+          const segs = (ob?.segments || []) as Array<Record<string, string>>;
           return {
-            price: o.price,
+            offer_id: o.id,
+            price: `${o.price} ${o.currency}`,
             airlines: o.airlines,
-            route: o.route,
-            departure: o.departure,
-            arrival: o.arrival,
-            duration: o.duration,
-            stops: o.stops,
-            booking_url: o.book || o.booking_url,
+            booking_url: o.booking_url,
+            outbound: segs.length ? {
+              from: segs[0].origin,
+              to: segs[segs.length - 1].destination,
+              departure: segs[0].departure,
+              airline: segs[0].airline_name || segs[0].airline,
+              stops: ob?.stopovers,
+            } : null,
           };
         }),
       };
-      if (rateLimitInfo) {
-        summary.rate_limit = rateLimitInfo;
-      }
       return JSON.stringify(summary, null, 2);
     }
 
     case 'resolve_location': {
-      // Resolve locally via Python — no backend call
-      const result = await searchLocal({ __resolve_location: true, query: args.query }) as Record<string, unknown>;
+      const result = await resolveLocationCloud(args.query as string);
       return JSON.stringify(result, null, 2);
     }
 
     case 'unlock_flight_offer': {
-      const result = await apiRequest('POST', '/api/v1/bookings/unlock', { offer_id: args.offer_id });
-      return JSON.stringify(result, null, 2);
-    }
-
-    case 'link_github': {
-      const result = await apiRequest('POST', '/api/v1/agents/link-github', { github_username: args.github_username as string });
+      const path = BEARER_TOKEN ? '/api/unlock' : '/developers/api/v1/bookings/unlock';
+      const result = await apiRequest('POST', path, { offer_id: args.offer_id });
       return JSON.stringify(result, null, 2);
     }
 
@@ -415,7 +346,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         contact_email: args.contact_email,
       };
       if (args.idempotency_key) body.idempotency_key = args.idempotency_key;
-      const result = await apiRequest('POST', '/api/v1/bookings/book', body);
+      const result = await apiRequest('POST', '/developers/api/v1/bookings/book', body);
       return JSON.stringify(result, null, 2);
     }
 
@@ -423,47 +354,13 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       const body: Record<string, unknown> = {};
       if (args.token) body.token = args.token;
       if (args.payment_method_id) body.payment_method_id = args.payment_method_id;
-      const result = await apiRequest('POST', '/api/v1/agents/setup-payment', body);
+      const result = await apiRequest('POST', '/developers/api/v1/agents/setup-payment', body);
       return JSON.stringify(result, null, 2);
     }
 
     case 'get_agent_profile': {
-      const result = await apiRequest('GET', '/api/v1/agents/me');
+      const result = await apiRequest('GET', '/developers/api/v1/agents/me');
       return JSON.stringify(result, null, 2);
-    }
-
-    case 'system_info': {
-      const result = await searchLocal({ __system_info: true }) as Record<string, unknown>;
-      return JSON.stringify(result, null, 2);
-    }
-
-    case 'start_checkout': {
-      // Runs locally via Python — drives browser to payment page
-      const result = await searchLocal({
-        __checkout: true,
-        offer_id: args.offer_id,
-        passengers: args.passengers || null,
-        checkout_token: args.checkout_token,
-        api_key: API_KEY,
-        base_url: BASE_URL,
-      }) as Record<string, unknown>;
-
-      if (result.error) return JSON.stringify(result, null, 2);
-
-      const summary: Record<string, unknown> = {
-        status: result.status,
-        step: result.step,
-        airline: result.airline,
-        message: result.message,
-        total_price: result.total_price ? `${result.total_price} ${result.currency}` : undefined,
-        booking_url: result.booking_url,
-        can_complete_manually: result.can_complete_manually,
-        elapsed_seconds: result.elapsed_seconds,
-      };
-      if (result.screenshot_b64) {
-        summary.screenshot = '(base64 screenshot attached — render with image tool if available)';
-      }
-      return JSON.stringify(summary, null, 2);
     }
 
     case 'load_resources': {
@@ -554,4 +451,5 @@ rl.on('line', async (line) => {
   }
 });
 
-process.stderr.write(`LetsFG MCP v${VERSION} | search: local | rate limit: 10 req/min | api: ${API_KEY ? 'key set' : 'search-only (no key)'}\n`);
+const authMode = BEARER_TOKEN ? 'PFS Bearer token' : API_KEY ? 'Developer API key' : 'NO AUTH (set LETSFG_BEARER_TOKEN or LETSFG_API_KEY)';
+process.stderr.write(`LetsFG MCP v${VERSION} | auth: ${authMode}\n`);

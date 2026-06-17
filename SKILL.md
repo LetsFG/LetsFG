@@ -1,6 +1,6 @@
 ---
 name: letsfg
-description: "LetsFG — Agent-native flight search, hotel search, and booking API. 400+ airlines, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
+description: "LetsFG — Agent-native flight search and booking API. Hundreds of airlines via server-side engine, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
 ---
 
 # SKILL.md — LetsFG Capabilities
@@ -21,16 +21,15 @@ description: "LetsFG — Agent-native flight search, hotel search, and booking A
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **Local** (CLI / `pip install letsfg` / MCP-local) | Personal use, local agents | 20–40 s (fast mode) · 1–15 min (full) | Free search; unlock 1% of ticket (min $3) |
-| **PFS — Programmatic Flight Search** (`https://letsfg.co/for-agents`) | Agents without local browser access (OpenClaw, serverless, etc.) | 60–90 s | Free search (Twitter/X Bearer token); unlock 1% (min $3) |
+| **CLI / SDK / MCP** (PFS Bearer token) | Personal use, any agent | 60–90 s | Free search; unlock 1% of ticket (min $3) |
 | **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
 ## Skills
 
 ### search_flights
-Search 180+ airlines worldwide via local connectors. Returns real-time prices with zero markup or bias — $20–50 cheaper than OTAs.
+Search hundreds of airlines worldwide via the server-side engine. Returns real-time prices with zero markup or bias — $20–50 cheaper than OTAs.
 - **Cost:** FREE (unlimited)
-- **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit, mode ("fast" = OTAs + key airlines only, ~25 connectors, 20-40s)
+- **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
 - **Note:** All offers are locked. Must unlock before booking.
 
@@ -57,27 +56,6 @@ Resolve city names to IATA airport/city codes.
 - **Cost:** FREE
 - **Input:** query (city name, e.g. "London")
 - **Output:** List of matching IATA codes (e.g. LON, LHR, LGW, STN, LTN, LCY)
-
-### get_system_profile
-Get system resource profile and recommended browser concurrency for local search.
-- **Cost:** FREE
-- **Input:** (none)
-- **Output:** ram_total_gb, ram_available_gb, cpu_cores, recommended_max_browsers, tier (minimal/low/moderate/standard/high/maximum), platform
-- **Tiers:** minimal (<2GB, 2 browsers), low (2-4GB, 3), moderate (4-8GB, 5), standard (8-16GB, 8), high (16-32GB, 12), maximum (32+GB, 16)
-- **Python:** `from letsfg import get_system_profile; profile = get_system_profile()`
-- **CLI:** `letsfg system-info` or `letsfg system-info --json`
-- **MCP:** `system_info` tool
-- **JS:** `import { systemInfo } from 'letsfg'; const info = await systemInfo();`
-
-### configure_max_browsers
-Override auto-detected browser concurrency limit for local search.
-- **Cost:** FREE
-- **Input:** max_browsers (integer, 1–32)
-- **Priority:** env var `LETSFG_MAX_BROWSERS` > explicit config > auto-detect from RAM
-- **Python:** `from letsfg import configure_max_browsers; configure_max_browsers(4)`
-- **CLI:** `letsfg search LHR BCN 2026-04-15 --max-browsers 4`
-- **MCP:** `search_flights` tool with `max_browsers` parameter
-- **JS:** `await searchLocal('LHR', 'BCN', '2026-04-15', { maxBrowsers: 4 })`
 
 ### unlock_flight_offer
 Confirm live price with airline and reveal the direct booking URL. Reserves the offer for 30 minutes.
@@ -264,7 +242,7 @@ LETSFG_API_KEY=trav_... letsfg-mcp
 
 | Tool | Description | Cost |
 |------|-------------|------|
-| `search_flights` | Search 400+ airlines worldwide | FREE |
+| `search_flights` | Search hundreds of airlines via server-side engine | FREE |
 | `resolve_location` | City name → IATA code | FREE |
 | `unlock_flight_offer` | Confirm price, reveal booking URL, reserve 30min | 1% of ticket (min $3) |
 | `book_flight` | Create real airline reservation | Ticket price |
@@ -345,7 +323,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 | Endpoint | Rate Limit | Typical Latency |
 |----------|-----------|------------------|
-| Search flights | No hard limit (billing is the natural governor) | 20–90 s |
+| Search flights | No hard limit (billing is the natural governor) | 2–5 s (discover) · 60–90 s (full search) |
 | Resolve location | 120 req/min | <1s |
 | Unlock | 20 req/min | 2-5s |
 | Book | 10 req/min | 3-10s |
@@ -368,7 +346,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 ## Key Facts
 
-- 180+ airlines via local connectors (Playwright + httpx)
+- Hundreds of airlines via server-side engine
 - Hotels and activities via direct APIs
 - Zero price bias — no demand inflation, no cookie tracking
 - $20–50 cheaper than OTAs on average

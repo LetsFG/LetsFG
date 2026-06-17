@@ -52,16 +52,18 @@ Close and reopen Windsurf. LetsFG tools appear in the MCP panel.
 
 ---
 
-## Option B: Local MCP server
+## Option B: Local MCP server with free Bearer token
 
-Use this when you want free local search from Cascade.
+Use this when you want free search from Cascade without a paid API account.
 
-### 1. Install local prerequisites
+### 1. Install and authenticate
 
 ```bash
 pip install letsfg
-playwright install chromium
+letsfg auth
 ```
+
+`letsfg auth` walks you through the Twitter/X challenge and saves a 90-day Bearer token.
 
 ### 2. Edit `~/.codeium/windsurf/mcp_config.json`
 
@@ -70,7 +72,10 @@ playwright install chromium
   "mcpServers": {
     "letsfg": {
       "command": "npx",
-      "args": ["-y", "letsfg-mcp"]
+      "args": ["-y", "letsfg-mcp"],
+      "env": {
+        "LETSFG_BEARER_TOKEN": "your_bearer_token_here"
+      }
     }
   }
 }
@@ -84,25 +89,7 @@ playwright install chromium
 
 > Find flights from Paris to Barcelona for Easter.
 
-No API key is required for local search. Windsurf calls the local MCP server, which runs LetsFG search on your machine.
-
-### 5. (Optional) Add API key for account-linked actions
-
-```json
-{
-  "mcpServers": {
-    "letsfg": {
-      "command": "npx",
-      "args": ["-y", "letsfg-mcp"],
-      "env": {
-        "LETSFG_API_KEY": "trav_your_key_here"
-      }
-    }
-  }
-}
-```
-
-Get a key: `curl -X POST https://letsfg.co/developers/api/v1/agents/register -H "Content-Type: application/json" -d '{"agent_name":"windsurf","email":"you@example.com"}'`
+The local MCP server sends search requests to the letsfg.co server-side engine using your Bearer token. No local browsers needed.
 
 ---
 
@@ -125,6 +112,6 @@ Cascade will:
 
 **"API key required"** → Verify `X-API-Key` header (remote) or `LETSFG_API_KEY` env (local)
 
-**"Cannot start Python"** -> install the local prerequisites first: `pip install letsfg` and `playwright install chromium`
+**"Cannot start Python"** -> install the prerequisites first: `pip install letsfg` and `letsfg auth`
 
 **Windows: `spawn npx ENOENT`** → Use full path: `"C:\\Program Files\\nodejs\\npx.cmd"`

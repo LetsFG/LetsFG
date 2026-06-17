@@ -4,32 +4,24 @@ Guidelines for building autonomous AI agents that search, evaluate, and book fli
 
 > 🎬 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-lfg-vs-default-agent-search)** — side-by-side comparison of default agent search vs LetsFG.
 
-## Search Modes
+## Search
 
-Agents can use **local search** (free, no API key) for quick lookups, or the **public developer API** (API key plus prepaid balance) for managed cloud search. Local search also supports a **fast mode** that fires only ~25 high-coverage OTAs and key airlines, reducing search time from 6+ minutes to 20-40 seconds:
+All search runs server-side at letsfg.co. Authenticate once with `letsfg auth` (free 90-day Bearer token via Twitter/X) or use a prepaid Developer API key.
 
 ```python
-# Local search — no API key, 200 airline connectors
-from letsfg.local import search_local
-result = await search_local("LHR", "JFK", "2026-06-01")
-
-# Fast mode — OTAs + key airlines only (~25 connectors, 20-40s)
-result = await search_local("LHR", "JFK", "2026-06-01", mode="fast")
-
-# With concurrency limit for constrained environments
-result = await search_local("LHR", "JFK", "2026-06-01", max_browsers=4)
-
-# Full search — API key required, 400+ airlines via GDS/NDC
+# PFS search — free Bearer token, server-side, 60-90 s
 from letsfg import LetsFG
+bt = LetsFG()  # uses LETSFG_BEARER_TOKEN from environment
+result = bt.search("LHR", "JFK", "2026-06-01")
+
+# Developer API — prepaid credits, direct booking URLs, no per-booking fee
 bt = LetsFG(api_key="trav_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
-**When to use fast mode:** Quick price lookups, time-sensitive queries, constrained machines. Covers Kiwi, Skyscanner, Kayak, Momondo, eDreams, Trip.com, Booking.com + Ryanair, Wizz Air, Southwest, and regional OTAs for every continent.
+**When to use PFS (Bearer token):** Free search via Twitter/X authentication. 60–90 s per search. Unlock costs 1% of ticket (min $3). Run `letsfg auth` once.
 
-**When to use default (full) local search:** Maximum coverage across all 200+ connectors. Finds niche airlines and routes that OTAs may miss.
-
-**When to use full API search:** Managed cloud search through letsfg.co/developers/api/v1, broader supplier coverage, and account-controlled billing.
+**When to use Developer API:** Managed cloud search, billing controls, volume usage, and direct airline URLs with no per-booking fee. Register at [letsfg.co/developers](https://letsfg.co/developers).
 
 ## Architecture
 
@@ -42,7 +34,7 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 
 1. **Always resolve locations first.** City names are ambiguous — "London" could be LHR, LGW, STN, LCY, or LTN. Use `resolve_location()` to get IATA codes, then let the user confirm if multiple options exist.
 
-2. **Use the cheap path first.** Search multiple dates and variants locally when you can. If you are using the public website API, remember that search consumes prepaid balance, so batch intentionally.
+2. **Search is free on PFS.** Search multiple dates and variants freely with a Bearer token. If you are using the Developer API, remember that search consumes prepaid balance, so batch intentionally.
 
 3. **Understand the 30-minute expiration.** After unlocking, you have 30 minutes to book. If the window expires, you need a fresh search and another unlock attempt, so keep the gap between confirmation and booking small.
 
@@ -52,17 +44,7 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 
 6. **Use REAL passenger details.** Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.
 
-7. **Be aware of system resources.** Local search fires up to 200 browser-based connectors in parallel. LetsFG auto-scales concurrency based on available RAM, but agents can check resources and override:
-
-```python
-from letsfg import get_system_profile, configure_max_browsers
-
-profile = get_system_profile()
-if profile['tier'] in ('minimal', 'low'):
-    configure_max_browsers(2)  # go easy on constrained machines
-```
-
-Or use the MCP `system_info` tool before `search_flights` to decide concurrency.
+7. **Search is async.** The server-side search engine takes 60–90 s. The SDK polls automatically; raw PFS callers should poll `GET /api/results/<search_id>` every 10 s until results arrive.
 
 ## Handling Edge Cases
 

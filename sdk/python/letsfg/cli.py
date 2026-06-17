@@ -42,7 +42,7 @@ app = typer.Typer(
     name="letsfg",
     help=(
         "LetsFG — Agent-native flight search & booking.\n\n"
-        "Search 400+ airlines at raw airline prices via the LetsFG cloud.\n"
+        "Search hundreds of airlines at raw airline prices via the LetsFG cloud.\n"
         "Free: authenticate once with Twitter/X, then search instantly.\n\n"
         "Quick start: letsfg auth && letsfg search GDN BCN 2026-06-15\n"
         "Round trip:  letsfg search LON BCN 2026-04-01 --return 2026-04-08"
@@ -372,7 +372,7 @@ def search(
     offers = result.get("offers", [])
     total = result.get("total_results", len(offers))
 
-    # Apply a final local sort after all connector/provider results are merged.
+    # Apply a final client-side sort after cloud results are fetched.
     _final_sort_offers(offers, sort)
 
     offers = offers[:limit]
@@ -512,7 +512,7 @@ def unlock(
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Unlock a flight offer — FREE with GitHub star. Confirms price, reserves 30min."""
+    """Unlock a flight offer — 1% of ticket price (min $3). Confirms price, reserves 30min."""
     bt = _get_client(api_key, base_url)
     try:
         result = bt.unlock(offer_id)
@@ -683,9 +683,7 @@ def register(
         print(f"     PowerShell:  $env:LETSFG_API_KEY = ''")
         print(f"     Bash/Zsh:    unset LETSFG_API_KEY")
 
-    print(f"\n    Next: Star the repo and link your GitHub:")
-    print(f"    1. Star https://github.com/LetsFG/LetsFG")
-    print(f"    2. letsfg star --github <your-github-username>\n")
+    print(f"\n    Next: letsfg search GDN BCN 2026-07-15\n")
 
 
 # ── Recover ────────────────────────────────────────────────────────────────
@@ -820,8 +818,6 @@ def me(
             "agent_name": profile.agent_name,
             "email": profile.email,
             "tier": profile.tier,
-            "github_username": profile.github_username,
-            "github_star_verified": profile.github_star_verified,
             "access_granted": profile.access_granted,
             "payment_ready": profile.payment_ready,
             "usage": profile.usage,
@@ -831,16 +827,8 @@ def me(
     print(f"\n  Agent: {profile.agent_name} ({profile.agent_id})")
     print(f"  Email: {profile.email}")
     print(f"  Tier:  {profile.tier}")
-    gh = getattr(profile, 'github_username', '') or ''
-    star_ok = getattr(profile, 'github_star_verified', False)
-    if star_ok:
-        print(f"  GitHub:  ✓ {gh} (star verified)")
-    elif gh:
-        print(f"  GitHub:  {gh} (star not yet verified — run: letsfg star --github {gh})")
-    else:
-        print(f"  GitHub:  Not linked — run: letsfg star --github <username>")
     access = getattr(profile, 'access_granted', False)
-    print(f"  Access:  {'✓ Granted (search, unlock, book)' if access else '✗ Not granted — star the repo to unlock'}")
+    print(f"  Access:  {'✓ Granted (search, unlock, book)' if access else '✗ Not granted'}")
     print(f"  Payment: {'✓ Ready' if profile.payment_ready else '—'}")
     u = profile.usage
     print(f"  Searches: {u.get('total_searches', 0)}")
@@ -848,27 +836,6 @@ def me(
     print(f"  Bookings: {u.get('total_bookings', 0)}")
     print(f"  Total spent: ${u.get('total_spent_cents', 0) / 100:.2f}\n")
 
-
-@app.command("system-info")
-def system_info_cmd(
-    output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-):
-    """Show system resources."""
-    from letsfg.system_info import get_system_profile
-
-    profile = get_system_profile()
-
-    if output_json:
-        _json_out(profile)
-        return
-
-    ram_total = profile["ram_total_gb"]
-    ram_avail = profile["ram_available_gb"]
-    print(f"\n  Platform:     {profile['platform']}")
-    print(f"  CPU cores:    {profile['cpu_cores']}")
-    print(f"  RAM total:    {ram_total:.1f} GB" if ram_total else "  RAM total:    unknown")
-    print(f"  RAM available: {ram_avail:.1f} GB" if ram_avail else "  RAM available: unknown")
-    print(f"  Tier:         {profile['tier']}\n")
 
 
 def main():

@@ -1,19 +1,20 @@
 /**
  * LetsFG — Agent-native flight search & booking SDK for Node.js/TypeScript.
  *
- * 75 airline connectors run locally via Python + backend API for enterprise GDS/NDC sources.
- * Zero external JS dependencies. Uses native fetch (Node 18+).
+ * Server-side engine covers hundreds of airlines. Free search via PFS Bearer token
+ * or prepaid Developer API. Zero external JS dependencies. Uses native fetch (Node 18+).
  *
  * @example
  * ```ts
- * import { LetsFG, searchLocal } from 'letsfg';
+ * import { LetsFG } from 'letsfg';
  *
- * // Local search — FREE, no API key
- * const local = await searchLocal('SHA', 'CTU', '2026-03-20');
- *
- * // Full API — search + unlock + book
- * const bt = new LetsFG({ apiKey: 'trav_...' });
+ * // PFS (free, Bearer token from `letsfg auth`)
+ * const bt = new LetsFG({ bearerToken: process.env.LETSFG_BEARER_TOKEN });
  * const flights = await bt.search('GDN', 'BER', '2026-03-03');
+ *
+ * // Developer API (prepaid credits)
+ * const bt2 = new LetsFG({ apiKey: 'trav_...' });
+ * const flights2 = await bt2.search('LHR', 'JFK', '2026-04-15');
  * ```
  */
 
@@ -122,37 +123,18 @@ export interface SearchOptions {
   currency?: string;
   limit?: number;
   sort?: 'price' | 'duration';
-  /** Max concurrent browser instances (1-32). Omit for auto-detect based on system RAM. */
-  maxBrowsers?: number;
-  /** Search mode. Omit for full search (all 200+ connectors). 'fast' = OTAs + key direct airlines (~25 connectors, 20-40s). */
-  mode?: 'fast';
-}
-
-export interface CheckoutProgress {
-  status: string;               // "payment_page_reached", "url_only", "failed", "error"
-  step: string;                 // Current checkout step
-  step_index: number;           // Numeric step (0-8)
-  airline: string;              // Airline name
-  source: string;               // Source tag (e.g., "ryanair_direct")
-  offer_id: string;
-  total_price: number;          // Price shown on checkout page
-  currency: string;
-  booking_url: string;          // Direct URL for manual completion
-  screenshot_b64: string;       // Base64 screenshot of current state
-  message: string;
-  can_complete_manually: boolean;
-  elapsed_seconds: number;
-  details: Record<string, unknown>;
 }
 
 export interface LetsFGConfig {
+  /** PFS Bearer token from `letsfg auth`. Enables free search via POST /api/search polling. */
+  bearerToken?: string;
+  /** Developer API key (prepaid credits, no per-booking fee). */
   apiKey?: string;
   baseUrl?: string;
   timeout?: number;
 }
 
 // ── Error codes ───────────────────────────────────────────────────────────
-// Machine-readable error codes for agent decision-making.
 
 export const ErrorCode = {
   // Transient (safe to retry after short delay)
@@ -282,7 +264,7 @@ export class ValidationError extends LetsFGError {
 function routeStr(route: FlightRoute): string {
   if (!route.segments.length) return '';
   const codes = [route.segments[0].origin, ...route.segments.map(s => s.destination)];
-  return codes.join(' → ');
+  return codes.join(' -> ');
 }
 
 function durationHuman(seconds: number): string {
@@ -305,108 +287,56 @@ export function cheapestOffer(result: FlightSearchResult): FlightOffer | null {
   return result.offers.reduce((min, o) => (o.price < min.price ? o : min), result.offers[0]);
 }
 
-// ── Local Search (Python subprocess) ──────────────────────────────────────
-
-/**
- * Search flights using 73 local airline connectors — FREE, no API key needed.
- *
- * Requires: pip install letsfg && playwright install chromium
- *
- * @param origin - IATA code (e.g., "SHA")
- * @param destination - IATA code (e.g., "CTU")
- * @param dateFrom - Departure date "YYYY-MM-DD"
- * @param options - Optional: currency, adults, limit, etc.
- */
-export async function searchLocal(
-  origin: string,
-  destination: string,
-  dateFrom: string,
-  options: Partial<SearchOptions> = {},
-): Promise<FlightSearchResult> {
-  const { spawn } = await import('child_process');
-
-  const params = JSON.stringify({
-    origin: origin.toUpperCase(),
-    destination: destination.toUpperCase(),
-    date_from: dateFrom,
-    adults: options.adults ?? 1,
-    children: options.children ?? 0,
-    currency: options.currency ?? 'EUR',
-    limit: options.limit ?? 50,
-    return_date: options.returnDate,
-    cabin_class: options.cabinClass,
-    ...(options.maxBrowsers != null && { max_browsers: options.maxBrowsers }),
-    ...(options.mode != null && { mode: options.mode }),
-  });
-
-  return new Promise((resolve, reject) => {
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-
-    child.on('close', (code) => {
-      try {
-        const data = JSON.parse(stdout);
-        if (data.error) reject(new LetsFGError(data.error));
-        else resolve(data as FlightSearchResult);
-      } catch {
-        reject(new LetsFGError(
-          `Python search failed (code ${code}): ${stdout || stderr}\n` +
-          'Make sure LetsFG is installed: pip install letsfg && playwright install chromium'
-        ));
-      }
-    });
-
-    child.on('error', (err) => {
-      reject(new LetsFGError(
-        `Cannot start Python: ${err.message}\n` +
-        'Install: pip install letsfg && playwright install chromium'
-      ));
-    });
-
-    child.stdin.write(params);
-    child.stdin.end();
-  });
-}
-
 // ── Client ────────────────────────────────────────────────────────────────
 
-const DEFAULT_BASE_URL = 'https://letsfg.co/developers';
+const DEFAULT_BASE_URL = 'https://letsfg.co';
+const PFS_POLL_INTERVAL_MS = 10_000;
+const PFS_POLL_TIMEOUT_MS = 120_000;
 
 export class LetsFG {
+  private bearerToken: string;
   private apiKey: string;
   private baseUrl: string;
   private timeout: number;
 
   constructor(config: LetsFGConfig = {}) {
+    this.bearerToken = config.bearerToken || process.env.LETSFG_BEARER_TOKEN || '';
     this.apiKey = config.apiKey || process.env.LETSFG_API_KEY || '';
     this.baseUrl = (config.baseUrl || process.env.LETSFG_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
     this.timeout = config.timeout || 30000;
   }
 
+  private requireAuth(): void {
+    if (!this.bearerToken && !this.apiKey) {
+      throw new AuthenticationError(
+        'Authentication required. Set bearerToken (from `letsfg auth`) or apiKey in config, ' +
+        'or set LETSFG_BEARER_TOKEN / LETSFG_API_KEY env vars.'
+      );
+    }
+  }
+
   private requireApiKey(): void {
     if (!this.apiKey) {
       throw new AuthenticationError(
-        'API key required for this operation. Set apiKey in config or LETSFG_API_KEY env var.\n' +
-        'Note: searchLocal() works without an API key.'
+        'Developer API key required for this operation. Set apiKey in config or LETSFG_API_KEY env var. ' +
+        'Register at letsfg.co/developers.'
       );
     }
+  }
+
+  /** True when using PFS Bearer token (free search path) */
+  private get usingPFS(): boolean {
+    return !!this.bearerToken;
   }
 
   // ── Core methods ─────────────────────────────────────────────────────
 
   /**
-   * Search for flights — FREE, unlimited, runs locally on your machine.
+   * Search for flights — FREE.
    *
-   * Uses 200 airline connectors via Python subprocess. No backend call.
-   * Requires: pip install letsfg && playwright install chromium
+   * Uses PFS (Bearer token) or Developer API (X-API-Key) depending on config.
+   * PFS: async polling (POST /api/search -> poll /api/results/<id> every 10s).
+   * Developer API: synchronous 60-90s call.
    *
    * @param origin - IATA code (e.g., "GDN", "LON")
    * @param destination - IATA code (e.g., "BER", "BCN")
@@ -419,62 +349,71 @@ export class LetsFG {
     dateFrom: string,
     options: SearchOptions = {},
   ): Promise<FlightSearchResult> {
-    return searchLocal(origin, destination, dateFrom, options);
+    this.requireAuth();
+
+    const body: Record<string, unknown> = {
+      origin: origin.toUpperCase(),
+      destination: destination.toUpperCase(),
+      date_from: dateFrom,
+      adults: options.adults ?? 1,
+      children: options.children ?? 0,
+      currency: options.currency ?? 'EUR',
+      limit: options.limit ?? 50,
+    };
+    if (options.returnDate) body.return_date = options.returnDate;
+    if (options.cabinClass) body.cabin_class = options.cabinClass;
+    if (options.maxStopovers != null) body.max_stopovers = options.maxStopovers;
+    if (options.sort) body.sort = options.sort;
+
+    if (this.usingPFS) {
+      return this.searchPFS(body);
+    }
+    return this.post<FlightSearchResult>('/developers/api/v1/flights/search', body);
+  }
+
+  /** PFS path: POST /api/search -> poll /api/results/<id> */
+  private async searchPFS(body: Record<string, unknown>): Promise<FlightSearchResult> {
+    const { search_id } = await this.postWithBearer<{ search_id: string }>('/api/search', body);
+
+    const deadline = Date.now() + PFS_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
+      const result = await this.getNoAuth<FlightSearchResult & { status?: string }>(
+        `/api/results/${search_id}`
+      );
+      if (result.status !== 'pending') {
+        return result as FlightSearchResult;
+      }
+    }
+    throw new LetsFGError('Search timed out after 120s. Try polling /api/results/<id> directly.', 504);
   }
 
   /**
-   * Resolve a city/airport name to IATA codes — runs locally, no backend call.
+   * Resolve a city/airport name to IATA codes.
    */
   async resolveLocation(query: string): Promise<Array<Record<string, unknown>>> {
-    const { spawn } = await import('child_process');
-    const params = JSON.stringify({ __resolve_location: true, query });
-
-    return new Promise((resolve, reject) => {
-      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-      const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-      child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-
-      child.on('close', (code) => {
-        try {
-          const data = JSON.parse(stdout);
-          if (data.error) reject(new LetsFGError(data.error));
-          else resolve(Array.isArray(data) ? data : data.locations || [data]);
-        } catch {
-          reject(new LetsFGError(
-            `Location resolution failed (code ${code}): ${stdout || stderr}`
-          ));
-        }
-      });
-
-      child.on('error', (err) => {
-        reject(new LetsFGError(`Cannot start Python: ${err.message}`));
-      });
-
-      child.stdin.write(params);
-      child.stdin.end();
-    });
+    this.requireAuth();
+    const path = this.usingPFS
+      ? `/api/locations?q=${encodeURIComponent(query)}`
+      : `/developers/api/v1/flights/locations/${encodeURIComponent(query)}`;
+    const data = await this.getWithAuth<Array<Record<string, unknown>> | { locations: Array<Record<string, unknown>> }>(path);
+    return Array.isArray(data) ? data : (data as { locations: Array<Record<string, unknown>> }).locations || [];
   }
 
   /**
-   * Unlock a flight offer — FREE with GitHub star.
-   * Confirms price, reserves for 30 minutes.
+   * Unlock a flight offer — confirms live price, reveals direct airline booking URL.
+   * Cost: 1% of ticket price, min $3. Free with Developer API.
    */
   async unlock(offerId: string): Promise<UnlockResult> {
-    this.requireApiKey();
-    return this.post<UnlockResult>('/api/v1/bookings/unlock', { offer_id: offerId });
+    this.requireAuth();
+    const path = this.usingPFS
+      ? '/api/unlock'
+      : '/developers/api/v1/bookings/unlock';
+    return this.postWithAuth<UnlockResult>(path, { offer_id: offerId });
   }
 
   /**
-   * Book a flight — charges ticket price via Stripe.
-   * Creates a real airline reservation with PNR.
-   *
+   * Book a flight via Developer API — charges ticket price via Stripe, creates real PNR.
    * Always provide idempotencyKey to prevent double-bookings on retry.
    */
   async book(
@@ -493,105 +432,15 @@ export class LetsFG {
       contact_phone: contactPhone,
     };
     if (idempotencyKey) body.idempotency_key = idempotencyKey;
-    return this.post<BookingResult>('/api/v1/bookings/book', body);
+    return this.post<BookingResult>('/developers/api/v1/bookings/book', body);
   }
 
   /**
-   * Set up payment method (required before booking).
+   * Set up payment method (required before unlock/booking).
    */
   async setupPayment(token = 'tok_visa'): Promise<Record<string, unknown>> {
     this.requireApiKey();
-    return this.post<Record<string, unknown>>('/api/v1/agents/setup-payment', { token });
-  }
-
-  /**
-   * Start automated checkout — drives to payment page, NEVER submits payment.
-   *
-   * Requires unlock first. Returns progress with screenshot and
-   * booking URL for manual completion.
-   *
-   * @param offerId - Offer ID from search results
-   * @param passengers - Passenger details (use test data for safety)
-   * @param checkoutToken - Token from unlock() response
-   */
-  async startCheckout(
-    offerId: string,
-    passengers: Passenger[],
-    checkoutToken: string,
-  ): Promise<CheckoutProgress> {
-    this.requireApiKey();
-    return this.post<CheckoutProgress>('/api/v1/bookings/start-checkout', {
-      offer_id: offerId,
-      passengers,
-      checkout_token: checkoutToken,
-    });
-  }
-
-  /**
-   * Start checkout locally via Python (runs on your machine).
-   * Requires: pip install letsfg && playwright install chromium
-   *
-   * @param offer - Full FlightOffer object from search results
-   * @param passengers - Passenger details
-   * @param checkoutToken - Token from unlock()
-   */
-  async startCheckoutLocal(
-    offer: FlightOffer,
-    passengers: Passenger[],
-    checkoutToken: string,
-  ): Promise<CheckoutProgress> {
-    const { spawn } = await import('child_process');
-
-    const input = JSON.stringify({
-      __checkout: true,
-      offer,
-      passengers,
-      checkout_token: checkoutToken,
-      api_key: this.apiKey,
-      base_url: this.baseUrl,
-    });
-
-    return new Promise((resolve, reject) => {
-      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-      const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 180_000,
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-      child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-
-      child.on('close', (code) => {
-        try {
-          const data = JSON.parse(stdout);
-          if (data.error) reject(new LetsFGError(data.error));
-          else resolve(data as CheckoutProgress);
-        } catch {
-          reject(new LetsFGError(`Checkout failed (code ${code}): ${stdout || stderr}`));
-        }
-      });
-
-      child.on('error', (err) => {
-        reject(new LetsFGError(`Cannot start Python: ${err.message}`));
-      });
-
-      child.stdin.write(input);
-      child.stdin.end();
-    });
-  }
-
-  /**
-   * Link GitHub account for FREE unlimited access.
-   *
-   * Star https://github.com/LetsFG/LetsFG, then call this with your username.
-   * Once verified, access is permanent.
-   */
-  async linkGithub(githubUsername: string): Promise<Record<string, unknown>> {
-    this.requireApiKey();
-    return this.post<Record<string, unknown>>('/api/v1/agents/link-github', { github_username: githubUsername });
+    return this.post<Record<string, unknown>>('/developers/api/v1/agents/setup-payment', { token });
   }
 
   /**
@@ -599,13 +448,13 @@ export class LetsFG {
    */
   async me(): Promise<Record<string, unknown>> {
     this.requireApiKey();
-    return this.get<Record<string, unknown>>('/api/v1/agents/me');
+    return this.get<Record<string, unknown>>('/developers/api/v1/agents/me');
   }
 
   // ── Static methods ───────────────────────────────────────────────────
 
   /**
-   * Register a new agent — no API key needed.
+   * Register a new Developer API agent — no auth needed.
    */
   static async register(
     agentName: string,
@@ -615,55 +464,74 @@ export class LetsFG {
     description = '',
   ): Promise<Record<string, unknown>> {
     const url = (baseUrl || DEFAULT_BASE_URL).replace(/\/$/, '');
-    const resp = await fetch(`${url}/api/v1/agents/register`, {
+    const resp = await fetch(`${url}/developers/api/v1/agents/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent_name: agentName,
-        email,
-        owner_name: ownerName,
-        description,
-      }),
+      body: JSON.stringify({ agent_name: agentName, email, owner_name: ownerName, description }),
     });
 
     const data = await resp.json();
     if (!resp.ok) {
       throw new LetsFGError(
-        data.detail || `Registration failed (${resp.status})`,
+        (data as Record<string, string>).detail || `Registration failed (${resp.status})`,
         resp.status,
-        data,
+        data as Record<string, unknown>,
       );
     }
-    return data;
+    return data as Record<string, unknown>;
   }
 
   // ── Internal ────────────────────────────────────────────────────────
 
+  private async postWithBearer<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    return this.requestWithHeaders<T>(path, 'POST', { 'Authorization': `Bearer ${this.bearerToken}` }, body);
+  }
+
+  private async getNoAuth<T>(path: string): Promise<T> {
+    return this.requestWithHeaders<T>(path, 'GET', {});
+  }
+
+  private async getWithAuth<T>(path: string): Promise<T> {
+    const headers = this.usingPFS
+      ? { 'Authorization': `Bearer ${this.bearerToken}` }
+      : { 'X-API-Key': this.apiKey };
+    return this.requestWithHeaders<T>(path, 'GET', headers);
+  }
+
+  private async postWithAuth<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    const headers = this.usingPFS
+      ? { 'Authorization': `Bearer ${this.bearerToken}` }
+      : { 'X-API-Key': this.apiKey };
+    return this.requestWithHeaders<T>(path, 'POST', headers, body);
+  }
+
   private async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    return this.request<T>(path, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return this.requestWithHeaders<T>(path, 'POST', { 'X-API-Key': this.apiKey }, body);
   }
 
   private async get<T>(path: string): Promise<T> {
-    return this.request<T>(path, { method: 'GET' });
+    return this.requestWithHeaders<T>(path, 'GET', { 'X-API-Key': this.apiKey });
   }
 
-  private async request<T>(path: string, init: RequestInit): Promise<T> {
+  private async requestWithHeaders<T>(
+    path: string,
+    method: string,
+    extraHeaders: Record<string, string>,
+    body?: Record<string, unknown>,
+  ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
 
     try {
       const resp = await fetch(`${this.baseUrl}${path}`, {
-        ...init,
+        method,
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey,
           'User-Agent': 'LetsFG-js/0.1.0',
           'X-Client-Type': 'js-sdk',
-          ...(init.headers || {}),
+          ...extraHeaders,
         },
+        ...(body != null ? { body: JSON.stringify(body) } : {}),
         signal: controller.signal,
       });
 
@@ -672,11 +540,11 @@ export class LetsFG {
       if (!resp.ok) {
         const detail = (data as Record<string, string>).detail || `API error (${resp.status})`;
         const code = (data as Record<string, string>).error_code || inferErrorCode(resp.status, detail);
-        if (resp.status === 401) throw new AuthenticationError(detail, data);
-        if (resp.status === 402) throw new PaymentRequiredError(detail, data);
-        if (resp.status === 410) throw new OfferExpiredError(detail, data);
-        if (resp.status === 422) throw new ValidationError(detail, resp.status, data, code);
-        throw new LetsFGError(detail, resp.status, data, code);
+        if (resp.status === 401) throw new AuthenticationError(detail, data as Record<string, unknown>);
+        if (resp.status === 402) throw new PaymentRequiredError(detail, data as Record<string, unknown>);
+        if (resp.status === 410) throw new OfferExpiredError(detail, data as Record<string, unknown>);
+        if (resp.status === 422) throw new ValidationError(detail, resp.status, data as Record<string, unknown>, code);
+        throw new LetsFGError(detail, resp.status, data as Record<string, unknown>, code);
       }
 
       return data as T;
@@ -686,53 +554,17 @@ export class LetsFG {
   }
 }
 
-/**
- * Get system resource profile and recommended concurrency settings.
- * Calls the Python backend's system-info detection.
- */
-export async function systemInfo(): Promise<Record<string, unknown>> {
-  const { spawn } = await import('child_process');
-
-  return new Promise((resolve, reject) => {
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const child = spawn(pythonCmd, ['-m', 'letsfg.local'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-
-    child.on('close', (code) => {
-      try {
-        const data = JSON.parse(stdout);
-        if (data.error) reject(new LetsFGError(data.error));
-        else resolve(data as Record<string, unknown>);
-      } catch {
-        reject(new LetsFGError(
-          `Python system-info failed (code ${code}): ${stdout || stderr}`
-        ));
-      }
-    });
-
-    child.on('error', (err) => {
-      reject(new LetsFGError(
-        `Cannot start Python: ${err.message}\n` +
-        'Install: pip install letsfg'
-      ));
-    });
-
-    child.stdin.write(JSON.stringify({ __system_info: true }));
-    child.stdin.end();
-  });
-}
-
 export default LetsFG;
-export { searchLocal as localSearch, systemInfo as getSystemInfo };
 
-// Backward-compat aliases (deprecated — use LetsFG / LetsFGError directly)
+// Backward-compat aliases (deprecated)
 export const BoostedTravel = LetsFG;
 export const BoostedTravelError = LetsFGError;
 export type BoostedTravelConfig = LetsFGConfig;
+
+// Re-export open-source ranking engine
+export { rankOffers, deduplicateOffers, selectDiverseTop, getProfileLabel } from './ranking';
+export type { RankOffer, RankingContext, RankedOffer, ScoreBreakdown } from './ranking';
+export { extractOfferDetailSignals, getOfferDetailBadges, getOfferDetailPromptNotes } from './offer-details';
+export type { OfferDetailSignals } from './offer-details';
+export { normalizeTripPurposes, getPrimaryTripPurpose, TRIP_PURPOSES } from './trip-purpose';
+export type { TripPurpose, TripPurposeOptions } from './trip-purpose';

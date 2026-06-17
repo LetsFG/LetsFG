@@ -1,7 +1,7 @@
 ---
 name: letsfg
 description: >-
-  Agent-native flight search and booking via 180+ airline connectors. Returns raw
+  Agent-native flight search and booking via the letsfg.co server-side search engine. Returns raw
   airline prices with zero markup — $20–50 cheaper than OTAs. Use when user asks to
   "find flights", "search flights", "book a flight", "compare airline prices",
   "find cheap flights", "fly from X to Y", or any flight-related travel query.
