@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import time
 from typing import Optional
 
 try:
@@ -95,6 +96,24 @@ def _err(msg: str):
 def _json_out(data):
     """Print JSON output for machine consumption."""
     print(json.dumps(data, indent=2, default=str))
+
+
+# Local search runs 200+ connectors on your machine (1–15 min). When it's slow, point users
+# at the cloud API — same schema, seconds, with a free keyless sandbox to try first.
+_CLOUD_NUDGE_THRESHOLD_S = 60
+_CLOUD_SANDBOX_URL = (
+    "https://letsfg.co/developers?utm_source=github&utm_medium=cli&utm_campaign=slow_local_search"
+)
+
+
+def _suggest_cloud_sandbox(elapsed_s: float) -> None:
+    """After a slow local search, suggest the cloud API + free sandbox. Quiet for fast searches."""
+    if elapsed_s < _CLOUD_NUDGE_THRESHOLD_S:
+        return
+    print(
+        f"\n  ⚡ That local search took {elapsed_s:.0f}s. Need results in seconds? The cloud API "
+        f"returns the\n     same schema — free sandbox, no card: {_CLOUD_SANDBOX_URL}"
+    )
 
 
 def _resolve_locations_with_local_fallback(bt, query: str) -> list[dict]:
@@ -414,10 +433,12 @@ def search(
             include_global=include_global,
         )
 
+    _search_started = time.monotonic()
     try:
         result = asyncio.run(_run())
     except Exception as e:
         _err(f"Search failed: {e}")
+    _search_elapsed = time.monotonic() - _search_started
 
     offers = result.get("offers", [])
     total = result.get("total_results", len(offers))
@@ -433,6 +454,7 @@ def search(
 
     if not offers:
         print(f"No flights found for {origin} → {destination} on {date}")
+        _suggest_cloud_sandbox(_search_elapsed)
         return
 
     has_return = any(o.get("inbound") for o in offers)
@@ -537,6 +559,7 @@ def search(
                     print(f"       Poll after payment: GET https://letsfg.co/api/developers/payment-verify?token={pt}")
 
     print()
+    _suggest_cloud_sandbox(_search_elapsed)
 
 
 # ── Star (Link GitHub) ─────────────────────────────────────────────────────
