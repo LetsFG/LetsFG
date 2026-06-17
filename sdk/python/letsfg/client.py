@@ -399,10 +399,12 @@ class LetsFG:
         cabin_class: str | None = None,
         currency: str = "EUR",
         limit: int = 50,
+        max_stopovers: int | None = None,
+        sort: str | None = None,
         **_kwargs,
     ) -> FlightSearchResult:
         """
-        Search flights via the LetsFG cloud engine.
+        Search flights via the LetsFG cloud engine using a Bearer token.
 
         Requires a Bearer token — run `letsfg auth` once to authenticate via Twitter/X.
         Results take 60-90 s (async polling handled internally).
@@ -416,6 +418,8 @@ class LetsFG:
             cabin_class: "M" (economy), "W" (premium), "C" (business), "F" (first)
             currency: 3-letter currency code
             limit: Max results (1-200)
+            max_stopovers: Max connections per direction (0-4)
+            sort: "price" or "duration"
 
         Returns:
             FlightSearchResult with offers from the cloud engine.
@@ -434,6 +438,8 @@ class LetsFG:
             cabin_class=cabin_class,
             currency=currency,
             limit=limit,
+            max_stopovers=max_stopovers,
+            sort=sort,
         ))
         return FlightSearchResult.from_dict(result_dict)
 
@@ -460,7 +466,9 @@ class LetsFG:
         """
         Search for flights via the LetsFG cloud engine. FREE.
 
-        Requires a Bearer token (`letsfg auth`). Results in 60-90 s (async polling).
+        Uses a Bearer token (PFS path) if available — run `letsfg auth` once or set
+        LETSFG_BEARER_TOKEN. Falls back to the Developer API (LETSFG_API_KEY) if no
+        Bearer token is present.
 
         Args:
             origin: IATA code (e.g., "LON", "GDN", "JFK")
@@ -481,22 +489,56 @@ class LetsFG:
         Returns:
             FlightSearchResult with offers, passenger_ids, and metadata.
         """
-        return self.search_local(
-            origin=origin,
-            destination=destination,
-            date_from=date_from,
-            return_date=return_date,
-            adults=adults,
-            children=children,
-            infants=infants,
-            cabin_class=cabin_class,
-            currency=currency,
-            limit=limit,
-        )
+        from letsfg.connectors.auth import get_bearer_token, BearerTokenError
+        try:
+            get_bearer_token()
+            return self.search_local(
+                origin=origin,
+                destination=destination,
+                date_from=date_from,
+                return_date=return_date,
+                adults=adults,
+                children=children,
+                infants=infants,
+                cabin_class=cabin_class,
+                currency=currency,
+                limit=limit,
+                max_stopovers=max_stopovers,
+                sort=sort,
+            )
+        except BearerTokenError:
+            pass
+
+        self._require_api_key()
+        body: dict = {
+            "origin": origin,
+            "destination": destination,
+            "date_from": date_from,
+            "adults": adults,
+            "children": children,
+            "currency": currency,
+            "limit": limit,
+            "sort": sort,
+            "max_stopovers": max_stopovers,
+        }
+        if return_date:
+            body["return_date"] = return_date
+        if cabin_class:
+            body["cabin_class"] = cabin_class
+        if infants:
+            body["infants"] = infants
+        if departure_time_from:
+            body["departure_time_from"] = departure_time_from
+        if departure_time_to:
+            body["departure_time_to"] = departure_time_to
+        data = self._post("/api/v1/flights/search", body)
+        return FlightSearchResult.from_dict(data)
 
     def resolve_location(self, query: str) -> list[dict]:
         """
         Resolve a city/airport name to IATA codes.
+
+        Uses Bearer token (PFS path) if available, otherwise falls back to API key.
 
         Args:
             query: City or airport name (e.g., "London", "Berlin")
@@ -504,6 +546,28 @@ class LetsFG:
         Returns:
             List of matching locations with IATA codes.
         """
+        from letsfg.connectors.auth import get_bearer_token, BearerTokenError
+        try:
+            token = get_bearer_token()
+            base = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
+            req = Request(
+                f"{base}/api/locations?q={quote(query, safe='')}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "LetsFG-Python-SDK/1.0.3",
+                },
+                method="GET",
+            )
+            with urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode())
+            if isinstance(data, dict) and "locations" in data:
+                return data["locations"]
+            if isinstance(data, list):
+                return data
+            return [data] if data else []
+        except BearerTokenError:
+            pass
+
         self._require_api_key()
         data = self._get(f"/api/v1/flights/locations/{quote(query, safe='')}")
         if isinstance(data, dict) and "locations" in data:

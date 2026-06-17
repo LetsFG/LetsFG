@@ -353,6 +353,7 @@ def search(
     from letsfg.connectors.auth import BearerTokenError
 
     try:
+        max_stopovers = 0 if direct else max_stops
         result = asyncio.run(search_local(
             origin=origin,
             destination=destination,
@@ -363,6 +364,8 @@ def search(
             cabin_class=cabin,
             currency=currency,
             limit=limit,
+            max_stopovers=max_stopovers,
+            sort=sort,
         ))
     except BearerTokenError as e:
         _err(str(e))

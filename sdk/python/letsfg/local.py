@@ -37,6 +37,8 @@ async def search_local(
     cabin_class: str | None = None,
     currency: str = "EUR",
     limit: int = 50,
+    max_stopovers: int | None = None,
+    sort: str | None = None,
     **_kwargs,
 ) -> dict:
     """
@@ -62,6 +64,10 @@ async def search_local(
         payload["cabin_class"] = cabin_class
     if infants:
         payload["infants"] = infants
+    if max_stopovers is not None:
+        payload["max_stopovers"] = max_stopovers
+    if sort:
+        payload["sort"] = sort
 
     req = Request(
         f"{_BASE_URL}/api/search",
