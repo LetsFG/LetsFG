@@ -49,7 +49,7 @@ always returns the same set of offers, so your tests are reproducible across run
 
 | Behaviour | Live | Sandbox |
 |---|---|---|
-| Connectors fired | Yes (180+) | No |
+| Connectors fired | Yes (hundreds) | No |
 | Credits charged | Yes (1 per search) | No |
 | Response time | 60–90 s | < 1 s |
 | `booking_url` | Real airline link | Placeholder |

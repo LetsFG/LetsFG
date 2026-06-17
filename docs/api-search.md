@@ -128,7 +128,7 @@ console.log(result.total_results, result.passenger_ids);
 
 ## Coverage and response time
 
-The developer API uses the same 180+ airline connector fleet as the [letsfg.co](https://letsfg.co) consumer search. The fleet includes direct airline scrapers, OTA aggregators (Kiwi, Kayak, Momondo, Skyscanner), and virtual interlining — worldwide coverage including all US domestic routes.
+The developer API uses the same airline connector fleet as the [letsfg.co](https://letsfg.co) consumer search. The fleet includes direct airline scrapers, OTA aggregators (Kiwi, Kayak, Momondo, Skyscanner), and virtual interlining — worldwide coverage including all US domestic routes.
 
 | Route type | Typical response time |
 |------------|-----------------------|

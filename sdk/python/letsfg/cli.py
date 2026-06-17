@@ -53,15 +53,9 @@ console = Console() if HAS_RICH else None
 
 
 def _get_client(api_key: str | None = None, base_url: str | None = None) -> LetsFG:
-    """Get a LetsFG client.
-
-    Key resolution order: explicit arg > env var > config file > auto-register.
-    """
+    """Get a LetsFG client. Key resolution: explicit arg > LETSFG_API_KEY env > saved config."""
     url = base_url or os.environ.get("LETSFG_BASE_URL")
     bt = LetsFG(api_key=api_key, base_url=url, client_type="cli")
-    if not bt.api_key:
-        _err("Could not connect to LetsFG API for auto-registration.\n"
-             "You can register manually: letsfg register --name my-agent --email you@example.com")
     return bt
 
 
@@ -643,11 +637,7 @@ def register(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Register a new agent — get your API key.
-
-    Note: this is optional! The CLI auto-registers on first use.
-    Use this command when you want a named agent with your email attached.
-    """
+    """Register a new agent — get your API key for the Developer API."""
     try:
         result = LetsFG.register(
             agent_name=name,

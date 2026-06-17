@@ -107,8 +107,7 @@ def _saved_api_key() -> str:
 
 
 # ── Bookable connector registry ────────────────────────────────────────────
-# Maps source tags to their BookableConnector subclass.
-# Loaded lazily to avoid importing Playwright at module level.
+# Maps source tags to their BookableConnector subclass, loaded lazily.
 # For the remaining hand-tuned connectors we keep explicit entries.
 # All other airlines are handled by the GenericCheckoutEngine via config.
 
@@ -679,74 +678,12 @@ class LetsFG:
         data = self._post("/api/v1/bookings/start-checkout", body)
         return CheckoutProgress.from_dict(data)
 
-    def start_checkout_local(
-        self,
-        offer: dict,
-        passengers: list[dict] | None = None,
-        *,
-        checkout_token: str = "",
-    ) -> CheckoutProgress:
-        """
-        Run checkout locally using Playwright — drives the airline website
-        on your machine. Stops at the payment page (no charge).
-
-        The checkout token is verified with the backend before proceeding.
-
-        Requires: playwright install chromium
-
-        Args:
-            offer: Full FlightOffer dict (from search results, must include
-                booking_url, source, price, currency, outbound).
-            passengers: Passenger dicts. If None, uses safe test data.
-            checkout_token: Token from unlock(). Required.
-
-        Returns:
-            CheckoutProgress with status, screenshot, and booking_url.
-        """
-        import asyncio
-        from letsfg.connectors.booking_base import (
-            FAKE_PASSENGER,
-            CheckoutProgress as _CP,
+    def start_checkout_local(self, *args, **kwargs) -> CheckoutProgress:
+        """Removed — booking now runs server-side. Use book() instead."""
+        raise NotImplementedError(
+            "start_checkout_local() has been removed. "
+            "Booking is handled server-side — use bt.book(offer_id, passengers, email)."
         )
-
-        if not passengers:
-            passengers = [FAKE_PASSENGER.copy()]
-            passengers[0]["id"] = "pas_0"
-
-        source = (offer.get("source") or "").lower()
-        booking_url = offer.get("booking_url", "")
-
-        # Try to load the connector's booking module
-        connector_cls = _get_bookable_connector(source)
-        if connector_cls is None:
-            # No automated checkout — return URL-only progress
-            return CheckoutProgress.from_dict({
-                "status": "url_only",
-                "step": "started",
-                "step_index": 0,
-                "airline": offer.get("owner_airline", ""),
-                "source": source,
-                "offer_id": offer.get("id", ""),
-                "total_price": offer.get("price", 0.0),
-                "currency": offer.get("currency", "EUR"),
-                "booking_url": booking_url,
-                "message": (
-                    f"Automated checkout not available for {source}. "
-                    f"Use the booking URL to complete manually."
-                    + (f"\n\nBooking URL: {booking_url}" if booking_url else "")
-                ),
-                "can_complete_manually": bool(booking_url),
-            })
-
-        connector = connector_cls()
-        result = asyncio.run(connector.start_checkout(
-            offer=offer,
-            passengers=passengers,
-            checkout_token=checkout_token,
-            api_key=self.api_key,
-            base_url=self.base_url,
-        ))
-        return CheckoutProgress.from_dict(result.to_dict())
 
     def me(self) -> AgentProfile:
         """Get the current agent's profile, usage, and payment status."""

@@ -1,6 +1,6 @@
 site_name: LetsFG Docs
 site_url: https://letsfg.co/developers/docs
-site_description: Free local connector search plus the prepaid public developer API served through letsfg.co.
+site_description: Agent-native flight search API. Free Bearer token search via letsfg.co — hundreds of airlines, zero markup, zero Playwright.
 site_author: LetsFG
 
 repo_url: https://github.com/LetsFG/LetsFG

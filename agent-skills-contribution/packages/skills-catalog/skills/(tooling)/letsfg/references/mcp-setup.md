@@ -143,7 +143,7 @@ export LETSFG_API_KEY=trav_your_api_key
 
 | Tool | Description |
 |------|-------------|
-| `search_flights` | Search 180+ airlines for flights |
+| `search_flights` | Search hundreds of airlines for flights |
 | `resolve_location` | Convert city names to IATA codes |
 | `unlock_flight_offer` | Confirm live price and reserve for 30 min |
 | `book_flight` | Book with passenger details |

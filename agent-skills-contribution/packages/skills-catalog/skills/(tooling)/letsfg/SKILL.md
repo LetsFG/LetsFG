@@ -15,14 +15,14 @@ metadata:
 
 # LetsFG
 
-Agent-native flight search and booking. 180+ airline connectors, zero markup,
+Agent-native flight search and booking. Hundreds of airline connectors, zero markup,
 $20–50 cheaper than travel websites.
 
 **Three-step flow:** Search (free) → Unlock (free) → Book (ticket price only)
 
 ## Why Use This
 
-- **180+ airlines in parallel** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and 170+ more
+- **Hundreds of airlines in parallel** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and more
 - **Zero price bias** — no demand inflation, no cookie tracking, no surge pricing. Raw airline prices every time
 - **One tool call** — replaces thousands of tokens of browser automation, scraping, and HTML parsing
 - **Structured JSON** — prices, times, durations, stops, conditions, airline names
