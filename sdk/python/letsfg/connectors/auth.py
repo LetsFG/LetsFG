@@ -1,14 +1,15 @@
 """
-Twitter/X authentication for LetsFG Programmatic Flight Search (PFS).
+LetsFG Programmatic Flight Search (PFS) — token management.
 
-Flow:
-  1. POST /api/agent-access/request  — server returns a one-time challenge token
-  2. Tweet "@letsfg <challenge>"     — proves account ownership
-  3. POST /api/agent-access/verify   — server confirms tweet, returns 90-day Bearer
-  4. Token stored in ~/.letsfg/config.json
+Get your free 90-day Bearer token at:
+    https://letsfg.co/for-agents
 
-The Bearer token is passed as "Authorization: Bearer <token>" on every
-POST /api/search and GET /api/results/<id> call.
+Once you have it:
+    letsfg auth --token <your-token>
+    # or
+    export LETSFG_BEARER_TOKEN=<your-token>
+
+The token is passed as "Authorization: Bearer <token>" on every API call.
 """
 
 from __future__ import annotations
@@ -17,15 +18,10 @@ import json
 import os
 import time
 from pathlib import Path
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError
-
-_BASE_URL = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
-_TOKEN_TTL = 90 * 24 * 3600  # 90 days in seconds
 
 
 class BearerTokenError(Exception):
-    """No valid Bearer token. Run `letsfg auth` to authenticate via Twitter/X."""
+    """No valid Bearer token. Get one at https://letsfg.co/for-agents"""
     pass
 
 
@@ -69,67 +65,16 @@ def get_bearer_token() -> str:
 
     raise BearerTokenError(
         "No valid LetsFG Bearer token.\n"
-        "  Run:  letsfg auth\n"
-        "  Or:   export LETSFG_BEARER_TOKEN=<token>"
+        "  Get one: https://letsfg.co/for-agents\n"
+        "  Then:    letsfg auth --token <token>\n"
+        "  Or:      export LETSFG_BEARER_TOKEN=<token>"
     )
 
 
-def _save_token(token: str, expires_at: float) -> None:
+def save_token(token: str, expires_at: float | None = None) -> None:
+    """Save a Bearer token to the local config."""
+    if expires_at is None:
+        expires_at = time.time() + 90 * 24 * 3600
     cfg = _load_config()
     cfg["pfs_auth"] = {"token": token, "expires_at": expires_at}
     _save_config(cfg)
-
-
-def _post_json(path: str, payload: dict, timeout: int = 30) -> dict:
-    body = json.dumps(payload).encode()
-    req = Request(
-        f"{_BASE_URL}{path}",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
-
-
-def twitter_auth() -> str:
-    """
-    Interactive Twitter/X auth flow. Prints the tweet to post, waits for
-    the user to confirm, verifies with the server, saves and returns the token.
-    """
-    print("\n  Connecting to LetsFG...")
-    data = _post_json("/api/agent-access/request", {})
-    challenge = data["challenge"]
-    tweet_text = data.get("tweet_text") or f"@letsfg {challenge}"
-
-    print(f"\n  Step 1 — post this exact tweet:\n")
-    print(f"     {tweet_text}\n")
-    print(f"  Step 2 — press Enter once it's live.")
-    input()
-
-    print("  Verifying... ", end="", flush=True)
-    try:
-        result = _post_json("/api/agent-access/verify", {"challenge": challenge})
-    except HTTPError as e:
-        body = e.read().decode(errors="replace")
-        raise BearerTokenError(
-            f"Verification failed (HTTP {e.code}). "
-            "Make sure you posted the exact tweet above.\n"
-            f"Server: {body[:200]}"
-        )
-
-    token = result["token"]
-    raw_exp = result.get("expires_at")
-    if isinstance(raw_exp, (int, float)):
-        expires_at = float(raw_exp)
-    elif isinstance(raw_exp, str):
-        from datetime import datetime, timezone
-        expires_at = datetime.fromisoformat(raw_exp.replace("Z", "+00:00")).timestamp()
-    else:
-        expires_at = time.time() + _TOKEN_TTL
-
-    _save_token(token, expires_at)
-    from datetime import datetime
-    exp_str = datetime.fromtimestamp(expires_at).strftime("%Y-%m-%d")
-    print(f"done. Token valid until {exp_str}.")
-    return token

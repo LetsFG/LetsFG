@@ -486,26 +486,33 @@ def search(
     print()
 
 
-# ── Star (Link GitHub) ─────────────────────────────────────────────────────
-
 @app.command()
-def auth():
-    """Authenticate with LetsFG via Twitter/X — free, 90-day token.
+def auth(
+    token: Optional[str] = typer.Option(None, "--token", "-t", help="Your LetsFG Bearer token"),
+):
+    """Save your LetsFG Bearer token for free programmatic flight search.
 
-    1. Run this command.
-    2. Post the displayed tweet from your Twitter/X account.
-    3. Press Enter. Done — token is saved locally.
+    Get a free 90-day token (Twitter/X auth) at:
+        https://letsfg.co/for-agents
 
-    You only need to do this once every 90 days.
+    Then run:
+        letsfg auth --token <your-token>
     """
-    from letsfg.connectors.auth import twitter_auth, BearerTokenError
-    try:
-        twitter_auth()
-        print("\n  You're all set. Run: letsfg search WAW BCN 2026-07-15\n")
-    except BearerTokenError as e:
-        _err(str(e))
-    except Exception as e:
-        _err(f"Auth failed: {e}")
+    from letsfg.connectors.auth import save_token, get_bearer_token, BearerTokenError
+
+    if not token:
+        print("\n  Get your free Bearer token (90-day, Twitter/X auth) at:")
+        print("    https://letsfg.co/for-agents\n")
+        print("  Then run:  letsfg auth --token <your-token>\n")
+        try:
+            get_bearer_token()
+            print("  (You already have a valid token saved.)\n")
+        except BearerTokenError:
+            pass
+        return
+
+    save_token(token)
+    print("\n  Token saved. Run: letsfg search WAW BCN 2026-07-15\n")
 
 
 # ── Unlock ────────────────────────────────────────────────────────────────
