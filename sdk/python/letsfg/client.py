@@ -37,7 +37,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import platform
 from pathlib import Path
 from typing import Any, Optional
 from urllib.request import Request, urlopen
@@ -87,12 +86,16 @@ def _load_config() -> dict:
 
 
 def _save_config(data: dict) -> None:
-    """Persist config to disk."""
+    """Persist config to disk (owner read/write only)."""
     p = _config_path()
     try:
         existing = _load_config()
         existing.update(data)
         p.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        try:
+            p.chmod(0o600)
+        except Exception:
+            pass
     except Exception as e:
         _log.debug("Could not save config to %s: %s", p, e)
 
@@ -102,35 +105,6 @@ def _saved_api_key() -> str:
     return _load_config().get("api_key", "")
 
 
-def _auto_register(base_url: str | None = None) -> str:
-    """Silently register an anonymous agent and save the key. Returns the API key."""
-    url = (base_url or DEFAULT_BASE_URL).rstrip("/")
-    hostname = platform.node() or "unknown"
-    body = json.dumps({
-        "agent_name": f"auto-{hostname[:40]}",
-        "email": "",
-    }).encode()
-    req = Request(
-        f"{url}/api/v1/agents/register",
-        data=body,
-        headers={"Content-Type": "application/json", "User-Agent": "LetsFG-Python-SDK/1.0.3"},
-        method="POST",
-    )
-    try:
-        with urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode())
-        api_key = result.get("api_key", "")
-        if api_key:
-            _save_config({
-                "api_key": api_key,
-                "agent_id": result.get("agent_id", ""),
-                "auto_registered": True,
-            })
-            _log.info("Auto-registered agent %s", result.get("agent_id"))
-        return api_key
-    except Exception as e:
-        _log.debug("Auto-registration failed: %s", e)
-        return ""
 
 # ── Bookable connector registry ────────────────────────────────────────────
 # Maps source tags to their BookableConnector subclass.
@@ -365,16 +339,15 @@ class LetsFG:
         timeout: int = 30,
         client_type: str | None = None,
     ):
-        self.base_url = (base_url or os.environ.get("LETSFG_BASE_URL") or os.environ.get("BOOSTEDTRAVEL_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = (base_url or os.environ.get("LETSFG_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
         self._client_type = client_type or "python-sdk"
 
-        # Key resolution order: explicit > env > config file > auto-register
-        key = api_key or os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY") or ""
+        # Key resolution order: explicit arg > LETSFG_API_KEY env var > saved config
+        # No silent registration — callers must authenticate explicitly.
+        key = api_key or os.environ.get("LETSFG_API_KEY") or ""
         if not key:
             key = _saved_api_key()
-        if not key:
-            key = _auto_register(self.base_url)
         self.api_key = key
 
     def _require_api_key(self) -> None:

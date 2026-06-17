@@ -56,6 +56,10 @@ def _save_config(cfg: dict) -> None:
     p = _config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(cfg, indent=2))
+    try:
+        p.chmod(0o600)
+    except Exception:
+        pass
 
 
 def get_bearer_token() -> str:

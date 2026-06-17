@@ -69,7 +69,7 @@ def _handle_auth_error(e: LetsFGError) -> None:
     """Print helpful message when API key is invalid."""
     from letsfg.client import _saved_api_key
 
-    env_key = os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY")
+    env_key = os.environ.get("LETSFG_API_KEY")
     config_key = _saved_api_key()
 
     msg = str(e.message)
@@ -679,7 +679,7 @@ def register(
     print(f"\n    Key saved to config.")
 
     # Warn if there's an old env var that will override the new key
-    env_key = os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY")
+    env_key = os.environ.get("LETSFG_API_KEY")
     if env_key and env_key != new_key:
         print(f"\n  ⚠️  WARNING: You have an old API key in your environment variable.")
         print(f"     The CLI will use the OLD key unless you clear it:")

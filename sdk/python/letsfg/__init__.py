@@ -24,8 +24,6 @@ Full API (search + unlock + book, requires API key):
 from letsfg.client import (
     LetsFG,
     LetsFGError,
-    BoostedTravel,
-    BoostedTravelError,
     AuthenticationError,
     PaymentRequiredError,
     OfferExpiredError,
@@ -49,8 +47,6 @@ __version__ = "2026.5.78"
 __all__ = [
     "LetsFG",
     "LetsFGError",
-    "BoostedTravel",      # deprecated alias
-    "BoostedTravelError", # deprecated alias
     "AuthenticationError",
     "PaymentRequiredError",
     "OfferExpiredError",
