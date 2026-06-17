@@ -32,16 +32,19 @@ except ImportError:
     HAS_RICH = False
 
 from letsfg.client import LetsFG, LetsFGError, AuthenticationError
-from letsfg.connectors.currency import fetch_rates, _fallback_convert
-from letsfg.connectors.source_regions import REGIONS, resolve_country_filter
+
+
+def _fallback_convert(amount: float, from_cur: str, to_cur: str) -> float:
+    return float(amount)
+
 
 app = typer.Typer(
     name="letsfg",
     help=(
         "LetsFG — Agent-native flight search & booking.\n\n"
-        "Search 180 airlines at raw airline prices — $20-50 cheaper than OTAs.\n"
-        "Search runs locally on your machine — FREE, no API key needed.\n\n"
-        "Quick start: letsfg search GDN BCN 2026-06-15\n"
+        "Search 400+ airlines at raw airline prices via the LetsFG cloud.\n"
+        "Free: authenticate once with Twitter/X, then search instantly.\n\n"
+        "Quick start: letsfg auth && letsfg search GDN BCN 2026-06-15\n"
         "Round trip:  letsfg search LON BCN 2026-04-01 --return 2026-04-08"
     ),
     no_args_is_help=True,
@@ -98,18 +101,14 @@ def _json_out(data):
 
 
 def _resolve_locations_with_local_fallback(bt, query: str) -> list[dict]:
-    """Resolve locations via API, falling back to local index when offline."""
+    """Resolve locations via API."""
     try:
         result = bt.resolve_location(query)
         if result:
             return result
     except Exception:
         pass
-    try:
-        from letsfg.local import _resolve_location_local
-        return _resolve_location_local(query)
-    except Exception:
-        return []
+    return []
 
 
 # ── Airline display helpers ───────────────────────────────────────────────
@@ -347,57 +346,14 @@ def search(
     sort: str = typer.Option("price", "--sort", help="Sort: price or duration"),
     max_stops: Optional[int] = typer.Option(None, "--max-stops", "-s", help="Max stopovers (0=direct only, 1, 2). Default: no filter"),
     direct: bool = typer.Option(False, "--direct", "-d", help="Direct flights only (shortcut for --max-stops 0)"),
-    max_browsers: Optional[int] = typer.Option(None, "--max-browsers", "-b", help="Max concurrent browsers (1-32, default: auto-detect from RAM)"),
-    mode: Optional[str] = typer.Option(None, "--mode", "-m", help="Search mode: 'fast' (OTAs + key airlines, 20-40s) or default (all 200+ connectors)"),
-    country: Optional[list[str]] = typer.Option(None, "--country", "-C", help="Filter sources to ISO country code(s), comma-separated or repeated (e.g. BR or BR,AR)"),
-    region: Optional[str] = typer.Option(None, "--region", help="Filter sources by predefined region"),
-    include_global: bool = typer.Option(False, "--include-global", help="Include global aggregators when a country/region filter is active"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show pipeline diagnostics (per-source offer counts at each filter stage)"),
 ):
-    """Search for flights — FREE, no API key required. Runs 180 airline connectors on your machine."""
-    import asyncio
-    import logging
-    import warnings
+    """Search for flights — FREE. Requires Twitter/X auth (run `letsfg auth` once)."""
     from letsfg.local import search_local
+    from letsfg.connectors.auth import BearerTokenError
 
-    # In verbose mode, show INFO from engine pipeline; otherwise only errors
-    if verbose:
-        logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(name)s: %(message)s")
-    else:
-        logging.basicConfig(level=logging.ERROR, stream=sys.stderr, format="%(message)s")
-
-    # Suppress asyncio transport warnings from Playwright subprocess cleanup
-    warnings.filterwarnings("ignore", category=ResourceWarning, message=".*unclosed transport.*")
-
-    # Suppress asyncio __del__ "Exception ignored" noise on Python 3.13+
-    _orig_unraisable = sys.unraisablehook
-    def _quiet_unraisable(hook_args):
-        try:
-            if hook_args.exc_type is ValueError and "pipe" in str(hook_args.exc_value).lower():
-                return
-            if "transport" in str(getattr(hook_args, "object", "")):
-                return
-        except Exception:
-            return
-        _orig_unraisable(hook_args)
-    sys.unraisablehook = _quiet_unraisable
-
-    # Suppress Node.js DEP0169 deprecation warnings from Playwright subprocesses
-    os.environ.setdefault("NODE_OPTIONS", "--no-deprecation")
-    # Tag telemetry as CLI-sourced
-    os.environ["LETSFG_TELEMETRY_SOURCE"] = "cli"
-
-    # --direct is a shortcut for --max-stops 0
-    effective_max_stops = 0 if direct else max_stops
     try:
-        country_filter = resolve_country_filter(country, region)
-    except ValueError as e:
-        _err(f"{e} Valid regions: {', '.join(sorted(REGIONS))}.")
-
-    async def _run():
-        asyncio.get_event_loop().set_exception_handler(lambda loop, ctx: None)
-        return await search_local(
+        result = asyncio.run(search_local(
             origin=origin,
             destination=destination,
             date_from=date,
@@ -407,15 +363,9 @@ def search(
             cabin_class=cabin,
             currency=currency,
             limit=limit,
-            max_browsers=max_browsers,
-            max_stopovers=effective_max_stops,
-            mode=mode,
-            country_filter=country_filter,
-            include_global=include_global,
-        )
-
-    try:
-        result = asyncio.run(_run())
+        ))
+    except BearerTokenError as e:
+        _err(str(e))
     except Exception as e:
         _err(f"Search failed: {e}")
 
@@ -466,10 +416,7 @@ def search(
         return _format_leg_time(leg, pos=pos, include_day_offset=(pos == "arr"))
 
     target_currency = currency.upper()
-    try:
-        eur_rates = asyncio.run(fetch_rates("EUR"))
-    except Exception:
-        eur_rates = {}
+    eur_rates = {}
 
     if HAS_RICH:
         table = Table(show_header=True, header_style="bold")
@@ -542,52 +489,23 @@ def search(
 # ── Star (Link GitHub) ─────────────────────────────────────────────────────
 
 @app.command()
-def star(
-    github: str = typer.Option(..., "--github", "-g", help="Your GitHub username"),
-    output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", help="API key (defaults to saved key)"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
-):
-    """Link your GitHub account — star the repo for FREE unlimited access.
+def auth():
+    """Authenticate with LetsFG via Twitter/X — free, 90-day token.
 
-    1. Star the repo:   https://github.com/LetsFG/LetsFG
-    2. Run:             letsfg star --github <your-username>
+    1. Run this command.
+    2. Post the displayed tweet from your Twitter/X account.
+    3. Press Enter. Done — token is saved locally.
 
-    That's it — no registration needed, we handle it automatically.
+    You only need to do this once every 90 days.
     """
-    # For star command, prefer config file key over env var (avoids stale env issues)
-    from letsfg.client import _saved_api_key
-    if not api_key:
-        api_key = _saved_api_key()
-    if not api_key:
-        api_key = os.environ.get("LETSFG_API_KEY") or os.environ.get("BOOSTEDTRAVEL_API_KEY")
-
-    bt = _get_client(api_key, base_url)
+    from letsfg.connectors.auth import twitter_auth, BearerTokenError
     try:
-        result = bt.link_github(github)
-    except AuthenticationError as e:
-        _handle_auth_error(e)
-    except LetsFGError as e:
-        _err(f"{e.message}")
-
-    if output_json:
-        _json_out(result)
-        return
-
-    status = result.get("status", "unknown")
-    if status == "verified":
-        print(f"\n  ✓ GitHub star verified! Unlimited access granted.")
-        print(f"    Username: {result.get('github_username')}")
-        print(f"\n    You're all set — search, unlock, and book for free.\n")
-    elif status == "already_verified":
-        print(f"\n  ✓ Already verified! You have unlimited access.")
-        print(f"    Username: {result.get('github_username')}\n")
-    elif status == "star_required":
-        print(f"\n  ✗ Star not found for '{github}'.")
-        print(f"    1. Star the repo: https://github.com/LetsFG/LetsFG")
-        print(f"    2. Run this command again.\n")
-    else:
-        _err(f"Unexpected status: {status}")
+        twitter_auth()
+        print("\n  You're all set. Run: letsfg search WAW BCN 2026-07-15\n")
+    except BearerTokenError as e:
+        _err(str(e))
+    except Exception as e:
+        _err(f"Auth failed: {e}")
 
 
 # ── Unlock ────────────────────────────────────────────────────────────────
@@ -940,18 +858,12 @@ def me(
 def system_info_cmd(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ):
-    """Show system resources and recommended concurrency settings.
-
-    Agents can use this to pick optimal --max-browsers values.
-    """
+    """Show system resources."""
     from letsfg.system_info import get_system_profile
-    from letsfg.connectors.browser import get_max_browsers
 
     profile = get_system_profile()
-    current_max = get_max_browsers()
 
     if output_json:
-        profile["current_max_browsers"] = current_max
         _json_out(profile)
         return
 
@@ -961,11 +873,7 @@ def system_info_cmd(
     print(f"  CPU cores:    {profile['cpu_cores']}")
     print(f"  RAM total:    {ram_total:.1f} GB" if ram_total else "  RAM total:    unknown")
     print(f"  RAM available: {ram_avail:.1f} GB" if ram_avail else "  RAM available: unknown")
-    print(f"  Tier:         {profile['tier']}")
-    print(f"  Recommended max browsers: {profile['recommended_max_browsers']}")
-    print(f"  Current max browsers:     {current_max}")
-    print(f"\n  Override with: letsfg search-local ... --max-browsers {current_max}")
-    print(f"  Or set env:   LETSFG_MAX_BROWSERS={current_max}\n")
+    print(f"  Tier:         {profile['tier']}\n")
 
 
 def main():

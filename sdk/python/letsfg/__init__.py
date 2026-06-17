@@ -1,18 +1,19 @@
 """
 LetsFG — Agent-native flight search & booking SDK.
 
-200 airline connectors run locally + enterprise GDS/NDC APIs via backend.
+Search 400+ airlines via the LetsFG cloud API. Authenticate once with Twitter/X
+for a free 90-day Bearer token, then search instantly.
 
-**GitHub Star Required!**
-Before using, you must:
-1. Star https://github.com/LetsFG/LetsFG
-2. Run: letsfg star --github <your-username>
+Quick start (CLI):
+    letsfg auth               # one-time Twitter/X auth
+    letsfg search WAW BCN 2026-07-15
 
-Local search (FREE with star):
+Programmatic search (free, requires Bearer token):
     from letsfg.local import search_local
-    result = await search_local("SHA", "CTU", "2026-03-20")
+    import asyncio
+    result = asyncio.run(search_local("SHA", "CTU", "2026-03-20"))
 
-Full API (search + unlock + book):
+Full API (search + unlock + book, requires API key):
     from letsfg import LetsFG
     bt = LetsFG(api_key="trav_...")
     flights = bt.search("GDN", "BER", "2026-03-03")
@@ -67,18 +68,11 @@ __all__ = [
     "Passenger",
     "AgentProfile",
     "get_system_profile",
-    "configure_max_browsers",
     "PublicFlightOffer",
     "to_public_offer",
 ]
 
-# Lazy imports for system/concurrency utilities
 def get_system_profile():
     """Detect system resources (RAM, CPU) and return optimal concurrency settings."""
     from letsfg.system_info import get_system_profile as _get
     return _get()
-
-def configure_max_browsers(n: int):
-    """Set max concurrent browser processes (1-32). Call before search_local()."""
-    from letsfg.connectors.browser import configure_max_browsers as _cfg
-    _cfg(n)

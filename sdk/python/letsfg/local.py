@@ -1,138 +1,28 @@
 """
-Local flight search — runs 75 airline connectors on the user's machine.
+Cloud-backed flight search for LetsFG.
 
-Can be used programmatically:
+Connectors run server-side at letsfg.co — same response schema, results
+in seconds. Authenticate once via Twitter/X (`letsfg auth`) for a free
+90-day Bearer token.
 
-    from letsfg.local import search_local
-    result = await search_local("SHA", "CTU", "2026-03-20")
-
-Or as a subprocess (used by the npm MCP server + JS SDK):
-
-    echo '{"origin":"SHA","destination":"CTU","date_from":"2026-03-20"}' | python -m letsfg.local
+API flow:
+    POST /api/search         → { search_id }
+    GET  /api/results/<id>   → { status, offers[], total_results }  (poll every 10s)
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
-import sys
-from datetime import date
-from urllib.request import Request as _Req, urlopen
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
-from letsfg.models.flights import FlightSearchRequest, get_airline_category
+from letsfg.connectors.auth import get_bearer_token, BearerTokenError
 
-logger = logging.getLogger(__name__)
-
-_TELEMETRY_URL = "https://letsfg.co/developers/api/v1/analytics/stats/record-local-search"
-_REGISTER_URL = "https://letsfg.co/api/offer/register-local"
-_LETSFG_HOST = "letsfg.co"
-
-
-def _build_telemetry_payload(
-    source: str,
-    search_count: int,
-    result_count: int,
-    duration_ms: int,
-) -> dict:
-    """Build the enriched telemetry payload dict."""
-    from letsfg import __version__ as _sdk_version  # type: ignore[attr-defined]
-    client_type = (source or "python-sdk").strip() or "python-sdk"
-    return {
-        "source": client_type,
-        "search_count": search_count,
-        "result_count": result_count,
-        "duration_ms": duration_ms,
-        "sdk_version": _sdk_version,
-    }
-
-
-def _fire_telemetry(
-    source: str,
-    search_count: int = 1,
-    result_count: int = 0,
-    duration_ms: int = 0,
-) -> None:
-    """Best-effort telemetry — never raises, never blocks the caller."""
-    if os.environ.get("LETSFG_NO_TELEMETRY"):
-        return
-    try:
-        payload = _build_telemetry_payload(source, search_count, result_count, duration_ms)
-        client_type = payload["source"]
-        body = json.dumps(payload).encode()
-        req = _Req(_TELEMETRY_URL, data=body,
-                   headers={
-                       "Content-Type": "application/json",
-                       "User-Agent": "letsfg-local/1.0",
-                       "X-Client-Type": client_type,
-                   },
-                   method="POST")
-        urlopen(req, timeout=3)
-    except Exception:
-        pass
-
-
-def _sync_register_offers(raw_offers: list[dict], search_id: str | None) -> dict[str, dict]:
-    """
-    POST offers to the website's register-local endpoint, receive back
-    ``{offer_ref, payment_token}`` per offer.
-
-    Returns a mapping of ``offer_id → {offer_ref, payment_token}``.
-    Silently returns empty dict on any network/server error so callers never
-    need to handle exceptions from this function.
-    """
-    if not raw_offers:
-        return {}
-    try:
-        payload = json.dumps({
-            "offers": raw_offers,
-            **({"search_id": search_id} if search_id else {}),
-        }).encode()
-        req = _Req(
-            _REGISTER_URL,
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "letsfg-local/1.0",
-            },
-            method="POST",
-        )
-        with urlopen(req, timeout=8) as resp:
-            data: dict = json.loads(resp.read())
-        registered: list[dict] = data.get("registered") or []
-        return {
-            entry["offer_id"]: {
-                "offer_ref": entry.get("offer_ref", ""),
-                "payment_token": entry.get("payment_token", ""),
-            }
-            for entry in registered
-            if entry.get("offer_id")
-        }
-    except Exception as exc:
-        logger.debug("[register-local] skipped: %s", exc)
-        return {}
-
-
-def _mask_airlines_summary(summary_list: list[dict]) -> list[dict]:
-    """Merge airlines_summary entries by category, keeping cheapest price per category."""
-    by_category: dict[str, dict] = {}
-    for s in summary_list:
-        cat = get_airline_category(s.get("airline_code", ""))
-        if cat not in by_category:
-            by_category[cat] = {**s, "airline_code": cat, "airline_name": cat}
-        else:
-            existing = by_category[cat]
-            if s.get("cheapest_price", float("inf")) < existing.get("cheapest_price", float("inf")):
-                by_category[cat] = {
-                    **s,
-                    "airline_code": cat,
-                    "airline_name": cat,
-                    "offer_count": existing.get("offer_count", 0) + s.get("offer_count", 0),
-                }
-            else:
-                existing["offer_count"] = existing.get("offer_count", 0) + s.get("offer_count", 0)
-    return list(by_category.values())
+_BASE_URL = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
+_POLL_INTERVAL = 10   # seconds
+_MAX_POLLS = 36       # 6 minutes max
 
 
 async def search_local(
@@ -147,567 +37,77 @@ async def search_local(
     cabin_class: str | None = None,
     currency: str = "EUR",
     limit: int = 50,
-    max_browsers: int | None = None,
-    max_stopovers: int | None = None,
-    mode: str | None = None,
-    country_filter: frozenset[str] | set[str] | list[str] | None = None,
-    include_global: bool = False,
+    **_kwargs,
 ) -> dict:
     """
-    Run all 73 local airline connectors and return results as a dict.
+    Search flights via the LetsFG cloud API.
 
-    This is the core local search — no API key needed, no backend.
-    Connectors run on the user's machine via Playwright + httpx.
-
-    Args:
-        max_browsers: Max concurrent browser processes (1–32).
-            None = auto-detect based on system RAM.
-            Lower values use less memory but search slower.
-            Higher values search faster but need more RAM.
-        mode: Search mode. None = full (all connectors, default).
-            "fast" = OTAs/aggregators + key direct airlines (~25 connectors, 20-40s).
+    Requires a Bearer token — run `letsfg auth` once to authenticate via Twitter/X.
+    Returns { offers: [...], total_results: N, search_id: "..." }.
     """
-    from letsfg.connectors.engine import multi_provider
+    token = get_bearer_token()
 
-    # Apply concurrency setting before search starts
-    if max_browsers is not None:
-        from letsfg.connectors.browser import configure_max_browsers
-        configure_max_browsers(max_browsers)
-
-    req = FlightSearchRequest(
-        origin=origin.upper(),
-        destination=destination.upper(),
-        date_from=date.fromisoformat(date_from),
-        return_from=date.fromisoformat(return_date) if return_date else None,
-        adults=adults,
-        children=children,
-        infants=infants,
-        cabin_class=cabin_class.upper() if cabin_class else None,
-        currency=currency,
-        limit=limit,
-        max_stopovers=max_stopovers if max_stopovers is not None else 2,
-        country_filter=country_filter,
-        include_global=include_global,
-    )
-
-    import time as _time
-    _t0 = _time.monotonic()
-    resp = await multi_provider.search_flights(req, mode=mode)
-    _duration_ms = int((_time.monotonic() - _t0) * 1000)
-
-    result_data = resp.model_dump(mode="json")
-    _result_count = len(result_data.get("offers", []))
-
-    # Fire-and-forget telemetry so the backend can count local searches.
-    # Runs in a thread to avoid blocking the event loop. Never raises.
-    source = os.environ.get("LETSFG_TELEMETRY_SOURCE", "python-sdk")
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(
-        None,
-        lambda: _fire_telemetry(
-            source=source,
-            search_count=1,
-            result_count=_result_count,
-            duration_ms=_duration_ms,
-        ),
-    )
-
-    # Register offers with the website so each gets an offer_ref (encrypted
-    # snapshot) and a payment_token UUID.  The SDK user gets an unlock_url
-    # per offer — opening it in a browser lets them pay and unlock the booking
-    # link without needing a full backend integration.
-    raw_offers: list[dict] = result_data.get("offers", [])
-    if raw_offers:
-        search_id: str | None = result_data.get("search_id") or None
-        token_map = await asyncio.get_running_loop().run_in_executor(
-            None, _sync_register_offers, raw_offers, search_id
-        )
-        if token_map:
-            for offer in raw_offers:
-                oid = offer.get("id", "")
-                reg = token_map.get(oid)
-                if reg:
-                    offer_ref = reg.get("offer_ref", "")
-                    pt = reg.get("payment_token", "")
-                    offer["offer_ref"] = offer_ref
-                    offer["payment_token"] = pt
-                    if offer_ref and pt:
-                        offer["unlock_url"] = (
-                            f"https://{_LETSFG_HOST}/book/{oid}"
-                            f"?ref={offer_ref}&pt={pt}"
-                        )
-
-    return result_data
-
-
-# ── Location name → IATA code mapping (for local resolve_location) ────────
-# Curated subset covering major airports & cities. If a query isn't found
-# here, returns empty list — the caller should try the backend as fallback.
-_LOCATION_NAMES: dict[str, list[dict]] = {}
-
-def _build_location_index() -> dict[str, list[dict]]:
-    """Build a name → IATA entries index from airline_routes data."""
-    from letsfg.connectors.airline_routes import AIRPORT_COUNTRY, CITY_AIRPORTS, CITY_COUNTRY
-
-    # Airport & city name database — maps common names to IATA codes
-    _AIRPORTS: dict[str, tuple[str, str, str]] = {
-        # code: (name, city_name, type)
-        # Europe — GB
-        "LHR": ("Heathrow Airport", "London", "airport"),
-        "LGW": ("Gatwick Airport", "London", "airport"),
-        "STN": ("Stansted Airport", "London", "airport"),
-        "LTN": ("Luton Airport", "London", "airport"),
-        "LCY": ("London City Airport", "London", "airport"),
-        "SEN": ("Southend Airport", "London", "airport"),
-        "MAN": ("Manchester Airport", "Manchester", "airport"),
-        "EDI": ("Edinburgh Airport", "Edinburgh", "airport"),
-        "BHX": ("Birmingham Airport", "Birmingham", "airport"),
-        "BRS": ("Bristol Airport", "Bristol", "airport"),
-        "GLA": ("Glasgow Airport", "Glasgow", "airport"),
-        "NCL": ("Newcastle Airport", "Newcastle", "airport"),
-        "LPL": ("Liverpool Airport", "Liverpool", "airport"),
-        "BFS": ("Belfast International", "Belfast", "airport"),
-        # Europe — FR
-        "CDG": ("Charles de Gaulle Airport", "Paris", "airport"),
-        "ORY": ("Orly Airport", "Paris", "airport"),
-        "NCE": ("Nice Côte d'Azur Airport", "Nice", "airport"),
-        "LYS": ("Lyon-Saint Exupéry Airport", "Lyon", "airport"),
-        "MRS": ("Marseille Provence Airport", "Marseille", "airport"),
-        "TLS": ("Toulouse-Blagnac Airport", "Toulouse", "airport"),
-        "BOD": ("Bordeaux-Mérignac Airport", "Bordeaux", "airport"),
-        "NTE": ("Nantes Atlantique Airport", "Nantes", "airport"),
-        # Europe — DE
-        "FRA": ("Frankfurt Airport", "Frankfurt", "airport"),
-        "MUC": ("Munich Airport", "Munich", "airport"),
-        "BER": ("Berlin Brandenburg Airport", "Berlin", "airport"),
-        "HAM": ("Hamburg Airport", "Hamburg", "airport"),
-        "CGN": ("Cologne Bonn Airport", "Cologne", "airport"),
-        "DUS": ("Düsseldorf Airport", "Düsseldorf", "airport"),
-        "STR": ("Stuttgart Airport", "Stuttgart", "airport"),
-        "NUE": ("Nuremberg Airport", "Nuremberg", "airport"),
-        "HAJ": ("Hannover Airport", "Hannover", "airport"),
-        "LEJ": ("Leipzig/Halle Airport", "Leipzig", "airport"),
-        # Europe — IT
-        "FCO": ("Fiumicino Airport", "Rome", "airport"),
-        "MXP": ("Malpensa Airport", "Milan", "airport"),
-        "BGY": ("Bergamo Airport", "Milan", "airport"),
-        "VCE": ("Venice Marco Polo Airport", "Venice", "airport"),
-        "NAP": ("Naples Airport", "Naples", "airport"),
-        "BLQ": ("Bologna Airport", "Bologna", "airport"),
-        "PSA": ("Pisa Airport", "Pisa", "airport"),
-        "CTA": ("Catania Airport", "Catania", "airport"),
-        "PMO": ("Palermo Airport", "Palermo", "airport"),
-        # Europe — ES
-        "BCN": ("Barcelona-El Prat Airport", "Barcelona", "airport"),
-        "MAD": ("Madrid Barajas Airport", "Madrid", "airport"),
-        "PMI": ("Palma de Mallorca Airport", "Palma", "airport"),
-        "AGP": ("Málaga Airport", "Málaga", "airport"),
-        "ALC": ("Alicante-Elche Airport", "Alicante", "airport"),
-        "VLC": ("Valencia Airport", "Valencia", "airport"),
-        "SVQ": ("Seville Airport", "Seville", "airport"),
-        "IBZ": ("Ibiza Airport", "Ibiza", "airport"),
-        "TFS": ("Tenerife South Airport", "Tenerife", "airport"),
-        "LPA": ("Gran Canaria Airport", "Las Palmas", "airport"),
-        # Europe — NL/BE/CH/AT/PT/IE
-        "AMS": ("Schiphol Airport", "Amsterdam", "airport"),
-        "EIN": ("Eindhoven Airport", "Eindhoven", "airport"),
-        "BRU": ("Brussels Airport", "Brussels", "airport"),
-        "CRL": ("Charleroi Airport", "Brussels", "airport"),
-        "ZRH": ("Zürich Airport", "Zürich", "airport"),
-        "GVA": ("Geneva Airport", "Geneva", "airport"),
-        "BSL": ("Basel Airport", "Basel", "airport"),
-        "VIE": ("Vienna Airport", "Vienna", "airport"),
-        "SZG": ("Salzburg Airport", "Salzburg", "airport"),
-        "INN": ("Innsbruck Airport", "Innsbruck", "airport"),
-        "LIS": ("Lisbon Airport", "Lisbon", "airport"),
-        "OPO": ("Porto Airport", "Porto", "airport"),
-        "FAO": ("Faro Airport", "Faro", "airport"),
-        "DUB": ("Dublin Airport", "Dublin", "airport"),
-        "SNN": ("Shannon Airport", "Shannon", "airport"),
-        "ORK": ("Cork Airport", "Cork", "airport"),
-        # Europe — GR/PL/CZ/HU/RO/BG/HR/Nordic
-        "ATH": ("Athens International Airport", "Athens", "airport"),
-        "SKG": ("Thessaloniki Airport", "Thessaloniki", "airport"),
-        "HER": ("Heraklion Airport", "Heraklion", "airport"),
-        "WAW": ("Warsaw Chopin Airport", "Warsaw", "airport"),
-        "KRK": ("Kraków Airport", "Kraków", "airport"),
-        "GDN": ("Gdańsk Lech Wałęsa Airport", "Gdańsk", "airport"),
-        "WRO": ("Wrocław Airport", "Wrocław", "airport"),
-        "KTW": ("Katowice Airport", "Katowice", "airport"),
-        "POZ": ("Poznań Airport", "Poznań", "airport"),
-        "PRG": ("Prague Airport", "Prague", "airport"),
-        "BUD": ("Budapest Airport", "Budapest", "airport"),
-        "OTP": ("Bucharest Henri Coandă Airport", "Bucharest", "airport"),
-        "CLJ": ("Cluj-Napoca Airport", "Cluj-Napoca", "airport"),
-        "SOF": ("Sofia Airport", "Sofia", "airport"),
-        "BEG": ("Belgrade Nikola Tesla Airport", "Belgrade", "airport"),
-        "ZAG": ("Zagreb Airport", "Zagreb", "airport"),
-        "SPU": ("Split Airport", "Split", "airport"),
-        "DBV": ("Dubrovnik Airport", "Dubrovnik", "airport"),
-        "LJU": ("Ljubljana Airport", "Ljubljana", "airport"),
-        "TIA": ("Tirana Airport", "Tirana", "airport"),
-        "HEL": ("Helsinki Airport", "Helsinki", "airport"),
-        "ARN": ("Stockholm Arlanda Airport", "Stockholm", "airport"),
-        "GOT": ("Gothenburg Landvetter Airport", "Gothenburg", "airport"),
-        "OSL": ("Oslo Gardermoen Airport", "Oslo", "airport"),
-        "BGO": ("Bergen Airport", "Bergen", "airport"),
-        "CPH": ("Copenhagen Airport", "Copenhagen", "airport"),
-        "KEF": ("Keflavík Airport", "Reykjavik", "airport"),
-        "RIX": ("Riga Airport", "Riga", "airport"),
-        "VNO": ("Vilnius Airport", "Vilnius", "airport"),
-        "TLL": ("Tallinn Airport", "Tallinn", "airport"),
-        # Europe — TR
-        "IST": ("Istanbul Airport", "Istanbul", "airport"),
-        "SAW": ("Sabiha Gökçen Airport", "Istanbul", "airport"),
-        "AYT": ("Antalya Airport", "Antalya", "airport"),
-        "ADB": ("Izmir Adnan Menderes Airport", "Izmir", "airport"),
-        "ESB": ("Ankara Esenboğa Airport", "Ankara", "airport"),
-        # Middle East
-        "DXB": ("Dubai International Airport", "Dubai", "airport"),
-        "AUH": ("Abu Dhabi Airport", "Abu Dhabi", "airport"),
-        "DOH": ("Hamad International Airport", "Doha", "airport"),
-        "BAH": ("Bahrain Airport", "Bahrain", "airport"),
-        "KWI": ("Kuwait Airport", "Kuwait City", "airport"),
-        "MCT": ("Muscat Airport", "Muscat", "airport"),
-        "RUH": ("King Khalid Airport", "Riyadh", "airport"),
-        "JED": ("Jeddah Airport", "Jeddah", "airport"),
-        "AMM": ("Queen Alia Airport", "Amman", "airport"),
-        "BEY": ("Beirut Airport", "Beirut", "airport"),
-        "TLV": ("Ben Gurion Airport", "Tel Aviv", "airport"),
-        "CAI": ("Cairo International Airport", "Cairo", "airport"),
-        # South Asia
-        "DEL": ("Indira Gandhi Airport", "Delhi", "airport"),
-        "BOM": ("Chhatrapati Shivaji Airport", "Mumbai", "airport"),
-        "BLR": ("Kempegowda Airport", "Bangalore", "airport"),
-        "MAA": ("Chennai Airport", "Chennai", "airport"),
-        "HYD": ("Rajiv Gandhi Airport", "Hyderabad", "airport"),
-        "CCU": ("Netaji Subhas Chandra Bose Airport", "Kolkata", "airport"),
-        "GOI": ("Goa Airport", "Goa", "airport"),
-        "COK": ("Cochin Airport", "Kochi", "airport"),
-        "CMB": ("Bandaranaike Airport", "Colombo", "airport"),
-        "MLE": ("Velana Airport", "Malé", "airport"),
-        "KTM": ("Tribhuvan Airport", "Kathmandu", "airport"),
-        "DAC": ("Hazrat Shahjalal Airport", "Dhaka", "airport"),
-        "ISB": ("Islamabad Airport", "Islamabad", "airport"),
-        "LHE": ("Lahore Airport", "Lahore", "airport"),
-        "KHI": ("Jinnah Airport", "Karachi", "airport"),
-        # Southeast Asia
-        "SIN": ("Changi Airport", "Singapore", "airport"),
-        "KUL": ("Kuala Lumpur International Airport", "Kuala Lumpur", "airport"),
-        "PEN": ("Penang Airport", "Penang", "airport"),
-        "BKK": ("Suvarnabhumi Airport", "Bangkok", "airport"),
-        "DMK": ("Don Mueang Airport", "Bangkok", "airport"),
-        "CNX": ("Chiang Mai Airport", "Chiang Mai", "airport"),
-        "HKT": ("Phuket Airport", "Phuket", "airport"),
-        "SGN": ("Tan Son Nhat Airport", "Ho Chi Minh City", "airport"),
-        "HAN": ("Noi Bai Airport", "Hanoi", "airport"),
-        "DAD": ("Da Nang Airport", "Da Nang", "airport"),
-        "CGK": ("Soekarno-Hatta Airport", "Jakarta", "airport"),
-        "DPS": ("Ngurah Rai Airport", "Bali", "airport"),
-        "MNL": ("Ninoy Aquino Airport", "Manila", "airport"),
-        "CEB": ("Mactan-Cebu Airport", "Cebu", "airport"),
-        "RGN": ("Yangon Airport", "Yangon", "airport"),
-        "PNH": ("Phnom Penh Airport", "Phnom Penh", "airport"),
-        # East Asia
-        "NRT": ("Narita Airport", "Tokyo", "airport"),
-        "HND": ("Haneda Airport", "Tokyo", "airport"),
-        "KIX": ("Kansai Airport", "Osaka", "airport"),
-        "FUK": ("Fukuoka Airport", "Fukuoka", "airport"),
-        "CTS": ("New Chitose Airport", "Sapporo", "airport"),
-        "ICN": ("Incheon Airport", "Seoul", "airport"),
-        "GMP": ("Gimpo Airport", "Seoul", "airport"),
-        "CJU": ("Jeju Airport", "Jeju", "airport"),
-        "PUS": ("Gimhae Airport", "Busan", "airport"),
-        "PEK": ("Beijing Capital Airport", "Beijing", "airport"),
-        "PVG": ("Pudong Airport", "Shanghai", "airport"),
-        "CAN": ("Guangzhou Baiyun Airport", "Guangzhou", "airport"),
-        "SZX": ("Shenzhen Bao'an Airport", "Shenzhen", "airport"),
-        "CTU": ("Chengdu Tianfu Airport", "Chengdu", "airport"),
-        "HKG": ("Hong Kong International Airport", "Hong Kong", "airport"),
-        "TPE": ("Taiwan Taoyuan Airport", "Taipei", "airport"),
-        # Oceania
-        "SYD": ("Sydney Airport", "Sydney", "airport"),
-        "MEL": ("Melbourne Airport", "Melbourne", "airport"),
-        "BNE": ("Brisbane Airport", "Brisbane", "airport"),
-        "PER": ("Perth Airport", "Perth", "airport"),
-        "ADL": ("Adelaide Airport", "Adelaide", "airport"),
-        "CNS": ("Cairns Airport", "Cairns", "airport"),
-        "OOL": ("Gold Coast Airport", "Gold Coast", "airport"),
-        "AKL": ("Auckland Airport", "Auckland", "airport"),
-        "WLG": ("Wellington Airport", "Wellington", "airport"),
-        "CHC": ("Christchurch Airport", "Christchurch", "airport"),
-        # North America — US
-        "JFK": ("John F. Kennedy Airport", "New York", "airport"),
-        "EWR": ("Newark Liberty Airport", "New York", "airport"),
-        "LGA": ("LaGuardia Airport", "New York", "airport"),
-        "LAX": ("Los Angeles International Airport", "Los Angeles", "airport"),
-        "ORD": ("O'Hare International Airport", "Chicago", "airport"),
-        "MDW": ("Midway Airport", "Chicago", "airport"),
-        "ATL": ("Hartsfield-Jackson Airport", "Atlanta", "airport"),
-        "DFW": ("Dallas/Fort Worth Airport", "Dallas", "airport"),
-        "DEN": ("Denver International Airport", "Denver", "airport"),
-        "SFO": ("San Francisco International Airport", "San Francisco", "airport"),
-        "SEA": ("Seattle-Tacoma Airport", "Seattle", "airport"),
-        "MIA": ("Miami International Airport", "Miami", "airport"),
-        "BOS": ("Boston Logan Airport", "Boston", "airport"),
-        "IAD": ("Dulles International Airport", "Washington", "airport"),
-        "DCA": ("Reagan National Airport", "Washington", "airport"),
-        "PHX": ("Phoenix Sky Harbor Airport", "Phoenix", "airport"),
-        "IAH": ("Houston George Bush Airport", "Houston", "airport"),
-        "MCO": ("Orlando International Airport", "Orlando", "airport"),
-        "MSP": ("Minneapolis-St Paul Airport", "Minneapolis", "airport"),
-        "DTW": ("Detroit Metro Airport", "Detroit", "airport"),
-        "FLL": ("Fort Lauderdale Airport", "Fort Lauderdale", "airport"),
-        "CLT": ("Charlotte Douglas Airport", "Charlotte", "airport"),
-        "LAS": ("Harry Reid Airport", "Las Vegas", "airport"),
-        "SLC": ("Salt Lake City Airport", "Salt Lake City", "airport"),
-        "SAN": ("San Diego Airport", "San Diego", "airport"),
-        "TPA": ("Tampa International Airport", "Tampa", "airport"),
-        "PDX": ("Portland International Airport", "Portland", "airport"),
-        "HNL": ("Honolulu Airport", "Honolulu", "airport"),
-        # North America — CA
-        "YYZ": ("Toronto Pearson Airport", "Toronto", "airport"),
-        "YVR": ("Vancouver International Airport", "Vancouver", "airport"),
-        "YUL": ("Montréal-Trudeau Airport", "Montreal", "airport"),
-        "YOW": ("Ottawa Airport", "Ottawa", "airport"),
-        "YYC": ("Calgary Airport", "Calgary", "airport"),
-        "YEG": ("Edmonton Airport", "Edmonton", "airport"),
-        # Mexico
-        "MEX": ("Mexico City Airport", "Mexico City", "airport"),
-        "CUN": ("Cancún Airport", "Cancún", "airport"),
-        "GDL": ("Guadalajara Airport", "Guadalajara", "airport"),
-        # Caribbean / Central America
-        "PTY": ("Tocumen Airport", "Panama City", "airport"),
-        "SJO": ("Juan Santamaría Airport", "San José", "airport"),
-        "SJU": ("Luis Muñoz Marín Airport", "San Juan", "airport"),
-        # South America
-        "GRU": ("Guarulhos Airport", "São Paulo", "airport"),
-        "GIG": ("Galeão Airport", "Rio de Janeiro", "airport"),
-        "EZE": ("Ezeiza Airport", "Buenos Aires", "airport"),
-        "AEP": ("Aeroparque Jorge Newbery", "Buenos Aires", "airport"),
-        "SCL": ("Santiago International Airport", "Santiago", "airport"),
-        "LIM": ("Jorge Chávez Airport", "Lima", "airport"),
-        "BOG": ("El Dorado Airport", "Bogotá", "airport"),
-        "MDE": ("José María Córdova Airport", "Medellín", "airport"),
-        # Africa
-        "JNB": ("O.R. Tambo Airport", "Johannesburg", "airport"),
-        "CPT": ("Cape Town International Airport", "Cape Town", "airport"),
-        "NBO": ("Jomo Kenyatta Airport", "Nairobi", "airport"),
-        "ADD": ("Bole International Airport", "Addis Ababa", "airport"),
-        "LOS": ("Murtala Muhammed Airport", "Lagos", "airport"),
-        "CMN": ("Mohammed V Airport", "Casablanca", "airport"),
-        "RAK": ("Marrakech Menara Airport", "Marrakech", "airport"),
+    payload: dict = {
+        "origin": origin,
+        "destination": destination,
+        "date_from": date_from,
+        "adults": adults,
+        "children": children,
+        "currency": currency,
+        "limit": limit,
     }
+    if return_date:
+        payload["return_date"] = return_date
+    if cabin_class:
+        payload["cabin_class"] = cabin_class
+    if infants:
+        payload["infants"] = infants
 
-    _CITIES: dict[str, tuple[str, str]] = {
-        # code: (city_name, country_code)
-        "LON": ("London", "GB"), "PAR": ("Paris", "FR"), "ROM": ("Rome", "IT"),
-        "MIL": ("Milan", "IT"), "NYC": ("New York", "US"), "WAS": ("Washington", "US"),
-        "CHI": ("Chicago", "US"), "TYO": ("Tokyo", "JP"), "OSA": ("Osaka", "JP"),
-        "SEL": ("Seoul", "KR"), "BJS": ("Beijing", "CN"), "SHA": ("Shanghai", "CN"),
-        "BUE": ("Buenos Aires", "AR"), "BKK": ("Bangkok", "TH"),
-        "KUL": ("Kuala Lumpur", "MY"), "REK": ("Reykjavik", "IS"),
-        "MOW": ("Moscow", "RU"), "STO": ("Stockholm", "SE"),
-    }
-
-    idx: dict[str, list[dict]] = {}
-
-    def _add(key: str, entry: dict):
-        key = key.lower().strip()
-        if key:
-            idx.setdefault(key, []).append(entry)
-
-    # Index airports
-    for code, (name, city, _type) in _AIRPORTS.items():
-        country = AIRPORT_COUNTRY.get(code, "")
-        entry = {"iata_code": code, "name": name, "type": "airport", "city": city, "country": country}
-        _add(code.lower(), entry)
-        _add(name.lower(), entry)
-        _add(city.lower(), entry)
-        # Also index without diacritics for common queries
-        for part in [name, city]:
-            simplified = part.lower().replace("ü", "u").replace("ö", "o").replace("ä", "a").replace("é", "e").replace("è", "e").replace("ñ", "n").replace("ø", "o").replace("å", "a").replace("ł", "l").replace("ę", "e").replace("ą", "a").replace("ś", "s").replace("ć", "c").replace("ż", "z").replace("ź", "z").replace("ó", "o").replace("ń", "n").replace("ô", "o").replace("â", "a").replace("î", "i").replace("ã", "a").replace("í", "i").replace("ú", "u").replace("á", "a").replace("ò", "o").replace("ù", "u").replace("ç", "c").replace("ă", "a").replace("ş", "s").replace("ğ", "g").replace("ı", "i").replace("ð", "d").replace("þ", "th")
-            if simplified != part.lower():
-                _add(simplified, entry)
-
-    # Index city codes
-    for code, (city_name, country) in _CITIES.items():
-        airports = CITY_AIRPORTS.get(code, [])
-        entry = {"iata_code": code, "name": city_name, "type": "city", "country": country, "airports": airports}
-        _add(code.lower(), entry)
-        _add(city_name.lower(), entry)
-
-    # India city aliases (historical/colloquial names not in the main AIRPORTS dict)
-    _INDIA_ALIASES: dict[str, str] = {
-        "bengaluru": "BLR",
-        "new delhi": "DEL",
-        "bombay": "BOM",
-        "madras": "MAA",
-        "calcutta": "CCU",
-    }
-    for alias, iata in _INDIA_ALIASES.items():
-        if iata in _AIRPORTS:
-            name, city, _ = _AIRPORTS[iata]
-            country = AIRPORT_COUNTRY.get(iata, "IN")
-            alias_entry = {"iata_code": iata, "name": name, "type": "airport", "city": city, "country": country}
-            _add(alias, alias_entry)
-
-    return idx
-
-
-def _resolve_location_local(query: str) -> list[dict]:
-    """Resolve a city/airport name to IATA codes using local data."""
-    global _LOCATION_NAMES
-    if not _LOCATION_NAMES:
-        _LOCATION_NAMES = _build_location_index()
-
-    q = query.lower().strip()
-    if not q:
-        return []
-
-    # Exact match first
-    results = _LOCATION_NAMES.get(q)
-    if results:
-        # Deduplicate by iata_code, prefer city entries first
-        seen = set()
-        out = []
-        # Put city-type entries first
-        for r in sorted(results, key=lambda x: (0 if x["type"] == "city" else 1, x["iata_code"])):
-            if r["iata_code"] not in seen:
-                seen.add(r["iata_code"])
-                out.append(r)
-        return out
-
-    # Prefix match as fallback
-    matches = []
-    for key, entries in _LOCATION_NAMES.items():
-        if key.startswith(q) or q in key:
-            matches.extend(entries)
-
-    # Deduplicate
-    seen = set()
-    out = []
-    for r in sorted(matches, key=lambda x: (0 if x["type"] == "city" else 1, x["iata_code"])):
-        if r["iata_code"] not in seen:
-            seen.add(r["iata_code"])
-            out.append(r)
-    return out[:20]
-
-
-def _run_checkout_local(params: dict) -> dict:
-    """Run checkout locally via the checkout engine."""
-    import asyncio
-
-    offer = params.get("offer") or {}
-    offer_id = params.get("offer_id", "")
-    passengers = params.get("passengers")
-    checkout_token = params.get("checkout_token", "")
-    api_key = params.get("api_key", "")
-    base_url = params.get("base_url", "https://letsfg.co/developers")
-
-    # If we only have offer_id but no full offer, return URL-only
-    if not offer and not offer_id:
-        return {"status": "error", "message": "offer_id or offer required"}
-
-    try:
-        from letsfg.client import LetsFG
-        bt = LetsFG(api_key=api_key, base_url=base_url)
-        result = bt.start_checkout_local(
-            offer=offer if offer else {"id": offer_id},
-            passengers=passengers,
-            checkout_token=checkout_token,
-        )
-        return result.__dict__ if hasattr(result, "__dict__") else {"status": "error", "message": str(result)}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-def _main() -> None:
-    """Entry point for subprocess invocation: reads JSON from stdin, writes JSON to stdout."""
-    import os
-    import warnings
-
-    # Suppress asyncio transport cleanup noise (Python 3.13+)
-    warnings.filterwarnings("ignore", category=ResourceWarning, message=".*unclosed transport.*")
-    _orig_unraisable = sys.unraisablehook
-    def _quiet_unraisable(hook_args):
-        try:
-            if hook_args.exc_type is ValueError and "pipe" in str(hook_args.exc_value).lower():
-                return
-            if "transport" in str(getattr(hook_args, "object", "")):
-                return
-        except Exception:
-            return
-        _orig_unraisable(hook_args)
-    sys.unraisablehook = _quiet_unraisable
-
-    # Suppress Node.js DEP0169 warnings from Playwright subprocesses
-    os.environ.setdefault("NODE_OPTIONS", "--no-deprecation")
-
-    raw = sys.stdin.read().strip()
-    if not raw:
-        json.dump({"error": "No input provided. Send JSON on stdin."}, sys.stdout)
-        sys.exit(1)
-
-    try:
-        params = json.loads(raw)
-    except json.JSONDecodeError as e:
-        json.dump({"error": f"Invalid JSON: {e}"}, sys.stdout)
-        sys.exit(1)
-
-    # System info query (used by MCP server's system_info tool)
-    if params.get("__system_info"):
-        from letsfg.system_info import get_system_profile
-        from letsfg.connectors.browser import get_max_browsers
-        profile = get_system_profile()
-        profile["current_max_browsers"] = get_max_browsers()
-        json.dump(profile, sys.stdout)
-        return
-
-    # Location resolution (used by MCP server's resolve_location tool)
-    if params.get("__resolve_location"):
-        json.dump(_resolve_location_local(params.get("query", "")), sys.stdout)
-        return
-
-    # Checkout (used by MCP server's start_checkout tool)
-    if params.get("__checkout"):
-        result = _run_checkout_local(params)
-        json.dump(result, sys.stdout)
-        return
-
-    # Suppress noisy logs — only errors to stderr
-    logging.basicConfig(
-        level=logging.WARNING,
-        format="%(name)s %(levelname)s %(message)s",
-        stream=sys.stderr,
+    req = Request(
+        f"{_BASE_URL}/api/search",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
     )
-
-    async def _run():
-        asyncio.get_event_loop().set_exception_handler(lambda loop, ctx: None)
-        return await search_local(
-            origin=params["origin"],
-            destination=params["destination"],
-            date_from=params["date_from"],
-            return_date=params.get("return_date") or params.get("return_from"),
-            adults=params.get("adults", 1),
-            children=params.get("children", 0),
-            infants=params.get("infants", 0),
-            cabin_class=params.get("cabin_class"),
-            currency=params.get("currency", "EUR"),
-            limit=params.get("limit", 50),
-            max_browsers=params.get("max_browsers"),
-            mode=params.get("mode"),
-            country_filter=params.get("country_filter"),
-            include_global=params.get("include_global", False),
-        )
-
     try:
-        result = asyncio.run(_run())
-        json.dump(result, sys.stdout)
-    except Exception as e:
-        json.dump({"error": str(e)}, sys.stdout)
-        sys.exit(1)
+        with urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 401:
+            raise BearerTokenError(
+                "Bearer token expired or revoked. Run `letsfg auth` to re-authenticate."
+            )
+        raise
+
+    search_id = result.get("search_id") or result.get("id")
+    if not search_id:
+        return result  # direct response (e.g. sandbox mode)
+
+    print(f"  Searching [{search_id[:8]}] ", end="", flush=True)
+    for _ in range(_MAX_POLLS):
+        await asyncio.sleep(_POLL_INTERVAL)
+        print(".", end="", flush=True)
+        poll_req = Request(
+            f"{_BASE_URL}/api/results/{search_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            method="GET",
+        )
+        with urlopen(poll_req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        status = data.get("status", "")
+        if status in ("done", "complete", "finished") or (
+            data.get("offers") and status not in ("pending", "running")
+        ):
+            print()
+            return data
+
+    print()
+    return {"offers": [], "total_results": 0, "search_id": search_id}
 
 
-if __name__ == "__main__":
-    _main()
+async def _resolve_location_local(query: str) -> list[dict]:
+    """Stub — location resolution is handled server-side."""
+    return []
