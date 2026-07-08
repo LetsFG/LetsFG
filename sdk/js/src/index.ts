@@ -492,14 +492,14 @@ export class LetsFG {
   }
 
   private async getWithAuth<T>(path: string): Promise<T> {
-    const headers = this.usingPFS
+    const headers: Record<string, string> = this.usingPFS
       ? { 'Authorization': `Bearer ${this.bearerToken}` }
       : { 'X-API-Key': this.apiKey };
     return this.requestWithHeaders<T>(path, 'GET', headers);
   }
 
   private async postWithAuth<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    const headers = this.usingPFS
+    const headers: Record<string, string> = this.usingPFS
       ? { 'Authorization': `Bearer ${this.bearerToken}` }
       : { 'X-API-Key': this.apiKey };
     return this.requestWithHeaders<T>(path, 'POST', headers, body);

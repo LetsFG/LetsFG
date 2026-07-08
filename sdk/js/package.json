@@ -1,6 +1,6 @@
 {
   "name": "letsfg",
-  "version": "2026.5.54",
+  "version": "2026.5.55",
   "description": "Flight search & booking for AI agents. Server-side engine covers hundreds of airlines. Free search via Bearer token or prepaid Developer API. Includes open-source ranking engine.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

@@ -1,6 +1,6 @@
 {
   "name": "letsfg-mcp",
-  "version": "2026.5.54",
+  "version": "2026.5.55",
   "mcpName": "io.github.LetsFG/letsfg",
   "description": "LetsFG MCP Server — server-side engine covers hundreds of airlines. Flight search for Claude, Cursor, Windsurf, and any MCP agent. Free search via Bearer token or prepaid Developer API.",
   "main": "dist/index.js",
