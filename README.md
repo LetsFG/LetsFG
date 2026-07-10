@@ -470,7 +470,7 @@ Direct airline booking_url — no checkout, no concierge fee
 
 ## Star History
 
-<a href="https://github.com/LetsFG/LetsFG">
+<a href="https://www.star-history.com/?repos=LetsFG%2FLetsFG&type=date&legend=top-left">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://letsfg.co/api/stars/history?theme=dark" />
     <source media="(prefers-color-scheme: light)" srcset="https://letsfg.co/api/stars/history?theme=light" />
