@@ -14,6 +14,10 @@ Or having that feeling you could've got a better deal if you'd just waited a lit
 **So we built something about it.**<br>
 No markup. No tracking. No price that goes up because you looked twice.
 
+**We started with flights. We're not stopping there.**<br>
+The plan: one agent for the whole trip. It finds the real best deal across every airline and OTA, picks the right airport when your city has three, sorts ground transport on the other end, and watches your flight so a delay or cancellation gets handled before you're the one stuck in a rebooking line.<br>
+Search and booking work today. The rest is what we're building next.
+
 <br>
 
 [<img src="https://img.shields.io/badge/⭐_Star_to_show_love-FFD700?style=for-the-badge&logoColor=black" alt="Star to show love">](https://github.com/LetsFG/LetsFG)
@@ -24,11 +28,11 @@ No markup. No tracking. No price that goes up because you looked twice.
 
 <br>
 
-[<img src="https://img.shields.io/badge/Follow_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Follow on Instagram">](https://www.instagram.com/letsfg_)
+[<img src="assets/badge-instagram.svg" alt="Follow on Instagram">](https://www.instagram.com/letsfg_)
 &nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/Follow_on_TikTok-000000?style=for-the-badge&logo=tiktok&logoColor=white" alt="Follow on TikTok">](https://www.tiktok.com/@letsfg_)
+[<img src="assets/badge-tiktok.svg" alt="Follow on TikTok">](https://www.tiktok.com/@letsfg_)
 &nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/Follow_on_X-111111?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X">](https://x.com/LetsFG_)
+[<img src="assets/badge-x.svg" alt="Follow on X">](https://x.com/LetsFG_)
 
 <br>
 
