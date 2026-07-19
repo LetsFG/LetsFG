@@ -8,15 +8,15 @@
 
 # We're LetsFG — a community of travelers.
 
-Finding a flight shouldn't mean checking 47 websites. Or 3 hours of searching.<br>
-Or having that feeling you could've got a better deal if you'd just waited a little longer.
+Planning a trip shouldn't mean 47 tabs open, 3 hours of searching, and that feeling you could've got a better deal if you'd just waited a little longer.<br>
+Then a separate app to watch for delays. Then another one for the ride to the airport.
 
-**So we built something about it.**<br>
+**So we're building one thing that handles all of it.**<br>
+The real best deal, across every airline and OTA. The right airport when your city has three. Ground transport on the other end. Someone watching your flight so a delay or cancellation gets handled before you're the one stuck in a line.
+
 No markup. No tracking. No price that goes up because you looked twice.
 
-**We started with flights. We're not stopping there.**<br>
-The plan: one agent for the whole trip. It finds the real best deal across every airline and OTA, picks the right airport when your city has three, sorts ground transport on the other end, and watches your flight so a delay or cancellation gets handled before you're the one stuck in a rebooking line.<br>
-Search and booking work today. The rest is what we're building next.
+Search and booking work today, right here in this repo. The rest is what we're building next.
 
 <br>
 
@@ -52,7 +52,7 @@ Search and booking work today. The rest is what we're building next.
 
 ---
 
-# Your AI agent just learned to book flights.
+# Flights are step one. Here's the part that's live.
 
 **Hundreds of airlines. Real prices. One function call.**
 
