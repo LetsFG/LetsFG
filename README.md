@@ -8,11 +8,15 @@
 
 # We're LetsFG — a community of travelers.
 
-Finding a flight shouldn't mean checking 47 websites. Or 3 hours of searching.<br>
-Or having that feeling you could've got a better deal if you'd just waited a little longer.
+Planning a trip shouldn't mean 47 tabs open, 3 hours of searching, and that feeling you could've got a better deal if you'd just waited a little longer.<br>
+Then a separate app to watch for delays. Then another one for the ride to the airport.
 
-**So we built something about it.**<br>
+**So we're building one thing that handles all of it.**<br>
+The real best deal, across every airline and OTA. The right airport when your city has three. Ground transport on the other end. Someone watching your flight so a delay or cancellation gets handled before you're the one stuck in a line.
+
 No markup. No tracking. No price that goes up because you looked twice.
+
+Search and booking work today, right here in this repo. The rest is what we're building next.
 
 <br>
 
@@ -24,11 +28,11 @@ No markup. No tracking. No price that goes up because you looked twice.
 
 <br>
 
-[<img src="https://img.shields.io/badge/Follow_on_Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Follow on Instagram">](https://www.instagram.com/letsfg_)
+[<img src="assets/badge-instagram.svg" alt="Follow on Instagram">](https://www.instagram.com/letsfg_)
 &nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/Follow_on_TikTok-000000?style=for-the-badge&logo=tiktok&logoColor=white" alt="Follow on TikTok">](https://www.tiktok.com/@letsfg_)
+[<img src="assets/badge-tiktok.svg" alt="Follow on TikTok">](https://www.tiktok.com/@letsfg_)
 &nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/Follow_on_X-111111?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X">](https://x.com/LetsFG_)
+[<img src="assets/badge-x.svg" alt="Follow on X">](https://x.com/LetsFG_)
 
 <br>
 
@@ -48,7 +52,7 @@ No markup. No tracking. No price that goes up because you looked twice.
 
 ---
 
-# Your AI agent just learned to book flights.
+# Flights are step one. Here's the part that's live.
 
 **Hundreds of airlines. Real prices. One function call.**
 
