@@ -122,6 +122,25 @@ describe('MCP server — tools/list', () => {
       assert.ok(tool.inputSchema !== null && typeof tool.inputSchema === 'object', `tool.inputSchema missing on: ${tool.name}`);
     }
   });
+  it('search_flights schema includes departure_time filters', async () => {
+    sendMessage(proc, { jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' },
+    }});
+    await readNextMessage(proc);
+
+    sendMessage(proc, { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+    const response = await readNextMessage(proc);
+
+    const result = response.result as Record<string, unknown>;
+    const tools = result.tools as Array<Record<string, unknown>>;
+    const searchTool = tools.find(t => t.name === 'search_flights');
+    assert.ok(searchTool, 'search_flights tool should exist');
+
+    const inputSchema = searchTool.inputSchema as Record<string, unknown>;
+    const props = inputSchema.properties as Record<string, unknown>;
+    assert.ok(props.departure_time_from, 'departure_time_from should exist in schema');
+    assert.ok(props.departure_time_to, 'departure_time_to should exist in schema');
+  });
 });
 
 describe('MCP server — resources/list', () => {

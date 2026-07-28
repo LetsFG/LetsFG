@@ -175,6 +175,8 @@ const TOOLS = [
         cabin_class: { type: 'string', description: 'M=economy, W=premium, C=business, F=first', enum: ['M', 'W', 'C', 'F'] },
         currency: { type: 'string', description: 'Currency code (EUR, USD, GBP)', default: 'EUR' },
         max_results: { type: 'integer', description: 'Max offers to return', default: 10 },
+        departure_time_from: { type: 'string', description: "Earliest departure time HH:MM (e.g., '06:00')" },
+        departure_time_to: { type: 'string', description: "Latest departure time HH:MM (e.g., '14:00')" },
       },
     },
   },
@@ -292,6 +294,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       };
       if (args.return_from) params.return_from = args.return_from;
       if (args.cabin_class) params.cabin_class = args.cabin_class;
+      if (args.departure_time_from) params.departure_time_from = args.departure_time_from;
+      if (args.departure_time_to) params.departure_time_to = args.departure_time_to;
 
       let result: Record<string, unknown>;
       if (BEARER_TOKEN) {
