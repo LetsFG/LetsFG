@@ -13,6 +13,7 @@ import {
   cheapestOffer,
   type FlightOffer,
   type FlightSearchResult,
+  type SearchOptions,
 } from './index.js';
 
 // ── Class instantiation ───────────────────────────────────────────────────
@@ -142,6 +143,31 @@ describe('ErrorCode', () => {
 });
 
 // ── Utility functions ─────────────────────────────────────────────────────
+
+describe('SearchOptions', () => {
+  it('accepts departureTimeFrom and departureTimeTo', () => {
+    const opts: SearchOptions = {
+      departureTimeFrom: '06:00',
+      departureTimeTo: '14:00',
+    };
+    assert.equal(opts.departureTimeFrom, '06:00');
+    assert.equal(opts.departureTimeTo, '14:00');
+  });
+
+  it('works alongside other options', () => {
+    const opts: SearchOptions = {
+      adults: 2,
+      cabinClass: 'C',
+      departureTimeFrom: '08:00',
+      departureTimeTo: '20:00',
+      sort: 'price',
+    };
+    assert.equal(opts.adults, 2);
+    assert.equal(opts.cabinClass, 'C');
+    assert.equal(opts.departureTimeFrom, '08:00');
+    assert.equal(opts.departureTimeTo, '20:00');
+  });
+});
 
 function makeOffer(price: number, id = 'offer_1'): FlightOffer {
   return {

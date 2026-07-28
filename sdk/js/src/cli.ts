@@ -73,6 +73,8 @@ async function cmdSearch(args: string[]) {
   const currency = getFlag(args, '--currency') || 'EUR';
   const limit = parseInt(getFlag(args, '--limit', '-l') || '20');
   const sort = (getFlag(args, '--sort') || 'price') as 'price' | 'duration';
+  const departureFrom = getFlag(args, '--departure-from');
+  const departureTo = getFlag(args, '--departure-to');
 
   const [origin, destination, date] = args;
   if (!origin || !destination || !date) {
@@ -89,6 +91,8 @@ async function cmdSearch(args: string[]) {
     currency,
     limit,
     sort,
+    departureTimeFrom: departureFrom,
+    departureTimeTo: departureTo,
   });
 
   if (jsonOut) {

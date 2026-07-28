@@ -123,6 +123,8 @@ export interface SearchOptions {
   currency?: string;
   limit?: number;
   sort?: 'price' | 'duration';
+  departureTimeFrom?: string;
+  departureTimeTo?: string;
 }
 
 export interface LetsFGConfig {
@@ -364,6 +366,8 @@ export class LetsFG {
     if (options.cabinClass) body.cabin_class = options.cabinClass;
     if (options.maxStopovers != null) body.max_stopovers = options.maxStopovers;
     if (options.sort) body.sort = options.sort;
+    if (options.departureTimeFrom) body.departure_time_from = options.departureTimeFrom;
+    if (options.departureTimeTo) body.departure_time_to = options.departureTimeTo;
 
     if (this.usingPFS) {
       return this.searchPFS(body);
