@@ -385,7 +385,8 @@ export class LetsFG {
       const result = await this.getNoAuth<FlightSearchResult & { status?: string }>(
         `/api/results/${search_id}`
       );
-      if (result.status !== 'pending') {
+      // API reports in-progress as 'searching'; only 'completed' (etc.) is terminal — see PR #165
+      if (!['pending', 'searching'].includes(result.status as string)) {
         return result as FlightSearchResult;
       }
     }
