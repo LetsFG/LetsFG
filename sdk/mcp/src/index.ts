@@ -60,7 +60,7 @@ async function searchPFS(params: Record<string, unknown>): Promise<Record<string
     });
     if (pollResp.ok) {
       const result = await pollResp.json() as Record<string, unknown>;
-      if (result.status !== 'pending') return result;
+      if (!['pending', 'searching'].includes(result.status as string)) return result;  // API reports in-progress as 'searching'; only 'completed' (etc.) is terminal
     }
   }
   return { error: true, detail: 'Search timed out after 120s.' };
