@@ -146,10 +146,11 @@ curl -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
   -d '{"setup_session_id":"cs_..."}'
 
-# 2b. OR fully headless, if you already hold a Stripe credential:
+# 2b. OR fully headless — mint a single-use card token against the LetsFG
+#     publishable key, then:
 curl -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
-  -d '{"payment_method_id":"pm_..."}'
+  -d '{"card_token":"tok_..."}'
 # → {"token":"eyJ...","payer":"card:abc123","expires_at":"...","charged":false}
 
 # 3. Search with Bearer token (NL query)
@@ -163,6 +164,8 @@ curl -X POST https://letsfg.co/api/search \
 curl https://letsfg.co/api/results/ws_abc123 \
   -H "Authorization: Bearer eyJ..."
 ```
+
+`payment_method_id` (pm_...) is accepted ONLY for a card already enrolled through this flow — a bare pm_ id is not proof that you control the card. For a first headless enrolment use `card_token` (tok_...), which you mint against the LetsFG publishable key.
 
 Token is valid for 90 days; one active token per card. Renew by running `letsfg auth` again.
 Full walkthrough: https://letsfg.co/for-agents

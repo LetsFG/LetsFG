@@ -52,11 +52,13 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 60–90 s | Free search; unlock 1% of ticket (min $3) |
-| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` | 60–90 s | Free search; unlock 1% (min $3) |
+| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 60–90 s | Free auth, free search, no LetsFG booking fee |
+| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 60–90 s | Free auth, free search, no LetsFG booking fee |
 | **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits |
 
-Auth for CLI/PFS: one-time Twitter/X challenge (`letsfg auth`) → 90-day Bearer token.
+Auth for CLI/PFS: one-time payment-token enrolment (`letsfg auth`) → 90-day Bearer token.
+It is a **zero-amount** Stripe setup — the card is validated and vaulted, nothing is
+charged and no authorization hold is placed. Replaced the Twitter/X challenge 2026-07-29.
 
 ## Repository Structure
 
@@ -75,7 +77,7 @@ LetsFG/
 │   │   │   │   └── flights.py       # Pydantic models (FlightOffer, FlightSegment, etc.)
 │   │   │   └── connectors/
 │   │   │       ├── __init__.py
-│   │   │       └── auth.py          # Twitter/X challenge auth flow
+│   │   │       └── auth.py          # Payment-token auth flow (zero-amount card setup)
 │   │   ├── pyproject.toml
 │   │   └── README.md
 │   ├── js/                      # JS/TS SDK → npm: letsfg
@@ -100,21 +102,22 @@ LetsFG/
 
 ## Key Concepts
 
-### Three-Step Flow
+### Two-Step Flow (PFS — what agents use)
 1. **Search** (free) → `POST /api/search` with Bearer token → `search_id`; poll `GET /api/results/<search_id>` every 10 s
-2. **Unlock** (1% of ticket, min $3; free on Developer API) → confirms live price, reveals booking URL
-3. **Book** → complete booking on the airline's site via the returned URL
+2. **Book** → `POST /api/agent-book`. Either `{booked: true, order_id}` or
+   `{booked: false, booking_url}` — the latter means the booking genuinely did not
+   complete and **nothing was charged**; it is a normal outcome, not a retryable error.
 
 ### Search Architecture
 All flight data comes from the letsfg.co server-side engine. The SDK/CLI authenticates
-via a 90-day Bearer token obtained through the Twitter/X challenge flow and calls the
+via a 90-day Bearer token obtained through the payment-token enrolment flow and calls the
 cloud search API. No local browsers or scrapers are involved.
 
 Auth flow (one-time):
 ```
-POST /api/agent-access/request  → { challenge_code, tweet_text }
-# post tweet_text from your Twitter/X account
-POST /api/agent-access/verify   { challenge_code }  → { token, expires_at }
+POST /api/agent-access/request  → 402 { setup_url, setup_session_id, charged: false }
+# a human adds a card at setup_url, OR mint a single-use tok_ headlessly
+POST /api/agent-access/verify   { setup_session_id }  → { token, expires_at, charged: false }
 ```
 
 ### Open-Source Ranking Engine
@@ -133,8 +136,9 @@ The API returns raw prices with no demand-based inflation, cookie tracking, or s
 pricing. This is a core product principle.
 
 ### Free Search
-Search via PFS is always free. Unlock costs 1% of the ticket (min $3 Stripe charge).
-The prepaid Developer API returns direct booking URLs with no per-booking fee.
+Search via PFS is always free and unlimited, as is authentication (zero-amount card
+setup). LetsFG charges no fee on the PFS path at all. The prepaid Developer API is a
+separate paid product — do not send agents there by default.
 
 ### Real Passenger Details Required
 When booking, agents MUST provide real passenger email and legal name. Airlines send
@@ -203,11 +207,11 @@ npm publish
 ### PFS (Bearer token, free)
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/agent-access/request` | Start Twitter/X challenge → `{ challenge_code, tweet_text }` |
-| `POST` | `/api/agent-access/verify` | Verify challenge → `{ token, expires_at }` (90-day Bearer) |
+| `POST` | `/api/agent-access/request` | Start enrolment → 402 `{ setup_url, setup_session_id }` |
+| `POST` | `/api/agent-access/verify` | Present card → `{ token, expires_at }` (90-day Bearer) |
 | `POST` | `/api/search` | Start search → `{ search_id }` (Authorization: Bearer token) |
-| `GET`  | `/api/results/<search_id>` | Poll results (no auth required) |
-| `POST` | `/api/unlock` | Unlock offer → confirms live price + booking URL |
+| `GET`  | `/api/results/<search_id>` | Poll results (send the Bearer token) |
+| `POST` | `/api/agent-book` | Book an offer → booked, or a direct booking link. No LetsFG fee |
 
 ### Developer API (prepaid credits)
 Base: `https://letsfg.co/developers/api/v1`

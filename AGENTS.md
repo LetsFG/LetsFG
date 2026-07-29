@@ -1046,8 +1046,8 @@ flow on 2026-07-29.
 letsfg auth
 # Opens Stripe's hosted card page → saves the token to ~/.letsfg/config.json
 
-# Headless — you already hold a Stripe credential, no browser needed:
-letsfg auth --payment-method pm_...
+# Headless, no browser needed:
+letsfg auth --card-token tok_...
 ```
 
 **cURL (manual flow):**
@@ -1064,10 +1064,11 @@ curl -s -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
   -d '{"setup_session_id":"cs_..."}'
 
-# Step 2b: OR, fully headless, if you already hold a Stripe credential:
+# Step 2b: OR, fully headless — mint a single-use card token against the
+#          LetsFG publishable key, then:
 curl -s -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
-  -d '{"payment_method_id":"pm_..."}'
+  -d '{"card_token":"tok_..."}'
 
 # → {"token":"eyJ...","payer":"card:abc123","expires_at":"2026-10-27T...","charged":false}
 ```
@@ -1099,6 +1100,8 @@ Booking answers either `{"booked": true, "order_id": ...}` or
 did not complete and **nothing was charged** — it is a normal outcome, not a
 transient error. Do not retry; give the user the `booking_url`, which goes to
 that exact offer. One passenger per call.
+
+`payment_method_id` (pm_...) is accepted ONLY for a card already enrolled through this flow — a bare pm_ id is not proof that you control the card. For a first headless enrolment use `card_token` (tok_...), which you mint against the LetsFG publishable key.
 
 Token lifetime: 90 days. One active token per card — re-enrolling the same card
 replaces the old token. Renew by running `letsfg auth` again.

@@ -40,7 +40,7 @@ letsfg auth
 
 This opens Stripe's hosted card page. Add a card — it is a zero-amount setup, so nothing is charged and no authorization hold is placed — then confirm. Your 90-day Bearer token is saved automatically. Renew by repeating this step.
 
-Already hold a Stripe credential? Skip the browser: `letsfg auth --payment-method pm_...`
+No browser available? Mint a single-use card token against the LetsFG publishable key and skip the hosted page: `letsfg auth --card-token tok_...`
 
 ### 3. Run the first search
 

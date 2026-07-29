@@ -256,15 +256,16 @@ const TOOLS = [
       'a zero-amount Stripe setup, no charge and no authorization hold. Call once.\n\n' +
       'Call with no arguments to start: returns a setup_url for the user to add a card, plus a ' +
       'setup_session_id. Call again with that setup_session_id once they are done to receive the token. ' +
-      'If you already hold a Stripe credential for this account, pass payment_method_id or card_token ' +
-      'instead and skip the browser entirely.\n\n' +
+      'For a fully headless enrolment, mint a single-use card token against the LetsFG publishable ' +
+      'key and pass card_token instead, skipping the browser entirely. payment_method_id is accepted ' +
+      'ONLY for a card already enrolled through this flow — a bare pm_ id is not proof of card control.\n\n' +
       'This does NOT create a Developer API billing account. Do not use setup_payment for this.',
     inputSchema: {
       type: 'object',
       properties: {
         setup_session_id: { type: 'string', description: 'cs_... from a previous authenticate call, after the card was added' },
-        payment_method_id: { type: 'string', description: 'Stripe pm_... you already hold' },
-        card_token: { type: 'string', description: 'Stripe tok_... you already hold' },
+        payment_method_id: { type: 'string', description: 'Stripe pm_... for a card ALREADY enrolled through this flow (re-issue only)' },
+        card_token: { type: 'string', description: 'Single-use Stripe tok_... minted against the LetsFG publishable key — the headless path' },
       },
     },
   },
