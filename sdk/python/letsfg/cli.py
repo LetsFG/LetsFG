@@ -86,6 +86,24 @@ def _err(msg: str):
         console.print(f"[red]Error:[/red] {msg}")
     else:
         print(f"Error: {msg}", file=sys.stderr)
+
+
+def _warn_developer_api_command(cmd: str):
+    """Loud, non-fatal notice on the paid Developer API commands.
+
+    Agents kept reaching for these because our own docs pointed here by default,
+    quietly creating billing accounts nobody wanted. Searching and booking need
+    `letsfg auth` and nothing else.
+    """
+    msg = (
+        f"'{cmd}' is for the PAID Developer API and creates a billing account.\n"
+        "  If you just want to search or book flights, press Ctrl+C and run: letsfg auth\n"
+        "  (one step, no billing account, nothing charged)"
+    )
+    if HAS_RICH:
+        console.print(f"[yellow]Note:[/yellow] {msg}")
+    else:
+        print(f"Note: {msg}", file=sys.stderr)
     raise typer.Exit(1)
 
 
@@ -484,15 +502,41 @@ def search(
 
 
 @app.command()
-def auth():
-    """Authenticate via Twitter/X — free, one-time, 90-day token.
+def auth(
+    payment_method_id: Optional[str] = typer.Option(
+        None, "--payment-method", help="Stripe pm_... you already hold (headless, no browser)"
+    ),
+    card_token: Optional[str] = typer.Option(
+        None, "--card-token", help="Stripe tok_... you already hold (headless, no browser)"
+    ),
+    setup_session_id: Optional[str] = typer.Option(
+        None, "--setup-session", help="Finish an enrolment already started (cs_...)"
+    ),
+):
+    """Authenticate — one-time, 90-day token. Nothing is charged.
 
-    Posts a one-time challenge to verify your Twitter/X account.
-    Token is saved locally and reused automatically for 90 days.
+    Adds a payment method on file via a zero-amount Stripe setup (no charge, no
+    authorization hold). That card is what lets your agent book, and it replaces
+    the Twitter/X challenge retired 2026-07-29.
+
+    Unrelated to `letsfg register` / `letsfg setup-payment`, which belong to the
+    separate paid Developer API.
     """
-    from letsfg.connectors.auth import twitter_auth, BearerTokenError
+    from letsfg.connectors.auth import (
+        payment_auth,
+        verify_payment_method,
+        BearerTokenError,
+    )
     try:
-        twitter_auth()
+        if payment_method_id or card_token or setup_session_id:
+            verify_payment_method(
+                setup_session_id=setup_session_id,
+                payment_method_id=payment_method_id,
+                card_token=card_token,
+            )
+            print("\n  ✓ Authenticated. Nothing was charged.")
+        else:
+            payment_auth()
         print("\n  You're all set. Run: letsfg search WAW BCN 2026-07-15\n")
     except BearerTokenError as e:
         _err(str(e))
@@ -637,7 +681,13 @@ def register(
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Register a new agent — get your API key for the Developer API."""
+    """[Developer API only] Create a PAID developer account with its own billing.
+
+    Most agents do NOT need this. To search and book flights, run `letsfg auth`
+    instead — it takes one step and creates no billing account. This command
+    exists for high-volume commercial integrations on the prepaid Developer API.
+    """
+    _warn_developer_api_command("letsfg register")
     try:
         result = LetsFG.register(
             agent_name=name,
@@ -771,7 +821,12 @@ def setup_payment(
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Set up payment method (required before booking)."""
+    """[Developer API only] Attach a card to a PAID developer account.
+
+    Most agents do NOT need this. `letsfg auth` already puts a payment method on
+    file for search and booking, without a billing account.
+    """
+    _warn_developer_api_command("letsfg setup-payment")
     bt = _get_client(api_key, base_url)
     try:
         result = bt.setup_payment(token=token)

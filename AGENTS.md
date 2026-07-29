@@ -2,6 +2,22 @@
 
 > This file is for AI agents. If you're a human, see [README.md](README.md).
 
+## ⚠️ Read this first
+
+**Do NOT call `/developers/api/v1/agents/register`.**
+**Do NOT call `/developers/api/v1/agents/setup-payment`.**
+**Do NOT run `letsfg register` or `letsfg setup-payment`.**
+
+Those belong to a **separate, paid, prepaid-balance product** for high-volume
+commercial integrations, and they create a billing account you almost certainly
+do not want. Earlier versions of this file pointed there by default; that was
+wrong, and agents were creating accounts nobody needed.
+
+If you are an agent searching or booking flights — even hundreds of them — you
+want **Programmatic Flight Search (PFS)**: run `letsfg auth`, then search and
+book. One step, no billing account, nothing charged. Full guide:
+<https://letsfg.co/for-agents>.
+
 ## What is LetsFG?
 
 LetsFG is the largest agent-native flight search and booking toolkit. It gives your agent access to a server-side search engine covering hundreds of airlines — production-grade, maintained by LetsFG, not scrapers you have to keep alive. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
@@ -10,7 +26,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 ### How it works:
 
-**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Authenticate once with a free Twitter/X Bearer token (or a Developer API key), then search is free and unlimited.
+**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Authenticate once with `letsfg auth` (a zero-amount card setup — nothing is charged), then search is free and unlimited.
 
 ### What makes this different from flight websites:
 
@@ -26,11 +42,11 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS Bearer token) | Personal use, experimentation, any agent | 60–90 s | Free search; unlock 1% (min $3) |
+| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search, no LetsFG booking fee |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
 
 **Quick decision:**
-- You want free search with no credits → **use the CLI / SDK** with a free PFS Bearer token (`letsfg auth`, described below).
+- You are an agent that wants to search and book → **use the CLI / SDK / MCP** with a PFS payment token (`letsfg auth`, described below). This is almost certainly you.
 - You need guaranteed speed for a product, or want direct booking URLs with no per-booking fee → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
 
 > **Important:** `GET /en?q=...` does not work for automated agents. The website is protected by Cloudflare Turnstile. All agent/script access must use `POST /api/search` with a Bearer token.
@@ -58,17 +74,23 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 
 Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **LetsFG returns the raw airline price every time.**
 
-## Pricing Model
+## Pricing Model (PFS — what agents use)
 
 | Step | Cost | What You Get |
 |------|------|--------------|
-| **Search** | FREE | Price, times, duration, stops, airline category. Completely free, unlimited. No booking links. |
-| **Unlock** | 1% of ticket (min $3) | Airline name + direct booking URL. Pay via Stripe card **or** MPP crypto (no card needed). |
-| **Book** | Ticket price | Complete the booking directly on the airline's website using the booking URL. |
+| **Auth** | FREE | Zero-amount Stripe card setup. No charge, no authorization hold. |
+| **Search** | FREE, unlimited | Price, times, duration, stops, airline. |
+| **Book** | Ticket price only | Booked, or a direct booking link for that exact offer. No LetsFG fee. |
 
-**Two ways to pay for unlock — no setup required for MPP:**
-- **Stripe (card on file):** Run `letsfg setup-payment` once, then unlock charges your card automatically.
-- **MPP (agent-native crypto):** No card, no setup. The unlock endpoint issues a `402 Payment Required` with a `WWW-Authenticate: Payment` MPP challenge. Any MPP-compatible agent (Claude + pympp, mppx CLI, etc.) pays automatically in USDC.e on Tempo and retries — no human needed.
+LetsFG charges you nothing on this path. A completed booking pays the airline
+price with zero markup.
+
+> **Note on MPP / crypto payments.** Earlier versions of this document said the
+> unlock endpoint issues an MPP (Machine Payments Protocol) `402` challenge that
+> agents can settle in USDC.e on Tempo without a card. That is **not enabled in
+> production** — the server-side support exists but is unconfigured, so no MPP
+> challenge is ever issued. Do not build against it. The payment-token auth above
+> is the supported agent path.
 
 ## How It Works (3 Steps)
 
@@ -176,10 +198,10 @@ The booking URL takes you (or your user) directly to the airline's checkout with
 pip install letsfg
 ```
 
-This gives you the `letsfg` CLI command. Authenticate once with `letsfg auth` (free, uses Twitter/X), then search is free and unlimited:
+This gives you the `letsfg` CLI command. Authenticate once with `letsfg auth` (a zero-amount card setup (nothing charged)), then search is free and unlimited:
 
 ```bash
-# One-time auth (Twitter/X challenge → 90-day Bearer token)
+# One-time auth (card on file, nothing charged → 90-day Bearer token)
 letsfg auth
 
 # Search flights — completely free after auth
@@ -292,12 +314,12 @@ npx letsfg-mcp
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `letsfg auth` | One-time Twitter/X challenge → 90-day Bearer token (PFS access) | Free |
-| `letsfg register` | Get a Developer API key (prepaid credits, no per-booking fee) | Free |
+| `letsfg auth` | One-time card-on-file setup → 90-day Bearer token (PFS access). Nothing charged | Free |
+| `letsfg register` | **[Paid Developer API only — most agents should not run this]** Creates a billing account | Free |
 | `letsfg recover --email <email>` | Recover lost API key via email | Free |
 | `letsfg search <origin> <dest> <date>` | Search flights (no booking links) | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
-| `letsfg setup-payment` | Add a payment card (one-time) | Free |
+| `letsfg setup-payment` | **[Paid Developer API only — use `letsfg auth` instead]** | Free |
 | `letsfg unlock <offer_id>` | Get direct airline booking URL | 1% of ticket, min $3 |
 | `letsfg me` | View profile & usage | Free |
 
@@ -1009,29 +1031,45 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name": "my-agent", "email": "you@example.com"}'
 ```
 
-## PFS Bearer Token Auth (Free — CLI / SDK / Direct API)
+## PFS Payment-Token Auth (CLI / SDK / Direct API)
 
-The CLI, Python SDK, and JS SDK all use the PFS (Programmatic Flight Search) Bearer token for authentication. This is the primary free access path — no email required, no payment, no credits. One-time Twitter/X challenge flow issues a 90-day token tied to your handle.
+The CLI, Python SDK, JS SDK and MCP server all use the PFS (Programmatic Flight
+Search) Bearer token. This is the access path for agents.
+
+**Nothing is charged to authenticate.** You put a payment method on file through
+a zero-amount Stripe setup — no charge, no authorization hold. That card is what
+lets your agent go all the way to booking. This replaced the Twitter/X challenge
+flow on 2026-07-29.
 
 **CLI (recommended):**
 ```bash
 letsfg auth
-# Opens Twitter/X challenge flow → saves token to ~/.letsfg/config.json
+# Opens Stripe's hosted card page → saves the token to ~/.letsfg/config.json
+
+# Headless — you already hold a Stripe credential, no browser needed:
+letsfg auth --payment-method pm_...
 ```
 
 **cURL (manual flow):**
 ```bash
-# Step 1: request a challenge
+# Step 1: ask how to enrol
 curl -s -X POST https://letsfg.co/api/agent-access/request
-# → {"challenge_code":"ABCD5678","expires_at":"...","tweet_text":"Challenge: ABCD5678 @LetsFG https://letsfg.co"}
+# → 402 {"setup_url":"https://checkout.stripe.com/c/pay/cs_...",
+#        "setup_session_id":"cs_...",
+#        "accepts":["setup_session_id","payment_method_id","card_token"],
+#        "charged":false}
 
-# Step 2: post the tweet_text from Step 1 using your Twitter/X account (public tweet, valid for 30 min)
-
-# Step 3: verify — submit the challenge_code to get your token
+# Step 2a: a human opens setup_url and adds a card, then:
 curl -s -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
-  -d '{"challenge_code":"ABCD5678"}'
-# → {"token":"eyJ...","handle":"youraccount","expires_at":"2026-08-25T..."}
+  -d '{"setup_session_id":"cs_..."}'
+
+# Step 2b: OR, fully headless, if you already hold a Stripe credential:
+curl -s -X POST https://letsfg.co/api/agent-access/verify \
+  -H "Content-Type: application/json" \
+  -d '{"payment_method_id":"pm_..."}'
+
+# → {"token":"eyJ...","payer":"card:abc123","expires_at":"2026-10-27T...","charged":false}
 ```
 
 **Using the token:**
@@ -1044,11 +1082,32 @@ curl -X POST https://letsfg.co/api/search \
   -d '{"origin":"LHR","destination":"JFK","date_from":"2026-06-01"}'
 # → {"search_id":"abc123"}
 
-# Poll results (no auth needed)
-curl https://letsfg.co/api/results/abc123
+# Poll results
+curl https://letsfg.co/api/results/abc123 -H "Authorization: Bearer eyJ..."
+
+# Book
+curl -X POST https://letsfg.co/api/agent-book \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"search_id":"abc123","offer_id":"ws_off_...","contact_email":"traveller@example.com",
+       "passenger":{"given_name":"Ada","family_name":"Lovelace","born_on":"1990-04-01",
+                    "gender":"f","phone_number":"+15551234567"}}'
 ```
 
-Token lifetime: 90 days. Renew by repeating the 3-step flow.
+Booking answers either `{"booked": true, "order_id": ...}` or
+`{"booked": false, "booking_url": ...}`. The second means the booking genuinely
+did not complete and **nothing was charged** — it is a normal outcome, not a
+transient error. Do not retry; give the user the `booking_url`, which goes to
+that exact offer. One passenger per call.
+
+Token lifetime: 90 days. One active token per card — re-enrolling the same card
+replaces the old token. Renew by running `letsfg auth` again.
+
+### Migrating from Twitter/X token auth
+
+Tokens issued through the old tweet challenge still work for now. Responses to
+them carry `Deprecation: true`, a `Warning` header, and a `Sunset` date once one
+is set. Re-run `letsfg auth` before that date.
 
 ## API Discovery
 

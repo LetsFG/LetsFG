@@ -316,16 +316,21 @@ const HELP = `
 LetsFG — Agent-native flight search & booking.
 
 Search hundreds of airlines via the LetsFG cloud engine.
-Free search: authenticate once with Twitter/X, then search instantly.
+Authenticate once with letsfg auth — a zero-amount card setup, nothing is
+charged — then search and book.
 
 Commands:
+  auth                            Put a card on file -> 90-day token. Nothing charged
   search <origin> <dest> <date>   Search for flights (free)
   locations <query>               Resolve city name to IATA codes
-  unlock <offer_id>               Unlock offer — 1% of ticket (min $3)
-  book <offer_id> --passenger ... Book flight — charges ticket price via Stripe
-  register --name ... --email ... Register for a Developer API key
-  setup-payment                   Attach Stripe payment method
+  book <offer_id> --passenger ... Book a flight. No LetsFG fee
   me                              Show agent profile
+
+Developer API only (a SEPARATE paid product — most agents should not use these;
+they create a billing account. Use auth above instead):
+  register --name ... --email ... Create a paid Developer API account
+  setup-payment                   Attach a card to that paid account
+  unlock <offer_id>               Unlock offer — 1% of ticket (min $3)
 
 Options:
   --json, -j       Output raw JSON
@@ -333,10 +338,9 @@ Options:
   --base-url       API URL (default: https://letsfg.co/developers)
 
 Examples:
-  letsfg register --name my-agent --email me@example.com
+  letsfg auth
   letsfg search GDN BER 2026-03-03 --sort price
-  letsfg unlock off_xxx
-  letsfg book off_xxx -p '{"id":"pas_xxx",...}' -e john@ex.com
+  letsfg book off_xxx -p '{"given_name":"Ada",...}' -e ada@example.com
 `;
 
 async function main() {

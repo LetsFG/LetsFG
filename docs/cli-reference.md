@@ -1,5 +1,16 @@
 # CLI Reference
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 The `letsfg` CLI is available via both Python and JavaScript. Same commands, same interface.
 
 ## Install
@@ -22,7 +33,7 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 |---------|-------------|
 | `letsfg register` | Create account and get API key |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
-| `letsfg auth` | Authenticate via Twitter/X challenge to get a free 90-day Bearer token |
+| `letsfg auth` | Put a card on file (zero-amount, nothing charged) to get a 90-day Bearer token |
 | `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | Unlock offer details (payment required) |
@@ -159,6 +170,6 @@ The code expires in 15 minutes. Once verified, a new API key is issued and your 
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_BEARER_TOKEN` | Bearer token from `letsfg auth` (free PFS search via Twitter/X) |
+| `LETSFG_BEARER_TOKEN` | Bearer token from `letsfg auth` (PFS search + booking) |
 | `LETSFG_API_KEY` | Developer API key for prepaid account search, unlock, and book |
 | `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co/developers`) |

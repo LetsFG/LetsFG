@@ -1,5 +1,16 @@
 # Architecture & Resilience Guide
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 Deep dive into how LetsFG's server-side search engine works — connector orchestration, failure handling, caching strategies, and performance optimization. All search runs on letsfg.co infrastructure.
 
 ## Search Engine Architecture
