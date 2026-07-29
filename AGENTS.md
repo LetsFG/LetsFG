@@ -1103,8 +1103,14 @@ that exact offer. One passenger per call.
 
 `payment_method_id` (pm_...) is accepted ONLY for a card already enrolled through this flow — a bare pm_ id is not proof that you control the card. For a first headless enrolment use `card_token` (tok_...), which you mint against the LetsFG publishable key.
 
-Token lifetime: 90 days. One active token per card — re-enrolling the same card
-replaces the old token. Renew by running `letsfg auth` again.
+Token lifetime: 90 days.
+
+**One card = one agent.** A payment method identifies exactly one agent.
+Enrolling a card that is already in use does not create a second agent: it
+**replaces** the existing token and the old one stops working immediately. Two
+agents can never hold live tokens on the same card, so sharing or recycling a
+card gains you nothing. Quotas and rate limits are bucketed per card, not per
+token. Renew or rotate by running `letsfg auth` again.
 
 ### Migrating from Twitter/X token auth
 
