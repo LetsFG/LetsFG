@@ -446,6 +446,6 @@ class FlightSearchResponse(BaseModel):
         ),
     )
     pricing_note: str = Field(
-        default="Search is free. Booking is free. No hidden fees.",
+        default="Search is free and unlimited.",
         description="Pricing transparency for agents",
     )

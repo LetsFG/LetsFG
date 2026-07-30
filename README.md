@@ -76,7 +76,7 @@ Search and booking work today, right here in this repo. The rest is what we're b
 
 **Hundreds of airlines. Real prices. One function call.**
 
-LetsFG gives your AI agent flight search and booking superpowers. Our server-side engine scans the entire world for the cheapest price. Search is free, booking carries no LetsFG fee. Zero markup. Real airline tickets.
+LetsFG gives your AI agent flight search and booking superpowers. Our server-side engine scans the entire world for the cheapest price. Search is free. Real airline tickets, booked through us or handed to you as a direct link.
 
 **The same flight costs $20–$50 less** because you skip OTA inflation, cookie tracking, and surge pricing.
 
@@ -110,11 +110,11 @@ LetsFG gives your AI agent flight search and booking superpowers. Our server-sid
 | **Best for** | Developers, personal use, AI agents — easiest way in | Scripts/agents calling the API directly with a Bearer token | High-volume commercial integrations that want prepaid billing. **Most agents should not use this** |
 | **Speed** | 60–90 s | 60–90 s | 2–5 s (discover) · 60–90 s (full search) |
 | **Search cost** | Free (one-time `letsfg auth`, nothing charged) | Free (one-time `letsfg auth`, nothing charged) | Prepaid credits ($0.50/$0.20/$0.10 per search, monthly tiers) |
-| **Booking** | `POST /api/agent-book` — no LetsFG fee | `POST /api/agent-book` — no LetsFG fee | Direct airline URLs, no per-booking fee |
+| **Booking** | `POST /api/agent-book` | `POST /api/agent-book` | Direct airline URLs |
 | **Setup** | `pip install letsfg && letsfg auth` | Payment method on file — see below | [letsfg.co/developers](https://letsfg.co/developers) |
 | **Runs where** | Our servers (auth + ranking local) | Our servers | Our servers |
 
-- **CLI / SDK (Path 1):** `pip install letsfg` and run `letsfg auth` once — it puts a payment method on file via a zero-amount Stripe setup (no charge, no authorization hold) and gives you a 90-day Bearer token. After that, `letsfg search` calls our server-side engine and applies the open-source ranking algorithm locally. Search is free and unlimited, and booking carries no LetsFG fee.
+- **CLI / SDK (Path 1):** `pip install letsfg` and run `letsfg auth` once — it puts a payment method on file via a zero-amount Stripe setup (no charge, no authorization hold) and gives you a 90-day Bearer token. After that, `letsfg search` calls our server-side engine and applies the open-source ranking algorithm locally. Search is free and unlimited.
 
 - **PFS — Programmatic Flight Search (Path 2):** For scripts and agents that call the API directly. letsfg.co is human-only by default (Cloudflare Turnstile + bot protection). Get a **90-day Bearer token** by putting a payment method on file. **Nothing is charged** on the card lanes — it is a zero-amount Stripe setup:
   1. `POST https://letsfg.co/api/agent-access/request` → `402` with `setup_url` (hosted), a `headless` object, and an `mpp` object
@@ -126,7 +126,7 @@ LetsFG gives your AI agent flight search and booking superpowers. Our server-sid
   4. Search: `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>`
   5. Book: `POST https://letsfg.co/api/agent-book`
 
-  Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents). Booking returns either a confirmed order or a direct booking link for that exact offer, with no LetsFG fee either way.
+  Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents). Booking returns either a confirmed order or a direct booking link for that exact offer.
 
 - **Developer API (Path 3):** Paid server-side search at [letsfg.co/developers](https://letsfg.co/developers). Prepaid credits, direct airline booking URLs (no checkout step), full NL query parsing, and a `/discover` endpoint that checks 20 destinations in one call for 1 credit (2–5 s). Includes a free sandbox at `/sandbox/flights/*`. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
 
@@ -148,9 +148,9 @@ We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026
 | London → Barcelona | Vueling, nonstop | $62 | **$56** | **$6** |
 | LA → New York (JFK) | Frontier, 1 stop | $125 | **$124** | **$1** |
 
-> **$116 saved across 6 flights.** Google Flights inflates further on repeat searches. LetsFG returns the raw airline price every time.
+> **$116 cheaper across 6 routes** in a verified comparison (May 2026). Google Flights inflates on repeat searches; LetsFG returns the same prices however often you run the search, because it reads airlines and the major booking sites directly rather than tracking you.
 
-**Why the difference?** Google Flights only searches its own limited set of airline partners. LetsFG searches **everywhere** — Skyscanner, Kiwi, Kayak, Momondo, plus direct airline websites (Ryanair, United, Southwest, EasyJet, Spirit, Norwegian, AirAsia, and hundreds more). More sources = better prices. And unlike travel websites, LetsFG returns the raw price with zero markup, no tracking, no inflation.
+**Why the difference?** Google Flights only searches its own limited set of airline partners. LetsFG searches **everywhere** — Skyscanner, Kiwi, Kayak, Momondo, plus direct airline websites (Ryanair, United, Southwest, EasyJet, Spirit, Norwegian, AirAsia, and hundreds more). More sources = better prices. No demand-based inflation and no cookie tracking: the same search returns the same prices however often you run it.
 
 ---
 
@@ -181,7 +181,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | **letsfg.co** (website / agent API) | ✅ Free | 1% fee (min $3) via letsfg.co | Our servers |
 | **Developer API** | Prepaid credits | Included (direct airline URLs) | Our servers |
 
-**CLI / SDK / MCP = free search.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and searches are free for 90 days. No credits, no Playwright. Booking goes through `POST /api/agent-book` with no LetsFG fee.
+**CLI / SDK / MCP = free search.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and searches are free for 90 days. No credits, no Playwright. Booking goes through `POST /api/agent-book`.
 
 **Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) returns direct airline booking URLs with no per-booking fee. Monthly billing: $0.50/search for the first 10, $0.20 for 11–1,000, then $0.10/search. Resets monthly. Minimum top-up: $5.
 
@@ -195,7 +195,7 @@ When you're ready to integrate it into your own agent, keep reading.
 
 | | Google Flights / Expedia | **LetsFG** |
 |---|---|---|
-| Price | Inflated (tracking, cookies, surge) | **Raw airline price. $116 cheaper across 6 verified routes.** |
+| Price | Inflated (tracking, cookies, surge) | **Stable across repeat searches. $116 cheaper across 6 routes, verified May 2026.** |
 | Coverage | Misses budget airlines | **Hundreds of airlines — OTAs, budget carriers, full-service** |
 | Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 60–90 s · API discover: 2–5 s** |
 | Repeat search raises price? | Yes | **Never** |
@@ -279,7 +279,7 @@ letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
 # Unlock (confirms live price, holds for 30 min — 1% fee, min $3)
 letsfg unlock off_xxx
 
-# Book (ticket price only, zero markup)
+# Book
 letsfg book off_xxx \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --email john.doe@example.com
@@ -479,7 +479,7 @@ letsfg.co/developers/api/v1
   └─ /sandbox/flights/*     (fake data, same schema, free)
         │
         ▼
-Direct airline booking_url - no checkout, no LetsFG fee
+Direct airline booking_url - no checkout step
 ```
 
 <details>

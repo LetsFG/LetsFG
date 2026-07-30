@@ -1,7 +1,7 @@
 ---
 name: flight-search
 description: >-
-  Search and book flights across hundreds of airlines with zero markup — $20–50 cheaper
+  Search and book flights across hundreds of airlines plus the major booking sites, with
   than OTAs. Returns raw airline prices via the letsfg.co server-side search engine.
   Use when user asks to "find flights",
   "search flights", "book a flight", "compare airline prices", "find cheap flights",
@@ -33,10 +33,10 @@ metadata:
 > To search and book flights, run `letsfg auth` — a zero-amount card setup
 > (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
 
-Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines, zero markup,
-$20–50 cheaper than travel websites.
+Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines plus the major booking sites,
+Compares airlines and the major booking sites in one pass, with per-flight reliability history.
 
-**Two-step flow:** Search (free) → Book (`POST /api/agent-book`, ticket price only, no LetsFG fee). The unlock step below is **Developer API only** and is not part of the agent flow.
+**Two-step flow:** Search (free) → Book (`POST /api/agent-book`, the price shown on the offer). The unlock step below is **Developer API only** and is not part of the agent flow.
 
 ## Why Use This
 

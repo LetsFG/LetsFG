@@ -10,7 +10,7 @@
 | | **CLI / SDK** (this package) | **Developer API** |
 |---|---|---|
 | **Search cost** | Free (Twitter/X Bearer token via `letsfg auth`) | Prepaid credits |
-| **Booking** | `POST /api/agent-book` — no LetsFG fee | Direct airline URL, no fee |
+| **Booking** | `POST /api/agent-book` | Direct airline URL |
 | **Speed** | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
 | **Setup** | `npm install letsfg` then `letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
 

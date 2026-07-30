@@ -100,7 +100,7 @@ print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 unlock = bt.unlock(flights.cheapest.id)
 print(f"Confirmed price: {unlock.confirmed_currency} {unlock.confirmed_price}")
 
-# Book — ticket price charged via Stripe (zero markup)
+# Book — charges the price shown on the offer
 booking = bt.book(
     offer_id=flights.cheapest.id,
     passengers=[{
@@ -271,7 +271,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Minimizing Unlock Costs
 
-Searching is **free and unlimited**, and so is booking on the PFS / CLI path (`POST /api/agent-book`, no LetsFG fee). The 1%-of-ticket unlock fee (min $3) exists only on the paid Developer API. Strategy:
+Searching is **free and unlimited**. Booking goes through `POST /api/agent-book`. The 1%-of-ticket unlock fee (min $3) exists only on the paid Developer API. Strategy:
 
 ```python
 # Search multiple dates (free) — compare before unlocking
@@ -359,7 +359,7 @@ Every command supports `--json` for machine-readable output.
 ## How It Works
 
 1. **Search** — Free. The server-side engine queries hundreds of airlines and returns real-time offers.
-2. **Book** — Call `POST /api/agent-book` with your Bearer token. It returns either a confirmed order or a direct booking link for that exact offer, with no LetsFG fee either way.
+2. **Book** — Call `POST /api/agent-book` with your Bearer token. It returns either a confirmed order or a direct booking link for that exact offer.
 3. **Book** — Open the direct airline URL and complete the booking on the airline's own site.
 
 Prices are cheaper because we connect directly to airlines — no OTA markup.

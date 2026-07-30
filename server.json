@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.LetsFG/letsfg",
   "title": "LetsFG",
-  "description": "The entire internet of flights, searched. Every airline, OTA, and booking site at once — zero markup, no hidden fees.",
+  "description": "The entire internet of flights, searched. Every airline, OTA and booking site at once, with per-flight reliability history and instant booking.",
   "repository": {
     "url": "https://github.com/LetsFG/LetsFG",
     "source": "github"

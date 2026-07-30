@@ -52,8 +52,8 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 60–90 s | Free auth, free search, no LetsFG booking fee |
-| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 60–90 s | Free auth, free search, no LetsFG booking fee |
+| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 60–90 s | Free auth, free search |
+| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 60–90 s | Free auth, free search |
 | **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits |
 
 Auth for CLI/PFS: one-time payment-token enrolment (`letsfg auth`) → 90-day Bearer token.
@@ -196,7 +196,7 @@ npm publish
 ## Conventions
 
 - Keep SDK READMEs in sync with the root README for pricing, flow descriptions, and warnings.
-- All agent-facing text should include the "zero price bias" messaging and passenger details warning.
+- All agent-facing text should include the coverage messaging (airlines PLUS the major booking sites), the reliability data, and the passenger details warning. Do NOT assert "zero markup" or "no LetsFG fee" anywhere: neither is true.
 - Python SDK client (`client.py`) uses stdlib `urllib` for HTTP — zero external dependencies.
 - Python SDK auth uses stdlib `urllib` and `json` only (no playwright or scrapers).
 - JS/TS SDK uses native `fetch`, TypeScript strict mode.
