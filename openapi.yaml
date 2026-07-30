@@ -8,7 +8,7 @@ info:
 
     ## How It Works
     1. **Search** (free) — real-time offers from hundreds of airlines
-    2. **Unlock** (1% of ticket, min $3) — confirm live price, reveal direct booking URL
+    2. **Unlock** (1% of ticket, min $3) — Developer API only; confirm live price, reveal direct booking URL. PFS agents skip this and call POST /api/agent-book instead.
     3. **Book** (ticket price, Developer API only) — create real airline PNR
 
     ## Authentication
@@ -500,7 +500,7 @@ paths:
       summary: Unlock a flight offer
       description: |
         Confirm the live price with the airline and reveal the direct booking URL.
-        Cost: 1% of ticket price (min $3) via Stripe card or MPP crypto. Free with Developer API.
+        Cost: 1% of ticket price (min $3). Developer API only — there is no unlock endpoint on a PFS Bearer token.
         The confirmed price may differ from the search price (airline prices change in real-time).
       tags: [Bookings]
       requestBody:
