@@ -43,7 +43,8 @@ app = typer.Typer(
     help=(
         "LetsFG — Agent-native flight search & booking.\n\n"
         "Search hundreds of airlines at raw airline prices via the LetsFG cloud.\n"
-        "Free: authenticate once with Twitter/X, then search instantly.\n\n"
+        "Authenticate once with `letsfg auth` (zero-amount card setup, nothing\n"
+        "charged), then search and book.\n\n"
         "Quick start: letsfg auth && letsfg search GDN BCN 2026-06-15\n"
         "Round trip:  letsfg search LON BCN 2026-04-01 --return 2026-04-08"
     ),
@@ -360,7 +361,7 @@ def search(
     direct: bool = typer.Option(False, "--direct", "-d", help="Direct flights only (shortcut for --max-stops 0)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ):
-    """Search for flights — FREE. Requires Twitter/X auth (run `letsfg auth` once)."""
+    """Search for flights — FREE. Requires auth (run `letsfg auth` once; nothing charged)."""
     from letsfg.local import search_local
     from letsfg.connectors.auth import BearerTokenError
 

@@ -1,7 +1,7 @@
 """
 LetsFG Programmatic Flight Search — quickstart.
 
-Auth is free (Twitter/X challenge, ~30s) and lasts 90 days.
+Auth is free (a zero-amount card setup — nothing is charged) and lasts 90 days.
 Once authenticated, searches run via the LetsFG cloud engine across hundreds of airlines.
 
 Run:
@@ -12,7 +12,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
-from letsfg.connectors.auth import twitter_auth, get_bearer_token, BearerTokenError
+from letsfg.connectors.auth import payment_auth, get_bearer_token, BearerTokenError
 from letsfg.local import search_local
 
 
@@ -21,8 +21,8 @@ def ensure_auth() -> None:
     try:
         get_bearer_token()
     except BearerTokenError:
-        print("No token found — starting Twitter/X auth...")
-        twitter_auth()
+        print("No token found — starting payment-token auth (nothing is charged)...")
+        payment_auth()
 
 
 async def main() -> None:

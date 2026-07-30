@@ -14,11 +14,11 @@ info:
     ## Authentication
     Two paths:
 
-    **PFS Bearer token** (free search): One-time Twitter/X challenge via `letsfg auth` (90-day token).
+    **PFS Bearer token** (free search + booking): One-time payment-method-on-file via `letsfg auth` (90-day token). Nothing is charged — a zero-amount Stripe setup.
     ```
     curl -X POST https://letsfg.co/api/agent-access/request
-    # post the tweet_text, then:
-    curl -X POST https://letsfg.co/api/agent-access/verify -d '{"challenge_code":"..."}'
+    # add a card at setup_url (or confirm the SetupIntent headlessly), then:
+    curl -X POST https://letsfg.co/api/agent-access/verify -d '{"setup_session_id":"cs_..."}'
     # -> {"token": "eyJ..."}
     ```
 

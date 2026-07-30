@@ -11,7 +11,7 @@ startCommand:
         description: "LetsFG Developer API key (prepaid credits). Get one free at letsfg.co/developers. Alternatively, use LETSFG_BEARER_TOKEN for the free PFS path."
       LETSFG_BEARER_TOKEN:
         type: string
-        description: "LetsFG PFS Bearer token for free search. Get one via 'letsfg auth' (Twitter/X challenge flow, 90-day token). Not needed if LETSFG_API_KEY is set."
+        description: "LetsFG PFS Bearer token for free search and booking. Get one via 'letsfg auth' (zero-amount card setup, nothing charged, 90-day token). Not needed if LETSFG_API_KEY is set."
     required: []
   commandFunction: |-
     (config) => ({

@@ -19,7 +19,7 @@
 
 | Mode | Best for | Setup | Search cost | Booking URL |
 |------|----------|-------|-------------|-------------|
-| CLI / SDK (Bearer token) | Agents, developers, zero-cost search | `pip install letsfg` then `letsfg auth` | Free | 1% concierge fee (min $3) via letsfg.co |
+| CLI / SDK (Bearer token) | Agents, developers, zero-cost search | `pip install letsfg` then `letsfg auth` | Free | `POST /api/agent-book` — no LetsFG fee |
 | Public Developer API | Managed cloud search, products, teams, no per-booking fee | Register, attach Stripe, top up balance | Prepaid credits | Direct airline URLs, no fee |
 
 ## Option A: Free search with Bearer token
@@ -63,7 +63,7 @@ for offer in result.offers[:5]:
 
 ### Unlocking search results (concierge flow)
 
-PFS search results include `offer_ref` and `payment_token` fields. To get the direct airline URL, pay the concierge fee (1% of ticket, min $3.00) via the checkout flow or use the Developer API for fee-free direct links.
+To book, call `POST /api/agent-book` with your Bearer token. It returns either a confirmed order or a direct booking link for that exact offer, and charges no LetsFG fee either way.
 
 ```bash
 # Step 1 — initiate checkout
