@@ -271,7 +271,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Minimizing Unlock Costs
 
-Searching is **free and unlimited**. Unlock via the Developer API is free; via the PFS / CLI path the fee (1% of ticket price, min $3) applies once per offer. Strategy:
+Searching is **free and unlimited**, and so is booking on the PFS / CLI path (`POST /api/agent-book`, no LetsFG fee). The 1%-of-ticket unlock fee (min $3) exists only on the paid Developer API. Strategy:
 
 ```python
 # Search multiple dates (free) — compare before unlocking
@@ -340,7 +340,7 @@ letsfg locations "Berlin"
 | `auth` | One-time card-on-file setup → 90-day Bearer token. Nothing charged | FREE |
 | `search` | Search flights between any two airports | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
-| `unlock` | Unlock offer (confirms price, reveals booking URL) | 1% of ticket, min $3 |
+| `unlock` | **[Developer API only]** Unlock offer (confirms price, reveals booking URL) | 1% of ticket, min $3 |
 | `book` | Book flight (creates real airline PNR) | Ticket price |
 | `register` | Register new Developer API key | FREE |
 | `setup-payment` | Attach payment card (required for unlock) | FREE |

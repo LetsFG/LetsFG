@@ -388,7 +388,7 @@ for offer in result.offers[:5]:
 | `letsfg setup-payment` | Attach a payment method (required for unlock) |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
-| `letsfg unlock <offer_id>` | Confirm live price & pay unlock fee (1% of ticket, min $3) |
+| `letsfg unlock <offer_id>` | **[Developer API only]** Confirm live price & pay unlock fee (1% of ticket, min $3). Not part of the agent flow — use `letsfg book` |
 | `letsfg book <offer_id>` | Book the flight |
 | `letsfg me` | View profile & usage stats |
 

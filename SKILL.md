@@ -39,7 +39,7 @@ description: "LetsFG — Agent-native flight search and booking API. Hundreds of
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS Bearer token) | Personal use, any agent | 60–90 s | Free search; unlock 1% of ticket (min $3) |
+| **CLI / SDK / MCP** (PFS Bearer token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search, no LetsFG booking fee |
 | **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
 ## Skills
@@ -77,7 +77,7 @@ Resolve city names to IATA airport/city codes.
 
 ### unlock_flight_offer
 Confirm live price with airline and reveal the direct booking URL. Reserves the offer for 30 minutes.
-- **Cost:** 1% of ticket price (min $3) — Stripe card or MPP crypto. Free with the prepaid Developer API.
+- **Cost:** 1% of ticket price (min $3) — **Developer API only**. There is no unlock step on a PFS Bearer token: call `/api/agent-book` instead, which charges no LetsFG fee.
 - **Endpoint:** `POST /api/v1/bookings/unlock`
 - **Input:** offer_id from search results (only required parameter)
 - **Output:** confirmed_price, confirmed_currency, booking_url, offer_expires_at
@@ -262,7 +262,7 @@ LETSFG_API_KEY=trav_... letsfg-mcp
 |------|-------------|------|
 | `search_flights` | Search hundreds of airlines via server-side engine | FREE |
 | `resolve_location` | City name → IATA code | FREE |
-| `unlock_flight_offer` | Confirm price, reveal booking URL, reserve 30min | 1% of ticket (min $3) |
+| `unlock_flight_offer` | **[Developer API only]** Confirm price, reveal booking URL, reserve 30min | 1% of ticket (min $3) |
 | `book_flight` | Create real airline reservation | Ticket price |
 | `setup_payment` | Attach payment card (required for unlock/booking) | FREE |
 | `get_agent_profile` | View usage stats | FREE |
