@@ -5,7 +5,7 @@
     "env": {
       "LETSFG_API_KEY": "${LETSFG_API_KEY}"
     },
-    "description": "Flight search & booking for AI agents. Server-side engine covers hundreds of airlines. Zero price bias, raw airline prices. Free search with letsfg auth (Twitter/X Bearer token) or prepaid Developer API.",
+    "description": "Flight search & booking for AI agents. Server-side engine covers hundreds of airlines. Zero price bias, raw airline prices. Free search with letsfg auth (payment-token Bearer auth, nothing charged) or prepaid Developer API.",
     "homepage": "https://letsfg.co",
     "repository": "https://github.com/LetsFG/LetsFG"
   }

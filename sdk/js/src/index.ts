@@ -441,7 +441,11 @@ export class LetsFG {
   }
 
   /**
-   * Set up payment method (required before unlock/booking).
+   * [Developer API only] Attach a card to a PAID prepaid Developer API account.
+   *
+   * Most agents should NOT call this. It is unrelated to authenticating for
+   * search and booking — for that, run `letsfg auth`, which puts a card on file
+   * through a zero-amount setup and creates no billing account.
    */
   async setupPayment(token = 'tok_visa'): Promise<Record<string, unknown>> {
     this.requireApiKey();
@@ -459,7 +463,10 @@ export class LetsFG {
   // ── Static methods ───────────────────────────────────────────────────
 
   /**
-   * Register a new Developer API agent — no auth needed.
+   * [Developer API only] Create a PAID Developer API account with its own billing.
+   *
+   * Most agents should NOT call this — it creates a billing account you probably
+   * do not want. To search and book flights, run `letsfg auth` instead.
    */
   static async register(
     agentName: string,

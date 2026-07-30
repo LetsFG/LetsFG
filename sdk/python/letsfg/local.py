@@ -1,13 +1,15 @@
 """
-Cloud-backed flight search for LetsFG.
+Cloud-backed flight search and booking for LetsFG.
 
 Connectors run server-side at letsfg.co — same response schema, results
-in seconds. Authenticate once via Twitter/X (`letsfg auth`) for a free
+in seconds. Authenticate once with `letsfg auth`, which puts a payment method
+on file via a zero-amount Stripe setup (nothing is charged) and returns a
 90-day Bearer token.
 
 API flow:
     POST /api/search         → { search_id }
     GET  /api/results/<id>   → { status, offers[], total_results }  (poll every 10s)
+    POST /api/agent-book     → { ok, booked, order_id | booking_url }
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ async def search_local(
     """
     Search flights via the LetsFG cloud API.
 
-    Requires a Bearer token — run `letsfg auth` once to authenticate via Twitter/X.
+    Requires a Bearer token — run `letsfg auth` once. Free and unlimited.
     Returns { offers: [...], total_results: N, search_id: "..." }.
     """
     token = get_bearer_token()
@@ -112,6 +114,66 @@ async def search_local(
 
     print()
     return {"offers": [], "total_results": 0, "search_id": search_id}
+
+
+async def book_offer(
+    search_id: str,
+    offer_id: str,
+    passenger: dict,
+    contact_email: str,
+    *,
+    offer_ref: str | None = None,
+) -> dict:
+    """
+    Book an offer from a PFS search.
+
+    Requires a Bearer token (`letsfg auth`). Use REAL passenger details — names
+    must match the traveller's passport or government ID, and the airline sends
+    e-tickets to contact_email.
+
+    Returns either:
+        { "ok": True,  "booked": True,  "order_id": "...", "charged": 0 }
+      or, when the booking genuinely could not be completed:
+        { "ok": False, "booked": False, "error": "booking_unavailable",
+          "booking_url": "https://...", "charged": 0 }
+
+    A "booking_unavailable" result is a normal outcome, not a transient error.
+    Retrying will not book it — hand the user `booking_url`, which goes straight
+    to that exact offer. Nothing is charged in either case.
+    """
+    token = get_bearer_token()
+
+    payload: dict = {
+        "search_id": search_id,
+        "offer_id": offer_id,
+        "passenger": passenger,
+        "contact_email": contact_email,
+    }
+    if offer_ref:
+        payload["offer_ref"] = offer_ref
+
+    req = Request(
+        f"{_BASE_URL}/api/agent-book",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 401:
+            raise BearerTokenError(
+                "Bearer token expired or revoked. Run `letsfg auth` to re-authenticate."
+            )
+        raw = e.read().decode(errors="replace")
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {"ok": False, "booked": False, "error": raw[:400]}
 
 
 async def _resolve_location_local(query: str) -> list[dict]:

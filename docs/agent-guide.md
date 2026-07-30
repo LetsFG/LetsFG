@@ -1,12 +1,23 @@
 # Building AI Agents with LetsFG
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 Guidelines for building autonomous AI agents that search, evaluate, and book flights. Works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent framework.
 
 > 🎬 **[Watch the demo](https://github.com/LetsFG/LetsFG#demo-lfg-vs-default-agent-search)** — side-by-side comparison of default agent search vs LetsFG.
 
 ## Search
 
-All search runs server-side at letsfg.co. Authenticate once with `letsfg auth` (free 90-day Bearer token via Twitter/X) or use a prepaid Developer API key.
+All search runs server-side at letsfg.co. Authenticate once with `letsfg auth` (a zero-amount card setup (nothing charged), 90-day Bearer token) or use a prepaid Developer API key.
 
 ```python
 # PFS search — free Bearer token, server-side, 60-90 s
@@ -19,7 +30,7 @@ bt = LetsFG(api_key="trav_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
-**When to use PFS (Bearer token):** Free search via Twitter/X authentication. 60–90 s per search. Unlock costs 1% of ticket (min $3). Run `letsfg auth` once.
+**When to use PFS (Bearer token):** This is the agent path — search and booking. Auth is a zero-amount card setup; nothing is charged. 60–90 s per search. Run `letsfg auth` once.
 
 **When to use Developer API:** Managed cloud search, billing controls, volume usage, and direct airline URLs with no per-booking fee. Register at [letsfg.co/developers](https://letsfg.co/developers).
 
@@ -118,36 +129,68 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 ### Programmatic access requires a Bearer token
 
-The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must register a **free 90-day Bearer token** tied to a Twitter/X account. Registration takes ~2 minutes and requires no email or payment.
+The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must hold a **90-day Bearer token**, obtained by putting a payment method on file.
 
-Once registered, use `POST /api/search` (natural language or structured) instead of `GET /en?q=...`.
+**Nothing is charged for this.** It is a zero-amount Stripe setup: the card is validated and vaulted, with no charge and no authorization hold. Having a card on file is what lets your agent go all the way to booking. This replaced the Twitter/X challenge on 2026-07-29.
+
+Once authenticated, use `POST /api/search` (natural language or structured) instead of `GET /en?q=...`.
 
 ```bash
-# 1. Get a challenge (no auth required)
+# 1. Ask how to enrol (no auth required)
 curl -X POST https://letsfg.co/api/agent-access/request
+# → 402 {"setup_url":"https://checkout.stripe.com/c/pay/cs_...",
+#        "setup_session_id":"cs_...","charged":false}
 
-# 2. Tweet the exact tweet_text from the response (public tweet, 30-min window)
-
-# 3. Verify and receive your Bearer token
+# 2a. A human opens setup_url and adds a card, then:
 curl -X POST https://letsfg.co/api/agent-access/verify \
   -H "Content-Type: application/json" \
-  -d '{"tweet_url":"https://twitter.com/you/status/...","challenge_signed":"eyJ..."}'
-# → {"token":"eyJ...","handle":"you","expires_at":"..."}
+  -d '{"setup_session_id":"cs_..."}'
 
-# 4. Search with Bearer token (NL query)
+# 2b. OR fully headless — mint a single-use card token against the LetsFG
+#     publishable key, then:
+curl -X POST https://letsfg.co/api/agent-access/verify \
+  -H "Content-Type: application/json" \
+  -d '{"card_token":"tok_..."}'
+# → {"token":"eyJ...","payer":"card:abc123","expires_at":"...","charged":false}
+
+# 3. Search with Bearer token (NL query)
 curl -X POST https://letsfg.co/api/search \
   -H "Authorization: Bearer eyJ..." \
   -H "Content-Type: application/json" \
   -d '{"query":"London to Barcelona June 15 2026"}'
 # → {"search_id":"ws_abc123","status":"searching","parsed":{...}}
 
-# 5. Poll for results
+# 4. Poll for results
 curl https://letsfg.co/api/results/ws_abc123 \
   -H "Authorization: Bearer eyJ..."
 ```
 
-Token is valid for 90 days. Renew by repeating the challenge/tweet/verify flow.
-Full registration walkthrough: https://letsfg.co/for-agents
+`payment_method_id` (pm_...) is accepted ONLY for a card already enrolled through this flow — a bare pm_ id is not proof that you control the card. For a first headless enrolment use `card_token` (tok_...), which you mint against the LetsFG publishable key.
+
+Token is valid for 90 days; one active token per card. Renew by running `letsfg auth` again.
+Full walkthrough: https://letsfg.co/for-agents
+
+### Booking
+
+```bash
+curl -X POST https://letsfg.co/api/agent-book \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"search_id":"ws_abc123","offer_id":"ws_off_...",
+       "contact_email":"traveller@example.com",
+       "passenger":{"given_name":"Ada","family_name":"Lovelace",
+                    "born_on":"1990-04-01","gender":"f","phone_number":"+15551234567"}}'
+```
+
+Two outcomes, both with `"charged": 0`:
+
+- `{"booked": true, "order_id": "..."}` — booked.
+- `{"booked": false, "booking_url": "..."}` — the booking genuinely did not
+  complete and nothing was charged. **This is a normal outcome, not a transient
+  error.** Retrying will not book it. Hand the user `booking_url`; it goes to
+  that exact offer.
+
+One passenger per call.
 
 Handle rate limits and timeouts in production:
 

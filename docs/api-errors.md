@@ -1,5 +1,16 @@
 # Errors and Limits
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 <div class="docs-callout">
   <strong>Most paid API failures are state failures.</strong> In practice, the search path breaks more often because the account is not ready than because the request body is malformed. Treat <code>GET /agents/me</code> as the source of truth before you send paid search traffic.
 </div>

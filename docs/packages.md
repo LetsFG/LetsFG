@@ -1,5 +1,16 @@
 # Packages
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 LetsFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP endpoint. Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible agent.
 
 ## Overview

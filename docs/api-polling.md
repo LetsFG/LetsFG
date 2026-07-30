@@ -1,5 +1,16 @@
 # Async Search and Polling
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 The standard `POST /flights/search` blocks until results are ready (60–90 seconds).
 If your product needs to show a loading state while results arrive, use the async
 flow: start the search immediately, then poll for updates.

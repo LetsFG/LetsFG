@@ -15,6 +15,23 @@ metadata:
 
 # Flight Search
 
+> **Correction (2026-07-29):** earlier revisions of this page described an MPP
+> (Machine Payments Protocol) `402` challenge letting agents pay in USDC.e on
+> Tempo with no card. That is **not enabled in production** — the server-side
+> support exists but is unconfigured, so no MPP challenge is ever issued. Do not
+> build against it.
+
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines, zero markup,
 $20–50 cheaper than travel websites.
 

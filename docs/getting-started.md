@@ -1,5 +1,16 @@
 # Getting Started
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 <div class="docs-callout">
   <strong>Pick the correct path first.</strong> Use Option A (free Bearer token) if you want search with no credit card. Use Option B (Developer API) if you want direct airline booking URLs or managed billing.
 </div>
@@ -27,7 +38,9 @@ pip install letsfg
 letsfg auth
 ```
 
-This starts the Twitter/X challenge flow. Post the provided tweet from your account, then confirm. Your 90-day Bearer token is saved automatically. Renew by repeating this step.
+This opens Stripe's hosted card page. Add a card — it is a zero-amount setup, so nothing is charged and no authorization hold is placed — then confirm. Your 90-day Bearer token is saved automatically. Renew by repeating this step.
+
+No browser available? Mint a single-use card token against the LetsFG publishable key and skip the hosted page: `letsfg auth --card-token tok_...`
 
 ### 3. Run the first search
 

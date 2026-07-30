@@ -1,5 +1,16 @@
 # Onboarding and Billing
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 <div class="docs-callout">
   <strong>Two valid paths:</strong> use the browserless API-only flow when you already have a Stripe-generated <code>payment_method_id</code> or <code>token</code>, or use hosted checkout when a browser is available and you want LetsFG to handle the Stripe UI.
 </div>

@@ -3,6 +3,17 @@ hide:
   - toc
 ---
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 <section class="docs-hero">
   <div class="docs-hero-inner">
     <p class="docs-kicker">Official LetsFG documentation</p>
@@ -30,7 +41,7 @@ LetsFG has two access paths — pick the one that matches your setup:
 
 | Path | How | Speed | Search cost | Booking URL |
 |------|-----|-------|-------------|-------------|
-| **CLI / SDK** (`letsfg auth`) | Server-side search via the letsfg.co engine; one-time Twitter/X challenge → 90-day Bearer token | 60–90 s | Free | 1% concierge fee (min $3) via letsfg.co |
+| **CLI / SDK** (`letsfg auth`) | Server-side search + booking; one-time zero-amount card setup → 90-day Bearer token | 60–90 s | Free | No LetsFG fee |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
@@ -45,7 +56,7 @@ LetsFG has two access paths — pick the one that matches your setup:
   <article class="docs-mode-card">
     <p class="docs-card-kicker">CLI / SDK mode</p>
     <h2>Search free after a one-time auth step</h2>
-    <p>Use this path after installing the SDK. Run <code>letsfg auth</code> once to complete the Twitter/X challenge and get a 90-day Bearer token. All search runs server-side at letsfg.co — no local browsers required.</p>
+    <p>Use this path after installing the SDK. Run <code>letsfg auth</code> once to put a card on file (nothing is charged) and get a 90-day Bearer token. All search runs server-side at letsfg.co — no local browsers required.</p>
     <ul class="docs-check-list">
       <li><code>letsfg search</code> and <code>bt.search()</code> work with the Bearer token</li>
       <li>Search is free and unlimited for the 90-day token lifetime</li>

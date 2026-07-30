@@ -56,7 +56,12 @@ async function searchPFS(params: Record<string, unknown>): Promise<Record<string
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
     const pollResp = await fetch(`${BASE_URL}/api/results/${search_id}`, {
-      headers: { 'User-Agent': `letsfg-mcp/${VERSION}` },
+      // Carry the token on the poll too, not just the POST: results are the
+      // agent's own, and the token is what buckets rate limiting to this agent.
+      headers: {
+        'User-Agent': `letsfg-mcp/${VERSION}`,
+        'Authorization': `Bearer ${BEARER_TOKEN}`,
+      },
     });
     if (pollResp.ok) {
       const result = await pollResp.json() as Record<string, unknown>;
@@ -106,39 +111,35 @@ async function resolveLocationCloud(query: string): Promise<unknown> {
 const GUIDE_TEXT =
   '# LetsFG — Flight Search & Booking Guide\n' +
   '\n' +
-  '## How It Works (3-Step Flow)\n' +
-  '1. **search_flights** (FREE, unlimited) — Searches hundreds of airlines server-side. Returns prices, airlines, times, durations, stopovers. Requires Bearer token or API key.\n' +
-  '2. **unlock_flight_offer** (1% fee, min $3) — Confirms live price with the airline. Reserves offer for 30 minutes. Charges via Stripe card or MPP crypto.\n' +
-  '3. **book_flight** (ticket price only, Developer API only) — Creates real airline reservation with PNR. Charges ticket price via Stripe.\n' +
+  '## How It Works (2-Step Flow)\n' +
+  '1. **search_flights** (FREE, unlimited) — Searches hundreds of airlines server-side. Returns prices, airlines, times, durations, stopovers.\n' +
+  '2. **book_flight** — Books the offer. If we cannot complete it, you get a direct booking link for that exact offer instead. Nothing is charged by LetsFG either way.\n' +
   '\n' +
   '## Authentication\n' +
-  '- **PFS Bearer token** (free): Run `letsfg auth` to get a 90-day token via Twitter/X challenge. Set LETSFG_BEARER_TOKEN.\n' +
-  '- **Developer API key** (prepaid credits): Register at letsfg.co/developers. Set LETSFG_API_KEY. Enables book_flight and no per-booking fee on unlock.\n' +
+  'Run `letsfg auth`, or call the **authenticate** tool. It puts a payment method on file through a zero-amount Stripe setup — no charge, no authorization hold — and returns a 90-day token. Set LETSFG_BEARER_TOKEN.\n' +
+  '\n' +
+  '## DO NOT create a Developer API account\n' +
+  'Do NOT call /developers/api/v1/agents/register or /developers/api/v1/agents/setup-payment, and do NOT run `letsfg register` or `letsfg setup-payment`. Those belong to a SEPARATE paid, prepaid-balance product for high-volume commercial integrations, and they create a billing account you almost certainly do not want. Older versions of these docs pointed there by default; that was wrong. Use the payment-token auth above.\n' +
   '\n' +
   '## Pricing\n' +
+  '- Auth: FREE — zero-amount card setup, nothing charged\n' +
   '- Search: FREE, unlimited\n' +
-  '- Unlock: 1% of ticket price (min $3) — Stripe card or MPP crypto. Free with Developer API.\n' +
-  '- Book: Exact airline price + Stripe processing fee. Zero markup. Developer API only.\n' +
+  '- Book: Ticket price only, at the airline price. No LetsFG fee, no markup.\n' +
   '\n' +
   '## Critical Rules\n' +
   '- **Resolve locations first**: City names are ambiguous. "London" = 5+ airports. Use resolve_location to get IATA codes before searching.\n' +
   '- **Real passenger details REQUIRED**: Airlines send e-tickets to the email provided. Names must match passport/government ID exactly. NEVER use placeholder emails, agent emails, or fake names.\n' +
-  '- **Idempotency keys for booking**: Always provide idempotency_key when calling book_flight to prevent double-bookings on retry.\n' +
-  '- **Price changes**: The unlock step confirms the real-time airline price, which may differ from search. Always inform the user if confirmed_price differs.\n' +
-  '- **30-minute window**: After unlock, the offer is held for 30 minutes. If expired, search + unlock again.\n' +
-  '\n' +
-  '## Passenger ID Mapping\n' +
-  'Search returns passenger_ids (e.g., ["pas_0", "pas_1"]). When booking, each passenger object must include the matching "id" field from this list.\n' +
+  '- **booking_unavailable is normal, not an error**: when book_flight answers {"booked": false, "booking_url": "..."}, the booking genuinely did not complete and retrying will not change that. Give the user the booking_url — it goes to that exact offer.\n' +
+  '- **Offers expire with the search** (~15 min). If an offer is gone, search again.\n' +
   '\n' +
   '## Error Handling\n' +
   '- **transient** errors (SUPPLIER_TIMEOUT, RATE_LIMITED, SERVICE_UNAVAILABLE): Safe to retry after 1-5 seconds\n' +
   '- **validation** errors (INVALID_IATA, INVALID_DATE, MISSING_PARAMETER): Fix the input, then retry\n' +
-  '- **business** errors (OFFER_EXPIRED, PAYMENT_DECLINED, OFFER_NOT_UNLOCKED): Requires human decision — do not auto-retry\n' +
+  '- **business** errors (OFFER_EXPIRED, PAYMENT_DECLINED): Requires human decision — do not auto-retry\n' +
   '\n' +
   '## Search Tips\n' +
   '- Search is free — search multiple dates, cabin classes, airport combos liberally\n' +
   '- Search takes 60-90s (async: POST /api/search -> poll /api/results/<id> every 10s)\n' +
-  '- Filter search results (stops, duration, airline) before unlocking\n' +
   '- Covers hundreds of airlines across all continents including low-cost carriers\n';
 
 const RESOURCES = [
@@ -212,17 +213,19 @@ const TOOLS = [
   {
     name: 'book_flight',
     description:
-      'Book an unlocked flight — creates real airline reservation with PNR (step 3 of 3). Developer API only.\n\n' +
-      'FLOW: search_flights -> unlock_flight_offer -> setup_payment (once) -> book_flight\n' +
-      'CHARGES: Ticket price via Stripe (2.9% + 30c processing). Zero markup.\n' +
-      'SAFETY: Always provide idempotency_key to prevent double-bookings. Use REAL passenger details — ' +
-      'names must match passport, email receives the e-ticket.\n\n' +
-      'Errors include error_code/error_category: transient -> retry, validation -> fix input, business -> ask user.',
+      'Book a flight from a search result.\n\n' +
+      'FLOW: authenticate (once) -> search_flights -> book_flight\n' +
+      'CHARGES: nothing from LetsFG. A completed booking pays the airline price with zero markup.\n' +
+      'RESULT: either {"booked": true, "order_id": "..."} or {"booked": false, "booking_url": "..."} — ' +
+      'the second means the booking genuinely did not complete and nothing was charged. That is a normal ' +
+      'outcome, NOT a transient error: do not retry, give the user the booking_url.\n' +
+      'SAFETY: use REAL passenger details — names must match passport, email receives the e-ticket.',
     inputSchema: {
       type: 'object',
-      required: ['offer_id', 'passengers', 'contact_email'],
+      required: ['search_id', 'offer_id', 'passengers', 'contact_email'],
       properties: {
-        offer_id: { type: 'string', description: "Unlocked offer ID (off_xxx)" },
+        search_id: { type: 'string', description: 'search_id from search_flights' },
+        offer_id: { type: 'string', description: 'Offer ID from search_flights' },
         passengers: {
           type: 'array',
           description: "Passengers with 'id' from search passenger_ids",
@@ -247,8 +250,31 @@ const TOOLS = [
     },
   },
   {
+    name: 'authenticate',
+    description:
+      'Get a LetsFG token by putting a payment method on file. Nothing is charged — ' +
+      'a zero-amount Stripe setup, no charge and no authorization hold. Call once.\n\n' +
+      'Call with no arguments to start: returns a setup_url for the user to add a card, plus a ' +
+      'setup_session_id. Call again with that setup_session_id once they are done to receive the token. ' +
+      'For a fully headless enrolment, mint a single-use card token against the LetsFG publishable ' +
+      'key and pass card_token instead, skipping the browser entirely. payment_method_id is accepted ' +
+      'ONLY for a card already enrolled through this flow — a bare pm_ id is not proof of card control.\n\n' +
+      'This does NOT create a Developer API billing account. Do not use setup_payment for this.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        setup_session_id: { type: 'string', description: 'cs_... from a previous authenticate call, after the card was added' },
+        payment_method_id: { type: 'string', description: 'Stripe pm_... for a card ALREADY enrolled through this flow (re-issue only)' },
+        card_token: { type: 'string', description: 'Single-use Stripe tok_... minted against the LetsFG publishable key — the headless path' },
+      },
+    },
+  },
+  {
     name: 'setup_payment',
-    description: 'Attach a payment card (required before booking). Free to attach. Only needs to be called once.',
+    description:
+      '[Developer API only — you almost certainly want `authenticate` instead] Attaches a card to a ' +
+      'PAID prepaid Developer API account. Refuses to run unless LETSFG_API_KEY is set, because agents ' +
+      'kept calling this and creating billing accounts they did not need.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -343,6 +369,31 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
 
     case 'book_flight': {
+      // Bearer token → PFS booking. Only an explicit Developer API key routes to
+      // the paid booking endpoint, so the default agent never touches it.
+      if (BEARER_TOKEN) {
+        const passengers = (args.passengers || []) as Array<Record<string, unknown>>;
+        // /api/agent-book takes one passenger. Silently booking only the first
+        // of several would hand back a confirmation for a trip nobody asked for,
+        // so refuse instead of truncating.
+        if (passengers.length > 1) {
+          return JSON.stringify({
+            error: 'multi_passenger_unsupported',
+            detail:
+              `Booking supports one passenger per call and ${passengers.length} were supplied. ` +
+              'Nothing was booked. Book each passenger separately, or send the user to the ' +
+              'booking_url from a single-passenger call.',
+          }, null, 2);
+        }
+        const body: Record<string, unknown> = {
+          search_id: args.search_id,
+          offer_id: args.offer_id,
+          contact_email: args.contact_email,
+          passenger: passengers[0],
+        };
+        const result = await apiRequest('POST', '/api/agent-book', body) as Record<string, unknown>;
+        return JSON.stringify(result, null, 2);
+      }
       const body: Record<string, unknown> = {
         offer_id: args.offer_id,
         booking_type: 'flight',
@@ -354,7 +405,40 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       return JSON.stringify(result, null, 2);
     }
 
+    case 'authenticate': {
+      if (args.setup_session_id || args.payment_method_id || args.card_token) {
+        const body: Record<string, unknown> = {};
+        if (args.setup_session_id) body.setup_session_id = args.setup_session_id;
+        if (args.payment_method_id) body.payment_method_id = args.payment_method_id;
+        if (args.card_token) body.card_token = args.card_token;
+        const result = await apiRequest('POST', '/api/agent-access/verify', body) as Record<string, unknown>;
+        if (!result.error && result.token) {
+          return JSON.stringify({
+            ...result,
+            next: 'Set LETSFG_BEARER_TOKEN to this token and restart the MCP server.',
+          }, null, 2);
+        }
+        return JSON.stringify(result, null, 2);
+      }
+      // apiRequest treats the 402 as an error envelope; call directly so the
+      // agent sees setup_url, which is the whole point of the response.
+      const resp = await fetch(`${BASE_URL}/api/agent-access/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': `letsfg-mcp/${VERSION}` },
+        body: '{}',
+      });
+      return JSON.stringify(await resp.json(), null, 2);
+    }
+
     case 'setup_payment': {
+      if (!API_KEY) {
+        return JSON.stringify({
+          error: 'wrong_tool',
+          detail:
+            'setup_payment attaches a card to a PAID Developer API account and is not how agents authenticate. ' +
+            'Use the `authenticate` tool instead — nothing is charged and no billing account is created.',
+        }, null, 2);
+      }
       const body: Record<string, unknown> = {};
       if (args.token) body.token = args.token;
       if (args.payment_method_id) body.payment_method_id = args.payment_method_id;

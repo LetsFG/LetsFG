@@ -1,5 +1,16 @@
 # Claude Desktop — 5-Minute Quickstart
 
+> ### ⚠️ Agents: do not create a Developer API account
+>
+> Do **NOT** call `/developers/api/v1/agents/register` or
+> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
+> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> paid, prepaid-balance product for high-volume commercial integrations and
+> create a billing account you almost certainly do not want.
+>
+> To search and book flights, run `letsfg auth` — a zero-amount card setup
+> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+
 Choose between the paid remote MCP endpoint and the free local MCP server.
 
 ---
@@ -72,7 +83,7 @@ pip install letsfg
 letsfg auth
 ```
 
-`letsfg auth` walks you through the Twitter/X challenge and saves a 90-day Bearer token.
+`letsfg auth` puts a card on file (zero-amount, nothing charged) and saves a 90-day Bearer token.
 
 ### 2. Add to Claude Desktop config
 
