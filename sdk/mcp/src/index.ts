@@ -125,7 +125,7 @@ const GUIDE_TEXT =
   '## Pricing\n' +
   '- Auth: FREE — zero-amount card setup, nothing charged\n' +
   '- Search: FREE, unlimited\n' +
-  '- Book: Ticket price only, at the airline price. No LetsFG fee, no markup.\n' +
+  '- Book: the price shown on the offer. What you see is what is charged.\n' +
   '\n' +
   '## Critical Rules\n' +
   '- **Resolve locations first**: City names are ambiguous. "London" = 5+ airports. Use resolve_location to get IATA codes before searching.\n' +
@@ -217,7 +217,7 @@ const TOOLS = [
     description:
       'Book a flight from a search result.\n\n' +
       'FLOW: authenticate (once) -> search_flights -> book_flight\n' +
-      'CHARGES: nothing from LetsFG. A completed booking pays the airline price with zero markup.\n' +
+      'CHARGES: nothing from LetsFG. A completed booking pays the airline prices from airlines and the major booking sites.\n' +
       'RESULT: either {"booked": true, "order_id": "..."} or {"booked": false, "booking_url": "..."} — ' +
       'the second means the booking genuinely did not complete and nothing was charged. That is a normal ' +
       'outcome, NOT a transient error: do not retry, give the user the booking_url.\n' +

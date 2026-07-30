@@ -2,7 +2,7 @@
 LetsFG Python SDK — agent-native flight search & booking.
 
 Zero-config, zero-browser, zero-markup. Built for autonomous agents.
-Search is free. Booking charges the ticket price via Stripe (zero markup).
+Search is free. Booking charges the price shown on the offer.
 
     from letsfg import LetsFG
 

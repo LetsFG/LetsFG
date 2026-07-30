@@ -1,6 +1,6 @@
 ---
 name: letsfg
-description: "LetsFG — Agent-native flight search and booking API. Hundreds of airlines via server-side engine, zero markup, 20-50 USD cheaper than OTAs. letsfg.co"
+description: "LetsFG — Agent-native flight search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo). Per-flight reliability history and instant booking. letsfg.co"
 ---
 
 # SKILL.md — LetsFG Capabilities
@@ -39,13 +39,13 @@ description: "LetsFG — Agent-native flight search and booking API. Hundreds of
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS Bearer token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search, no LetsFG booking fee |
+| **CLI / SDK / MCP** (PFS Bearer token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search |
 | **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
 ## Skills
 
 ### search_flights
-Search hundreds of airlines worldwide via the server-side engine. Returns real-time prices with zero markup or bias — $20–50 cheaper than OTAs.
+Search hundreds of airlines AND the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo) in one call. Returns real-time prices plus per-flight reliability history.
 - **Cost:** FREE (unlimited)
 - **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
@@ -77,7 +77,7 @@ Resolve city names to IATA airport/city codes.
 
 ### unlock_flight_offer
 Confirm live price with airline and reveal the direct booking URL. Reserves the offer for 30 minutes.
-- **Cost:** 1% of ticket price (min $3) — **Developer API only**. There is no unlock step on a PFS Bearer token: call `/api/agent-book` instead, which charges no LetsFG fee.
+- **Cost:** 1% of ticket price (min $3) — **Developer API only**. There is no unlock step on a PFS Bearer token: call `/api/agent-book` instead.
 - **Endpoint:** `POST /api/v1/bookings/unlock`
 - **Input:** offer_id from search results (only required parameter)
 - **Output:** confirmed_price, confirmed_currency, booking_url, offer_expires_at
@@ -358,7 +358,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 | Setup payment | **Free** |
 | View profile | **Free** |
 | Unlock offer | **1% of ticket (min $3)** — Stripe card or MPP crypto. Free with the prepaid Developer API. |
-| Book flight (after unlock) | **Ticket price** (zero markup, Stripe processing fee only) |
+| Book flight (after unlock) | **The price shown on the offer** |
 | Hotel booking | Room price only |
 | Hotel cancellation | Per cancellation policy |
 
@@ -367,7 +367,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 - Hundreds of airlines via server-side engine
 - Hotels and activities via direct APIs
 - Zero price bias — no demand inflation, no cookie tracking
-- $20–50 cheaper than OTAs on average
+- Typically cheaper than booking through a single OTA, because it compares airlines and the major booking sites in one pass
 - Real airline PNR codes and hotel confirmations
 - E-tickets sent directly to passenger email
 - Search is always free and unlimited

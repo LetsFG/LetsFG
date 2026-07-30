@@ -42,7 +42,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search, no LetsFG booking fee |
+| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
 
 **Quick decision:**
@@ -83,7 +83,7 @@ Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate price
 | **Book** | Ticket price only | Booked, or a direct booking link for that exact offer. No LetsFG fee. |
 
 LetsFG charges you nothing on this path. A completed booking pays the airline
-price with zero markup.
+prices from airlines and the major booking sites.
 
 > **Note on MPP / crypto payments.** Earlier versions of this document said the
 > unlock endpoint issues an MPP (Machine Payments Protocol) `402` challenge that
@@ -99,7 +99,7 @@ price with zero markup.
 POST /api/search                  # PFS — Bearer token
 POST /api/v1/flights/search       # Developer API — X-API-Key
 ```
-Search hundreds of airlines via the server-side engine. Returns real-time prices with zero markup or bias. Completely free, no limits.
+Search hundreds of airlines via the server-side engine. Searches airlines and the major booking sites together. Completely free, no limits.
 
 **CLI / SDK (PFS Bearer token — free):**
 ```python
@@ -187,7 +187,7 @@ npx mppx https://letsfg.co/developers/api/v1/bookings/unlock \
 ### 3. Book (on the airline's site)
 No API call needed — just open the `booking_url` returned by unlock.
 
-The booking URL takes you (or your user) directly to the airline's checkout with the itinerary pre-loaded. You pay the airline directly at their exact listed price — zero markup from LetsFG.
+The booking URL takes you (or your user) directly to the airline's checkout with the itinerary pre-loaded.
 
 > **Direct booking via LetsFG API** is coming soon.
 
@@ -686,7 +686,7 @@ if booking_url:
 
 ## Unlock Best Practices
 
-Searching is **completely free**, and so is booking on the PFS path (`POST /api/agent-book`, no LetsFG fee). The 1%-of-ticket unlock fee (min $3) applies only on the paid Developer API.
+Searching is **completely free**. Booking goes through `POST /api/agent-book`. The 1%-of-ticket unlock fee (min $3) applies only on the paid Developer API.
 
 ### Search Wide, Unlock Narrow
 
@@ -731,7 +731,7 @@ if candidates:
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
 | Auth | FREE on the card lanes | Zero-amount Stripe setup: no charge, no hold. The MPP lane costs $0.01 once as verification. |
-| Book | Ticket price only | `POST /api/agent-book`. No LetsFG fee. Returns a confirmed order, or a direct booking link for that exact offer. |
+| Book | Price shown on the offer | `POST /api/agent-book`. Returns a confirmed order, or a direct booking link for that exact offer. |
 | Unlock | 1% of ticket, min $3 | **Developer API only.** Not part of the agent flow — there is no unlock step on a PFS Bearer token. |
 
 ## Rate Limits and Timeouts
