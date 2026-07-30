@@ -858,7 +858,11 @@ def me(
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Show your agent profile and usage stats."""
+    """[Developer API only] Show your agent profile, balance and usage stats.
+
+    Requires an API key. A PFS Bearer token has no profile — it is bound to your
+    payment method, carries no balance, and search and booking are free.
+    """
     bt = _get_client(api_key, base_url)
     try:
         profile = bt.me()
