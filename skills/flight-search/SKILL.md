@@ -36,7 +36,7 @@ metadata:
 Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines, zero markup,
 $20–50 cheaper than travel websites.
 
-**Three-step flow:** Search (free) → Unlock (1% of ticket, min $3) → Book (ticket price only)
+**Two-step flow:** Search (free) → Book (`POST /api/agent-book`, ticket price only, no LetsFG fee). The unlock step below is **Developer API only** and is not part of the agent flow.
 
 ## Why Use This
 
@@ -162,7 +162,7 @@ Search returns structured offers:
 }
 ```
 
-### 3. Unlock (1% of ticket, min $3)
+### 3. Unlock — Developer API only (1% of ticket, min $3)
 
 Confirms live price with airline and reveals the direct booking URL. Locks offer for 30 minutes. Charged to your card (or paid via MPP crypto); free on the prepaid Developer API.
 
@@ -297,7 +297,7 @@ except PaymentRequiredError:
 |-----------|------|---------------|------------|
 | `search` | Free | Yes | Yes |
 | `resolve_location` | Free | Yes | Yes |
-| `unlock` | 1% of ticket (min $3) | No — charges fee | No |
+| `unlock` | **[Developer API only]** 1% of ticket (min $3) | No — charges fee | No |
 | `book` | Ticket price | Only with `idempotency_key` | With key: yes |
 
 ## Reference Files

@@ -139,7 +139,7 @@ Pay a small fee to reveal the direct airline booking URLs for your chosen flight
 
 **Key unlock details:**
 - Input: `offer_id` (from search results) — only required parameter
-- Cost: 1% of ticket price, minimum $3
+- Cost: 1% of ticket price, minimum $3 — **Developer API only**. On a PFS Bearer token there is no unlock step and no fee; go straight to booking.
 - HTTP 402 + `WWW-Authenticate: Payment` → MPP challenge (auto-handled by pympp/mppx)
 - HTTP 402 without MPP header → No card on file — response includes `setup_url`
 - HTTP 410 → Offer expired (airline sold the seats) — search again
@@ -320,7 +320,7 @@ npx letsfg-mcp
 | `letsfg search <origin> <dest> <date>` | Search flights (no booking links) | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
 | `letsfg setup-payment` | **[Paid Developer API only — use `letsfg auth` instead]** | Free |
-| `letsfg unlock <offer_id>` | Get direct airline booking URL | 1% of ticket, min $3 |
+| `letsfg unlock <offer_id>` | **[Developer API only]** Get direct airline booking URL | 1% of ticket, min $3 |
 | `letsfg me` | View profile & usage | Free |
 
 ## Authentication — How to Use Your API Key
@@ -686,7 +686,7 @@ if booking_url:
 
 ## Unlock Best Practices
 
-Searching is **completely free**. Unlock costs 1% of ticket price (min $3) — so filter aggressively before you unlock.
+Searching is **completely free**, and so is booking on the PFS path (`POST /api/agent-book`, no LetsFG fee). The 1%-of-ticket unlock fee (min $3) applies only on the paid Developer API.
 
 ### Search Wide, Unlock Narrow
 
@@ -730,8 +730,9 @@ if candidates:
 | Search | FREE | Unlimited — any route, any date, any number of searches |
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
-| Unlock | 1% of ticket, min $3 | Charged to saved card. Reveals direct airline booking URL. |
-| Book | Ticket price | Paid directly to the airline on their website. |
+| Auth | FREE on the card lanes | Zero-amount Stripe setup: no charge, no hold. The MPP lane costs $0.01 once as verification. |
+| Book | Ticket price only | `POST /api/agent-book`. No LetsFG fee. Returns a confirmed order, or a direct booking link for that exact offer. |
+| Unlock | 1% of ticket, min $3 | **Developer API only.** Not part of the agent flow — there is no unlock step on a PFS Bearer token. |
 
 ## Rate Limits and Timeouts
 
