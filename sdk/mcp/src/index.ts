@@ -147,7 +147,7 @@ const RESOURCES = [
   {
     uri: 'letsfg://guide',
     name: 'LetsFG Flight Search & Booking Guide',
-    description: 'Complete workflow guide: 3-step booking flow, pricing, passenger rules, error handling, and search tips. Read this before using any tools.',
+    description: 'Complete workflow guide: authenticate -> search -> book, pricing, passenger rules, error handling, and search tips. Read this before using any tools.',
     mimeType: 'text/markdown',
   },
 ];
@@ -287,7 +287,10 @@ const TOOLS = [
   },
   {
     name: 'get_agent_profile',
-    description: 'Get agent profile, payment status, and usage stats. Read-only.',
+    description:
+      '[Developer API only] Get agent profile, balance and usage stats. Read-only.\n\n' +
+      'Requires LETSFG_API_KEY. A PFS Bearer token has no profile — it is bound to your payment ' +
+      'method, carries no balance, and search and booking are free.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -461,6 +464,18 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
 
     case 'get_agent_profile': {
+      // /agents/me is a Developer API concept (balance, usage, billing). A PFS
+      // Bearer token has no profile there and used to get a bare 401, which reads
+      // like a broken tool rather than "not applicable".
+      if (!API_KEY) {
+        return JSON.stringify({
+          not_applicable: true,
+          detail:
+            'Agent profiles exist only on the paid Developer API (balance, usage, billing) and need ' +
+            'LETSFG_API_KEY. A PFS Bearer token has no profile: it is bound to your payment method, ' +
+            'carries no balance, and search and booking are free. Nothing to check.',
+        }, null, 2);
+      }
       const result = await apiRequest('GET', '/developers/api/v1/agents/me');
       return JSON.stringify(result, null, 2);
     }
