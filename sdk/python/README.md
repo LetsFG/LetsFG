@@ -9,7 +9,7 @@
 
 | | **CLI / SDK** (PFS Bearer token) | **Developer API** |
 |---|---|---|
-| **Search cost** | Free (Twitter/X token, one-time `letsfg auth`) | Prepaid credits |
+| **Search cost** | Free (one-time `letsfg auth`, nothing charged) | Prepaid credits |
 | **Booking URL** | 1% fee (min $3) via letsfg.co | Direct airline URL, no fee |
 | **Speed** | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
 | **Setup** | `pip install letsfg && letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
@@ -22,10 +22,10 @@
 pip install letsfg
 ```
 
-Authenticate once with a free Twitter/X challenge, then search is free and unlimited:
+Authenticate once by putting a payment method on file (zero-amount, nothing charged), then search is free and unlimited:
 
 ```bash
-letsfg auth           # one-time Twitter/X challenge → 90-day Bearer token
+letsfg auth           # one-time card-on-file setup → 90-day Bearer token (nothing charged)
 letsfg search LHR BCN 2026-06-15
 ```
 
@@ -337,7 +337,7 @@ letsfg locations "Berlin"
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `auth` | One-time Twitter/X challenge → 90-day Bearer token | FREE |
+| `auth` | One-time card-on-file setup → 90-day Bearer token. Nothing charged | FREE |
 | `search` | Search flights between any two airports | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
 | `unlock` | Unlock offer (confirms price, reveals booking URL) | 1% of ticket, min $3 |
@@ -359,7 +359,7 @@ Every command supports `--json` for machine-readable output.
 ## How It Works
 
 1. **Search** — Free. The server-side engine queries hundreds of airlines and returns real-time offers.
-2. **Unlock booking URL** — Pay the concierge fee (1% of ticket price, min $3) to receive the direct airline booking link. Or use the [Developer API](https://letsfg.co/developers) (prepaid credits) for fee-free direct links.
+2. **Book** — Call `POST /api/agent-book` with your Bearer token. It returns either a confirmed order or a direct booking link for that exact offer, with no LetsFG fee either way.
 3. **Book** — Open the direct airline URL and complete the booking on the airline's own site.
 
 Prices are cheaper because we connect directly to airlines — no OTA markup.

@@ -42,7 +42,7 @@ pip install letsfg
 letsfg auth
 ```
 
-Run `letsfg auth` once to complete the Twitter/X challenge and store a 90-day Bearer token. Search is then free and unlimited.
+Run `letsfg auth` once to put a payment method on file (a zero-amount Stripe setup — nothing is charged) and store a 90-day Bearer token. Search is then free and unlimited.
 
 ---
 
@@ -266,7 +266,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
 └──────────────────────────────────────────────────────────────┘
 ```
 
-All search runs server-side at letsfg.co. No local browsers or scrapers are involved. Authenticate once with `letsfg auth` (free 90-day Bearer token via Twitter/X).
+All search runs server-side at letsfg.co. No local browsers or scrapers are involved. Authenticate once with `letsfg auth` (90-day Bearer token; zero-amount card setup, nothing charged).
 
 ### What data goes where
 
@@ -321,7 +321,7 @@ Or install globally and use `node` directly (see Windows config above).
 
 ### How do I get free search without a Developer API key?
 
-Run `letsfg auth` once to complete the Twitter/X challenge. This gives you a free 90-day Bearer token for `POST /api/search`. No email or payment required. Renew by repeating the challenge.
+Run `letsfg auth` once to put a payment method on file. This gives you a 90-day Bearer token for `POST /api/search` and `POST /api/agent-book`. Nothing is charged — it is a zero-amount Stripe setup with no authorization hold. Renew by running `letsfg auth` again.
 
 ### Can I use this for commercial projects?
 

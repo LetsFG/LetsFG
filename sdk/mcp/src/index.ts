@@ -3,7 +3,8 @@
  * LetsFG MCP Server — Model Context Protocol integration.
  *
  * All search runs server-side at letsfg.co — no local browsers or Python required.
- * Authenticate once: `letsfg auth` (Twitter/X challenge) sets LETSFG_BEARER_TOKEN,
+ * Authenticate once: `letsfg auth` (zero-amount card setup, nothing charged) sets
+ * LETSFG_BEARER_TOKEN,
  * or use a Developer API key (LETSFG_API_KEY) for prepaid credits.
  *
  * Usage in Claude Desktop / Cursor config:
@@ -162,7 +163,7 @@ const TOOLS = [
       'Covers airlines across all continents including low-cost carriers.\n\n' +
       'Search is async (60-90s): this tool handles the polling automatically.\n\n' +
       'Requires LETSFG_BEARER_TOKEN or LETSFG_API_KEY. ' +
-      'See letsfg://guide resource for the full search->unlock->book workflow.',
+      'See letsfg://guide resource for the full authenticate->search->book workflow.',
     inputSchema: {
       type: 'object',
       required: ['origin', 'destination', 'date_from'],
@@ -197,11 +198,12 @@ const TOOLS = [
   {
     name: 'unlock_flight_offer',
     description:
-      'Confirm live price with the airline and reserve offer for 30 minutes (step 2 of 3).\n\n' +
-      'Cost: 1% of ticket price (min $3) via Stripe card or MPP crypto. Free with Developer API.\n\n' +
-      'This is the "quote" step — ALWAYS call before book_flight. The confirmed_price may differ from search price; ' +
-      'if so, inform the user before proceeding.\n\n' +
-      'Not idempotent — calling twice on the same offer may charge twice.',
+      '[Developer API only] Confirm live price with the airline and reserve the offer for 30 minutes.\n\n' +
+      'NOT part of the agent flow and NOT needed before book_flight. It requires LETSFG_API_KEY (the paid, ' +
+      'prepaid Developer API) and refuses to run on a Bearer token, because the PFS unlock endpoint does not ' +
+      'exist — calling it that way used to 404.\n\n' +
+      'If you authenticated with `letsfg auth`, go straight from search_flights to book_flight.\n\n' +
+      'Cost when used with a Developer API key: 1% of ticket price (min $3). Not idempotent.',
     inputSchema: {
       type: 'object',
       required: ['offer_id'],
@@ -363,8 +365,20 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
 
     case 'unlock_flight_offer': {
-      const path = BEARER_TOKEN ? '/api/unlock' : '/developers/api/v1/bookings/unlock';
-      const result = await apiRequest('POST', path, { offer_id: args.offer_id });
+      // There is no PFS unlock endpoint — /api/unlock 404s. Routing Bearer-token
+      // callers there sent them into a dead end and told them it was a required
+      // step. Refuse with a pointer instead of producing a 404 they have to
+      // interpret.
+      if (!API_KEY) {
+        return JSON.stringify({
+          error: 'wrong_tool',
+          detail:
+            'unlock_flight_offer belongs to the paid Developer API and needs LETSFG_API_KEY. ' +
+            'On a PFS Bearer token there is no unlock step: call book_flight directly after ' +
+            'search_flights. It returns either a confirmed order or a direct booking link.',
+        }, null, 2);
+      }
+      const result = await apiRequest('POST', '/developers/api/v1/bookings/unlock', { offer_id: args.offer_id });
       return JSON.stringify(result, null, 2);
     }
 

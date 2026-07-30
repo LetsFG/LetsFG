@@ -5,11 +5,12 @@ description: "LetsFG — Agent-native flight search and booking API. Hundreds of
 
 # SKILL.md — LetsFG Capabilities
 
-> **Correction (2026-07-29):** earlier revisions of this page described an MPP
-> (Machine Payments Protocol) `402` challenge letting agents pay in USDC.e on
-> Tempo with no card. That is **not enabled in production** — the server-side
-> support exists but is unconfigured, so no MPP challenge is ever issued. Do not
-> build against it.
+> **MPP (updated 2026-07-30):** the MPP (Machine Payments Protocol) `402`
+> challenge is **live**, as a card-free *enrolment* lane for agents holding a
+> Tempo wallet. It costs **$0.01 once**, as verification only — MPP has no
+> zero-amount intent, so a card-free rail has to settle something. Search and
+> booking stay free. Earlier revisions of this page described an MPP charge at
+> *unlock* time; that never shipped. See <https://letsfg.co/for-agents>.
 
 > ### ⚠️ Agents: do not create a Developer API account
 >
