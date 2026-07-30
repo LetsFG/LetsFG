@@ -31,14 +31,14 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 
 | Command | Description |
 |---------|-------------|
-| `letsfg register` | Create account and get API key |
+| `letsfg register` | **[Developer API only]** Create a PAID prepaid account + API key. Most agents want `letsfg auth` |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
 | `letsfg auth` | Put a card on file (zero-amount, nothing charged) to get a 90-day Bearer token |
 | `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
-| `letsfg unlock <offer_id>` | Unlock offer details (payment required) |
-| `letsfg book <offer_id>` | Book the flight after unlock |
-| `letsfg setup-payment` | Set up Stripe payment method |
+| `letsfg unlock <offer_id>` | **[Developer API only]** Unlock offer details. No unlock step exists on PFS |
+| `letsfg book <offer_id>` | Book the flight. On PFS this goes straight to `/api/agent-book` — no unlock needed |
+| `letsfg setup-payment` | **[Developer API only]** Attach a card to that paid account. Not how agents authenticate |
 | `letsfg me` | View profile & usage stats |
 
 All commands accept `--json` for structured output and `--api-key` to override the environment variable.
