@@ -15,7 +15,11 @@ Choose between the paid remote MCP endpoint and the free local MCP server.
 
 ---
 
-## Option A: Remote paid MCP
+## Option A: Remote paid MCP — *not the default for agents*
+
+> **Most agents should use Option B below.** This option is the *paid* Developer
+> API: it creates a prepaid billing account and blocks search until you fund it.
+> Option B needs no billing account, charges nothing, and supports booking.
 
 Use this when you want managed search through the public developer API at `letsfg.co/developers/api/mcp`.
 
@@ -72,7 +76,7 @@ Remote MCP uses the paid public account you just configured.
 
 ---
 
-## Option B: Local MCP server with free Bearer token
+## Option B: Local MCP server with payment-token auth — **recommended**
 
 Use this when you want free search from Claude Desktop without a paid API account.
 

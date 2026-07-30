@@ -115,7 +115,7 @@ When editing any agent-facing text (READMEs, SDK docstrings, MCP tool descriptio
 
 1. **Zero price bias** messaging — this is a core differentiator
 2. **Real passenger details** warning — critical for bookings
-3. **Pricing accuracy** — search is free via Bearer token; unlock costs 1% of ticket (min $3)
+3. **Pricing accuracy** — auth and search are free on PFS and booking carries no LetsFG fee; the 1%-of-ticket unlock fee (min $3) exists only on the paid Developer API
 
 ## Report a Vulnerability
 
