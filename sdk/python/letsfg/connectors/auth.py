@@ -118,7 +118,10 @@ def _post_json(path: str, payload: dict, timeout: int = 30) -> tuple[int, dict]:
     req = Request(
         f"{_BASE_URL}{path}",
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "LetsFG-Python-SDK/1.0.3",
+        },
         method="POST",
     )
     try:
