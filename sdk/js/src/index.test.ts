@@ -44,6 +44,38 @@ describe('LetsFG class', () => {
   });
 });
 
+// ── register() sends an explicit User-Agent ─────────────────────────────────
+// Every other request in this file goes through requestWithHeaders(), which
+// sets User-Agent: LetsFG-js/0.1.0. register() builds its own bare fetch()
+// call and used to skip that header entirely -- Node's fetch silently fills
+// in "node" as a default, which happened not to trip Cloudflare's WAF, but
+// relying on that undocumented runtime default is the same fragile pattern
+// that broke the Python SDK's PFS auth flow the same week (missing UA ->
+// Cloudflare error 1010). Assert it explicitly instead of implicitly.
+describe('register()', () => {
+  it('sets an explicit User-Agent header', async () => {
+    const originalFetch = globalThis.fetch;
+    let capturedHeaders: Record<string, string> | undefined;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return {
+        ok: true,
+        json: async () => ({ agent_id: 'agt_test' }),
+      } as Response;
+    }) as typeof fetch;
+
+    try {
+      await LetsFG.register('test-agent', 'agent@example.com');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.ok(capturedHeaders, 'fetch was not called');
+    assert.ok(capturedHeaders!['User-Agent'], 'no User-Agent header was sent');
+    assert.notEqual(capturedHeaders!['User-Agent'], 'node');
+  });
+});
+
 // ── Input validation — auth guard ─────────────────────────────────────────
 
 describe('auth guard', () => {
