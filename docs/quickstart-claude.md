@@ -126,7 +126,7 @@ The local MCP server sends search requests to the letsfg.co server-side engine u
 | "Find flights from London to Barcelona next Friday" | `search_flights` → returns offers with prices |
 | "What's the cheapest way to get from NYC to Tokyo?" | `resolve_location` → `search_flights` |
 | "Book the Ryanair one for John Doe" | `unlock_flight_offer` → `book_flight` |
-| "Search hotels in Barcelona for Apr 1-5" | `search_hotels` → returns rooms + prices |
+| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Needs a Developer API key and a card on file, for search as well as booking. |
 | "Am I verified?" | `get_agent_profile` → shows star status |
 
 ## Troubleshooting
