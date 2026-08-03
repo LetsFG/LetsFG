@@ -440,6 +440,194 @@ export class LetsFG {
     return this.post<BookingResult>('/developers/api/v1/bookings/book', body);
   }
 
+  // ── Hotels ──────────────────────────────────────────────────────────
+  //
+  // A card on file is required for EVERY hotel call, search included. That is
+  // deliberate: a hotel search opens a real session at the supplier and booking
+  // blocks a real rate, so a caller is never allowed to reach the point of
+  // commitment only to discover it cannot pay. The same card that authorises
+  // flight booking authorises hotels — there is no separate hotel enrolment.
+  //
+  // Only free-cancellation, pay-later rates are sold. Those are the rates where
+  // the guest's balance can safely be settled with the supplier after booking,
+  // which is what makes 10%-now/rest-later work. The result set is smaller than
+  // a metasearch's, and every row in it can actually be booked.
+
+  /**
+   * Resolve a place name to the city id that searchHotels() needs.
+   *
+   * Use `Id` from the first result as `cityId` and `Name` as `cityName`.
+   */
+  async hotelDestinations(text: string): Promise<Array<Record<string, unknown>>> {
+    this.requireApiKey();
+    const data = await this.post<{ results?: Array<Record<string, unknown>> }>(
+      '/developers/api/v1/hotels/destinations', { text }, 60_000);
+    return data.results ?? [];
+  }
+
+  /**
+   * Search real, bookable hotel inventory.
+   *
+   * Slow by nature — the supplier streams a whole city and every rate is priced
+   * — so this gets its own generous timeout rather than the client default.
+   *
+   * Each offer carries `price` (what the guest pays), `reservation_fee_now`
+   * (the 10% taken at booking), `balance_to_supplier`, `balance_due_by` and
+   * `free_cancellation_until`. There is no wholesale figure to quote by mistake.
+   *
+   * Keep `session_id` and the chosen offer's `combination_id_v2`: together they
+   * identify the exact rate, and booking needs both.
+   */
+  async searchHotels(params: {
+    cityId: number;
+    cityName: string;
+    checkIn: string;
+    checkOut: string;
+    adults?: number;
+    children?: number;
+    childAges?: number[];
+    /** Two-letter code. Rates and taxes genuinely differ by nationality. */
+    nationality?: string;
+    limit?: number;
+    withImages?: boolean;
+  }): Promise<Record<string, unknown>> {
+    this.requireApiKey();
+    const body: Record<string, unknown> = {
+      city_id: params.cityId,
+      city_name: params.cityName,
+      check_in: params.checkIn,
+      check_out: params.checkOut,
+      adults: params.adults ?? 2,
+      children: params.children ?? 0,
+      nationality: params.nationality ?? 'PL',
+      limit: params.limit ?? 40,
+      with_images: params.withImages ?? true,
+    };
+    if (params.childAges?.length) body.child_ages = params.childAges;
+    return this.post<Record<string, unknown>>('/developers/api/v1/hotels/search', body, 240_000);
+  }
+
+  /**
+   * Start a booking. Returns a job immediately — it does NOT book inline.
+   *
+   * A booking takes minutes: the rate is re-blocked at the supplier, every
+   * price and date rail is checked, the 10% reservation fee is charged to your
+   * card, and only then is the room committed. No proxy holds a connection that
+   * long, so this returns at once and you poll hotelBooking() for the outcome.
+   * Use bookHotelAndWait() if you would rather block.
+   *
+   * Because the fee is taken BEFORE the commit, a declined card costs nothing
+   * to unwind: no reservation exists and nothing is charged.
+   *
+   * Send `expectedPrice` and `expectedBalance` back exactly as search returned
+   * them — the booking is refused if the supplier has moved beyond tolerance,
+   * so a guest is never charged a price they did not agree to.
+   *
+   * Do NOT call this again for the same rate while a job is running: that books
+   * the room twice and charges two reservation fees.
+   */
+  async bookHotel(params: {
+    sessionId: string;
+    hotelCode: number;
+    combinationIdV2: string;
+    expectedPrice: number;
+    expectedBalance: number;
+    cityId: number;
+    cityName: string;
+    checkIn: string;
+    checkOut: string;
+    guests: Array<{ title: string; first_name: string; last_name: string }>;
+    /** The voucher and the pay link go here. A typo loses the booking. */
+    email: string;
+    phone: string;
+    adults?: number;
+    combinationId?: number;
+    hotelName?: string;
+    phoneCountryCode?: string;
+    specialRequests?: string[];
+  }): Promise<Record<string, unknown>> {
+    this.requireApiKey();
+    const body: Record<string, unknown> = {
+      session_id: params.sessionId,
+      hotel_code: params.hotelCode,
+      combination_id_v2: params.combinationIdV2,
+      expected_price: params.expectedPrice,
+      expected_balance: params.expectedBalance,
+      city_id: params.cityId,
+      city_name: params.cityName,
+      check_in: params.checkIn,
+      check_out: params.checkOut,
+      adults: params.adults ?? 2,
+      guests: params.guests,
+      email: params.email,
+      phone: params.phone,
+      phone_country_code: params.phoneCountryCode ?? '48',
+      special_requests: params.specialRequests ?? [],
+    };
+    if (params.combinationId != null) body.combination_id = params.combinationId;
+    if (params.hotelName) body.hotel_name = params.hotelName;
+    return this.post<Record<string, unknown>>('/developers/api/v1/hotels/book', body, 90_000);
+  }
+
+  /**
+   * Collect the result of a booking started with bookHotel().
+   *
+   * `status` is 'in_progress', 'succeeded' or 'failed'. On success you get
+   * `confirmation`, `reservation_fee_charged`, `pay_link`, `balance_due`,
+   * `balance_due_by` and `terms` (including the full cancellation ladder).
+   */
+  async hotelBooking(bookingJobId: string): Promise<Record<string, unknown>> {
+    this.requireApiKey();
+    return this.get<Record<string, unknown>>(
+      `/developers/api/v1/hotels/booking/${encodeURIComponent(bookingJobId)}`, 60_000);
+  }
+
+  /**
+   * bookHotel(), then poll until the booking settles. Convenience only.
+   *
+   * Giving up after `maxWaitMs` does NOT cancel anything — the booking may
+   * still complete. The returned object carries `booking_job_id` so you can
+   * keep polling, and the confirmation is emailed to the guest regardless.
+   */
+  async bookHotelAndWait(
+    params: Parameters<LetsFG['bookHotel']>[0] & { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<Record<string, unknown>> {
+    const pollIntervalMs = params.pollIntervalMs ?? 20_000;
+    const maxWaitMs = params.maxWaitMs ?? 600_000;
+    const job = await this.bookHotel(params);
+    const jobId = job.booking_job_id as string | undefined;
+    if (!jobId) return job;
+
+    let waited = 0;
+    let result: Record<string, unknown> = job;
+    while (waited < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      waited += pollIntervalMs;
+      result = await this.hotelBooking(jobId);
+      const st = result.status;
+      if (st === 'succeeded' || st === 'failed') return result;
+    }
+    if (result.booking_job_id == null) result.booking_job_id = jobId;
+    return result;
+  }
+
+  /**
+   * Release a reservation at the supplier.
+   *
+   * Free until `balance_due_by`; after that the hotel's own cancellation ladder
+   * applies and can reach 100%. The ladder ships in the booking's `terms`, so
+   * you can see the cost before calling this. The 10% reservation fee is NOT
+   * refunded.
+   *
+   * This drives a browser at the supplier and takes over a minute. If it times
+   * out, do not assume it failed — re-check before retrying.
+   */
+  async cancelHotel(confirmation: string): Promise<Record<string, unknown>> {
+    this.requireApiKey();
+    return this.post<Record<string, unknown>>(
+      '/developers/api/v1/hotels/cancel', { confirmation }, 300_000);
+  }
+
   /**
    * [Developer API only] Attach a card to a PAID prepaid Developer API account.
    *
@@ -517,12 +705,12 @@ export class LetsFG {
     return this.requestWithHeaders<T>(path, 'POST', headers, body);
   }
 
-  private async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    return this.requestWithHeaders<T>(path, 'POST', { 'X-API-Key': this.apiKey }, body);
+  private async post<T>(path: string, body: Record<string, unknown>, timeoutMs?: number): Promise<T> {
+    return this.requestWithHeaders<T>(path, 'POST', { 'X-API-Key': this.apiKey }, body, timeoutMs);
   }
 
-  private async get<T>(path: string): Promise<T> {
-    return this.requestWithHeaders<T>(path, 'GET', { 'X-API-Key': this.apiKey });
+  private async get<T>(path: string, timeoutMs?: number): Promise<T> {
+    return this.requestWithHeaders<T>(path, 'GET', { 'X-API-Key': this.apiKey }, undefined, timeoutMs);
   }
 
   private async requestWithHeaders<T>(
@@ -530,9 +718,13 @@ export class LetsFG {
     method: string,
     extraHeaders: Record<string, string>,
     body?: Record<string, unknown>,
+    timeoutMs?: number,
   ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
+    // Per-call timeout: one number cannot serve every endpoint here. A flight
+    // search answers in seconds, a hotel search streams a whole city, and a
+    // cancellation drives a browser at the supplier.
+    const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.timeout);
 
     try {
       const resp = await fetch(`${this.baseUrl}${path}`, {

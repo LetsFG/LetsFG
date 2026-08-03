@@ -181,7 +181,11 @@ To avoid unexpected updates:
 | Tool | Description | Cost | Side Effects |
 |------|-------------|------|--------------|
 | `search_flights` | Search hundreds of airlines via server-side engine | FREE | None (read-only) |
-| `search_hotels` | Search 300,000+ hotels worldwide | FREE | None (read-only) |
+| `resolve_hotel_city` | Place name -> supplier city id | FREE | None (read-only) |
+| `search_hotels` | Search bookable, free-cancellation hotel rates | FREE, but needs a card on file | Opens a supplier session |
+| `book_hotel` | Start a hotel booking (async, returns a job id) | 10% now, balance to the supplier | Charges the card, books the room |
+| `get_hotel_booking` | Collect the booking result and pay link | FREE | None (read-only) |
+| `cancel_hotel_booking` | Release a reservation | Free until `balance_due_by`, then the hotel's ladder | Cancels the booking |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
 | `unlock_flight_offer` | Confirm live price, reserve 30 min | — | Confirms price |
 | `book_flight` | Create real airline reservation (PNR) | Ticket price | Creates booking |
@@ -360,3 +364,96 @@ Ensure Node.js 18+ is installed. The server communicates via stdio (stdin/stdout
 ## License
 
 MIT
+
+## 🏨 Hotels — new, and live
+
+Your agent can now book hotels, not just flights. Same API key, same card on file.
+
+```python
+from letsfg import LetsFG
+lfg = LetsFG()
+
+city = lfg.hotel_destinations("Warsaw")[0]
+stays = lfg.search_hotels(
+    city_id=city["Id"], city_name=city["Name"],
+    check_in="2026-11-10", check_out="2026-11-12", adults=2,
+)
+
+hotel = stays["hotels"][0]
+offer = hotel["offers"][0]
+print(hotel["name"], offer["price"], stays["currency"])
+# Hotel Gromada Warszawa Centrum 669.86 PLN
+
+booking = lfg.book_hotel_and_wait(
+    session_id=stays["session_id"],
+    hotel_code=hotel["hotel_code"],
+    combination_id_v2=offer["combination_id_v2"],
+    expected_price=offer["price"],
+    expected_balance=offer["balance_to_supplier"],
+    city_id=city["Id"], city_name=city["Name"],
+    check_in="2026-11-10", check_out="2026-11-12",
+    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
+    email="guest@example.com", phone="512345678",
+)
+print(booking["confirmation"], booking["pay_link"])
+```
+
+### How you pay
+
+**10% now, the rest to the hotel later.** At booking we charge 10% of the price
+to your card as a reservation fee. The remaining balance is paid **directly to
+the supplier** through a `pay_link` we return — we never hold it.
+
+`balance_due_by` is the supplier's own auto-cancellation date, not a date we
+invent. Miss it and the room is released.
+
+The 10% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
+else; after it, the hotel's own cancellation ladder applies and can reach 100%.
+That ladder ships in the booking's `terms`, so you can always see the cost before
+you cancel.
+
+### Things worth knowing before you build
+
+- **A card on file is required for every hotel call, including search.** That is
+  unusual and it is deliberate: a hotel search opens a real session at the
+  supplier, and booking blocks a real rate. We would rather refuse up front than
+  let you reach the point of commitment and discover you cannot pay. The same
+  card that authorises flight booking authorises hotels — there is no separate
+  hotel signup.
+- **Only free-cancellation, pay-later rates are sold.** Those are the rates where
+  the balance can safely be settled with the supplier after booking, which is
+  what makes 10%-now/rest-later work at all. You will see fewer results than a
+  metasearch shows you. Every one of them can actually be booked.
+- **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
+  booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
+  `status` is `succeeded` or `failed`, or call `book_hotel_and_wait` and let the
+  SDK do it. This is not ceremony: it is what makes it impossible to charge a
+  card and then lose the confirmation to a timeout.
+- **The fee is charged before the room is committed.** A declined card therefore
+  costs nothing to unwind — no reservation exists and nothing is charged.
+- **Do not retry a booking blindly.** Calling `book_hotel` twice for the same
+  rate books the room twice and charges two reservation fees.
+- `price` is what the guest pays. There is no wholesale figure in the response to
+  quote by mistake.
+
+### JavaScript
+
+```javascript
+import { LetsFG } from 'letsfg';
+const lfg = new LetsFG({ apiKey: process.env.LETSFG_API_KEY });
+
+const [city] = await lfg.hotelDestinations('Warsaw');
+const stays = await lfg.searchHotels({
+  cityId: city.Id, cityName: city.Name,
+  checkIn: '2026-11-10', checkOut: '2026-11-12', adults: 2,
+});
+
+const booking = await lfg.bookHotelAndWait({ /* ...offer + guest details... */ });
+console.log(booking.confirmation, booking.pay_link);
+```
+
+### MCP
+
+Five new tools, in the order you call them: `resolve_hotel_city` →
+`search_hotels` → `book_hotel` → `get_hotel_booking` → `cancel_hotel_booking`.
+

@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 from urllib.request import Request, urlopen
@@ -616,6 +617,241 @@ class LetsFG:
         data = self._post("/api/v1/bookings/book", body)
         return BookingResult.from_dict(data)
 
+    # ── Hotels ────────────────────────────────────────────────────────────────
+    #
+    # A card on file is required for EVERY hotel call, search included. That is
+    # deliberate, not a bug: a hotel search opens a real session at the supplier
+    # and booking blocks a real rate, so we will not let a caller reach the point
+    # of commitment only to discover it cannot pay. The same card that authorises
+    # flight booking authorises hotels; there is no separate hotel enrolment.
+    #
+    # Only free-cancellation, pay-later rates are sold. That is a commercial
+    # choice: those are the rates where the guest's balance can safely be settled
+    # with the supplier after booking, which is what makes 10%-now/rest-later
+    # work at all. It also means the result set is smaller than a metasearch's,
+    # and every row in it can actually be booked.
+
+    HOTEL_SEARCH_TIMEOUT = 240
+    HOTEL_CANCEL_TIMEOUT = 300
+
+    def hotel_destinations(self, text: str) -> list[dict]:
+        """
+        Resolve a place name to the city id that :meth:`search_hotels` needs.
+
+        Args:
+            text: A place name, e.g. "Warsaw" or "Paris".
+
+        Returns:
+            Matches, best first. Use ``Id`` from the first entry as ``city_id``
+            and ``Name`` as ``city_name``.
+        """
+        self._require_api_key()
+        data = self._post("/api/v1/hotels/destinations", {"text": text}, timeout=60)
+        return (data or {}).get("results", [])
+
+    def search_hotels(
+        self,
+        city_id: int,
+        city_name: str,
+        check_in: str,
+        check_out: str,
+        adults: int = 2,
+        children: int = 0,
+        child_ages: list[int] | None = None,
+        nationality: str = "PL",
+        limit: int = 40,
+        with_images: bool = True,
+    ) -> dict:
+        """
+        Search real, bookable hotel inventory.
+
+        Slow by nature — the supplier streams a whole city and every rate is
+        priced — so this call gets its own generous timeout rather than the
+        client default.
+
+        Args:
+            city_id: From :meth:`hotel_destinations`.
+            city_name: From :meth:`hotel_destinations`.
+            check_in: yyyy-MM-dd.
+            check_out: yyyy-MM-dd.
+            adults: Adult guests.
+            children: Child guests. Pass ``child_ages`` when non-zero.
+            child_ages: Age of each child, required by the supplier for pricing.
+            nationality: Guest nationality, two-letter code. Rates and taxes
+                genuinely differ by nationality, so this changes prices.
+            limit: Maximum hotels to return.
+            with_images: Include photo URLs.
+
+        Returns:
+            ``{"session_id", "currency", "count", "hotels": [...], "terms"}``.
+            Each offer carries ``price`` (what the guest pays),
+            ``reservation_fee_now`` (the 10% taken at booking),
+            ``balance_to_supplier``, ``balance_due_by`` and
+            ``free_cancellation_until``. There is no wholesale figure to quote
+            by mistake.
+
+            Keep ``session_id`` and the chosen offer's ``combination_id_v2``:
+            together they identify the exact rate, and booking needs both.
+        """
+        self._require_api_key()
+        body = {
+            "city_id": city_id, "city_name": city_name,
+            "check_in": check_in, "check_out": check_out,
+            "adults": adults, "children": children,
+            "nationality": nationality, "limit": limit,
+            "with_images": with_images,
+        }
+        if child_ages:
+            body["child_ages"] = child_ages
+        return self._post("/api/v1/hotels/search", body,
+                          timeout=self.HOTEL_SEARCH_TIMEOUT)
+
+    def book_hotel(
+        self,
+        session_id: str,
+        hotel_code: int,
+        combination_id_v2: str,
+        expected_price: float,
+        expected_balance: float,
+        city_id: int,
+        city_name: str,
+        check_in: str,
+        check_out: str,
+        guests: list[dict],
+        email: str,
+        phone: str,
+        adults: int = 2,
+        combination_id: int | None = None,
+        hotel_name: str | None = None,
+        phone_country_code: str = "48",
+        special_requests: list[str] | None = None,
+    ) -> dict:
+        """
+        Start a booking. Returns a job immediately — it does NOT book inline.
+
+        A booking takes minutes: the rate is re-blocked at the supplier, every
+        price and date rail is checked, the 10% reservation fee is charged to
+        your card, and only then is the room committed. No proxy holds a
+        connection that long, so this returns at once and you poll
+        :meth:`hotel_booking` for the outcome. Use
+        :meth:`book_hotel_and_wait` if you would rather block.
+
+        Because the fee is taken BEFORE the commit, a declined card costs
+        nothing to unwind: no reservation exists and nothing is charged.
+
+        Args:
+            session_id: From :meth:`search_hotels`.
+            hotel_code: From the chosen hotel.
+            combination_id_v2: From the chosen offer. Identifies that exact
+                rate — room name alone is ambiguous, since the same room exists
+                refundable and non-refundable at different prices.
+            expected_price: The offer's ``price``, sent back verbatim. The
+                booking is refused if the supplier has moved beyond tolerance,
+                so a guest is never charged a price they did not agree to.
+            expected_balance: The offer's ``balance_to_supplier``, verbatim.
+            guests: ``[{"title": "Mr", "first_name": ..., "last_name": ...}]``.
+            email: The voucher and the pay link go here. A typo loses the
+                booking, so this is validated before anything is charged.
+            phone: Guest contact number.
+
+        Returns:
+            ``{"booking_job_id", "status": "in_progress", "poll", ...}``.
+
+            Do NOT call this again for the same rate while a job is running:
+            that books the room twice and charges two reservation fees.
+        """
+        self._require_api_key()
+        body = {
+            "session_id": session_id, "hotel_code": hotel_code,
+            "combination_id_v2": combination_id_v2,
+            "expected_price": expected_price,
+            "expected_balance": expected_balance,
+            "city_id": city_id, "city_name": city_name,
+            "check_in": check_in, "check_out": check_out, "adults": adults,
+            "guests": guests, "email": email, "phone": phone,
+            "phone_country_code": phone_country_code,
+            "special_requests": special_requests or [],
+        }
+        if combination_id is not None:
+            body["combination_id"] = combination_id
+        if hotel_name:
+            body["hotel_name"] = hotel_name
+        return self._post("/api/v1/hotels/book", body, timeout=90)
+
+    def hotel_booking(self, booking_job_id: str) -> dict:
+        """
+        Collect the result of a booking started with :meth:`book_hotel`.
+
+        Returns:
+            ``status`` is ``"in_progress"``, ``"succeeded"`` or ``"failed"``.
+            On success: ``confirmation``, ``reservation_fee_charged``,
+            ``pay_link``, ``balance_due``, ``balance_due_by`` and ``terms``
+            (including the full cancellation ladder). On failure: ``error``,
+            written to be shown to whoever asked for the booking.
+        """
+        self._require_api_key()
+        return self._get(f"/api/v1/hotels/booking/{quote(booking_job_id, safe='')}",
+                         timeout=60)
+
+    def book_hotel_and_wait(
+        self,
+        *,
+        poll_interval: int = 20,
+        max_wait: int = 600,
+        **kwargs: Any,
+    ) -> dict:
+        """
+        :meth:`book_hotel`, then poll until the booking settles.
+
+        Convenience only — it is the same two calls. Takes every argument
+        :meth:`book_hotel` does.
+
+        Args:
+            poll_interval: Seconds between polls.
+            max_wait: Give up waiting after this many seconds. Giving up does
+                NOT cancel anything: the booking may still complete. The result
+                carries the ``booking_job_id`` so you can keep polling, and the
+                confirmation is emailed to the guest regardless.
+
+        Returns:
+            The final :meth:`hotel_booking` payload. ``status`` may still be
+            ``"in_progress"`` if ``max_wait`` elapsed first.
+        """
+        job = self.book_hotel(**kwargs)
+        job_id = job.get("booking_job_id")
+        if not job_id:
+            return job
+        waited = 0
+        result = job
+        while waited < max_wait:
+            time.sleep(poll_interval)
+            waited += poll_interval
+            result = self.hotel_booking(job_id)
+            if result.get("status") in ("succeeded", "failed"):
+                return result
+        result.setdefault("booking_job_id", job_id)
+        return result
+
+    def cancel_hotel(self, confirmation: str) -> dict:
+        """
+        Release a reservation at the supplier.
+
+        Free until ``balance_due_by``; after that the hotel's own cancellation
+        ladder applies and can reach 100%. The ladder ships in the booking's
+        ``terms``, so you can always see the cost before calling this.
+
+        The 10% reservation fee is NOT refunded.
+
+        This drives a browser at the supplier and takes over a minute. If it
+        times out, do not assume it failed — re-check before retrying.
+
+        Args:
+            confirmation: The ``confirmation`` from the completed booking.
+        """
+        self._require_api_key()
+        return self._post("/api/v1/hotels/cancel", {"confirmation": confirmation},
+                          timeout=self.HOTEL_CANCEL_TIMEOUT)
+
     def setup_payment(self, token: str = "tok_visa") -> dict:
         """
         Set up a payment method using a payment token.
@@ -755,20 +991,23 @@ class LetsFG:
             "X-Client-Type": self._client_type,
         }
 
-    def _post(self, path: str, body: dict) -> Any:
+    def _post(self, path: str, body: dict, timeout: int | None = None) -> Any:
         url = f"{self.base_url}{path}"
         data = json.dumps(body).encode()
         req = Request(url, data=data, headers=self._headers(), method="POST")
-        return self._do_request(req)
+        return self._do_request(req, timeout)
 
-    def _get(self, path: str) -> Any:
+    def _get(self, path: str, timeout: int | None = None) -> Any:
         url = f"{self.base_url}{path}"
         req = Request(url, headers=self._headers(), method="GET")
-        return self._do_request(req)
+        return self._do_request(req, timeout)
 
-    def _do_request(self, req: Request) -> Any:
+    def _do_request(self, req: Request, timeout: int | None = None) -> Any:
+        # Per-call timeout, because one number cannot serve every endpoint here:
+        # a flight search answers in seconds, a hotel search streams a whole
+        # city's inventory, and a cancellation drives a browser at the supplier.
         try:
-            with urlopen(req, timeout=self.timeout) as resp:
+            with urlopen(req, timeout=timeout or self.timeout) as resp:
                 return json.loads(resp.read().decode())
         except HTTPError as e:
             body_text = e.read().decode() if e.fp else ""

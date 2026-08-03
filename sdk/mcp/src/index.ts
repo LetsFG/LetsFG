@@ -252,6 +252,126 @@ const TOOLS = [
     },
   },
   {
+    name: 'resolve_hotel_city',
+    description:
+      'Convert a place name to the supplier city id that search_hotels needs. Always call this first if you ' +
+      'only have a city name. Read-only and safe to repeat.\n\n' +
+      'Use `Id` from the first result as city_id and `Name` as city_name.',
+    inputSchema: {
+      type: 'object',
+      required: ['text'],
+      properties: {
+        text: { type: 'string', description: "Place name (e.g., 'Warsaw', 'Paris')" },
+      },
+    },
+  },
+  {
+    name: 'search_hotels',
+    description:
+      'Search real, bookable hotel inventory. Requires a payment method on file — the SAME card that ' +
+      'authorises flight booking. That applies to search too, not just booking, because a search opens a ' +
+      'real session at the supplier.\n\n' +
+      'Only free-cancellation, pay-later rates are returned, so everything you see can actually be booked ' +
+      'on these terms. The result set is smaller than a metasearch and that is deliberate.\n\n' +
+      '`price` is what the guest pays. Keep `session_id` and the chosen offer\'s `combination_id_v2` — ' +
+      'together they identify that exact rate, and book_hotel needs both. Takes up to a few minutes.',
+    inputSchema: {
+      type: 'object',
+      required: ['city_id', 'city_name', 'check_in', 'check_out'],
+      properties: {
+        city_id: { type: 'number', description: 'From resolve_hotel_city (`Id`)' },
+        city_name: { type: 'string', description: 'From resolve_hotel_city (`Name`)' },
+        check_in: { type: 'string', description: 'yyyy-MM-dd' },
+        check_out: { type: 'string', description: 'yyyy-MM-dd' },
+        adults: { type: 'number', description: 'Adult guests (default 2)' },
+        children: { type: 'number', description: 'Child guests (default 0)' },
+        child_ages: { type: 'array', items: { type: 'number' }, description: 'Age of each child; the supplier needs these to price' },
+        nationality: { type: 'string', description: 'Two-letter guest nationality. Rates and taxes genuinely differ by it.' },
+        limit: { type: 'number', description: 'Max hotels to return (default 40)' },
+      },
+    },
+  },
+  {
+    name: 'book_hotel',
+    description:
+      'Book one hotel rate. Charges 10% of the price to the card on file immediately as a NON-REFUNDABLE ' +
+      'reservation fee; the balance is paid directly to the supplier through the pay link we return, by ' +
+      'balance_due_by (the supplier\'s own auto-cancellation date).\n\n' +
+      'Returns a booking_job_id, NOT the booking — a booking takes minutes. Poll get_hotel_booking until ' +
+      'status is succeeded or failed.\n\n' +
+      'The fee is charged BEFORE the room is committed, so a declined card costs nothing: no reservation ' +
+      'exists and nothing is charged.\n\n' +
+      'Send expected_price and expected_balance back exactly as search returned them. NOT idempotent — ' +
+      'calling twice for the same rate books the room twice and charges two fees.',
+    inputSchema: {
+      type: 'object',
+      required: ['session_id', 'hotel_code', 'combination_id_v2', 'expected_price',
+                 'expected_balance', 'city_id', 'city_name', 'check_in', 'check_out',
+                 'guests', 'email', 'phone'],
+      properties: {
+        session_id: { type: 'string', description: 'From search_hotels' },
+        hotel_code: { type: 'number', description: 'From the chosen hotel' },
+        combination_id_v2: { type: 'string', description: 'From the chosen offer — identifies that exact rate' },
+        combination_id: { type: 'number', description: 'From the chosen offer (optional)' },
+        expected_price: { type: 'number', description: "The offer's `price`, verbatim" },
+        expected_balance: { type: 'number', description: "The offer's `balance_to_supplier`, verbatim" },
+        hotel_name: { type: 'string' },
+        city_id: { type: 'number' },
+        city_name: { type: 'string' },
+        check_in: { type: 'string', description: 'yyyy-MM-dd' },
+        check_out: { type: 'string', description: 'yyyy-MM-dd' },
+        adults: { type: 'number' },
+        guests: {
+          type: 'array',
+          description: 'One entry per guest: {title, first_name, last_name}',
+          items: {
+            type: 'object',
+            required: ['title', 'first_name', 'last_name'],
+            properties: {
+              title: { type: 'string', description: 'Mr / Mrs / Ms' },
+              first_name: { type: 'string' },
+              last_name: { type: 'string' },
+            },
+          },
+        },
+        email: { type: 'string', description: 'The voucher and pay link go here. A typo loses the booking.' },
+        phone: { type: 'string' },
+        phone_country_code: { type: 'string', description: "Default '48'" },
+        special_requests: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
+  {
+    name: 'get_hotel_booking',
+    description:
+      'Collect the result of a booking started with book_hotel. Poll every ~20s.\n\n' +
+      'status is in_progress, succeeded or failed. On success you get confirmation, ' +
+      'reservation_fee_charged, pay_link, balance_due, balance_due_by and the full cancellation ladder. ' +
+      'Read-only and safe to repeat.',
+    inputSchema: {
+      type: 'object',
+      required: ['booking_job_id'],
+      properties: {
+        booking_job_id: { type: 'string', description: 'From book_hotel' },
+      },
+    },
+  },
+  {
+    name: 'cancel_hotel_booking',
+    description:
+      'Release a hotel reservation. Free until balance_due_by; after that the hotel\'s own ladder applies ' +
+      'and can reach 100%. The ladder is in the booking terms, so check the cost first.\n\n' +
+      'The 10% reservation fee is NOT refunded. Takes over a minute; if it times out do NOT assume it ' +
+      'failed — re-check before retrying.',
+    inputSchema: {
+      type: 'object',
+      required: ['confirmation'],
+      properties: {
+        confirmation: { type: 'string', description: 'From the completed booking' },
+      },
+    },
+  },
+  {
     name: 'authenticate',
     description:
       'Get a LetsFG token by putting a payment method on file. Nothing is charged — ' +
@@ -419,6 +539,67 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       };
       if (args.idempotency_key) body.idempotency_key = args.idempotency_key;
       const result = await apiRequest('POST', '/developers/api/v1/bookings/book', body);
+      return JSON.stringify(result, null, 2);
+    }
+
+    case 'resolve_hotel_city': {
+      const result = await apiRequest('POST', '/developers/api/v1/hotels/destinations',
+        { text: args.text as string });
+      return JSON.stringify(result, null, 2);
+    }
+
+    case 'search_hotels': {
+      const body: Record<string, unknown> = {
+        city_id: args.city_id,
+        city_name: args.city_name,
+        check_in: args.check_in,
+        check_out: args.check_out,
+        adults: args.adults ?? 2,
+        children: args.children ?? 0,
+        nationality: args.nationality ?? 'PL',
+        limit: args.limit ?? 40,
+        with_images: false,
+      };
+      if (Array.isArray(args.child_ages) && args.child_ages.length) {
+        body.child_ages = args.child_ages;
+      }
+      const result = await apiRequest('POST', '/developers/api/v1/hotels/search', body);
+      return JSON.stringify(result, null, 2);
+    }
+
+    case 'book_hotel': {
+      const body: Record<string, unknown> = {
+        session_id: args.session_id,
+        hotel_code: args.hotel_code,
+        combination_id_v2: args.combination_id_v2,
+        expected_price: args.expected_price,
+        expected_balance: args.expected_balance,
+        city_id: args.city_id,
+        city_name: args.city_name,
+        check_in: args.check_in,
+        check_out: args.check_out,
+        adults: args.adults ?? 2,
+        guests: args.guests,
+        email: args.email,
+        phone: args.phone,
+        phone_country_code: args.phone_country_code ?? '48',
+        special_requests: args.special_requests ?? [],
+      };
+      if (args.combination_id != null) body.combination_id = args.combination_id;
+      if (args.hotel_name) body.hotel_name = args.hotel_name;
+      const result = await apiRequest('POST', '/developers/api/v1/hotels/book', body);
+      return JSON.stringify(result, null, 2);
+    }
+
+    case 'get_hotel_booking': {
+      const result = await apiRequest('GET',
+        `/developers/api/v1/hotels/booking/${encodeURIComponent(args.booking_job_id as string)}`);
+      return JSON.stringify(result, null, 2);
+    }
+
+    case 'cancel_hotel_booking': {
+      const result = await apiRequest('POST', '/developers/api/v1/hotels/cancel',
+        { confirmation: args.confirmation as string });
       return JSON.stringify(result, null, 2);
     }
 
