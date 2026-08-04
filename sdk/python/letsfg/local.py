@@ -26,6 +26,27 @@ _BASE_URL = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
 _POLL_INTERVAL = 10   # seconds
 _MAX_POLLS = 36       # 6 minutes max
 
+# Must match the UA the rest of the package sends. urllib's default
+# ("Python-urllib/3.x") is blocked outright by Cloudflare with error 1010, so a
+# request without this header gets a 403 before it ever reaches the app --
+# regardless of IP reputation, rate, or a perfectly valid Bearer token.
+#
+# Build every request in this module through _headers(). That is the whole point
+# of it existing: issue #163 was fixed once in connectors/auth.py and came
+# straight back here, because the fix patched a call site instead of a helper.
+_USER_AGENT = "LetsFG-Python-SDK/1.0.3"
+
+
+def _headers(token: str, *, json_body: bool = True) -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": _USER_AGENT,
+        "X-Client-Type": "python-sdk",
+    }
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    return headers
+
 
 async def search_local(
     origin: str,
@@ -74,10 +95,7 @@ async def search_local(
     req = Request(
         f"{_BASE_URL}/api/search",
         data=json.dumps(payload).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
+        headers=_headers(token),
         method="POST",
     )
     try:
@@ -100,7 +118,7 @@ async def search_local(
         print(".", end="", flush=True)
         poll_req = Request(
             f"{_BASE_URL}/api/results/{search_id}",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=_headers(token, json_body=False),
             method="GET",
         )
         with urlopen(poll_req, timeout=15) as resp:
@@ -155,10 +173,7 @@ async def book_offer(
     req = Request(
         f"{_BASE_URL}/api/agent-book",
         data=json.dumps(payload).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
+        headers=_headers(token),
         method="POST",
     )
     try:
