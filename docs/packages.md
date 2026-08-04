@@ -15,6 +15,8 @@ LetsFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP 
 
 ## Overview
 
+Every package below covers **flights and hotels**. Hotels need a Developer API key (the PFS Bearer token does not reach them) and a card on file for search as well as booking — see [Hotels](hotels.md).
+
 | Package | Install | What it is | API Key Required? |
 |---------|---------|------------|-------------------|
 | **Python SDK + CLI** | `pip install letsfg` | SDK + CLI, server-side search via letsfg.co | Free Bearer token (`letsfg auth`) or Developer API key |
@@ -156,6 +158,11 @@ Public REST integrations use the letsfg.co developer API:
 | `/flights/search` | POST | Search flights through the public API (consumes prepaid balance) |
 | `/flights/locations/{query}` | GET | Resolve city/airport codes |
 | `/flights/providers` | GET | Inspect provider mix |
+| `/hotels/destinations` | POST | Resolve a place name to a supplier city id |
+| `/hotels/search` | POST | Search bookable, free-cancellation hotel rates |
+| `/hotels/book` | POST | Start a booking (async — returns a job id) |
+| `/hotels/booking/{job_id}` | GET | Collect the booking result and pay link |
+| `/hotels/cancel` | POST | Release a reservation |
 
 **Base URL:** `https://letsfg.co/developers/api/v1`
 

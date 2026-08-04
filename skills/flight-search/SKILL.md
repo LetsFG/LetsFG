@@ -6,8 +6,8 @@ description: >-
   Use when user asks to "find flights",
   "search flights", "book a flight", "compare airline prices", "find cheap flights",
   "fly from X to Y", "find connections", "find layover options", or any flight-related
-  travel query. Do NOT use for hotel-only searches, car rentals, or non-flight travel
-  bookings.
+  travel query. Do NOT use for hotels (use the hotel-search skill), car rentals, or
+  non-flight travel bookings.
 metadata:
   author: LetsFG - github.com/LetsFG
   version: '1.0.0'

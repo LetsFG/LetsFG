@@ -1,12 +1,13 @@
 ---
 name: letsfg
 description: >-
-  Agent-native flight search and booking via the letsfg.co server-side search engine. Returns raw
+  Agent-native flight and hotel search and booking via the letsfg.co server-side engine. Returns raw
   prices from airlines and the major booking sites, with per-flight reliability history. Use when user asks to
   "find flights", "search flights", "book a flight", "compare airline prices",
   "find cheap flights", "fly from X to Y", or any flight-related travel query.
-  Do NOT use for hotel-only searches (use hotel skills), car rentals, or non-flight
-  travel bookings.
+  Hotels need a Developer API key (the flight Bearer token does not reach them) and a card
+  on file for search as well as booking. Do NOT use for car rentals or non-flight,
+  non-hotel travel bookings.
 license: MIT
 metadata:
   author: LetsFG - github.com/LetsFG

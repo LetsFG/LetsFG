@@ -1,4 +1,5 @@
 # Smithery configuration for LetsFG MCP Server
+# Flights and hotels: search, book and cancel from any MCP agent.
 # https://smithery.ai/docs/publishing
 
 startCommand:
@@ -8,10 +9,10 @@ startCommand:
     properties:
       LETSFG_API_KEY:
         type: string
-        description: "LetsFG Developer API key (prepaid credits). Get one free at letsfg.co/developers. Alternatively, use LETSFG_BEARER_TOKEN for the free PFS path."
+        description: "LetsFG Developer API key (prepaid credits). Get one free at letsfg.co/developers. REQUIRED for all hotel tools — the Bearer token below does not reach them. For flights you can use LETSFG_BEARER_TOKEN instead."
       LETSFG_BEARER_TOKEN:
         type: string
-        description: "LetsFG PFS Bearer token for free search and booking. Get one via 'letsfg auth' (zero-amount card setup, nothing charged, 90-day token). Not needed if LETSFG_API_KEY is set."
+        description: "LetsFG PFS Bearer token for free FLIGHT search and booking. Get one via 'letsfg auth' (zero-amount card setup, nothing charged, 90-day token). Not needed if LETSFG_API_KEY is set. Does NOT work for hotels — those need LETSFG_API_KEY."
     required: []
   commandFunction: |-
     (config) => ({

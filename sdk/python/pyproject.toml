@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "letsfg"
 version = "2026.5.87"
-description = "Flight search & booking for AI agents. Server-side engine covers hundreds of airlines. Free search via Bearer token or prepaid Developer API."
+description = "Flights and hotels for AI agents. Server-side engine covers hundreds of airlines; hotels are real bookable inventory with free cancellation and pay-later terms. Free flight search via Bearer token or prepaid Developer API."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -16,6 +16,7 @@ keywords = [
     "flights", "travel", "booking", "agent", "ai", "cli",
     "autonomous", "mcp", "openai", "airline", "ndc",
     "low-cost", "flight-search", "pfs",
+    "hotels", "hotel-booking", "hotel-search", "accommodation",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

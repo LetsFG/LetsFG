@@ -65,6 +65,7 @@ The live public schema currently documents these groups of endpoints:
 - parallel full search for N destinations (`/flights/multi-search` — 1 credit per destination)
 - async search with polling (`/flights/search/async` + `/flights/results/{id}`)
 - sandbox equivalents of all flight endpoints (free, fake data, same schema — for integration testing)
+- hotels: city resolution, search, asynchronous booking with polling, and cancellation (`/hotels/destinations`, `/hotels/search`, `/hotels/book`, `/hotels/booking/{job_id}`, `/hotels/cancel`) — see [Hotels](hotels.md). These require a payment method on file for **every** call, search included, and booking charges a 10% non-refundable reservation fee.
 
 ## Search activation checklist
 

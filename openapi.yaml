@@ -3,8 +3,13 @@ info:
   title: LetsFG API
   version: 0.2.16
   description: |
-    Agent-native flight search & booking API. Hundreds of airlines, virtual interlining —
-    built for AI agents (OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf) and developers.
+    Agent-native flight and hotel booking API. Hundreds of airlines with virtual interlining,
+    plus real bookable hotel inventory — built for AI agents (OpenClaw, Perplexity Computer,
+    Claude, Cursor, Windsurf) and developers.
+
+    Hotels authenticate on a Developer API key (X-API-Key) and reject the PFS Bearer token.
+    They require a card on file for every call, search included, and booking charges a 10%
+    non-refundable reservation fee with the balance paid directly to the supplier.
 
     ## How It Works
     1. **Search** (free) — real-time offers from hundreds of airlines
@@ -493,6 +498,206 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/LocationResult'
+
+  /api/v1/hotels/destinations:
+    post:
+      operationId: resolveHotelCity
+      summary: Resolve a place name to a supplier city id
+      description: |
+        Convert a place name into the `city_id` that hotel search needs.
+        Take `Id` from the first result as `city_id` and `Name` as `city_name`.
+      tags: [Hotels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  example: "Warsaw"
+      responses:
+        '200':
+          description: Matching destinations, best first
+        '402':
+          description: No payment method on file. Hotels require a card for every call, search included.
+
+  /api/v1/hotels/search:
+    post:
+      operationId: searchHotels
+      summary: Search bookable hotel rates
+      description: |
+        Search real, bookable hotel inventory.
+
+        Only free-cancellation, pay-later rates are returned — those are the rates where the guest's
+        balance can safely be settled with the supplier after booking, which is what makes the
+        10%-now/rest-later model work. The result set is therefore smaller than a metasearch's, and
+        every row in it can actually be booked.
+
+        `price` is what the guest pays. There is no wholesale figure in the response to quote by
+        mistake. Keep `session_id` and the chosen offer's `combination_id_v2` — together they
+        identify that exact rate, and booking needs both.
+
+        A payment method on file is required for search, not just booking: a search opens a real
+        session at the supplier.
+      tags: [Hotels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_id, city_name, check_in, check_out]
+              properties:
+                city_id: { type: integer, example: 148614 }
+                city_name: { type: string, example: "Warsaw, Poland" }
+                check_in: { type: string, format: date, example: "2026-11-10" }
+                check_out: { type: string, format: date, example: "2026-11-12" }
+                adults: { type: integer, default: 2 }
+                children: { type: integer, default: 0 }
+                child_ages:
+                  type: array
+                  items: { type: integer }
+                  description: Required by the supplier to price children.
+                nationality:
+                  type: string
+                  default: "PL"
+                  description: Two-letter code. Rates and taxes genuinely differ by nationality.
+                limit: { type: integer, default: 40, maximum: 200 }
+      responses:
+        '200':
+          description: Hotels with bookable offers
+        '402':
+          description: No payment method on file
+        '504':
+          description: The supplier did not answer in time
+
+  /api/v1/hotels/book:
+    post:
+      operationId: bookHotel
+      summary: Start a hotel booking (asynchronous)
+      description: |
+        Returns a `booking_job_id`, **not** a booking. A real booking takes minutes: the rate is
+        re-blocked at the supplier, the card charged, and the room committed. Poll
+        `GET /api/v1/hotels/booking/{booking_job_id}` until `status` is `succeeded` or `failed`.
+
+        This is not ceremony — it is what makes it impossible to charge a card and then lose the
+        confirmation to a timeout.
+
+        The 10% reservation fee is charged BEFORE the room is committed, so a declined card costs
+        nothing: no reservation exists and nothing is charged.
+
+        Send `expected_price` and `expected_balance` back exactly as search returned them. The
+        booking is refused if the supplier's price has moved, so a guest is never charged a price
+        they did not agree to.
+
+        NOT idempotent. Calling twice for the same rate books the room twice and charges two fees.
+      tags: [Hotels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, hotel_code, combination_id_v2, expected_price,
+                         expected_balance, city_id, city_name, check_in, check_out,
+                         guests, email, phone]
+              properties:
+                session_id: { type: string }
+                hotel_code: { type: integer }
+                combination_id_v2:
+                  type: string
+                  description: Identifies the exact rate. Room name alone is ambiguous.
+                combination_id: { type: integer }
+                expected_price:
+                  type: number
+                  description: The offer's `price`, verbatim.
+                expected_balance:
+                  type: number
+                  description: The offer's `balance_to_supplier`, verbatim.
+                hotel_name: { type: string }
+                city_id: { type: integer }
+                city_name: { type: string }
+                check_in: { type: string, format: date }
+                check_out: { type: string, format: date }
+                adults: { type: integer, default: 2 }
+                guests:
+                  type: array
+                  items:
+                    type: object
+                    required: [title, first_name, last_name]
+                    properties:
+                      title: { type: string, example: "Mr" }
+                      first_name: { type: string }
+                      last_name: { type: string }
+                email:
+                  type: string
+                  description: The voucher and pay link go here. A typo loses the booking.
+                phone: { type: string }
+                phone_country_code: { type: string, default: "48" }
+                special_requests:
+                  type: array
+                  items: { type: string }
+      responses:
+        '202':
+          description: Booking started — poll the returned booking_job_id
+        '402':
+          description: No payment method on file
+        '409':
+          description: The chosen rate is gone
+
+  /api/v1/hotels/booking/{booking_job_id}:
+    get:
+      operationId: getHotelBooking
+      summary: Collect a booking result and pay link
+      description: |
+        Poll every ~20s. `status` is `in_progress`, `succeeded` or `failed`.
+
+        On success: `confirmation`, `reservation_fee_charged`, `pay_link`, `balance_due`,
+        `balance_due_by` and `terms` (including the full cancellation ladder). The guest pays
+        `balance_due` directly to the supplier through `pay_link` by `balance_due_by`, which is the
+        supplier's own auto-cancellation date.
+      tags: [Hotels]
+      parameters:
+        - name: booking_job_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Booking status, and the booking itself once it settles
+        '404':
+          description: No such booking job for this account
+
+  /api/v1/hotels/cancel:
+    post:
+      operationId: cancelHotelBooking
+      summary: Release a hotel reservation
+      description: |
+        Free until `balance_due_by`; after that the hotel's own cancellation ladder applies and can
+        reach 100%. That ladder ships in the booking's `terms`, so the cost is knowable first.
+
+        The 10% reservation fee is NOT refunded.
+
+        Drives a browser at the supplier and takes over a minute. If it times out, do not assume it
+        failed — re-check before retrying.
+      tags: [Hotels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation]
+              properties:
+                confirmation: { type: string, example: "8BXJPX" }
+      responses:
+        '200':
+          description: Cancelled, with any charge applied
+        '402':
+          description: No payment method on file
 
   /api/v1/bookings/unlock:
     post:

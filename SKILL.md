@@ -28,7 +28,7 @@ description: "LetsFG — Agent-native flight search and booking API. Hundreds of
 
 - **Name:** LetsFG
 - **Type:** API + SDK + MCP Server + CLI
-- **Purpose:** Agent-native flight search, hotel search, and booking
+- **Purpose:** Agent-native flight and hotel search and booking
 - **Compatible agents:** OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client
 - **API Base URL:** `https://letsfg.co/developers/api/v1`
 - **MCP Endpoint:** `https://letsfg.co/developers/api/mcp` (Streamable HTTP)
@@ -51,11 +51,26 @@ Search hundreds of airlines AND the major booking sites (Google Flights, Skyscan
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
 - **Note:** All offers are locked. Must unlock before booking.
 
+### resolve_hotel_city
+Resolve a place name to the supplier city id that hotel search needs.
+- **Cost:** FREE (a card must still be on file)
+- **Endpoint:** `POST /api/v1/hotels/destinations`
+- **Input:** text (place name, e.g. "Warsaw")
+- **Output:** Matches, best first. Use `Id` as city_id and `Name` as city_name.
+
 ### search_hotels
-Search hotels worldwide via direct hotel APIs and aggregators.
-- **Cost:** FREE
-- **Input:** location (city name or IATA), checkin, checkout, adults, children, rooms, min_stars, max_price, currency, sort, limit
-- **Output:** List of hotel offers with name, address, stars, rating, photos, rooms, prices, cancellation policies
+Search real, bookable hotel inventory.
+- **Cost:** FREE, but a payment method on file is REQUIRED — for search, not just booking. A hotel
+  search opens a real session at the supplier, so it returns HTTP 402 without a card.
+- **Auth:** Developer API key (`X-API-Key`) only. The PFS Bearer token used for flights is rejected.
+- **Endpoint:** `POST /api/v1/hotels/search`
+- **Input:** city_id, city_name, check_in, check_out, adults, children, child_ages, nationality, limit
+- **Output:** hotels[] each with offers[] carrying `price` (what the guest pays),
+  `reservation_fee_now` (the 10%), `balance_to_supplier`, `balance_due_by`,
+  `free_cancellation_until`, `combination_id_v2`
+- **Note:** Only free-cancellation, pay-later rates are sold, so the result set is smaller than a
+  metasearch and every rate returned can actually be booked. Keep `session_id` and the chosen
+  offer's `combination_id_v2` — booking needs both.
 
 ### search_transfers
 Search ground transfers — private cars, taxis, shared shuttles, airport express.
@@ -98,29 +113,43 @@ Create a real airline reservation with PNR code. Charges ticket price via Stripe
 - **CRITICAL:** Use real passenger names (must match passport/ID) and real email (airline sends e-ticket there)
 - **Payment flow:** Your Stripe card is charged the ticket price → LetsFG books via the airline → you get the PNR. If the airline booking fails, you are automatically refunded.
 
-### hotel_checkrate
-Confirm hotel rate before booking (required if rate_type=RECHECK).
+### book_hotel
+Start a hotel booking. Returns a job, NOT a booking.
+- **Cost:** 10% of the price charged immediately to the card on file as a NON-REFUNDABLE
+  reservation fee. The balance is paid directly to the supplier through the returned `pay_link`.
+- **Endpoint:** `POST /api/v1/hotels/book`
+- **Input:** session_id, hotel_code, combination_id_v2, expected_price, expected_balance, city_id,
+  city_name, check_in, check_out, adults, guests[{title, first_name, last_name}], email, phone
+- **Output:** booking_job_id, status "in_progress", poll URL
+- **Asynchronous:** a real booking takes minutes — the rate is re-blocked at the supplier, the card
+  charged, the room committed. Poll `get_hotel_booking` until status is `succeeded` or `failed`.
+  This is what makes it impossible to charge a card and then lose the confirmation to a timeout.
+- **CRITICAL:** send `expected_price` and `expected_balance` back exactly as search returned them,
+  or the booking is refused as a price mismatch — a guest is never charged a price they did not
+  agree to.
+- **CRITICAL:** NOT idempotent. Calling this twice for the same rate books the room twice and
+  charges two reservation fees. If a call times out, poll the job; do not re-book.
+- **Note:** the fee is charged BEFORE the room is committed, so a declined card costs nothing —
+  no reservation exists and nothing is charged.
+
+### get_hotel_booking
+Collect the result of a booking started with `book_hotel`.
 - **Cost:** FREE
-- **Input:** rate_keys from hotel search
-- **Output:** Confirmed price, board type, cancellation policy, rate comments
+- **Endpoint:** `GET /api/v1/hotels/booking/{booking_job_id}`
+- **Output:** status, and on success confirmation, reservation_fee_charged, pay_link, balance_due,
+  balance_due_by, terms (including the full cancellation ladder)
+- **Note:** `balance_due_by` is the supplier's own auto-cancellation date, not advisory. Miss it and
+  the room is released.
 
-### hotel_book
-Book a hotel room.
-- **Cost:** Room price (charged via Hotelbeds)
-- **Input:** holder_name, holder_surname, rooms with rate_key and paxes
-- **Output:** reference, status, hotel details, total_net
-
-### hotel_voucher
-Get guest voucher for hotel check-in.
-- **Cost:** FREE
-- **Input:** booking reference
-- **Output:** Hotel name, dates, room type, board, payment notice
-
-### hotel_cancel
-Cancel a hotel booking or simulate cancellation.
-- **Cost:** Depends on cancellation policy
-- **Input:** reference, simulate (true/false)
-- **Output:** cancellation_amount, currency, status
+### cancel_hotel_booking
+Release a hotel reservation.
+- **Cost:** Free until `balance_due_by`; after that the hotel's own ladder applies and can reach
+  100%. The 10% reservation fee is NOT refunded.
+- **Endpoint:** `POST /api/v1/hotels/cancel`
+- **Input:** confirmation
+- **Output:** confirmation, charge
+- **Note:** drives a browser at the supplier and takes over a minute. If it times out, do NOT
+  assume it failed — re-check before retrying.
 
 ### register
 Register a new AI agent.
@@ -164,15 +193,21 @@ Before your first unlock, attach a payment method via `POST /api/v1/agents/setup
 5. POST /api/v1/bookings/book          → Book flight (ticket price charged via Stripe)
 ```
 
-### Hotel Booking (5 API calls)
+### Hotel Booking (Developer API key required — the PFS Bearer token does not work here)
 
 ```
-1. POST /api/v1/agents/register        → Get API key (once)
-2. POST /api/v1/hotels/search          → Search hotels (FREE)
-3. POST /api/v1/hotels/checkrate       → Confirm price (if rate_type=RECHECK)
-4. POST /api/v1/hotels/book            → Book room
-5. GET  /api/v1/hotels/voucher/{ref}   → Get guest voucher
+1. POST /api/v1/agents/setup-payment       → Card on file (required for SEARCH too)
+2. POST /api/v1/hotels/destinations        → Place name → city_id
+3. POST /api/v1/hotels/search              → Bookable rates (free, card still required)
+4. POST /api/v1/hotels/book                → Returns booking_job_id — NOT a booking
+5. GET  /api/v1/hotels/booking/{job_id}    → Poll ~20s until succeeded/failed
+                                             → confirmation + pay_link + balance_due_by
+6. POST /api/v1/hotels/cancel              → Optional; free until balance_due_by
 ```
+
+10% is charged to the card at step 4 as a non-refundable reservation fee; the balance is paid
+directly to the supplier through `pay_link` by `balance_due_by`, which is the supplier's own
+auto-cancellation date. Never repeat step 4 for the same rate — that books the room twice.
 
 ## CLI Usage
 

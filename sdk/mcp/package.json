@@ -2,7 +2,7 @@
   "name": "letsfg-mcp",
   "version": "2026.5.63",
   "mcpName": "io.github.LetsFG/letsfg",
-  "description": "LetsFG MCP Server — server-side engine covers hundreds of airlines. Flight search for Claude, Cursor, Windsurf, and any MCP agent. Free search via Bearer token or prepaid Developer API.",
+  "description": "LetsFG MCP Server — flight and hotel search and booking for Claude, Cursor, Windsurf and any MCP agent. Hundreds of airlines, plus bookable hotel rates with free cancellation and pay-later terms.",
   "main": "dist/index.js",
   "bin": {
     "letsfg-mcp": "dist/index.js"
@@ -25,7 +25,11 @@
     "ai-agent",
     "flights",
     "travel",
-    "booking"
+    "booking",
+    "hotels",
+    "hotel-booking",
+    "hotel-search",
+    "accommodation"
   ],
   "author": "LetsFG",
   "license": "MIT",

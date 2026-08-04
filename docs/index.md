@@ -102,6 +102,10 @@ The canonical public surfaces are:
 - OpenAPI JSON: [letsfg.co/developers/api/openapi.json](https://letsfg.co/developers/api/openapi.json)
 - Swagger UI: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
 
+## Hotels
+
+Hotels are live: real bookable inventory, free-cancellation and pay-later rates only, 10% charged at booking as a non-refundable reservation fee and the balance paid straight to the supplier through a pay link. They need a Developer API key and a card on file for every call, search included. Start at [Hotels](hotels.md).
+
 ## Start from the right page
 
 <div class="docs-resource-grid">

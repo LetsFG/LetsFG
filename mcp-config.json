@@ -2,9 +2,12 @@
   "mcpServers": {
     "letsfg": {
       "command": "npx",
-      "args": ["-y", "letsfg-mcp"],
+      "args": [
+        "-y",
+        "letsfg-mcp"
+      ],
       "env": {
-        "LETSFG_API_KEY": "YOUR_API_KEY_HERE (optional — only needed for unlock/book)"
+        "LETSFG_API_KEY": "YOUR_API_KEY_HERE (required for hotels; for flights it is optional — only needed for unlock/book)"
       }
     }
   }

@@ -32,7 +32,23 @@ result = bt.search("LHR", "JFK", "2026-06-01")
 
 **When to use PFS (Bearer token):** This is the agent path — search and booking. Auth is a zero-amount card setup; nothing is charged. 60–90 s per search. Run `letsfg auth` once.
 
-**When to use Developer API:** Managed cloud search, billing controls, volume usage, and direct airline URLs with no per-booking fee. Register at [letsfg.co/developers](https://letsfg.co/developers).
+**When to use Developer API:** Managed cloud search, billing controls, volume usage, and direct airline URLs with no per-booking fee. Register at [letsfg.co/developers](https://letsfg.co/developers). It is also the **only** way to reach hotels.
+
+### Hotels
+
+```python
+lfg = LetsFG(api_key="trav_...")          # Bearer tokens do NOT work for hotels
+city  = lfg.hotel_destinations("Warsaw")[0]
+stays = lfg.search_hotels(city_id=city["Id"], city_name=city["Name"],
+                          check_in="2026-11-10", check_out="2026-11-12", adults=2)
+booking = lfg.book_hotel_and_wait(...)     # async: returns a job, polls to completion
+print(booking["confirmation"], booking["pay_link"])
+```
+
+Only free-cancellation, pay-later rates are sold. Booking charges 10% to the card on file as a
+non-refundable reservation fee; the balance goes straight to the supplier through `pay_link` by
+`balance_due_by`. A card is required for hotel **search** as well as booking. Full detail:
+[Hotels](hotels.md).
 
 ## Architecture
 

@@ -1,4 +1,18 @@
 {
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "LetsFG — flights and hotels for AI agents",
+  "description": "Search and book flights across hundreds of airlines and booking sites, plus real bookable hotel rates with free cancellation and pay-later terms. Python, JS and MCP.",
+  "rules": [
+    "Flights use a free PFS Bearer token from `letsfg auth`. Hotels do NOT: every hotel endpoint authenticates on a Developer API key (X-API-Key) and rejects the Bearer token with 401.",
+    "Hotels require a payment method on file for SEARCH as well as booking. A hotel search opens a real session at the supplier, so it returns 402 without a card.",
+    "Hotel booking is asynchronous. POST /hotels/book returns a booking_job_id, not a booking. Poll GET /hotels/booking/{job_id} until status is succeeded or failed.",
+    "Never retry a hotel booking blindly. Calling /hotels/book twice for the same rate books the room twice and charges two reservation fees. Poll the job instead.",
+    "Hotel booking charges 10% of the price to the card as a NON-REFUNDABLE reservation fee. The balance is paid directly to the supplier via the returned pay_link by balance_due_by.",
+    "balance_due_by is the supplier's own auto-cancellation date, not advisory. Miss it and the room is released.",
+    "Send expected_price and expected_balance back to /hotels/book exactly as /hotels/search returned them, or the booking is refused as a price mismatch.",
+    "Only free-cancellation, pay-later hotel rates are sold, so the result set is smaller than a metasearch. Every rate returned can actually be booked.",
+    "Do not call /agents/register or /agents/setup-payment for flights. Those create a paid prepaid billing account most agents do not want; use `letsfg auth` instead."
+  ],
   "url": "https://context7.com/letsfg/letsfg",
   "public_key": "pk_HrakXLAVA5rtCurZJE1U8"
 }
