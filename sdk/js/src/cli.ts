@@ -17,6 +17,7 @@ import {
   offerSummary,
   type FlightSearchResult,
   type SearchOptions,
+  type BookingResult,
 } from './index.js';
 
 // ── Arg parsing (zero-dependency) ────────────────────────────────────────
@@ -178,7 +179,9 @@ async function cmdBook(args: string[]) {
 
   const passengers = passengerStrs.map(s => JSON.parse(s));
   const bt = new LetsFG({ apiKey, baseUrl });
-  const result = await bt.book(offerId, passengers, email, phone);
+  // This CLI only ever constructs LetsFG with an apiKey, never a bearerToken,
+  // so book() always takes the Developer API branch and returns BookingResult.
+  const result = await bt.book(offerId, passengers, email, phone) as BookingResult;
 
   if (jsonOut) {
     console.log(JSON.stringify(result, null, 2));

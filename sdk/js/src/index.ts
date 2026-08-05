@@ -418,8 +418,17 @@ export class LetsFG {
   }
 
   /**
-   * Book a flight via Developer API — charges ticket price via Stripe, creates real PNR.
-   * Always provide idempotencyKey to prevent double-bookings on retry.
+   * Book a flight.
+   *
+   * PFS (Bearer token): POST /api/agent-book. Free — nothing charged beyond
+   * the ticket price. Pass searchId (from search()'s result). Returns either
+   * { ok, booked: true, order_id } or, when the booking genuinely could not
+   * complete, { ok, booked: false, booking_url } — hand the link to the user,
+   * nothing was charged.
+   *
+   * Developer API (X-API-Key): charges ticket price + service fee via Stripe,
+   * creates a real PNR. Requires unlock() first. Always provide
+   * idempotencyKey to prevent double-bookings on retry.
    */
   async book(
     offerId: string,
@@ -427,7 +436,27 @@ export class LetsFG {
     contactEmail: string,
     contactPhone = '',
     idempotencyKey = '',
-  ): Promise<BookingResult> {
+    searchId = '',
+  ): Promise<BookingResult | Record<string, unknown>> {
+    this.requireAuth();
+
+    if (this.usingPFS) {
+      if (!searchId) {
+        throw new LetsFGError(
+          'searchId is required to book via PFS — pass the search_id from search()\'s result.',
+          400,
+        );
+      }
+      const passenger = { ...passengers[0] } as Record<string, unknown>;
+      if (contactPhone && !passenger.phone_number) passenger.phone_number = contactPhone;
+      return this.postWithBearer<Record<string, unknown>>('/api/agent-book', {
+        search_id: searchId,
+        offer_id: offerId,
+        passenger,
+        contact_email: contactEmail,
+      });
+    }
+
     this.requireApiKey();
     const body: Record<string, unknown> = {
       offer_id: offerId,
