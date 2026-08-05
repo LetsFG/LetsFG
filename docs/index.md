@@ -45,7 +45,7 @@ LetsFG has two access paths — pick the one that matches your setup:
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
-- Use **CLI / SDK** if you want free search — run `letsfg auth` once for a 90-day Bearer token ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search server-side for free. The concierge unlock flow delivers the direct airline URL after a 1% fee (min $3).
+- Use **CLI / SDK** if you want free search and booking — run `letsfg auth` once for a 90-day Bearer token ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `letsfg book` calls `POST /api/agent-book` directly — no unlock step, no LetsFG fee, just the ticket price.
 - Use the **Developer API** if you're building a product or need high volume without per-booking fees. Prepaid credits, results in seconds, direct airline URLs every time.
 
 ---

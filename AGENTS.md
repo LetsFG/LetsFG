@@ -15,8 +15,8 @@ wrong, and agents were creating accounts nobody needed.
 
 If you are an agent searching or booking flights — even hundreds of them — you
 want **Programmatic Flight Search (PFS)**: run `letsfg auth`, then search and
-book. One step, no billing account, nothing charged. Full guide:
-<https://letsfg.co/for-agents>.
+book. One step, no billing account, nothing charged beyond the ticket price
+itself. Full guide: <https://letsfg.co/for-agents>.
 
 ## What is LetsFG?
 
@@ -26,23 +26,22 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 ### How it works:
 
-**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Authenticate once with `letsfg auth` (a zero-amount card setup — nothing is charged), then search is free and unlimited.
+**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Authenticate once with `letsfg auth` (a zero-amount card setup — nothing is charged), then search and book.
 
 ### What makes this different from flight websites:
 
-- **Zero price bias** — no demand-based inflation, no cookie tracking, no surge pricing. The same flight that costs $350 on a travel website is typically **$20–$50 cheaper** here because you're getting the raw airline price.
 - **Hundreds of airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
 - **Virtual interlining** — the server-side combo engine builds cross-airline round-trips (e.g., Ryanair outbound + Wizz Air return) that save 30-50% vs booking with either airline alone.
 - **Token-efficient** — one tool call replaces what would take thousands of tokens of browser automation, scraping setup, and HTML parsing. Results come back as structured JSON.
 - **Works with any agent** — OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, or any MCP-compatible client. Also available as Python SDK, JS SDK, and CLI.
 
-**API Base URL:** `https://letsfg.co/developers/api/v1`
+**API Base URL:** `https://letsfg.co` (PFS) · `https://letsfg.co/developers/api/v1` (Developer API)
 
 ## Which access mode should I use?
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search |
+| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search, no LetsFG fee on booking |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
 
 **Quick decision:**
@@ -72,27 +71,25 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
 | **LetsFG** | **60–90 s** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
 
-Flight websites (Kayak, Google Flights, Expedia, Booking.com) also inflate prices based on demand tracking, cookie/session tracking, browser fingerprinting, and surge pricing. **LetsFG returns the raw airline price every time.**
-
 ## Pricing Model (PFS — what agents use)
 
 | Step | Cost | What You Get |
 |------|------|--------------|
 | **Auth** | FREE | Zero-amount Stripe card setup. No charge, no authorization hold. |
 | **Search** | FREE, unlimited | Price, times, duration, stops, airline. |
-| **Book** | Ticket price only | Booked, or a direct booking link for that exact offer. No LetsFG fee. |
+| **Book** | Ticket price only | `POST /api/agent-book` — a confirmed order, or a direct booking link for that exact offer. No LetsFG fee. |
 
-LetsFG charges you nothing on this path. A completed booking pays the airline
-prices from airlines and the major booking sites.
+A completed booking pays the airline prices from airlines and the major booking sites — nothing separate goes to LetsFG on this path.
 
 > **Note on MPP / crypto payments.** Earlier versions of this document said the
 > unlock endpoint issues an MPP (Machine Payments Protocol) `402` challenge that
 > agents can settle in USDC.e on Tempo without a card. That is **not enabled in
-> production** — the server-side support exists but is unconfigured, so no MPP
-> challenge is ever issued. Do not build against it. The payment-token auth above
-> is the supported agent path.
+> production** for the Developer API's unlock step — the server-side support
+> exists but is unconfigured there, so no MPP challenge is ever issued from it.
+> MPP **is** live as an alternative to the card lane for PFS auth itself — see
+> the auth section below. Do not build against MPP for the unlock endpoint.
 
-## How It Works (3 Steps)
+## How It Works (2 Steps)
 
 ### 1. Search (FREE, unlimited)
 ```
@@ -101,12 +98,19 @@ POST /api/v1/flights/search       # Developer API — X-API-Key
 ```
 Search hundreds of airlines via the server-side engine. Searches airlines and the major booking sites together. Completely free, no limits.
 
-**CLI / SDK (PFS Bearer token — free):**
-```python
-from letsfg import LetsFG
+**CLI (PFS — free, recommended for agents):**
+```bash
+letsfg auth                            # one-time, nothing charged
+letsfg search GDN BCN 2026-06-15       # prints a search_id, needed for book
+```
 
-bt = LetsFG()  # reads LETSFG_BEARER_TOKEN or ~/.letsfg/config.json
-result = bt.search("GDN", "BCN", "2026-06-15")
+**Python SDK (PFS Bearer token — free):**
+```python
+from letsfg.local import search_local
+import asyncio
+
+result = asyncio.run(search_local("GDN", "BCN", "2026-06-15"))
+print(result["search_id"], len(result["offers"]))
 ```
 
 **cURL (PFS):**
@@ -117,79 +121,71 @@ curl -X POST https://letsfg.co/api/search \
   -d '{"origin":"GDN","destination":"BCN","date_from":"2026-06-15"}'
 # → {"search_id": "abc123"}
 # Poll every 10s:
-curl https://letsfg.co/api/results/abc123
+curl https://letsfg.co/api/results/abc123 -H "Authorization: Bearer <your_token>"
 ```
 
-### 2. Unlock (1% fee, min $3)
+### 2. Book (FREE — ticket price only, no LetsFG fee)
 ```
-POST /api/v1/bookings/unlock
+POST /api/agent-book               # PFS — Bearer token, no unlock step
+POST /api/v1/bookings/unlock       # Developer API only — 1% fee, min $3, then book
+POST /api/v1/bookings/book         # Developer API only
 ```
-Pay a small fee to reveal the direct airline booking URLs for your chosen flights.
 
-**What happens when you unlock:**
-1. LetsFG confirms the offer is still available with the airline
-2. Charges 1% of the ticket price (minimum $3) — via Stripe card or MPP crypto
-3. Returns airline name + `booking_url` — direct link to complete the booking on the airline's site
-
-**Two payment paths — both supported automatically:**
-
-**Path A — Stripe (card on file):** Add a card once with `letsfg setup-payment`. Subsequent unlocks charge the card automatically and return `200` immediately.
-
-**Path B — MPP (agent-native, no card required):** If no card is on file, the endpoint returns `402 Payment Required` with a `WWW-Authenticate: Payment` MPP challenge encoding the exact fee. Any MPP-compatible client pays in USDC.e on the Tempo blockchain (~500ms) and retries with `Authorization: Payment <credential>`. The server verifies and returns the full unlock. No Stripe account, no card, no human interaction required.
-
-**Key unlock details:**
-- Input: `offer_id` (from search results) — only required parameter
-- Cost: 1% of ticket price, minimum $3 — **Developer API only**. On a PFS Bearer token there is no unlock step and no fee; go straight to booking.
-- HTTP 402 + `WWW-Authenticate: Payment` → MPP challenge (auto-handled by pympp/mppx)
-- HTTP 402 without MPP header → No card on file — response includes `setup_url`
-- HTTP 410 → Offer expired (airline sold the seats) — search again
-- The `confirmed_price` may differ from search price (airline prices change in real-time)
-- The MPP challenge amount is stable for 10 minutes so the challenge→payment→retry cycle completes reliably
-
-```python
-from letsfg import LetsFG, PaymentRequiredError, OfferExpiredError
-
-bt = LetsFG()  # reads LETSFG_API_KEY
-
-flights = bt.search("LHR", "JFK", "2026-06-01")
-
-try:
-    unlocked = bt.unlock(flights.cheapest.id)
-    print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
-    print(f"Fee charged: ${unlocked.unlock_fee:.2f}")
-    print(f"Booking URL: {unlocked.booking_url}")
-    # Open booking_url to complete the booking on the airline's site
-except PaymentRequiredError as e:
-    print("No card on file — add one at:", e.payment_setup_url)
-except OfferExpiredError:
-    print("Offer expired — search again")
-```
+On a PFS Bearer token, `search` → `book` is the whole flow. There is no unlock
+step and no LetsFG fee — call `book` directly with the `search_id` and `offer_id`
+from your search.
 
 ```bash
-# CLI (Stripe path — card required)
-letsfg unlock off_xxx
-# Output: Confirmed price: EUR 189.50, Fee: $3.00, Booking URL: https://...
-
-# cURL — MPP path (agent auto-pays via mppx)
-curl -X POST https://letsfg.co/developers/api/v1/bookings/unlock \
-  -H "X-API-Key: trav_..." \
-  -H "Content-Type: application/json" \
-  -d '{"offer_id": "off_xxx"}'
-# → 402 with WWW-Authenticate: Payment realm=... offer=... amount=3.00
-# Pay via Tempo USDC.e, retry with Authorization: Payment <credential>
-# → 200: {"offer_id":"off_xxx","confirmed_price":189.50,"unlock_fee":3.00,"booking_url":"https://..."}
-
-# Or use mppx CLI (handles the 402/pay/retry cycle automatically):
-npx mppx https://letsfg.co/developers/api/v1/bookings/unlock \
-  -X POST -H "X-API-Key: trav_..." -d '{"offer_id": "off_xxx"}'
+letsfg book off_xxx --search-id srch_abc \
+  --passenger '{"given_name":"Ada","family_name":"Lovelace","born_on":"1990-04-01","gender":"f","phone_number":"+15551234567"}' \
+  --email traveller@example.com
 ```
 
-### 3. Book (on the airline's site)
-No API call needed — just open the `booking_url` returned by unlock.
+```python
+from letsfg.local import book_offer
+import asyncio
 
-The booking URL takes you (or your user) directly to the airline's checkout with the itinerary pre-loaded.
+result = asyncio.run(book_offer(
+    search_id="srch_abc",
+    offer_id="off_xxx",
+    passenger={
+        "given_name": "Ada", "family_name": "Lovelace",
+        "born_on": "1990-04-01", "gender": "f",
+        "phone_number": "+15551234567",
+    },
+    contact_email="traveller@example.com",
+))
+if result["booked"]:
+    print("Order:", result["order_id"])
+else:
+    print("Booking link:", result["booking_url"])  # nothing was charged
+```
 
-> **Direct booking via LetsFG API** is coming soon.
+`book` answers either `{"booked": true, "order_id": ...}` or
+`{"booked": false, "booking_url": ...}`. The second means the booking genuinely
+did not complete and **nothing was charged** — it is a normal outcome, not a
+transient error. Do not retry the same offer; give the user the `booking_url`,
+which goes to that exact offer.
+
+**Developer API alternative (paid, unlock required first):** if you're on the
+prepaid Developer API instead of a PFS Bearer token, `book` requires a prior
+`unlock` (1% of ticket price, min $3) which confirms the live price and reveals
+the offer for booking:
+
+```bash
+letsfg unlock off_xxx --api-key trav_...
+# Output: Confirmed price: EUR 189.50, Fee: $3.00
+letsfg book off_xxx --api-key trav_... --passenger '{"id":"pas_xxx",...}' --email you@example.com
+```
+
+```python
+from letsfg import LetsFG
+
+bt = LetsFG(api_key="trav_...")
+flights = bt.search("LHR", "JFK", "2026-06-01")
+unlocked = bt.unlock(flights.cheapest.id)
+booked = bt.book(unlocked.offer_id, passengers=[...], contact_email="you@example.com")
+```
 
 ## Installation & CLI Usage
 
@@ -198,17 +194,14 @@ The booking URL takes you (or your user) directly to the airline's checkout with
 pip install letsfg
 ```
 
-This gives you the `letsfg` CLI command. Authenticate once with `letsfg auth` (a zero-amount card setup (nothing charged)), then search is free and unlimited:
+This gives you the `letsfg` CLI command. Authenticate once with `letsfg auth` (a zero-amount card setup, nothing charged), then search and book are free:
 
 ```bash
 # One-time auth (card on file, nothing charged → 90-day Bearer token)
 letsfg auth
 
-# Search flights — completely free after auth
+# Search flights — completely free after auth, prints a search_id
 letsfg search LHR BCN 2026-06-15
-
-# Add a payment card (one-time setup, required before unlock)
-letsfg setup-payment
 
 # Round trip
 letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
@@ -222,11 +215,8 @@ letsfg search JFK LHR 2026-05-01 --max-stops 0
 # Resolve city to IATA codes
 letsfg locations "New York"
 
-# Unlock an offer (1% fee, min $3) — reveals direct airline booking URL
-letsfg unlock off_xxx
-
-# Check profile & usage
-letsfg me
+# Book an offer from your search (free — ticket price only, no LetsFG fee)
+letsfg book off_xxx --search-id srch_abc --passenger '{"given_name":"Ada","family_name":"Lovelace","born_on":"1990-04-01","gender":"f"}' --email you@example.com
 ```
 
 All commands support `--json` for structured output:
@@ -250,37 +240,45 @@ letsfg search GDN BER 2026-03-03 --json
 | `--departure-to` | | _(none)_ | Latest departure time `HH:MM` (e.g. `14:00`) |
 | `--json` | `-j` | | JSON output for machine consumption |
 
-### Python SDK
+### Python SDK (PFS — free, recommended)
 ```python
-from letsfg import LetsFG
+from letsfg.local import search_local, book_offer
+import asyncio
 
-bt = LetsFG(api_key="trav_...")
-flights = bt.search("LHR", "JFK", "2026-04-15")
-print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
+result = asyncio.run(search_local("LHR", "JFK", "2026-04-15"))
+cheapest = min(result["offers"], key=lambda o: o["price"])
+print(f'{result["total_results"]} offers, cheapest: {cheapest["price"]} {cheapest["currency"]}')
 ```
+
+The `LetsFG` client class (`from letsfg import LetsFG`) wraps the paid Developer
+API instead — use it only if you're on prepaid credits (`api_key="trav_..."`).
 
 ### JavaScript/TypeScript SDK + CLI
 ```bash
 npm install -g letsfg
 ```
 
-Same CLI commands available, plus SDK usage:
 ```typescript
 import { LetsFG } from 'letsfg';
 
-const bt = new LetsFG({ apiKey: 'trav_...' });
+// PFS (free) — Bearer token from `letsfg auth`
+const bt = new LetsFG({ bearerToken: 'eyJ...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
-console.log(`${flights.totalResults} offers`);
+console.log(`${flights.total_results} offers, search_id: ${flights.search_id}`);
+
+const result = await bt.book(
+  cheapestOfferId, [passenger], 'you@example.com', '', '', flights.search_id,
+);
 ```
 
 ### MCP Server (Claude Desktop / Cursor / Windsurf)
 
-**Option A: Remote (Streamable HTTP) — no install, always latest**
+**Option A: Remote (Streamable HTTP) — no install, always latest, Developer API only**
 ```json
 {
   "mcpServers": {
     "letsfg": {
-            "url": "https://letsfg.co/developers/api/mcp",
+      "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }
@@ -288,8 +286,10 @@ console.log(`${flights.totalResults} offers`);
   }
 }
 ```
+The remote endpoint is account-managed through the paid Developer API. If you
+want the free PFS path, use Option B (local) below.
 
-**Option B: Local (stdio) — runs on your machine**
+**Option B: Local (stdio) — runs on your machine, free PFS path**
 ```bash
 npx letsfg-mcp
 ```
@@ -301,33 +301,41 @@ npx letsfg-mcp
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_BEARER_TOKEN": "eyJ... (from letsfg auth)"
       }
     }
   }
 }
 ```
 
-> **Payment card required for unlock.** Add your card once with `letsfg setup-payment`. Each unlock charges 1% of the ticket price (min $3).
+No token yet? Run `letsfg auth` from a terminal first, or call the server's
+`authenticate` tool once the MCP session is running — it walks through the
+zero-amount card setup and reports the token to save.
+
+Developer API users running the local server can set `LETSFG_API_KEY` instead
+of `LETSFG_BEARER_TOKEN` — `book_flight` dispatches automatically based on
+which one is present.
 
 ## CLI Commands
 
 | Command | Description | Cost |
 |---------|-------------|------|
 | `letsfg auth` | One-time card-on-file setup → 90-day Bearer token (PFS access). Nothing charged | Free |
-| `letsfg register` | **[Paid Developer API only — most agents should not run this]** Creates a billing account | Free |
-| `letsfg recover --email <email>` | Recover lost API key via email | Free |
-| `letsfg search <origin> <dest> <date>` | Search flights (no booking links) | Free |
+| `letsfg search <origin> <dest> <date>` | Search flights, prints `search_id` | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
-| `letsfg setup-payment` | **[Paid Developer API only — use `letsfg auth` instead]** | Free |
-| `letsfg unlock <offer_id>` | **[Developer API only]** Get direct airline booking URL | 1% of ticket, min $3 |
+| `letsfg book <offer_id> --search-id <id>` | Book an offer from your search | Ticket price only, no LetsFG fee |
 | `letsfg me` | View profile & usage | Free |
+| `letsfg register` | **[Paid Developer API only — most agents should not run this]** Creates a billing account | Free |
+| `letsfg setup-payment` | **[Paid Developer API only — use `letsfg auth` instead]** | Free |
+| `letsfg unlock <offer_id> --api-key <key>` | **[Developer API only]** Confirm price, required before `book` on that path | 1% of ticket, min $3 |
+| `letsfg recover --email <email>` | Recover lost Developer API key via email | Free |
 
-## Authentication — How to Use Your API Key
+## Developer API Authentication (paid, only if you need it)
 
-Every authenticated request requires the `X-API-Key` header. The SDK/CLI handles this automatically.
+Everything in this section is for the separate, prepaid Developer API. If you
+just want to search and book, skip to [PFS Payment-Token Auth](#pfs-payment-token-auth-cli--sdk--direct-api) below — you don't need any of this.
 
-### Get a Key (No Auth Needed)
+Every authenticated Developer API request requires the `X-API-Key` header.
 
 ```bash
 # CLI
@@ -341,47 +349,27 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
 # Response: { "agent_id": "ag_xxx", "api_key": "trav_xxxxx..." }
 ```
 
-### Use the Key
-
 ```bash
-# Option 1: Environment variable (recommended)
+# Environment variable (recommended)
 export LETSFG_API_KEY=trav_...
-letsfg search LHR JFK 2026-04-15  # reads env automatically
+letsfg search LHR JFK 2026-04-15 --api-key $LETSFG_API_KEY
 
-# Option 2: Pass directly
-letsfg search LHR JFK 2026-04-15 --api-key trav_...
-
-# Option 3: cURL (raw HTTP)
+# cURL (raw HTTP)
 curl -X POST https://letsfg.co/developers/api/v1/flights/search \
   -H "X-API-Key: trav_..." \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
 ```
 
-### Python SDK
-
 ```python
 from letsfg import LetsFG
 
-# Pass directly
-bt = LetsFG(api_key="trav_...")
-
-# Or from env
-bt = LetsFG()  # reads LETSFG_API_KEY
-
-# Register inline
-creds = LetsFG.register("my-agent", "agent@example.com")
-bt = LetsFG(api_key=creds["api_key"])
+bt = LetsFG(api_key="trav_...")  # or LetsFG() to read LETSFG_API_KEY
+creds = LetsFG.register("my-agent", "agent@example.com")  # register inline
 ```
-
-### Add a Payment Card (Required Before Unlock)
 
 ```bash
 letsfg setup-payment  # add a card once; charged 1% (min $3) per unlock
-```
-
-```python
-bt.setup_payment(token="tok_visa")  # Stripe token from your frontend
 ```
 
 ## Resolve Locations Before Searching
@@ -415,30 +403,24 @@ letsfg locations "New York"
 Search returns offers from multiple airlines with full details — all for free:
 
 ```python
-flights = bt.search("LON", "BCN", "2026-04-01", return_date="2026-04-08", limit=50)
+result = asyncio.run(search_local("LON", "BCN", "2026-04-01", return_date="2026-04-08", limit=50))
+offers = result["offers"]
 
-for offer in flights.offers:
-    print(f"{offer.owner_airline}: {offer.currency} {offer.price}")
-    print(f"  Route: {offer.outbound.route_str}")
-    print(f"  Duration: {offer.outbound.total_duration_seconds // 3600}h {(offer.outbound.total_duration_seconds % 3600) // 60}m")
-    print(f"  Stops: {offer.outbound.stopovers}")
-    print(f"  Refundable: {offer.conditions.get('refund_before_departure', 'unknown')}")
-    print(f"  Changeable: {offer.conditions.get('change_before_departure', 'unknown')}")
+for offer in offers:
+    print(f"{offer['owner_airline']}: {offer['currency']} {offer['price']}")
+    print(f"  Route: {offer['outbound']['route_str']}")
+    print(f"  Stops: {offer['outbound']['stopovers']}")
 
 # Filter: direct flights only
-direct = [o for o in flights.offers if o.outbound.stopovers == 0]
+direct = [o for o in offers if o["outbound"]["stopovers"] == 0]
 
 # Filter: specific airline
-ba = [o for o in flights.offers if "British Airways" in o.airlines]
+ba = [o for o in offers if "British Airways" in o["airlines"]]
 
-# Filter: refundable only
-refundable = [o for o in flights.offers if o.conditions.get("refund_before_departure") == "allowed"]
-
-# Sort by duration
-by_duration = sorted(flights.offers, key=lambda o: o.outbound.total_duration_seconds)
-
-# Cheapest
-print(f"Best: {flights.cheapest.price} {flights.cheapest.currency} on {flights.cheapest.owner_airline}")
+# Sort by price
+by_price = sorted(offers, key=lambda o: o["price"])
+cheapest = by_price[0]
+print(f"Best: {cheapest['price']} {cheapest['currency']} on {cheapest['owner_airline']}")
 ```
 
 ### JSON Output Structure (CLI)
@@ -449,7 +431,7 @@ letsfg search LON BCN 2026-04-01 --adults 2 --json
 
 ```json
 {
-  "passenger_ids": ["pas_0", "pas_1"],
+  "search_id": "srch_abc123",
   "total_results": 47,
   "offers": [
     {
@@ -458,14 +440,15 @@ letsfg search LON BCN 2026-04-01 --adults 2 --json
       "currency": "EUR",
       "airlines": ["Ryanair"],
       "owner_airline": "Ryanair",
-      "route": "STN → BCN",
-      "duration_seconds": 7800,
-      "stopovers": 0,
+      "outbound": {
+        "route_str": "STN → BCN",
+        "total_duration_seconds": 7800,
+        "stopovers": 0
+      },
       "conditions": {
         "refund_before_departure": "not_allowed",
         "change_before_departure": "allowed_with_fee"
-      },
-      "is_locked": false
+      }
     }
   ]
 }
@@ -496,62 +479,43 @@ The SDK raises specific exceptions for each failure mode. All errors include mac
 | `UNSUPPORTED_ROUTE` | validation | 422 | No providers serve this route |
 | `MISSING_PARAMETER` | validation | 422 | Required field missing |
 | `INVALID_PARAMETER` | validation | 422 | Field value out of range or wrong type |
-| `AUTH_INVALID` | business | 401 | API key missing or invalid |
-| `PAYMENT_REQUIRED` | business | 402 | No card on file **and** no MPP credential. If MPP is supported, response includes `WWW-Authenticate: Payment` header — pay via Tempo USDC.e and retry. Otherwise open `setup_url` to add a card. |
-| `PAYMENT_DECLINED` | business | 402 | Stripe charge failed — check card details |
-| `OFFER_EXPIRED` | business | 410 | Offer no longer available — search again |
-| `FARE_CHANGED` | business | 409 | Price changed since search — re-unlock |
-
-### Exception Classes
-
-| Exception | HTTP Code | When it happens |
-|-----------|-----------|-----------------|
-| `AuthenticationError` | 401 | Missing or invalid API key |
-| `PaymentRequiredError` | 402 | No payment method or payment declined |
-| `OfferExpiredError` | 410 | Offer no longer available (search again) |
-| `ValidationError` | 422 | Bad input parameters |
-| `LetsFGError` | any | Base class — catches all API errors |
+| `AUTH_INVALID` | business | 401 | Bearer token / API key missing or invalid |
+| `PAYMENT_REQUIRED` | business | 402 | No card on file. Response includes `setup_url` — run `letsfg auth` (PFS) or `letsfg setup-payment` (Developer API). |
+| `OFFER_NOT_FOUND` | business | 404 | Offer expired (~15 min after search) or unknown `offer_id`/`search_id` — search again |
+| `PAYMENT_DECLINED` | business | 402 | Stripe charge failed (Developer API unlock) — check card details |
+| `FARE_CHANGED` | business | 409 | Price changed since search (Developer API) — re-unlock |
 
 ### Using Error Codes in Agent Logic
 
 ```python
-from letsfg import (
-    LetsFG, LetsFGError,
-    AuthenticationError, PaymentRequiredError, OfferExpiredError, ValidationError,
-    ErrorCode, ErrorCategory,
-)
-
-bt = LetsFG()
+from letsfg.connectors.auth import BearerTokenError
+from letsfg.local import search_local, book_offer
+import asyncio
 
 try:
-    flights = bt.search("LHR", "JFK", "2026-04-15")
-    unlocked = bt.unlock(flights.cheapest.id)
-    print(f"Booking URL: {unlocked.booking_url}")
-except LetsFGError as e:
-    if e.is_retryable:
-        # Transient error — safe to retry after delay
-        print(f"Temporary error ({e.error_code}), retrying...")
-    elif e.error_category == ErrorCategory.VALIDATION:
-        # Bad input — fix and retry
-        print(f"Fix input: {e.error_code} — {e.message}")
+    result = asyncio.run(search_local("LHR", "JFK", "2026-04-15"))
+    cheapest = min(result["offers"], key=lambda o: o["price"])
+    booked = asyncio.run(book_offer(
+        search_id=result["search_id"], offer_id=cheapest["id"],
+        passenger={...}, contact_email="you@example.com",
+    ))
+    if booked["booked"]:
+        print("Order:", booked["order_id"])
     else:
-        # Business error — needs human decision
-        print(f"Cannot proceed: {e.error_code} — {e.message}")
+        print("Booking link:", booked["booking_url"])  # nothing charged, not an error
+except BearerTokenError as e:
+    print("Re-authenticate:", e)  # run `letsfg auth`
 ```
 
 ```typescript
 // JavaScript/TypeScript
-import { LetsFG, LetsFGError, ErrorCode, ErrorCategory } from 'letsfg';
+import { LetsFG, LetsFGError } from 'letsfg';
 
+const bt = new LetsFG({ bearerToken: process.env.LETSFG_BEARER_TOKEN });
 try {
-  const unlocked = await bt.unlock(offerId);
-  console.log(`Booking URL: ${unlocked.bookingUrl}`);
+  const result = await bt.book(offerId, [passenger], email, '', '', searchId);
 } catch (e) {
-  if (e instanceof LetsFGError) {
-    if (e.isRetryable) { /* retry after delay */ }
-    else if (e.errorCategory === ErrorCategory.VALIDATION) { /* fix input */ }
-    else { /* escalate to human */ }
-  }
+  if (e instanceof LetsFGError) { /* escalate to human, or retry if e.isRetryable */ }
 }
 ```
 
@@ -566,161 +530,129 @@ This section documents the safety guarantees that make LetsFG safe for autonomou
 | `search_flights` | None (read-only) | Free | Yes | Yes |
 | `resolve_location` | None (read-only) | Free | Yes | Yes |
 | `get_agent_profile` | None (read-only) | Free | Yes | Yes |
-| `setup_payment` | Updates payment method | Free | Yes | Yes (last write wins) |
-| `unlock_flight_offer` | Charges fee | 1% (min $3) | **No** — charges fee each time | **No** |
+| `book_offer` (PFS) | Creates a real booking, or hands back a link | Ticket price only | **No** — may create a duplicate booking or duplicate booking attempt | **No** |
+| `setup_payment` (Developer API) | Updates payment method | Free | Yes | Yes (last write wins) |
+| `unlock` (Developer API) | Charges fee | 1% (min $3) | **No** — charges fee each time | **No** |
 
-### Don't Double-Unlock
+### Don't Double-Book
 
-LLMs and MCP clients (Claude, Cursor) may retry tool calls on timeout or error. Without protection, a retried `unlock_flight_offer` could charge the fee twice.
+LLMs and MCP clients (Claude, Cursor) may retry tool calls on timeout or error. Without protection, a retried `book` call could attempt to book the same offer twice.
 
-**Cache the booking_url and reuse it — do not re-unlock the same offer:**
+**Cache the result and reuse it — do not re-book the same offer:**
 
 ```python
-# Good: check if already unlocked before calling again
-if not cached_booking_url:
-    unlocked = bt.unlock(offer_id)
-    cached_booking_url = unlocked.booking_url
+# Good: check if already booked before calling again
+if not cached_result:
+    cached_result = asyncio.run(book_offer(search_id=sid, offer_id=oid, passenger=p, contact_email=email))
 
-# Use the cached URL
-print(f"Booking URL: {cached_booking_url}")
+if cached_result["booked"]:
+    print("Order:", cached_result["order_id"])
+else:
+    print("Booking link:", cached_result["booking_url"])
 ```
 
-### The Search-Unlock-Book Pattern
-
-LetsFG uses a two-step model before you book:
+### The Search-Book Pattern
 
 ```
 search_flights (free, read-only)
     ↓
   Filter & rank by preference (no cost)
     ↓
-unlock_flight_offer (1% fee, min $3 — reveals booking_url)
-    ↓  ← show confirmed price + booking URL to user
-  Open booking_url on airline's site to complete purchase
+book_offer (free — ticket price only, no LetsFG fee)
+    ↓
+  Either a confirmed order, or a booking link for that exact offer
 ```
 
 **Why this matters for agents:**
-1. Search prices are snapshots — the airline may have changed the price
-2. The unlock step confirms the **actual current price** with the airline
-3. If the confirmed price differs from the search price, inform the user before they book
-4. The booking URL takes the user directly to the airline checkout with the fare pre-loaded
+1. Search prices are snapshots — the airline may have changed the price by the time you book
+2. Offers expire ~15 minutes after search — book promptly, or search again if it's been a while
+3. A `booking_url` result is a normal outcome, not an error — hand it to the user, don't retry
 
-### Error Recovery Patterns
-
-```python
-def safe_unlock(bt, origin, dest, date, max_retries=2):
-    """Unlock with automatic retry on transient errors and offer expiry."""
-    for attempt in range(max_retries + 1):
-        flights = bt.search(origin, dest, date)
-        if not flights.offers:
-            return None  # No flights available
-
-        try:
-            unlocked = bt.unlock(flights.cheapest.id)
-
-            # Show confirmed price to user before they follow the link
-            print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
-            print(f"Fee charged: ${unlocked.unlock_fee:.2f}")
-            return unlocked.booking_url  # give to user to complete on airline's site
-        except OfferExpiredError:
-            if attempt < max_retries:
-                continue  # Search again, fresh offers
-            raise
-        except LetsFGError as e:
-            if e.is_retryable and attempt < max_retries:
-                import time
-                time.sleep(2 ** attempt)  # exponential backoff
-                continue
-            raise
-```
-
-## Complete Search-to-Unlock Workflow
+## Complete Search-to-Book Workflow
 
 ### Python — Full Workflow with Error Handling
 
 ```python
-from letsfg import (
-    LetsFG, LetsFGError,
-    PaymentRequiredError, OfferExpiredError,
-)
+from letsfg.connectors.auth import BearerTokenError
+from letsfg.local import search_local, book_offer
+import asyncio
 
-def search_and_unlock(origin_city, dest_city, date):
-    bt = LetsFG()  # reads LETSFG_API_KEY
-
-    # Step 1: Resolve locations
-    origins = bt.resolve_location(origin_city)
-    dests = bt.resolve_location(dest_city)
-    if not origins or not dests:
-        raise ValueError(f"Could not resolve: {origin_city} or {dest_city}")
-    origin_iata = origins[0]["iata_code"]
-    dest_iata = dests[0]["iata_code"]
-
-    # Step 2: Search (free, unlimited)
-    flights = bt.search(origin_iata, dest_iata, date, sort="price")
-    if not flights.offers:
+def search_and_book(origin_iata, dest_iata, date, passenger, contact_email):
+    # Step 1: Search (free, unlimited)
+    result = asyncio.run(search_local(origin_iata, dest_iata, date, sort="price"))
+    if not result["offers"]:
         print(f"No flights {origin_iata} → {dest_iata} on {date}")
         return None
 
-    print(f"Found {flights.total_results} offers, cheapest: {flights.cheapest.price} {flights.cheapest.currency}")
+    cheapest = min(result["offers"], key=lambda o: o["price"])
+    print(f"Found {result['total_results']} offers, cheapest: {cheapest['price']} {cheapest['currency']}")
 
-    # Step 3: Unlock (1% fee, min $3) — reveals booking URL
+    # Step 2: Book (free — ticket price only, no LetsFG fee)
     try:
-        unlocked = bt.unlock(flights.cheapest.id)
-        print(f"Confirmed: {unlocked.confirmed_currency} {unlocked.confirmed_price}")
-        print(f"Fee charged: ${unlocked.unlock_fee:.2f}")
-        print(f"Booking URL: {unlocked.booking_url}")
-        # Hand the booking_url to the user to complete the purchase on the airline's site
-        return unlocked.booking_url
-    except PaymentRequiredError:
-        print("No card on file — run: letsfg setup-payment")
+        booked = asyncio.run(book_offer(
+            search_id=result["search_id"],
+            offer_id=cheapest["id"],
+            passenger=passenger,
+            contact_email=contact_email,
+        ))
+    except BearerTokenError:
+        print("Token expired — run `letsfg auth` again")
         return None
-    except OfferExpiredError:
-        print("Offer expired — search again")
-        return None
+
+    if booked["booked"]:
+        print(f"Order confirmed: {booked['order_id']}")
+        return booked
+    else:
+        print(f"Could not complete a confirmed booking. Booking link: {booked['booking_url']}")
+        return booked
 
 # Example
-booking_url = search_and_unlock("London", "Barcelona", "2026-04-01")
-if booking_url:
-    print(f"Open this URL to book: {booking_url}")
+search_and_book(
+    "LON", "BCN", "2026-04-01",
+    passenger={"given_name": "Ada", "family_name": "Lovelace", "born_on": "1990-04-01", "gender": "f"},
+    contact_email="traveller@example.com",
+)
 ```
 
-## Unlock Best Practices
+## Book Best Practices
 
-Searching is **completely free**. Booking goes through `POST /api/agent-book`. The 1%-of-ticket unlock fee (min $3) applies only on the paid Developer API.
+Searching is **completely free**. Booking goes through `POST /api/agent-book` and
+also costs nothing beyond the ticket price — no LetsFG fee. The 1%-of-ticket
+unlock fee (min $3) applies only on the paid Developer API.
 
-### Search Wide, Unlock Narrow
+### Search Wide, Book Once
 
 ```python
 # Compare prices across multiple dates — all FREE
 dates = ["2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05"]
 best = None
 for date in dates:
-    result = bt.search("LON", "BCN", date)
-    if result.offers and (best is None or result.cheapest.price < best[1].price):
-        best = (date, result.cheapest)
+    result = asyncio.run(search_local("LON", "BCN", date))
+    if result["offers"]:
+        cheapest = min(result["offers"], key=lambda o: o["price"])
+        if best is None or cheapest["price"] < best[1]["price"]:
+            best = (result["search_id"], cheapest)
 
-# Only unlock the winner (1% fee, min $3)
-unlocked = bt.unlock(best[1].id)
-print(f"Booking URL: {unlocked.booking_url}")
+# Book only the winner
+booked = asyncio.run(book_offer(search_id=best[0], offer_id=best[1]["id"], passenger=p, contact_email=email))
 ```
 
-### Filter Before Unlocking
+### Filter Before Booking
 
 ```python
-flights = bt.search("LHR", "JFK", "2026-06-01", limit=50)
+result = asyncio.run(search_local("LHR", "JFK", "2026-06-01", limit=50))
 
-# Apply all filters BEFORE unlocking
+# Apply all filters BEFORE booking
 candidates = [
-    o for o in flights.offers
-    if o.outbound.stopovers == 0
-    and o.outbound.total_duration_seconds < 10 * 3600
-    and o.conditions.get("change_before_departure") != "not_allowed"
+    o for o in result["offers"]
+    if o["outbound"]["stopovers"] == 0
+    and o["outbound"]["total_duration_seconds"] < 10 * 3600
+    and o["conditions"].get("change_before_departure") != "not_allowed"
 ]
 
 if candidates:
-    best = min(candidates, key=lambda o: o.price)
-    unlocked = bt.unlock(best.id)  # 1% fee, min $3
-    print(f"Booking URL: {unlocked.booking_url}")
+    best = min(candidates, key=lambda o: o["price"])
+    booked = asyncio.run(book_offer(search_id=result["search_id"], offer_id=best["id"], passenger=p, contact_email=email))
 ```
 
 ### Cost Summary
@@ -731,7 +663,7 @@ if candidates:
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
 | Auth | FREE on the card lanes | Zero-amount Stripe setup: no charge, no hold. The MPP lane costs $0.01 once as verification. |
-| Book | Price shown on the offer | `POST /api/agent-book`. Returns a confirmed order, or a direct booking link for that exact offer. |
+| Book | Price shown on the offer | `POST /api/agent-book`. Returns a confirmed order, or a direct booking link for that exact offer. No LetsFG fee. |
 | Unlock | 1% of ticket, min $3 | **Developer API only.** Not part of the agent flow — there is no unlock step on a PFS Bearer token. |
 
 ## Rate Limits and Timeouts
@@ -743,28 +675,29 @@ The API has generous limits. Search is completely free and unlimited.
 | Search (PFS / Dev API full) | 60 req/min per agent | 60–90 s | Async: POST returns `search_id` instantly, poll `/results/<id>` every 10 s |
 | Search (Dev API discover) | 60 req/min per agent | 2–5 s | Synchronous, up to 20 destinations |
 | Resolve location | 120 req/min per agent | <1 s | |
-| Unlock | 20 req/min per agent | 2–5 s | |
+| Book (PFS) | 20 req/min per agent | up to 60 s | |
+| Unlock (Dev API) | 20 req/min per agent | 2–5 s | |
 
 **Rate limit handling:**
 
 ```python
 import time
-from letsfg import LetsFG, LetsFGError
+from letsfg.local import search_local
+import asyncio
 
-def search_with_retry(bt, origin, dest, date, max_retries=3):
+def search_with_retry(origin, dest, date, max_retries=3):
     """Retry with exponential backoff on rate limit or timeout."""
     for attempt in range(max_retries):
         try:
-            return bt.search(origin, dest, date)
-        except LetsFGError as e:
+            return asyncio.run(search_local(origin, dest, date))
+        except Exception as e:
             if "rate limit" in str(e).lower() or "429" in str(e):
-                wait = 2 ** attempt  # 1s, 2s, 4s
-                time.sleep(wait)
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s
             elif "timeout" in str(e).lower() or "504" in str(e):
-                time.sleep(1)  # brief pause then retry
+                time.sleep(1)
             else:
                 raise
-    raise LetsFGError("Max retries exceeded")
+    raise RuntimeError("Max retries exceeded")
 ```
 
 ## Building an Autonomous AI Agent
@@ -773,52 +706,49 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 ```
 User request → Parse intent → Resolve locations → Search (free)
-  → Filter & rank → Present options to user → Unlock best (1% fee, min $3)
-  → Show booking_url to user → User completes booking on airline's site
+  → Filter & rank → Book the best offer (free, no LetsFG fee)
+  → Confirmed order, or a booking link handed to the user
 ```
 
 ### Best Practices
 
 1. **Resolve locations first.** "London" = 5+ airports. Use `resolve_location()` to get IATA codes.
 2. **Search liberally.** It's free. Search multiple dates, cabin classes, and airport combinations.
-3. **Filter before unlocking.** Apply all preferences (airline, stops, duration, conditions) on free search results. Unlock only the winner.
-4. **Show booking_url to user.** After unlock, open the `booking_url` to complete the purchase on the airline's site.
-5. **Handle price changes.** Unlock confirms the real-time airline price. It may differ slightly from search. Inform the user before they click through.
-6. **Don't double-unlock.** Unlock is charged each time. Cache the booking_url and reuse it.
+3. **Filter before booking.** Apply all preferences (airline, stops, duration, conditions) on free search results, then book the winner.
+4. **Book promptly.** Offers expire ~15 minutes after search — book while it's still fresh, or search again.
+5. **Handle the booking_url outcome.** A `{"booked": false, "booking_url": ...}` result is normal, not an error — hand the link to the user, don't retry the same offer.
+6. **Don't double-book.** Cache the result of a `book` call and reuse it.
 
 ### Retry Logic for Expired Offers
 
 ```python
-from letsfg import (
-    LetsFG, LetsFGError,
-    PaymentRequiredError, OfferExpiredError,
-)
+from letsfg.connectors.auth import BearerTokenError
+from letsfg.local import search_local, book_offer
+import asyncio
 
-def resilient_unlock(bt, origin, dest, date, max_retries=2):
+def resilient_book(origin, dest, date, passenger, contact_email, max_retries=2):
     for attempt in range(max_retries + 1):
-        flights = bt.search(origin, dest, date)
-        if not flights.offers:
+        result = asyncio.run(search_local(origin, dest, date))
+        if not result["offers"]:
             return None
+        cheapest = min(result["offers"], key=lambda o: o["price"])
         try:
-            unlocked = bt.unlock(flights.cheapest.id)
-            return unlocked.booking_url  # open this to complete booking
-        except OfferExpiredError:
-            if attempt < max_retries:
-                continue  # search again, get fresh offers
-            raise
-        except PaymentRequiredError:
-            raise  # can't retry this — need payment setup
+            return asyncio.run(book_offer(
+                search_id=result["search_id"], offer_id=cheapest["id"],
+                passenger=passenger, contact_email=contact_email,
+            ))
+        except BearerTokenError:
+            raise  # can't retry this — need `letsfg auth` again
 
-def find_cheapest_date(bt, origin, dest, dates):
+def find_cheapest_date(origin, dest, dates):
     """Search multiple dates (free) and return the best one."""
     best = None
     for date in dates:
-        try:
-            result = bt.search(origin, dest, date)
-            if result.offers and (best is None or result.cheapest.price < best[1].price):
-                best = (date, result.cheapest, result.passenger_ids)
-        except LetsFGError:
-            continue
+        result = asyncio.run(search_local(origin, dest, date))
+        if result["offers"]:
+            cheapest = min(result["offers"], key=lambda o: o["price"])
+            if best is None or cheapest["price"] < best[1]["price"]:
+                best = (date, cheapest, result["search_id"])
     return best
 ```
 
@@ -846,13 +776,13 @@ The ranking source is in `sdk/js/src/ranking.ts` — inspect and fork it. For Py
 def score_offer(offer, weights=None):
     """Simple weighted score (lower = better). For the full 9-dimension engine, use the JS SDK."""
     w = weights or {"price": 0.4, "duration": 0.3, "stops": 0.2}
-    price_norm = offer.price / 2000
-    dur_norm = (offer.outbound.total_duration_seconds / 3600) / 24
-    stops_norm = offer.outbound.stopovers / 3
+    price_norm = offer["price"] / 2000
+    dur_norm = (offer["outbound"]["total_duration_seconds"] / 3600) / 24
+    stops_norm = offer["outbound"]["stopovers"] / 3
     return w["price"] * price_norm + w["duration"] * dur_norm + w["stops"] * stops_norm
 
-flights = bt.search("LHR", "JFK", "2026-06-01", limit=50)
-best = min(flights.offers, key=score_offer)
+result = asyncio.run(search_local("LHR", "JFK", "2026-06-01", limit=50))
+best = min(result["offers"], key=score_offer)
 ```
 
 Adjust weights based on user preferences:
@@ -875,10 +805,11 @@ def save_search_result(origin, dest, date, result):
     """Append search result to price history."""
     history = json.loads(CACHE_FILE.read_text()) if CACHE_FILE.exists() else {}
     key = f"{origin}-{dest}-{date}"
+    cheapest = min(result["offers"], key=lambda o: o["price"]) if result["offers"] else None
     history.setdefault(key, []).append({
         "searched_at": datetime.utcnow().isoformat(),
-        "cheapest_price": result.cheapest.price if result.offers else None,
-        "total_offers": result.total_results,
+        "cheapest_price": cheapest["price"] if cheapest else None,
+        "total_offers": result["total_results"],
     })
     CACHE_FILE.write_text(json.dumps(history, indent=2))
 
@@ -898,53 +829,43 @@ For autonomous price monitoring agents:
 ```python
 import time
 
-def monitor_prices(bt, route_configs, interval_minutes=60, max_checks=24):
+def monitor_prices(route_configs, interval_minutes=60, max_checks=24):
     """Periodically search routes and track price trends.
-    
+
     route_configs: [{"origin": "LON", "dest": "BCN", "date": "2026-06-01"}, ...]
     """
     for check in range(max_checks):
         for route in route_configs:
-            result = bt.search(route["origin"], route["dest"], route["date"])
+            result = asyncio.run(search_local(route["origin"], route["dest"], route["date"]))
             save_search_result(route["origin"], route["dest"], route["date"], result)
             trend = get_price_trend(route["origin"], route["dest"], route["date"])
-            if result.offers:
+            if result["offers"]:
+                cheapest = min(result["offers"], key=lambda o: o["price"])
                 print(f"{route['origin']}→{route['dest']} {route['date']}: "
-                      f"${result.cheapest.price} ({trend})")
+                      f"${cheapest['price']} ({trend})")
         time.sleep(interval_minutes * 60)
 ```
 
 ### Complete Autonomous Agent Example
 
-End-to-end implementation of an AI agent that autonomously searches, evaluates, and books flights based on user preferences while managing costs and edge cases:
+End-to-end implementation of an AI agent that autonomously searches, evaluates, and books flights based on user preferences while managing edge cases:
 
 ```python
-from letsfg import (
-    LetsFG, LetsFGError,
-    AuthenticationError, PaymentRequiredError, OfferExpiredError,
-)
-import time
+from letsfg.connectors.auth import BearerTokenError
+from letsfg.local import search_local, book_offer
+import asyncio
 
 class FlightAgent:
-    """Autonomous flight booking agent with preference evaluation and cost management."""
-    
-    def __init__(self, api_key=None):
-        self.bt = LetsFG(api_key=api_key)
-    
+    """Autonomous flight booking agent with preference evaluation."""
+
     def resolve_city(self, city_name):
-        """Resolve city name to IATA code, handling ambiguity."""
-        locations = self.bt.resolve_location(city_name)
-        if not locations:
-            raise ValueError(f"Unknown city: {city_name}")
-        # Prefer city code (covers all airports) over single airport
-        for loc in locations:
-            if loc.get("type") == "city":
-                return loc["iata_code"]
-        return locations[0]["iata_code"]
-    
+        """Resolve city name to IATA code, handling ambiguity. Stub — wire to
+        GET /api/locations or letsfg locations for a real implementation."""
+        raise NotImplementedError
+
     def evaluate_offers(self, offers, preferences):
         """Score and rank offers by user preferences. Lower score = better.
-        
+
         preferences: {"price": 0.4, "duration": 0.3, "stops": 0.2, "airline": 0.1}
         """
         preferred_airlines = preferences.get("preferred_airlines", set())
@@ -954,82 +875,61 @@ class FlightAgent:
             "stops": preferences.get("stops", 0.2),
             "airline": preferences.get("airline", 0.1),
         }
-        
+
         scored = []
         for offer in offers:
-            price_norm = offer.price / 2000
-            dur_norm = (offer.outbound.total_duration_seconds / 3600) / 24
-            stops_norm = offer.outbound.stopovers / 3
-            airline_norm = 0 if any(a in preferred_airlines for a in offer.airlines) else 1
-            
+            price_norm = offer["price"] / 2000
+            dur_norm = (offer["outbound"]["total_duration_seconds"] / 3600) / 24
+            stops_norm = offer["outbound"]["stopovers"] / 3
+            airline_norm = 0 if any(a in preferred_airlines for a in offer["airlines"]) else 1
+
             score = (weights["price"] * price_norm + weights["duration"] * dur_norm +
                      weights["stops"] * stops_norm + weights["airline"] * airline_norm)
             scored.append((score, offer))
-        
+
         return sorted(scored, key=lambda x: x[0])
-    
-    def search_and_unlock(self, origin_city, dest_city, date,
-                          preferences=None, max_retries=2):
-        """Full autonomous workflow: resolve → search → evaluate → unlock → return booking URL."""
-        # Step 1: Resolve locations (free)
-        origin = self.resolve_city(origin_city)
-        dest = self.resolve_city(dest_city)
-        
+
+    def search_and_book(self, origin_iata, dest_iata, date, passenger, contact_email,
+                         preferences=None, max_retries=2):
+        """Full autonomous workflow: search → evaluate → book."""
         for attempt in range(max_retries + 1):
-            # Step 2: Search (free, unlimited)
-            flights = self.bt.search(origin, dest, date)
-            if not flights.offers:
+            # Search (free, unlimited)
+            result = asyncio.run(search_local(origin_iata, dest_iata, date))
+            if not result["offers"]:
                 return None
-            
-            # Step 3: Evaluate by preferences (not just cheapest)
+
+            # Evaluate by preferences (not just cheapest)
             if preferences:
-                ranked = self.evaluate_offers(flights.offers, preferences)
-                best_offer = ranked[0][1]  # highest-scored offer
+                ranked = self.evaluate_offers(result["offers"], preferences)
+                best_offer = ranked[0][1]
             else:
-                best_offer = flights.cheapest
-            
-            # Step 4: Unlock (1% fee, min $3) — confirms price, returns booking URL
+                best_offer = min(result["offers"], key=lambda o: o["price"])
+
+            # Book (free — ticket price only, no LetsFG fee)
             try:
-                unlocked = self.bt.unlock(best_offer.id)
-                
-                # Check if confirmed price differs significantly from search
-                price_diff = abs(unlocked.confirmed_price - best_offer.price)
-                if price_diff > best_offer.price * 0.1:  # >10% price change
-                    print(f"Warning: Price changed from {best_offer.price} to {unlocked.confirmed_price}")
-                
-                return unlocked.booking_url  # give this URL to the user to complete booking
-                
-            except OfferExpiredError:
-                if attempt < max_retries:
-                    time.sleep(1)
-                    continue  # Search again for fresh offers
-                raise
-            except PaymentRequiredError:
-                raise  # Can't retry — need payment setup
+                booked = asyncio.run(book_offer(
+                    search_id=result["search_id"], offer_id=best_offer["id"],
+                    passenger=passenger, contact_email=contact_email,
+                ))
+                return booked  # {"booked": True, "order_id": ...} or {"booked": False, "booking_url": ...}
+            except BearerTokenError:
+                raise  # can't retry — need `letsfg auth` again
 
 # Usage
 agent = FlightAgent()
-
-booking_url = agent.search_and_unlock(
-    origin_city="London",
-    dest_city="New York",
-    date="2026-06-15",
+result = agent.search_and_book(
+    "LON", "NYC", "2026-06-15",
+    passenger={"given_name": "Ada", "family_name": "Lovelace", "born_on": "1990-04-01", "gender": "f"},
+    contact_email="traveller@example.com",
     preferences={
         "price": 0.3, "duration": 0.4, "stops": 0.2, "airline": 0.1,
         "preferred_airlines": {"British Airways", "Delta"},
     },
 )
-
-if booking_url:
-    print(f"Open to book: {booking_url}")
-```
-
-## Get an API Key
-
-```bash
-curl -X POST https://letsfg.co/developers/api/v1/agents/register \
-  -H "Content-Type: application/json" \
-  -d '{"agent_name": "my-agent", "email": "you@example.com"}'
+if result and result["booked"]:
+    print("Order:", result["order_id"])
+elif result:
+    print("Booking link:", result["booking_url"])
 ```
 
 ## PFS Payment-Token Auth (CLI / SDK / Direct API)
