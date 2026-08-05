@@ -387,6 +387,7 @@ def search(
 
     offers = result.get("offers", [])
     total = result.get("total_results", len(offers))
+    search_id = result.get("search_id", "")
 
     # Apply a final client-side sort after cloud results are fetched.
     _final_sort_offers(offers, sort)
@@ -394,7 +395,7 @@ def search(
     offers = offers[:limit]
 
     if output_json:
-        _json_out({"total_results": total, "offers": offers})
+        _json_out({"search_id": search_id, "total_results": total, "offers": offers})
         return
 
     if not offers:
@@ -405,6 +406,8 @@ def search(
     trip_label = f"{origin} ↔ {destination}" if return_date else f"{origin} → {destination}"
     date_label = f"{date} → {return_date}" if return_date else date
     print(f"\n  {total} offers  |  {trip_label}  |  {date_label}")
+    if search_id:
+        print(f"  search_id: {search_id}  (needed for `letsfg book`, offers expire ~15 min after search)")
 
     def _route_str(leg):
         if not leg:
@@ -463,8 +466,8 @@ def search(
             table.add_row(*row)
         console.print(table)
 
-        # Print unlock URLs below the table
-        print("\n  Unlock offers (pay the LetsFG fee to reveal booking link):")
+        # Print offer IDs below the table for use with `letsfg book`
+        print("\n  Offer IDs (use with `letsfg book`):")
         for i, o in enumerate(offers, 1):
             offer_id = o.get("id", "")
             raw_price = o.get("price", 0)
@@ -590,15 +593,67 @@ def unlock(
 
 @app.command()
 def book(
-    offer_id: str = typer.Argument(..., help="Offer ID (must be unlocked first)"),
-    passenger: list[str] = typer.Option(..., "--passenger", "-p", help='JSON passenger object: \'{"id":"pas_xxx","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}\''),
+    offer_id: str = typer.Argument(..., help="Offer ID from `letsfg search`"),
+    search_id: Optional[str] = typer.Option(None, "--search-id", help="search_id from `letsfg search` (required unless --api-key is set, i.e. the paid Developer API flow)"),
+    passenger: list[str] = typer.Option(..., "--passenger", "-p", help='JSON passenger object: \'{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","phone_number":"+15551234567"}\''),
     email: str = typer.Option(..., "--email", "-e", help="Contact email"),
-    phone: str = typer.Option("", "--phone", help="Contact phone"),
+    phone: str = typer.Option("", "--phone", help="Contact phone (used if not already in the passenger JSON)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Book a flight — charges ticket price via Stripe. Creates real airline reservation."""
+    """Book a flight from a `letsfg search`. Free — requires `letsfg auth`, nothing charged beyond the ticket price.
+
+    Returns either a confirmed order or a direct booking link for that exact offer.
+    Pass --api-key for the separate, paid Developer API flow (requires `letsfg unlock` first).
+    """
+    from letsfg.client import _saved_api_key
+
+    using_developer_api = bool(api_key or os.environ.get("LETSFG_API_KEY") or _saved_api_key())
+
+    if not using_developer_api:
+        from letsfg.local import book_offer
+        from letsfg.connectors.auth import BearerTokenError
+
+        if not search_id:
+            _err("--search-id is required (from your `letsfg search` results). Pass --api-key instead for the paid Developer API flow.")
+            raise typer.Exit(1)
+
+        try:
+            p = json.loads(passenger[0])
+        except json.JSONDecodeError:
+            _err(f"Invalid JSON for passenger: {passenger[0]}")
+            raise typer.Exit(1)
+        if phone:
+            p.setdefault("phone_number", phone)
+
+        try:
+            result = asyncio.run(book_offer(
+                search_id=search_id,
+                offer_id=offer_id,
+                passenger=p,
+                contact_email=email,
+            ))
+        except BearerTokenError as e:
+            _err(str(e))
+            raise typer.Exit(1)
+        except Exception as e:
+            _err(f"Booking failed: {e}")
+            raise typer.Exit(1)
+
+        if output_json:
+            _json_out(result)
+            return
+
+        if result.get("booked"):
+            print(f"\n  ✓ Booking confirmed!")
+            print(f"    Order ID: {result.get('order_id')}")
+            print(f"    Charged: {result.get('charged', 0)} {result.get('currency', '')}\n")
+        else:
+            print(f"\n  Could not complete a confirmed booking. Nothing was charged.")
+            print(f"    Booking link: {result.get('booking_url', '(none)')}\n")
+        return
+
     bt = _get_client(api_key, base_url)
 
     passengers = []
