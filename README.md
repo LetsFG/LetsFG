@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.Efistoffeles%2Fboostedtravel.svg)](https://mcptoplist.com/server/io.github.Efistoffeles%2Fboostedtravel)
+
 
 
 > **MPP (updated 2026-07-30):** the MPP (Machine Payments Protocol) `402`
