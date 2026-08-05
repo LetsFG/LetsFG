@@ -246,6 +246,22 @@ We searched 5 routes on Google Flights and LetsFG on the same day (2026-08-05), 
 
 ---
 
+## Real hotel prices: LetsFG vs Booking.com
+
+Same hotel, same room type, same 2-night stay, same free-cancellation policy — checked on the same day (2026-08-05) for a 2026-09-16 check-in:
+
+| Hotel | Booking.com | LetsFG | You Save |
+|-------|------------|--------|----------|
+| Hotel Boss, Warsaw | 768 zł | **630 zł** | **138 zł** |
+| ibis Styles Paris Gare de l'Est | 2,475 zł | **1,959 zł** | **516 zł** |
+| Copthorne Tara Hotel, London Kensington | 1,415 zł | **1,294 zł** | **121 zł** |
+
+> **775 zł cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type.
+
+**Why the difference?** LetsFG sells at wholesale cost plus a flat 10% reservation fee — no markup for demand, no loyalty-program cross-subsidy. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually book.
+
+---
+
 ## Try it right now — no install needed
 
 **Human users:** Use [letsfg.co](https://letsfg.co) and search flights instantly in your browser:
