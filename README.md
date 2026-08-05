@@ -252,11 +252,11 @@ Same hotel, same room type, same 2-night stay, same free-cancellation policy —
 
 | Hotel | Booking.com | LetsFG | You Save |
 |-------|------------|--------|----------|
-| Hotel Boss, Warsaw | 768 zł | **630 zł** | **138 zł** |
-| ibis Styles Paris Gare de l'Est | 2,475 zł | **1,959 zł** | **516 zł** |
-| Copthorne Tara Hotel, London Kensington | 1,415 zł | **1,294 zł** | **121 zł** |
+| Hotel Boss, Warsaw | $206 | **$169** | **$37** |
+| ibis Styles Paris Gare de l'Est | $663 | **$525** | **$138** |
+| Copthorne Tara Hotel, London Kensington | $379 | **$347** | **$32** |
 
-> **775 zł cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type.
+> **$207 cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type. Prices quoted in PLN at booking, converted to USD at that day's rate.
 
 **Why the difference?** LetsFG sells at wholesale cost — no markup for demand, no loyalty-program cross-subsidy. You're not paying for the room upfront: 10% books it now, and the remaining 90% isn't due until the hotel's own cancellation deadline. Cancel before that deadline and you lose nothing but the 10%; the rest was never charged. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually hold risk-free.
 
