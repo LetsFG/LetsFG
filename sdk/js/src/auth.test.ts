@@ -61,7 +61,7 @@ describe('requestEnrolment', () => {
     globalThis.fetch = (async () => ({
       status: 402,
       json: async () => ({ setup_url: 'https://checkout.stripe.com/fake', setup_session_id: 'cs_fake' }),
-    })) as typeof fetch;
+    } as Response)) as typeof fetch;
 
     try {
       const { requestEnrolment } = await import('./auth.js');
@@ -77,7 +77,7 @@ describe('requestEnrolment', () => {
     globalThis.fetch = (async () => ({
       status: 500,
       json: async () => ({ error: 'server error' }),
-    })) as typeof fetch;
+    } as Response)) as typeof fetch;
 
     try {
       const { requestEnrolment, BearerTokenError } = await import('./auth.js');
@@ -97,7 +97,7 @@ describe('verifyPaymentMethod', () => {
       return {
         status: 200,
         json: async () => ({ token: 'verified-token', expires_at: '2026-10-27T00:00:00Z' }),
-      };
+      } as Response;
     }) as typeof fetch;
 
     try {
@@ -121,7 +121,7 @@ describe('verifyPaymentMethod', () => {
     globalThis.fetch = (async () => ({
       status: 200,
       json: async () => ({}),
-    })) as typeof fetch;
+    } as Response)) as typeof fetch;
 
     try {
       const { verifyPaymentMethod, BearerTokenError } = await import('./auth.js');
