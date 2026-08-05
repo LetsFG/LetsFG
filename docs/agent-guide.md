@@ -54,7 +54,8 @@ non-refundable reservation fee; the balance goes straight to the supplier throug
 
 ```
 User request → Agent parses intent → Resolve locations → Search (local free or public prepaid)
-    → Filter & rank offers → Present to user → Unlock best (payment required) → Book
+    → Filter & rank offers → Present to user → Book
+        (PFS: book directly, free, no unlock step — Developer API: unlock, then book)
 ```
 
 ## Agent Best Practices
@@ -63,9 +64,9 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 
 2. **Search is free on PFS.** Search multiple dates and variants freely with a Bearer token. If you are using the Developer API, remember that search consumes prepaid balance, so batch intentionally.
 
-3. **Understand the 30-minute expiration.** After unlocking, you have 30 minutes to book. If the window expires, you need a fresh search and another unlock attempt, so keep the gap between confirmation and booking small.
+3. **Book promptly.** On PFS, offers expire ~15 minutes after search — book while it's still fresh, or search again. On the Developer API, you have 30 minutes after unlocking to book before you need a fresh unlock.
 
-4. **Handle price changes gracefully.** Search prices are real-time snapshots. The unlock step confirms the actual current price with the airline. If the confirmed price differs significantly from the search price, inform the user before proceeding to book.
+4. **Handle price changes gracefully.** Search prices are real-time snapshots. On PFS, `book()` itself surfaces the outcome directly — a confirmed order or a booking link, never a silent mismatch. On the Developer API, the unlock step confirms the actual current price with the airline; inform the user if it differs significantly from the search price before proceeding to book.
 
 5. **Map passenger IDs correctly.** Search returns `passenger_ids` (e.g., `["pas_0", "pas_1"]`). When booking with multiple passengers, each passenger dict must include the correct `id` from this list. The first adult gets `pas_0`, second gets `pas_1`, etc.
 
@@ -76,44 +77,35 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 ## Handling Edge Cases
 
 ```python
-from letsfg import (
-    LetsFG, LetsFGError,
-    PaymentRequiredError, OfferExpiredError,
-    ErrorCode, ErrorCategory,
-)
-import uuid
+from letsfg import LetsFG, LetsFGError
 
-# Retry on expired offers with idempotency protection
-def resilient_book(bt, origin, dest, date, passengers, email, max_retries=2):
-    idempotency_key = str(uuid.uuid4())  # prevents double-booking on retry
-
+# Retry on expired offers. bt.book() dispatches to the free PFS path
+# (POST /api/agent-book) if a Bearer token is set, otherwise falls back to
+# the Developer API (unlock required first) — same call either way.
+def resilient_book(bt, origin, dest, date, passenger, email, max_retries=2):
     for attempt in range(max_retries + 1):
         flights = bt.search(origin, dest, date)
         if not flights.offers:
             return None
 
         try:
-            unlocked = bt.unlock(flights.cheapest.id)
-            booking = bt.book(
-                offer_id=unlocked.offer_id,
-                passengers=[{**p, "id": pid} for p, pid in zip(passengers, flights.passenger_ids)],
+            result = bt.book(
+                offer_id=flights.cheapest.id,
+                passengers=[passenger],
                 contact_email=email,
-                idempotency_key=idempotency_key,
+                search_id=flights.search_id,  # PFS path only; ignored on Developer API
             )
-            return booking
-        except OfferExpiredError:
-            if attempt < max_retries:
-                print(f"Offer expired, retrying ({attempt + 1}/{max_retries})...")
-                continue
-            raise
+            return result
         except LetsFGError as e:
             if e.is_retryable and attempt < max_retries:
                 import time; time.sleep(2 ** attempt)
                 continue
             raise
-        except PaymentRequiredError:
-            print("Payment method not set up — call bt.setup_payment()")
-            raise
+
+# On the PFS path, result is a dict: either {"ok": True, "booked": True,
+# "order_id": ...} or {"ok": False, "booked": False, "booking_url": ...} — the
+# latter is a normal outcome (nothing charged), not an error. Don't retry the
+# same offer; hand the user the booking_url.
 
 # Compare prices across dates intelligently
 def find_cheapest_date(bt, origin, dest, dates):

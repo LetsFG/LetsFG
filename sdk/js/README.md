@@ -9,8 +9,8 @@
 
 | | **CLI / SDK** (this package) | **Developer API** |
 |---|---|---|
-| **Search cost** | Free (Twitter/X Bearer token via `letsfg auth`) | Prepaid credits |
-| **Booking** | `POST /api/agent-book` | Direct airline URL |
+| **Search cost** | Free (Bearer token via `letsfg auth` — zero-amount card setup) | Prepaid credits |
+| **Booking** | `POST /api/agent-book` — confirmed order or a booking link, no LetsFG fee | Direct airline URL (unlock required first) |
 | **Speed** | 60–90 s | 2–5 s (discover) · 60–90 s (full) |
 | **Setup** | `npm install letsfg` then `letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
 
@@ -27,60 +27,60 @@ npm install letsfg
 ```typescript
 import { LetsFG, cheapestOffer, offerSummary } from 'letsfg';
 
-// Register (one-time)
-const creds = await LetsFG.register('my-agent', 'agent@example.com');
-console.log(creds.api_key); // Save this
-
-// Use
-const bt = new LetsFG({ apiKey: 'trav_...' });
+// PFS — free. Get a Bearer token once with `letsfg auth` (zero-amount card
+// setup, nothing charged), then pass it here.
+const bt = new LetsFG({ bearerToken: 'eyJ...' });
 
 // Search — FREE
 const flights = await bt.search('GDN', 'BER', '2026-03-03');
 const best = cheapestOffer(flights);
 console.log(offerSummary(best));
 
-// Unlock
-const unlock = await bt.unlock(best.id);
-
-// Book
-const booking = await bt.book(
+// Book — free, ticket price only, no LetsFG fee. No unlock step.
+const result = await bt.book(
   best.id,
-  [{
-    id: flights.passenger_ids[0],
-    given_name: 'John',
-    family_name: 'Doe',
-    born_on: '1990-01-15',
-    gender: 'm',
-    title: 'mr',
-    email: 'john@example.com',
-  }],
-  'john@example.com'
+  [{ given_name: 'John', family_name: 'Doe', born_on: '1990-01-15', gender: 'm' }],
+  'john@example.com',
+  '',
+  '',
+  flights.search_id,
 );
-console.log(`PNR: ${booking.booking_reference}`);
+if (result.booked) {
+  console.log(`Order: ${result.order_id}`);
+} else {
+  console.log(`Booking link (nothing charged): ${result.booking_url}`);
+}
 ```
+
+Prefer the paid Developer API instead? Pass `apiKey` instead of `bearerToken` —
+`search()`/`book()` dispatch automatically. That path requires `unlock()`
+(1% fee, min $3) before `book()`.
 
 ## Quick Start (CLI)
 
 ```bash
-export LETSFG_BEARER_TOKEN=<your-bearer-token>
+export LETSFG_BEARER_TOKEN=<your-bearer-token>  # from `letsfg auth`
 
 letsfg search GDN BER 2026-03-03 --sort price
 letsfg search LON BCN 2026-04-01 --json  # Machine-readable
-letsfg unlock off_xxx
-letsfg book off_xxx -p '{"id":"pas_xxx","given_name":"John",...}' -e john@example.com
+letsfg book off_xxx --search-id srch_xxx -p '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m"}' -e john@example.com
 ```
 
 ## API
 
-### `new LetsFG({ apiKey, baseUrl?, timeout? })`
+### `new LetsFG({ bearerToken?, apiKey?, baseUrl?, timeout? })`
 
 ### `bt.search(origin, destination, dateFrom, options?)`
 ### `bt.resolveLocation(query)`
-### `bt.unlock(offerId)`
-### `bt.book(offerId, passengers, contactEmail, contactPhone?)`
-### `bt.setupPayment(token?)`
+### `bt.unlock(offerId)` — Developer API only
+### `bt.book(offerId, passengers, contactEmail, contactPhone?, idempotencyKey?, searchId?)`
+Dispatches on which credential is set: `bearerToken` → free PFS booking via
+`POST /api/agent-book` (pass `searchId`, one passenger). `apiKey` → paid
+Developer API `book` (requires `unlock()` first, supports multiple passengers
+and `idempotencyKey`).
+### `bt.setupPayment(token?)` — Developer API only
 ### `bt.me()`
-### `LetsFG.register(agentName, email, baseUrl?, ownerName?, description?)`
+### `LetsFG.register(agentName, email, baseUrl?, ownerName?, description?)` — Developer API only, most agents don't need this
 
 ### Helpers
 - `offerSummary(offer)` — One-line string summary
