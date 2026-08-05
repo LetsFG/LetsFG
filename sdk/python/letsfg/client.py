@@ -379,7 +379,7 @@ class LetsFG:
         """
         Search flights via the LetsFG cloud engine using a Bearer token.
 
-        Requires a Bearer token — run `letsfg auth` once to authenticate via Twitter/X.
+        Requires a Bearer token — run `letsfg auth` once (zero-amount card setup).
         Results take 60-90 s (async polling handled internally).
 
         Args:
@@ -415,6 +415,48 @@ class LetsFG:
             sort=sort,
         ))
         return FlightSearchResult.from_dict(result_dict)
+
+    def book_local(
+        self,
+        search_id: str,
+        offer_id: str,
+        passenger: dict,
+        contact_email: str,
+        *,
+        offer_ref: str | None = None,
+    ) -> dict:
+        """
+        Book an offer from a cloud (Bearer token) search. FREE — ticket price only.
+
+        Requires a Bearer token — run `letsfg auth` once. Use REAL passenger
+        details — names must match the traveller's ID, and the airline sends
+        e-tickets to contact_email.
+
+        Args:
+            search_id: The search_id from search_local()'s result.
+            offer_id: The offer ID from search results.
+            passenger: A single passenger dict (given_name, family_name, born_on,
+                gender, phone_number, ...).
+            contact_email: Contact email for the booking.
+            offer_ref: Optional offer reference, if your search result included one.
+
+        Returns:
+            Either {"ok": True, "booked": True, "order_id": ..., "charged": 0} or,
+            when the booking genuinely could not complete,
+            {"ok": False, "booked": False, "booking_url": ..., "charged": 0} —
+            a normal outcome, not an error. Nothing is charged either way beyond
+            the ticket price itself.
+        """
+        import asyncio
+        from letsfg.local import book_offer as _book_offer
+
+        return asyncio.run(_book_offer(
+            search_id=search_id,
+            offer_id=offer_id,
+            passenger=passenger,
+            contact_email=contact_email,
+            offer_ref=offer_ref,
+        ))
 
     # ── Core API methods (requires API key) ───────────────────────────────
 
@@ -575,28 +617,63 @@ class LetsFG:
         contact_email: str,
         contact_phone: str = "",
         idempotency_key: str = "",
-    ) -> BookingResult:
+        search_id: str | None = None,
+    ) -> BookingResult | dict:
         """
-        Book a flight — creates a real airline reservation.
+        Book a flight.
 
-        IMPORTANT: Always provide an idempotency_key to prevent double-bookings
-        if your agent retries this call. Use any unique string (UUID, session ID,
-        or deterministic hash of offer_id + passenger names).
+        Uses a Bearer token (PFS path) if available — run `letsfg auth` once or
+        set LETSFG_BEARER_TOKEN. Free, ticket price only, no LetsFG fee — pass
+        search_id (from search_local()'s result) and only the first entry in
+        passengers is used (one passenger per PFS booking). Returns a dict:
+        either {"ok": True, "booked": True, "order_id": ...} or
+        {"ok": False, "booked": False, "booking_url": ...} — the latter means
+        the booking genuinely did not complete and nothing was charged; hand
+        the link to the user, don't retry the same offer.
+
+        Falls back to the Developer API (LETSFG_API_KEY) if no Bearer token is
+        present. That path requires unlock() first and returns a BookingResult.
+
+        IMPORTANT (Developer API path): Always provide an idempotency_key to
+        prevent double-bookings if your agent retries this call. Use any unique
+        string (UUID, session ID, or deterministic hash of offer_id + passenger
+        names).
 
         Args:
-            offer_id: The offer ID (must be unlocked first).
+            offer_id: The offer ID from search results.
             passengers: List of passenger dicts or Passenger objects.
-                Each must include: id (pas_xxx from search), given_name,
-                family_name, born_on (YYYY-MM-DD), gender, title.
+                Developer API: each must include id (pas_xxx from search),
+                given_name, family_name, born_on (YYYY-MM-DD), gender, title.
             contact_email: Contact email for the booking.
-            contact_phone: Contact phone (optional).
-            idempotency_key: Unique key for this booking attempt. If the same key
-                is sent twice, the second call returns the original booking instead
-                of creating a duplicate. Strongly recommended for safety.
+            contact_phone: Contact phone (optional; Developer API only).
+            idempotency_key: Unique key for this booking attempt (Developer API
+                only). If the same key is sent twice, the second call returns
+                the original booking instead of creating a duplicate.
+            search_id: Required for the PFS path — the search_id search_local()
+                returned. Ignored on the Developer API path.
 
         Returns:
-            BookingResult with PNR, fees, and confirmation.
+            A dict on the PFS path, or a BookingResult on the Developer API path.
         """
+        from letsfg.connectors.auth import get_bearer_token, BearerTokenError
+        try:
+            get_bearer_token()
+            if not search_id:
+                raise ValueError("search_id is required to book via PFS (pass the search_id from search_local()'s result).")
+            passenger = passengers[0]
+            if isinstance(passenger, Passenger):
+                passenger = passenger.to_dict()
+            if contact_phone and not passenger.get("phone_number"):
+                passenger = {**passenger, "phone_number": contact_phone}
+            return self.book_local(
+                search_id=search_id,
+                offer_id=offer_id,
+                passenger=passenger,
+                contact_email=contact_email,
+            )
+        except BearerTokenError:
+            pass
+
         self._require_api_key()
         pax_list = []
         for p in passengers:
