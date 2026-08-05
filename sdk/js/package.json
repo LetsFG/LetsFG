@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts src/cli.ts --format cjs,esm --dts --clean",
-    "test": "tsx --test src/index.test.ts",
+    "test": "tsx --test src/index.test.ts src/auth.test.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

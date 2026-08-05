@@ -3,12 +3,15 @@
  * LetsFG CLI — Agent-native flight search & booking from terminal.
  *
  * Usage:
+ *   letsfg auth
  *   letsfg search GDN BER 2026-03-03
- *   letsfg unlock off_xxx
- *   letsfg book off_xxx --passenger '{"id":"pas_xxx",...}' --email john@example.com
- *   letsfg register --name my-agent --email agent@example.com
- *   letsfg me
+ *   letsfg book off_xxx --search-id srch_xxx --passenger '{"given_name":"John",...}' --email john@example.com
  *   letsfg locations Berlin
+ *   letsfg me
+ *
+ * Developer API only (separate paid product):
+ *   letsfg unlock off_xxx --api-key trav_...
+ *   letsfg register --name my-agent --email agent@example.com
  */
 
 import {
@@ -19,6 +22,24 @@ import {
   type SearchOptions,
   type BookingResult,
 } from './index.js';
+import { getBearerToken, paymentAuth, BearerTokenError } from './auth.js';
+
+/**
+ * Resolve credentials for a command: an explicit --api-key (or LETSFG_API_KEY
+ * env var) always wins, since passing it is an explicit choice to use the
+ * paid Developer API. Otherwise, fall back to a Bearer token from `letsfg
+ * auth` (env var or ~/.letsfg/config.json) for the free PFS path. Neither
+ * means the SDK's own requireAuth() will raise a clear error.
+ */
+function resolveCredentials(apiKeyFlag?: string): { bearerToken?: string; apiKey?: string } {
+  const apiKey = apiKeyFlag || process.env.LETSFG_API_KEY;
+  if (apiKey) return { apiKey };
+  try {
+    return { bearerToken: getBearerToken() };
+  } catch {
+    return {};
+  }
+}
 
 // ── Arg parsing (zero-dependency) ────────────────────────────────────────
 
@@ -83,7 +104,8 @@ async function cmdSearch(args: string[]) {
     process.exit(1);
   }
 
-  const bt = new LetsFG({ apiKey, baseUrl });
+  const creds = resolveCredentials(apiKey);
+  const bt = new LetsFG({ ...creds, baseUrl });
   const result = await bt.search(origin, destination, date, {
     returnDate,
     adults,
@@ -98,6 +120,7 @@ async function cmdSearch(args: string[]) {
 
   if (jsonOut) {
     console.log(JSON.stringify({
+      search_id: result.search_id,
       passenger_ids: result.passenger_ids,
       total_results: result.total_results,
       offers: result.offers.map(o => ({
@@ -122,6 +145,9 @@ async function cmdSearch(args: string[]) {
   }
 
   console.log(`\n  ${result.total_results} offers  |  ${origin} → ${destination}  |  ${date}`);
+  if (result.search_id) {
+    console.log(`  search_id: ${result.search_id}  (needed for \`letsfg book\`, offers expire ~15 min after search)`);
+  }
   console.log(`  Passenger IDs: ${JSON.stringify(result.passenger_ids)}\n`);
 
   result.offers.forEach((o, i) => {
@@ -129,8 +155,12 @@ async function cmdSearch(args: string[]) {
     console.log(`       ID: ${o.id}`);
   });
 
-  console.log(`\n  To unlock: letsfg unlock <offer_id>`);
-  console.log(`  Passenger IDs needed for booking: ${JSON.stringify(result.passenger_ids)}\n`);
+  if (creds.bearerToken) {
+    console.log(`\n  To book: letsfg book <offer_id> --search-id ${result.search_id} --passenger '{...}' --email you@example.com\n`);
+  } else {
+    console.log(`\n  To unlock: letsfg unlock <offer_id>`);
+    console.log(`  Passenger IDs needed for booking: ${JSON.stringify(result.passenger_ids)}\n`);
+  }
 }
 
 async function cmdUnlock(args: string[]) {
@@ -167,37 +197,58 @@ async function cmdBook(args: string[]) {
   const jsonOut = hasFlag(args, '--json') || hasFlag(args, '-j');
   const apiKey = getFlag(args, '--api-key', '-k');
   const baseUrl = getFlag(args, '--base-url');
+  const searchId = getFlag(args, '--search-id');
   const email = getFlag(args, '--email', '-e') || '';
   const phone = getFlag(args, '--phone') || '';
   const passengerStrs = getAllFlags(args, '--passenger', '-p');
   const offerId = args[0];
 
   if (!offerId || !passengerStrs.length || !email) {
-    console.error('Usage: letsfg book <offer_id> --passenger \'{"id":"pas_xxx",...}\' --email you@example.com');
+    console.error('Usage: letsfg book <offer_id> --search-id <id> --passenger \'{"given_name":"John",...}\' --email you@example.com');
     process.exit(1);
   }
 
   const passengers = passengerStrs.map(s => JSON.parse(s));
-  const bt = new LetsFG({ apiKey, baseUrl });
-  // This CLI only ever constructs LetsFG with an apiKey, never a bearerToken,
-  // so book() always takes the Developer API branch and returns BookingResult.
-  const result = await bt.book(offerId, passengers, email, phone) as BookingResult;
+  const creds = resolveCredentials(apiKey);
+
+  if (creds.bearerToken && !searchId) {
+    console.error('Error: --search-id is required (from your `letsfg search` results) to book via the free PFS path.');
+    process.exit(1);
+  }
+
+  const bt = new LetsFG({ ...creds, baseUrl });
+  const result = await bt.book(offerId, passengers, email, phone, '', searchId);
 
   if (jsonOut) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  if (result.status === 'confirmed') {
+  if ('booked' in result) {
+    // PFS path — free, ticket price only, no LetsFG fee, no unlock step.
+    if (result.booked) {
+      console.log(`\n  ✓ Booking confirmed!`);
+      console.log(`    Order ID: ${result.order_id}`);
+      console.log(`    Charged: ${result.charged ?? 0} ${result.currency ?? ''}\n`);
+    } else {
+      console.log(`\n  Could not complete a confirmed booking. Nothing was charged.`);
+      console.log(`    Booking link: ${result.booking_url ?? '(none)'}\n`);
+    }
+    return;
+  }
+
+  // Developer API path
+  const br = result as BookingResult;
+  if (br.status === 'confirmed') {
     console.log(`\n  ✓ Booking confirmed!`);
-    console.log(`    PNR: ${result.booking_reference}`);
-    console.log(`    Flight: ${result.currency} ${result.flight_price.toFixed(2)}`);
-    console.log(`    Fee: ${result.currency} ${result.service_fee.toFixed(2)} (${result.service_fee_percentage}%)`);
-    console.log(`    Total: ${result.currency} ${result.total_charged.toFixed(2)}`);
-    console.log(`    Order: ${result.order_id}\n`);
+    console.log(`    PNR: ${br.booking_reference}`);
+    console.log(`    Flight: ${br.currency} ${br.flight_price.toFixed(2)}`);
+    console.log(`    Fee: ${br.currency} ${br.service_fee.toFixed(2)} (${br.service_fee_percentage}%)`);
+    console.log(`    Total: ${br.currency} ${br.total_charged.toFixed(2)}`);
+    console.log(`    Order: ${br.order_id}\n`);
   } else {
     console.error(`  ✗ Booking failed`);
-    console.error(JSON.stringify(result.details, null, 2));
+    console.error(JSON.stringify(br.details, null, 2));
     process.exit(1);
   }
 }
@@ -234,6 +285,21 @@ async function cmdLocations(args: string[]) {
     const country = loc.country || '';
     console.log(`  ${iata}  ${name} (${type}) — ${city}, ${country}`);
   }
+}
+
+async function cmdAuth(args: string[]) {
+  const cardToken = getFlag(args, '--card-token');
+  const paymentMethodId = getFlag(args, '--payment-method');
+  const noBrowser = hasFlag(args, '--no-browser');
+
+  if (cardToken || paymentMethodId) {
+    const { verifyPaymentMethod } = await import('./auth.js');
+    await verifyPaymentMethod({ cardToken: cardToken || undefined, paymentMethodId: paymentMethodId || undefined });
+    console.log('\n  ✓ Authenticated. Nothing was charged.');
+  } else {
+    await paymentAuth(!noBrowser);
+  }
+  console.log('\n  You\'re all set. Run: letsfg search WAW BCN 2026-07-15\n');
 }
 
 async function cmdRegister(args: string[]) {
@@ -323,11 +389,11 @@ Authenticate once with letsfg auth — a zero-amount card setup, nothing is
 charged — then search and book.
 
 Commands:
-  auth                            Put a card on file -> 90-day token. Nothing charged
-  search <origin> <dest> <date>   Search for flights (free)
-  locations <query>               Resolve city name to IATA codes
-  book <offer_id> --passenger ... Book a flight. No LetsFG fee
-  me                              Show agent profile
+  auth                             Put a card on file -> 90-day token. Nothing charged
+  search <origin> <dest> <date>    Search for flights (free), prints search_id
+  locations <query>                Resolve city name to IATA codes
+  book <offer_id> --search-id ...  Book a flight. No LetsFG fee, no unlock step
+  me                               Show agent profile
 
 Developer API only (a SEPARATE paid product — most agents should not use these;
 they create a billing account. Use auth above instead):
@@ -336,14 +402,17 @@ they create a billing account. Use auth above instead):
   unlock <offer_id>               [Developer API only] Unlock offer — 1% of ticket (min $3)
 
 Options:
-  --json, -j       Output raw JSON
-  --api-key, -k    API key (or set LETSFG_API_KEY)
-  --base-url       API URL (default: https://letsfg.co/developers)
+  --json, -j          Output raw JSON
+  --api-key, -k       Developer API key (or set LETSFG_API_KEY) — switches book/search to the paid path
+  --base-url          API URL (default: https://letsfg.co)
+  --card-token        (auth only) Stripe tok_... you already hold, for a headless auth
+  --payment-method    (auth only) Stripe pm_... you already hold, for a headless auth
+  --no-browser        (auth only) Don't try to auto-open the card setup page
 
 Examples:
   letsfg auth
   letsfg search GDN BER 2026-03-03 --sort price
-  letsfg book off_xxx -p '{"given_name":"Ada",...}' -e ada@example.com
+  letsfg book off_xxx --search-id srch_xxx -p '{"given_name":"Ada","family_name":"Lovelace","born_on":"1990-04-01","gender":"f"}' -e ada@example.com
 `;
 
 async function main() {
@@ -352,6 +421,9 @@ async function main() {
 
   try {
     switch (command) {
+      case 'auth':
+        await cmdAuth(args);
+        break;
       case 'search':
         await cmdSearch(args);
         break;
@@ -385,7 +457,7 @@ async function main() {
         process.exit(1);
     }
   } catch (e) {
-    if (e instanceof LetsFGError) {
+    if (e instanceof LetsFGError || e instanceof BearerTokenError) {
       console.error(`Error: ${e.message}`);
       process.exit(1);
     }
