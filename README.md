@@ -258,7 +258,7 @@ Same hotel, same room type, same 2-night stay, same free-cancellation policy —
 
 > **775 zł cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type.
 
-**Why the difference?** LetsFG sells at wholesale cost plus a flat 10% reservation fee — no markup for demand, no loyalty-program cross-subsidy. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually book.
+**Why the difference?** LetsFG sells at wholesale cost — no markup for demand, no loyalty-program cross-subsidy. You're not paying for the room upfront: 10% books it now, and the remaining 90% isn't due until the hotel's own cancellation deadline. Cancel before that deadline and you lose nothing but the 10%; the rest was never charged. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually hold risk-free.
 
 ---
 
@@ -291,7 +291,7 @@ When you're ready to integrate it into your own agent, keep reading.
 
 **CLI / SDK / MCP / PFS = free search, no LetsFG fee on flight booking.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and both searching and booking are free for 90 days. No credits, no unlock step. `letsfg book` / `POST /api/agent-book` returns either a confirmed order or a direct airline link — no LetsFG fee either way (you still pay the ticket price itself, plus Stripe's own processing cut, same as any card charge).
 
-**Hotels = 10% reservation fee, on every path.** At booking we charge 10% of the price as a non-refundable deposit; the remaining balance goes straight to the hotel via a `pay_link`. See [Hotels](#-hotels--new-and-live) above.
+**Hotels = 10% now to hold a free-cancellation rate, on every path.** That 10% is what pays for flexibility: it books the room today, but the remaining 90% isn't charged until the hotel's own cancellation deadline, paid straight to the hotel via a `pay_link`. Cancel before that deadline and the only cost is the 10% already paid. See [Hotels](#-hotels--new-and-live) above.
 
 **Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) returns direct airline booking URLs with no per-booking fee. Monthly billing: $0.50/search for the first 10, $0.20 for 11–1,000, then $0.10/search. Resets monthly. Minimum top-up: $5.
 
