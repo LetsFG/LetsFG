@@ -230,18 +230,17 @@ Five new tools, in the order you call them: `resolve_hotel_city` →
 
 ## Real prices: LetsFG vs Google Flights
 
-We searched 5 routes on Google Flights and LetsFG on the same day (June 15, 2026). Same airline, same itinerary — LetsFG was cheaper every time:
+We searched 5 routes on Google Flights and LetsFG on the same day (2026-08-05), for flights departing 2026-09-16. Same airline, same number of stops — LetsFG was cheaper every time:
 
 | Route | Airline | Google Flights | LetsFG | You Save |
 |-------|---------|---------------|--------|----------|
-| LAX → Paris (CDG) | WestJet, 1 stop | $723 | **$687** | **$36** |
-| Warsaw → Bali (DPS) | Etihad, 1 stop | $876 | **$842** | **$34** |
-| SFO → London (LHR) | WestJet, 1 stop | $669 | **$636** | **$33** |
-| Chicago → Miami | Spirit, nonstop | $120 | **$114** | **$6** |
-| London → Barcelona | Vueling, nonstop | $62 | **$56** | **$6** |
-| LA → New York (JFK) | Frontier, 1 stop | $125 | **$124** | **$1** |
+| LAX → Paris (CDG) | JetBlue, 1 stop | $363 | **$334** | **$29** |
+| SFO → London (LHR) | JetBlue, 1 stop | $349 | **$333** | **$16** |
+| LA → New York (JFK) | JetBlue, nonstop | $174 | **$157** | **$17** |
+| London → Singapore (SIN) | Shenzhen Airlines, 1 stop | $395 | **$380** | **$15** |
+| Chicago → Dubai (DXB) | Air Canada + Emirates, 2 stops | $517 | **$461** | **$56** |
 
-> **$116 cheaper across 6 routes** in a verified comparison (May 2026). Google Flights inflates on repeat searches; LetsFG returns the same prices however often you run the search, because it reads airlines and the major booking sites directly rather than tracking you.
+> **$133 cheaper across 5 routes** in a verified comparison (2026-08-05). Google Flights inflates on repeat searches; LetsFG returns the same prices however often you run the search, because it reads airlines and the major booking sites directly rather than tracking you.
 
 **Why the difference?** Google Flights only searches its own limited set of airline partners. LetsFG searches **everywhere** — Skyscanner, Kiwi, Kayak, Momondo, plus direct airline websites (Ryanair, United, Southwest, EasyJet, Spirit, Norwegian, AirAsia, and hundreds more). More sources = better prices. No demand-based inflation and no cookie tracking: the same search returns the same prices however often you run it.
 
@@ -267,18 +266,18 @@ When you're ready to integrate it into your own agent, keep reading.
 
 ## Pricing
 
-| How you use it | Search | Booking URL unlock | Runs where? |
-|----------------|--------|-------------------|-------------|
-| **CLI / Python SDK / npm** | ✅ Free (Twitter/X token) | 1% fee (min $3) via letsfg.co | Our servers |
-| **MCP Server** | ✅ Free (Twitter/X token) | 1% fee (min $3) via letsfg.co | Our servers |
-| **letsfg.co** (website / agent API) | ✅ Free | 1% fee (min $3) via letsfg.co | Our servers |
-| **Developer API** | Prepaid credits | Included (direct airline URLs) | Our servers |
+| How you use it | Search | Flight booking | Hotel booking | Runs where? |
+|----------------|--------|----------------|----------------|-------------|
+| **CLI / Python SDK / npm** | ✅ Free (`letsfg auth`, zero-amount card setup) | No LetsFG fee either way | 10% non-refundable reservation fee | Our servers |
+| **MCP Server** | ✅ Free (`letsfg auth`) | No LetsFG fee either way | 10% reservation fee | Our servers |
+| **PFS** (raw API via letsfg.co) | ✅ Free (Bearer token, zero-amount setup or $0.01 via MPP) | No LetsFG fee either way | 10% reservation fee | Our servers |
+| **Developer API** | Prepaid credits | Included (direct airline URLs) | — (flights only) | Our servers |
 
-**CLI / SDK / MCP = free search.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and searches are free for 90 days. No credits, no Playwright. Booking goes through `POST /api/agent-book`.
+**CLI / SDK / MCP / PFS = free search, no LetsFG fee on flight booking.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and both searching and booking are free for 90 days. No credits, no unlock step. `letsfg book` / `POST /api/agent-book` returns either a confirmed order or a direct airline link — no LetsFG fee either way (you still pay the ticket price itself, plus Stripe's own processing cut, same as any card charge).
+
+**Hotels = 10% reservation fee, on every path.** At booking we charge 10% of the price as a non-refundable deposit; the remaining balance goes straight to the hotel via a `pay_link`. See [Hotels](#-hotels--new-and-live) above.
 
 **Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) returns direct airline booking URLs with no per-booking fee. Monthly billing: $0.50/search for the first 10, $0.20 for 11–1,000, then $0.10/search. Resets monthly. Minimum top-up: $5.
-
-**PFS (raw API) = same as CLI but you call the API directly.** Get a 90-day Bearer token by putting a payment method on file, then call `POST /api/search` and `POST /api/agent-book` yourself. Purpose-built for agents (OpenClaw, Claude, GPT, etc.) that call the API directly.
 
 > 💡 **Know someone who travels?** The more people discover LetsFG, the more airlines we cover — and the better it gets for everyone. **[⭐ Star](https://github.com/LetsFG/LetsFG)** · **[Share with a friend](#-join-the-community-)**
 
@@ -288,14 +287,14 @@ When you're ready to integrate it into your own agent, keep reading.
 
 | | Google Flights / Expedia | **LetsFG** |
 |---|---|---|
-| Price | Inflated (tracking, cookies, surge) | **Stable across repeat searches. $116 cheaper across 6 routes, verified May 2026.** |
+| Price | Inflated (tracking, cookies, surge) | **Stable across repeat searches. $133 cheaper across 5 routes, verified 2026-08-05.** |
 | Coverage | Misses budget airlines | **Hundreds of airlines — OTAs, budget carriers, full-service** |
 | Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 60–90 s · API discover: 2–5 s** |
 | Repeat search raises price? | Yes | **Never** |
-| Works in AI agents? | No API | **CLI · MCP · PFS (Twitter/X token, free) · Developer API (prepaid)** |
+| Works in AI agents? | No API | **CLI · MCP · PFS (`letsfg auth`, free) · Developer API (prepaid)** |
 | Booking | Redirects to OTA checkout | **Real airline PNR, e-ticket to inbox** |
 | Cabin class filter | No | **Economy, premium, business, first** |
-| Cost to you | Hidden markup | **CLI/PFS: free search. Developer API: prepaid credits.** |
+| Cost to you | Hidden markup | **CLI/PFS: free search, no LetsFG fee on booking. Developer API: prepaid credits.** |
 
 ---
 
@@ -315,11 +314,12 @@ One auth step, then searches are free for 90 days — no install of browsers, no
 
 ```bash
 letsfg search LHR JFK 2026-06-15 --cabin C   # cabin class: M economy, W premium, C business, F first
+letsfg book off_xxx --passenger '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' --email john.doe@example.com
 ```
 
-**Booking from CLI search:** you get a **letsfg.co booking link**, not a direct airline URL. Unlock it through the letsfg.co concierge checkout (1% fee, min $3) to reveal the airline link. Want **direct airline URLs with no fee**? Use the Developer API below.
+**Booking from CLI search:** `letsfg book` returns either a confirmed order (a real airline PNR, e-ticket to your inbox) or a direct booking link for that exact offer — no LetsFG fee either way. Want direct airline URLs on every search, with no checkout step at all? Use the Developer API below.
 
-### 🐦 PFS — Programmatic Flight Search (free, server-side)
+### 🔌 PFS — Programmatic Flight Search (free, server-side)
 
 Run LetsFG's full search on our servers — no local browser, no install. **Access requires a payment method on file:** letsfg.co is human-only (Cloudflare Turnstile), so a Bearer token is the only programmatic way in. Nothing is charged to get one — it is a zero-amount Stripe setup — and the token lasts 90 days.
 
@@ -342,7 +342,7 @@ curl -X POST https://letsfg.co/api/search \
   -d '{"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}'
 ```
 
-Search is free; booking links go through letsfg.co (1% fee, min $3). Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents).
+Search is free; book with `POST /api/agent-book` — no LetsFG fee either way. Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents).
 
 ### ⚡ Developer API — paid, server-side, direct booking URLs
 
@@ -363,20 +363,21 @@ curl -X POST https://letsfg.co/developers/api/v1/flights/search \
 Pricing: $0.50/search for the first 10 each month, $0.20 for 11–1,000, $0.10 beyond. Minimum top-up $5. Test for free in the sandbox first. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
 
 <details>
-<summary><strong>Full search → unlock → book flow</strong></summary>
+<summary><strong>Full search → book flow (CLI / PFS agent path, no unlock step)</strong></summary>
 
 ```bash
-# Search (free with letsfg auth token)
+# Search (free with the letsfg auth token)
 letsfg search LON BCN 2026-04-01 --return 2026-04-08 --sort price
 
-# Unlock (confirms live price, holds for 30 min — 1% fee, min $3)
-letsfg unlock off_xxx
-
-# Book
+# Book — no LetsFG fee either way. Returns a confirmed PNR or a direct
+# booking link for that exact offer.
 letsfg book off_xxx \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --email john.doe@example.com
 ```
+
+`letsfg unlock` is a **Developer API–only** command for the paid, prepaid-credit
+product above — it isn't part of this flow. See [CLI Commands](#cli-commands).
 
 </details>
 
@@ -399,10 +400,10 @@ letsfg book off_xxx \
 }
 ```
 
-Run `letsfg auth` inside the MCP session once (prints the tweet to post, then saves the token). After that, searches work immediately.
+Run `letsfg auth` inside the MCP session once (a zero-amount card setup — nothing is charged — then saves the 90-day Bearer token). After that, search and booking both work immediately, with no LetsFG fee either way.
 
 <details>
-<summary>Add API key for unlock/book</summary>
+<summary>Optional: use the Developer API instead (paid, prepaid credits, direct booking URLs)</summary>
 
 ```json
 {
@@ -418,7 +419,7 @@ Run `letsfg auth` inside the MCP session once (prints the tweet to post, then sa
 }
 ```
 
-Get a key: `letsfg register --name my-agent --email you@example.com`
+This is a **separate paid product** for high-volume commercial use — most agents should stick with the free `letsfg auth` flow above and skip this. A human setting this up deliberately gets a key at [letsfg.co/developers](https://letsfg.co/developers).
 
 </details>
 
@@ -477,8 +478,8 @@ for offer in result.offers[:5]:
 |---------|-------------|
 | `letsfg auth` | One-time card-on-file setup (nothing charged) → saves 90-day Bearer token |
 | `letsfg search <origin> <dest> <date>` | Search flights (free after `letsfg auth`) |
-| `letsfg register` | Register an account for the Developer API |
-| `letsfg setup-payment` | Attach a payment method (required for unlock) |
+| `letsfg register` | **[Developer API only]** Register an account for the paid, prepaid-credit product — not part of the agent flow |
+| `letsfg setup-payment` | **[Developer API only]** Attach a payment method (required for `unlock`) — not part of the agent flow |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | **[Developer API only]** Confirm live price & pay unlock fee (1% of ticket, min $3). Not part of the agent flow — use `letsfg book` |
@@ -494,7 +495,7 @@ All commands accept `--json` for structured output and `--api-key` to override t
 ### CLI / SDK / MCP (free, cloud-backed)
 
 ```
-letsfg auth (once) → Bearer token (90-day) → Search (free) → Unlock & Book via letsfg.co
+letsfg auth (once) → Bearer token (90-day) → Search (free) → Book via letsfg.co (no LetsFG fee)
 ```
 
 1. **Auth** — `letsfg auth` runs the payment-token flow: `POST /api/agent-access/request` → add a card at the printed `setup_url` (or confirm the SetupIntent headlessly) → `POST /api/agent-access/verify`. Nothing is charged. Token saved to `~/.letsfg/config.json`, valid 90 days.
@@ -556,7 +557,7 @@ GET /api/results/<search_id>  (poll every 10 s until done)
 Ranking applied locally (sdk/js/src/ranking.ts, open-source)
         │
         ▼
-Results + booking links via letsfg.co (1% fee)
+Results + booking via POST /api/agent-book — no LetsFG fee either way
 ```
 
 **Developer API**
