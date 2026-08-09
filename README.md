@@ -28,15 +28,11 @@
 
 # We're LetsFG — a community of travelers.
 
-Planning a trip shouldn't mean 47 tabs open, 3 hours of searching, and that feeling you could've got a better deal if you'd just waited a little longer.<br>
-Then a separate app to watch for delays. Then another one for the ride to the airport.
+Finding a flight or hotel shouldn't mean checking 47 tabs. Or 3 hours of searching.<br>
+Or having that feeling you could've got a better deal if you'd just waited a little longer.<br>
 
-**So we're building one thing that handles all of it.**<br>
-The real best deal, across every airline and OTA. The right airport when your city has three. Ground transport on the other end. Someone watching your flight so a delay or cancellation gets handled before you're the one stuck in a line.
-
+**So we built something about it.**<br>
 No markup. No tracking. No price that goes up because you looked twice.
-
-Search and booking work today, right here in this repo. The rest is what we're building next.
 
 <br>
 
