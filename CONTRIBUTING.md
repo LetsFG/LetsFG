@@ -115,7 +115,7 @@ When editing any agent-facing text (READMEs, SDK docstrings, MCP tool descriptio
 
 1. **Zero price bias** messaging — this is a core differentiator
 2. **Real passenger details** warning — critical for bookings
-3. **Pricing accuracy** — auth and search are free on PFS; the 1%-of-ticket unlock fee (min $3) exists only on the paid Developer API. Do NOT assert "zero markup" or "no LetsFG fee": neither is true
+3. **Pricing accuracy** — search is free on CLI/SDK/MCP/PFS after a one-time `letsfg auth` (zero-amount card setup, nothing charged). Flight booking has no LetsFG fee, but the ticket price and Stripe's processing cut still apply. Hotels charge a 10% non-refundable reservation fee at booking. The Developer API is a separate prepaid-credits product.
 
 ## Report a Vulnerability
 
