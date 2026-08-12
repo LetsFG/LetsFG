@@ -42,6 +42,27 @@ We aim to acknowledge reports within 48 hours and provide a fix or mitigation wi
 - Findings from automated scanners without a working proof of concept
 - Issues requiring physical access to a user's machine
 
+## Automated Scanning
+
+The repository is scanned for hardcoded credentials and common code
+weaknesses on every pull request, on every push to `main`, and once a week.
+The workflow is [`.github/workflows/security-scan.yml`](.github/workflows/security-scan.yml).
+
+It is **not** a merge gate. It fails only on a `critical` finding, so a false
+positive cannot block a PR. Results appear in the Security tab, and pull
+requests get the counts in the job summary.
+
+A finding that is wrong can be marked where it is, naming the rule so the
+suppression stays narrow:
+
+```python
+bt.setup_payment(token="tok_visa")  # threatcrush-disable-line secret-generic-credential
+```
+
+`threatcrush-disable-next-line` and a `.threatcrushignore` of globs at the
+repository root work too. Prefer the line comment: it says which rule and
+survives the file moving.
+
 ## API Security Model
 
 - **API keys** authenticate all requests. Keep your key secret.
