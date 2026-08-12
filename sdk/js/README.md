@@ -150,6 +150,17 @@ else; after it, the hotel's own cancellation ladder applies and can reach 100%.
 That ladder ships in the booking's `terms`, so you can always see the cost before
 you cancel.
 
+### What search costs
+
+Search is metered separately from booking, on **either** auth path (free PFS
+Bearer token or Developer API key — both count against the same agent):
+**the first 1,000 `search_hotels` calls since your last hotel booking are
+free.** Past that, searches are billed in blocks of 1,000 for **$5**
+(~$0.005/search) from your prepaid balance — refused with a 402 if the
+balance can't cover the next block, never silently allowed. Book a hotel
+and the count resets to zero. Resolving a city name (`hotel_destinations`)
+is not metered, only the search call itself.
+
 ### Things worth knowing before you build
 
 - **A card on file is required for every hotel call, including search.** That is

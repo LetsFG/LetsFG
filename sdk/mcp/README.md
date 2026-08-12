@@ -182,7 +182,7 @@ To avoid unexpected updates:
 |------|-------------|------|--------------|
 | `search_flights` | Search hundreds of airlines via server-side engine | FREE | None (read-only) |
 | `resolve_hotel_city` | Place name -> supplier city id | FREE | None (read-only) |
-| `search_hotels` | Search bookable, free-cancellation hotel rates | FREE, but needs a card on file | Opens a supplier session |
+| `search_hotels` | Search bookable, free-cancellation hotel rates | Free up to 1,000/booking, then $5/1,000 — needs a card on file | Opens a supplier session |
 | `book_hotel` | Start a hotel booking (async, returns a job id) | 10% now, balance to the supplier | Charges the card, books the room |
 | `get_hotel_booking` | Collect the booking result and pay link | FREE | None (read-only) |
 | `cancel_hotel_booking` | Release a reservation | Free until `balance_due_by`, then the hotel's ladder | Cancels the booking |
@@ -411,6 +411,17 @@ The 10% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
 else; after it, the hotel's own cancellation ladder applies and can reach 100%.
 That ladder ships in the booking's `terms`, so you can always see the cost before
 you cancel.
+
+### What search costs
+
+Search is metered separately from booking, on **either** auth path (free PFS
+Bearer token or Developer API key — both count against the same agent):
+**the first 1,000 `search_hotels` calls since your last hotel booking are
+free.** Past that, searches are billed in blocks of 1,000 for **$5**
+(~$0.005/search) from your prepaid balance — refused with a 402 if the
+balance can't cover the next block, never silently allowed. Book a hotel
+and the count resets to zero. Resolving a city name (`resolve_hotel_city`)
+is not metered, only the search call itself.
 
 ### Things worth knowing before you build
 
