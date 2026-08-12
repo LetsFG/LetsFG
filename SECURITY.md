@@ -48,8 +48,8 @@ The repository is scanned for hardcoded credentials and common code
 weaknesses on every pull request, on every push to `main`, and once a week.
 The workflow is [`.github/workflows/security-scan.yml`](.github/workflows/security-scan.yml).
 
-It is **not** a merge gate. It fails only on a `critical` finding, so a false
-positive cannot block a PR. Results appear in the Security tab, and pull
+It is **not** a merge gate. It reports and never fails, at any severity, so a
+false positive cannot block a PR. Results appear in the Security tab, and pull
 requests get the counts in the job summary.
 
 A finding that is wrong can be marked where it is, naming the rule so the

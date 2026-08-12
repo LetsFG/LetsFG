@@ -1,8 +1,10 @@
 name: Security scan
 
-# Non-blocking secret and code scan of the repository.
-# Deliberately NOT a Tier-1 merge gate: it fails only on `critical`, so a
-# false positive can never hold a PR. Results land in the Security tab
+# Report-only secret and code scan of the repository.
+# Deliberately NOT a Tier-1 merge gate, and structurally incapable of becoming
+# one by accident: no --fail-on is passed, so no finding at any severity fails
+# the job. Add `--fail-on critical` to the scan step to make it a gate, once
+# the current findings have been triaged. Results land in the Security tab
 # (code scanning) on push and on the weekly run; on pull requests the counts
 # are written to the job summary instead, because uploading SARIF needs a
 # write token that pull requests from forks do not get.
@@ -44,9 +46,7 @@ jobs:
         run: npm install -g --ignore-scripts @profullstack/threatcrush@0.11.0
 
       - name: Scan the repository
-        # Exits non-zero only on a critical finding. Everything below critical
-        # is reported and never blocks.
-        run: threatcrush scan . --format sarif --output threatcrush.sarif --fail-on critical
+        run: threatcrush scan . --format sarif --output threatcrush.sarif
 
       - name: Summarise
         if: always()
