@@ -159,7 +159,13 @@ const TOOLS = [
     name: 'search_flights',
     description:
       'Search hundreds of airlines for live flight prices — completely FREE, unlimited, read-only.\n\n' +
-      'Returns structured offers with prices, airlines, times, durations, and stopovers. ' +
+      'Returns structured offers with prices, airlines, times, durations, and stopovers. '+
+      'Some offers carry `starlink` for in-flight Starlink Wi-Fi: "confirmed_all" / "confirmed_some" '+
+      'mean the carrier has FULLY fitted that aircraft type, "likely_all" / "likely_some" mean the '+
+      'rollout on that type is underway but incomplete. State only "confirmed_*" as fact; describe '+
+      '"likely_*" as "the airline is fitting this aircraft type, not guaranteed on your flight". '+
+      'Anything ending in "_some" has at least one leg WITHOUT it. An absent field means no '+
+      'information, NOT an absence of Wi-Fi. '  +
       'Covers airlines across all continents including low-cost carriers.\n\n' +
       'Search is async (60-90s): this tool handles the polling automatically.\n\n' +
       'Requires LETSFG_BEARER_TOKEN or LETSFG_API_KEY. ' +
@@ -469,6 +475,9 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
             price: `${o.price} ${o.currency}`,
             airlines: o.airlines,
             booking_url: o.booking_url,
+            // Only present when there is something to say. Absent does NOT mean
+            // the flight has no Wi-Fi -- see the tool description.
+            ...(o.starlink ? { starlink: o.starlink } : {}),
             outbound: segs.length ? {
               from: segs[0].origin,
               to: segs[segs.length - 1].destination,

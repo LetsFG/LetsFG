@@ -187,6 +187,19 @@ components:
             change_before_departure:
               type: string
               enum: [allowed, allowed_with_fee, not_allowed]
+        starlink:
+          type: string
+          nullable: true
+          enum: [confirmed_all, confirmed_some, likely_all, likely_some]
+          description: >-
+            Starlink in-flight Wi-Fi across the whole itinerary. 'confirmed_all'
+            = every leg is on a subfleet the carrier has fully fitted;
+            'confirmed_some' = at least one leg confirmed and at least one leg
+            with none; 'likely_all' / 'likely_some' = same, but for subfleets
+            where installation is underway and incomplete. Per-leg detail is on
+            each segment's `starlink`. Only present 'confirmed_*' to an end user
+            as a fact. Omitted/null means no information for any leg.
+          example: "confirmed_all"
         is_locked:
           type: boolean
           description: "Whether this offer has been unlocked"
@@ -230,6 +243,19 @@ components:
           type: integer
         cabin:
           type: string
+        aircraft:
+          type: string
+          description: "Aircraft type as reported by the source, when known (e.g. 'Boeing 737MAX 8')"
+        starlink:
+          type: string
+          nullable: true
+          enum: [confirmed, likely]
+          description: >-
+            Starlink in-flight Wi-Fi on this leg. 'confirmed' = the carrier has
+            fitted every aircraft of this type. 'likely' = installation on this
+            type is underway but incomplete, so this airframe may not have it.
+            Omitted/null means no information — NOT an absence of Wi-Fi.
+          example: "confirmed"
 
     UnlockRequest:
       type: object

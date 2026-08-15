@@ -189,6 +189,19 @@ by_duration = sorted(flights.offers, key=lambda o: o.outbound.total_duration_sec
 print(f"Best: {flights.cheapest.price} {flights.cheapest.currency}")
 ```
 
+## Starlink Wi-Fi
+
+Offers may carry `starlink`: `confirmed_all` / `confirmed_some` mean the carrier
+has **fully** fitted that aircraft type; `likely_all` / `likely_some` mean the
+rollout on that type is underway but incomplete. Segments carry `confirmed` or
+`likely`.
+
+Only `confirmed_*` is safe to state as fact — `likely_*` is a signal, not a
+promise. Anything ending `_some` has at least one leg without it. An **absent**
+field means no information, **not** an absence of Wi-Fi.
+
+Full semantics: [docs/api-search.md](https://github.com/LetsFG/LetsFG/blob/main/docs/api-search.md#starlink-wi-fi).
+
 ## Error Handling
 
 ```python

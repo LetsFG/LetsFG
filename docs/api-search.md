@@ -124,11 +124,62 @@ console.log(result.total_results, result.passenger_ids);
       "price": 612.4,
       "currency": "USD",
       "owner_airline": "Airline Name",
-      "route": "LHR -> JFK"
+      "route": "LHR -> JFK",
+      "starlink": "likely_all"
     }
   ]
 }
 ```
+
+## Starlink Wi-Fi
+
+Offers may carry a `starlink` field, and each segment its own. The field is
+**absent when we have no information — absent does not mean the flight has no
+Wi-Fi.**
+
+| offer value | meaning |
+|---|---|
+| `confirmed_all` | every leg is on a subfleet the carrier has **fully** fitted |
+| `confirmed_some` | at least one leg confirmed, at least one leg with none |
+| `likely_all` | every leg is on a subfleet where installation is underway |
+| `likely_some` | some legs on such a subfleet, others with none |
+
+Per segment the value is `confirmed` or `likely`.
+
+**Only `confirmed_*` may be presented to a user as a fact.** `likely_*` means the
+airline is actively fitting that exact aircraft type but has not finished — as of
+August 2026 United was roughly 29% of its fleet and Southwest about 300 of 800
+aircraft, so a specific airframe genuinely may not have it. Phrase it as "the
+airline is rolling Starlink out on this aircraft type, not guaranteed on your
+flight", never "this flight has Starlink".
+
+Anything ending in `_some` has at least one leg **without** it. Name the legs
+rather than calling the itinerary a Starlink trip.
+
+```json
+{
+  "id": "off_abc123",
+  "price": 139.0,
+  "starlink": "likely_all",
+  "outbound": {
+    "segments": [
+      { "airline": "WN", "origin": "SEA", "destination": "LAS", "starlink": "likely" }
+    ]
+  }
+}
+```
+
+### How it is derived
+
+A dated airline + subfleet table, matched against the operating carrier and the
+aircraft type. It is **not** a tail-number lookup, so it cannot know which
+individual airframe you were assigned — that is exactly why the confirmed/likely
+split exists.
+
+Coverage is uneven by design. Carriers that operate a single type (Southwest,
+airBaltic) resolve even when the aircraft type is unknown; every other carrier
+needs the aircraft type, and not every source reports one. A missing field is
+therefore common and carries no negative information.
 
 ## What to persist from results
 

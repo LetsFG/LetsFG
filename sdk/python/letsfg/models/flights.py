@@ -149,6 +149,15 @@ class FlightSegment(BaseModel):
     duration_seconds: int = 0
     cabin_class: str = "economy"
     aircraft: str = ""
+    starlink: Optional[str] = Field(
+        None,
+        description=(
+            "Starlink in-flight Wi-Fi on this leg: 'confirmed' (carrier has "
+            "fitted every aircraft of this type), 'likely' (installation on this "
+            "type is underway but incomplete, so this airframe may not have it), "
+            "or None for no information. None does NOT mean the flight lacks Wi-Fi."
+        ),
+    )
 
     @model_validator(mode="after")
     def backfill_duration_seconds(self) -> "FlightSegment":
@@ -219,6 +228,16 @@ class FlightOffer(BaseModel):
     airlines: list[str] = Field(default_factory=list, description="All airlines in itinerary")
     owner_airline: str = Field("", description="Validating carrier")
     bags_price: dict[str, Any] = Field(default_factory=dict, description="Baggage pricing")
+    starlink: Optional[str] = Field(
+        None,
+        description=(
+            "Starlink in-flight Wi-Fi across the itinerary: 'confirmed_all', "
+            "'confirmed_some', 'likely_all', 'likely_some', or None. '*_some' "
+            "means at least one leg has none; 'likely_*' means the rollout on "
+            "that subfleet is underway but incomplete. Per-leg detail is on each "
+            "segment's `starlink`. Only 'confirmed_*' is safe to present as fact."
+        ),
+    )
     availability_seats: Optional[int] = None
     conditions: dict[str, str] = Field(default_factory=dict, description="Refund/change policies")
     source: str = Field("", description="Provider source tag (e.g. 'duffel', 'amadeus', 'kiwi', 'travelpayouts')")
@@ -279,6 +298,9 @@ class PublicFlightSegment(BaseModel):
     duration_seconds: int = 0
     cabin_class: str = "economy"
     aircraft: str = ""
+    # Safe to show before unlock: an amenity, not carrier identity. The masked
+    # segment already carries `aircraft` for the same reason.
+    starlink: Optional[str] = None
 
 
 class PublicFlightRoute(BaseModel):
@@ -307,6 +329,7 @@ class PublicFlightOffer(BaseModel):
     airlines: list[str] = Field(default_factory=list, description="Carrier category labels")
     owner_airline: str = Field("", description="Validating carrier category")
     bags_price: dict[str, Any] = Field(default_factory=dict)
+    starlink: Optional[str] = None
     availability_seats: Optional[int] = None
     conditions: dict[str, str] = Field(default_factory=dict)
     is_locked: bool = True
@@ -367,6 +390,7 @@ def to_public_offer(
             duration_seconds=seg.duration_seconds,
             cabin_class=seg.cabin_class,
             aircraft=seg.aircraft,
+            starlink=seg.starlink,
         )
 
     def _mask_route(route: FlightRoute) -> PublicFlightRoute:
@@ -394,6 +418,7 @@ def to_public_offer(
         airlines=airline_categories,
         owner_airline=_mask_owner_airline(offer.owner_airline),
         bags_price=offer.bags_price,
+        starlink=offer.starlink,
         availability_seats=offer.availability_seats,
         conditions=_strip_sensitive_conditions(offer.conditions),
         is_locked=True,

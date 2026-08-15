@@ -417,6 +417,13 @@ direct = [o for o in offers if o["outbound"]["stopovers"] == 0]
 # Filter: specific airline
 ba = [o for o in offers if "British Airways" in o["airlines"]]
 
+# Filter: Starlink Wi-Fi. `starlink` is absent when unknown -- absent does NOT
+# mean the flight lacks Wi-Fi. Only "confirmed_*" is a fact you may state
+# outright; "likely_*" means the airline is fitting that aircraft type but has
+# not finished, and anything ending "_some" has at least one leg without it.
+starlink_certain = [o for o in offers if o.get("starlink") == "confirmed_all"]
+starlink_any     = [o for o in offers if o.get("starlink")]
+
 # Sort by price
 by_price = sorted(offers, key=lambda o: o["price"])
 cheapest = by_price[0]

@@ -33,7 +33,23 @@ export interface FlightSegment {
   duration_seconds: number;
   cabin_class: string;
   aircraft: string;
+  /** Starlink Wi-Fi on this leg. 'confirmed' = the carrier has fitted every
+   *  aircraft of this type. 'likely' = installation on this type is underway
+   *  but incomplete, so this airframe may not have it. Undefined means no
+   *  information — NOT an absence of Wi-Fi. */
+  starlink?: StarlinkSegmentVerdict;
 }
+
+export type StarlinkSegmentVerdict = 'confirmed' | 'likely';
+
+/** Itinerary-level Starlink verdict. '*_some' means at least one leg has none;
+ *  'likely_*' means the rollout on that subfleet is underway but incomplete.
+ *  Only 'confirmed_*' should be shown to an end user as a fact. */
+export type StarlinkOfferVerdict =
+  | 'confirmed_all'
+  | 'confirmed_some'
+  | 'likely_all'
+  | 'likely_some';
 
 export interface FlightRoute {
   segments: FlightSegment[];
@@ -51,6 +67,9 @@ export interface FlightOffer {
   airlines: string[];
   owner_airline: string;
   bags_price: Record<string, number>;
+  /** Starlink Wi-Fi across the whole itinerary; per-leg detail is on each
+   *  segment's `starlink`. Undefined when no leg has any information. */
+  starlink?: StarlinkOfferVerdict;
   availability_seats: number | null;
   conditions: Record<string, string>;
   is_locked: boolean;

@@ -20,6 +20,10 @@ export interface OfferDetailSegmentLike {
   airline?: string
   flight_number?: string
   aircraft?: string
+  origin?: string
+  destination?: string
+  /** Per-leg Starlink verdict; see StarlinkSegmentVerdict in index.ts. */
+  starlink?: 'confirmed' | 'likely'
 }
 
 export interface OfferDetailLegLike {
@@ -185,6 +189,32 @@ function collectFlightNumbers(offer: OfferDetailLike): string[] {
     ...segmentFlightNumbers,
     offer.flight_number,
   ])
+}
+
+/** Names the legs that carry Starlink, rather than asserting it about the trip.
+ *  On a connecting itinerary "this flight has Starlink" is the wrong sentence
+ *  when only one hop does, so the note lists routes and keeps the
+ *  confirmed/likely wording. */
+function buildStarlinkNote(offer: OfferDetailLike): string | undefined {
+  const segments = collectOfferSegments(offer)
+  const label = (s: OfferDetailSegmentLike) =>
+    s.origin && s.destination ? `${s.origin}→${s.destination}` : (s.flight_number || '').trim()
+  const confirmed = segments.filter((s) => s.starlink === 'confirmed')
+  const likely = segments.filter((s) => s.starlink === 'likely')
+  if (confirmed.length === 0 && likely.length === 0) return undefined
+
+  const parts: string[] = []
+  if (confirmed.length > 0) {
+    const where = confirmed.length === segments.length
+      ? 'every leg'
+      : confirmed.map(label).filter(Boolean).join(', ')
+    parts.push(`Starlink Wi-Fi on ${where}`)
+  }
+  if (likely.length > 0) {
+    const where = likely.map(label).filter(Boolean).join(', ')
+    parts.push(`Starlink being installed on this aircraft type${where ? ` (${where})` : ''}, not guaranteed`)
+  }
+  return parts.join('; ')
 }
 
 function collectAircraftTypes(offer: OfferDetailLike): string[] {
@@ -601,6 +631,11 @@ export function getOfferDetailPromptNotes(offer: OfferDetailLike): string[] {
   const aircraftTypes = collectAircraftTypes(offer)
   if (aircraftTypes.length > 0) {
     pushUniqueNote(notes, `Aircraft shown: ${aircraftTypes.join(', ')}`)
+  }
+
+  const starlinkNote = buildStarlinkNote(offer)
+  if (starlinkNote) {
+    pushUniqueNote(notes, starlinkNote)
   }
 
   const operatingCarriers = collectOperatingCarriers(offer)

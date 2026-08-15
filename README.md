@@ -192,6 +192,23 @@ Five new tools, in the order you call them: `resolve_hotel_city` →
 `search_hotels` → `book_hotel` → `get_hotel_booking` → `cancel_hotel_booking`.
 
 
+## ✦ Starlink Wi-Fi on results
+
+Offers tell you whether the flight has Starlink, in two honest tiers. A solid
+verdict (`confirmed_all`) means the airline has fitted **every** aircraft of that
+type. A hedged one (`likely_all`) means the rollout on that type is real but
+incomplete — as of August 2026 United was ~29% of its fleet — so it is reported
+as a signal, never a promise. An absent field means no information, not an
+absence of Wi-Fi.
+
+```python
+for o in offers:
+    if o.get("starlink") == "confirmed_all":
+        print(f"{o['owner_airline']} {o['price']} — Starlink on every leg")
+```
+
+Full semantics: [docs/api-search.md](docs/api-search.md#starlink-wi-fi).
+
 ## Three ways to use LetsFG
 
 | | **Path 1 — CLI / SDK** | **Path 2 — PFS** (Programmatic Flight Search via letsfg.co) | **Path 3 — Developer API** |
