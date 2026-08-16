@@ -300,7 +300,7 @@ const TOOLS = [
   {
     name: 'book_hotel',
     description:
-      'Book one hotel rate. Charges 10% of the price to the card on file immediately as a NON-REFUNDABLE ' +
+      'Book one hotel rate. Charges 5% of the price to the card on file immediately as a NON-REFUNDABLE ' +
       'reservation fee; the balance is paid directly to the supplier through the pay link we return, by ' +
       'balance_due_by (the supplier\'s own auto-cancellation date).\n\n' +
       'Returns a booking_job_id, NOT the booking — a booking takes minutes. Poll get_hotel_booking until ' +
@@ -367,7 +367,7 @@ const TOOLS = [
     description:
       'Release a hotel reservation. Free until balance_due_by; after that the hotel\'s own ladder applies ' +
       'and can reach 100%. The ladder is in the booking terms, so check the cost first.\n\n' +
-      'The 10% reservation fee is NOT refunded. Takes over a minute; if it times out do NOT assume it ' +
+      'The 5% reservation fee is NOT refunded. Takes over a minute; if it times out do NOT assume it ' +
       'failed — re-check before retrying.',
     inputSchema: {
       type: 'object',

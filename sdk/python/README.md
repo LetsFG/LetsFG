@@ -440,14 +440,14 @@ print(booking["confirmation"], booking["pay_link"])
 
 ### How you pay
 
-**10% now, the rest to the hotel later.** At booking we charge 10% of the price
+**5% now, the rest to the hotel later.** At booking we charge 5% of the price
 to your card as a reservation fee. The remaining balance is paid **directly to
 the supplier** through a `pay_link` we return — we never hold it.
 
 `balance_due_by` is the supplier's own auto-cancellation date, not a date we
 invent. Miss it and the room is released.
 
-The 10% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
+The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
 else; after it, the hotel's own cancellation ladder applies and can reach 100%.
 That ladder ships in the booking's `terms`, so you can always see the cost before
 you cancel.
@@ -473,7 +473,7 @@ is not metered, only the search call itself.
   hotel signup.
 - **Only free-cancellation, pay-later rates are sold.** Those are the rates where
   the balance can safely be settled with the supplier after booking, which is
-  what makes 10%-now/rest-later work at all. You will see fewer results than a
+  what makes 5%-now/rest-later work at all. You will see fewer results than a
   metasearch shows you. Every one of them can actually be booked.
 - **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
   booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until

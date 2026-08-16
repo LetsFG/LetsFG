@@ -21,7 +21,7 @@
 |------|----------|-------|-------------|-------------|
 | CLI / SDK (Bearer token) | Agents, developers, zero-cost search | `pip install letsfg` then `letsfg auth` | Free | `POST /api/agent-book` |
 | Public Developer API | Managed cloud search, products, teams, no per-booking fee | Register, attach Stripe, top up balance | Prepaid credits | Direct airline URLs, no fee |
-| Hotels | Booking a room, not a flight | Developer API key + card on file | Free search, card required | 10% at booking, balance via pay link |
+| Hotels | Booking a room, not a flight | Developer API key + card on file | Free search, card required | 5% at booking, balance via pay link |
 
 **Hotels are the one exception to the warning above.** They authenticate on a Developer API key and
 reject the PFS Bearer token, so an agent that only ran `letsfg auth` cannot reach them yet. See

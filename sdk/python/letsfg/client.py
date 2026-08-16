@@ -704,7 +704,7 @@ class LetsFG:
     #
     # Only free-cancellation, pay-later rates are sold. That is a commercial
     # choice: those are the rates where the guest's balance can safely be settled
-    # with the supplier after booking, which is what makes 10%-now/rest-later
+    # with the supplier after booking, which is what makes 5%-now/rest-later
     # work at all. It also means the result set is smaller than a metasearch's,
     # and every row in it can actually be booked.
 
@@ -762,7 +762,7 @@ class LetsFG:
         Returns:
             ``{"session_id", "currency", "count", "hotels": [...], "terms"}``.
             Each offer carries ``price`` (what the guest pays),
-            ``reservation_fee_now`` (the 10% taken at booking),
+            ``reservation_fee_now`` (the 5% taken at booking),
             ``balance_to_supplier``, ``balance_due_by`` and
             ``free_cancellation_until``. There is no wholesale figure to quote
             by mistake.
@@ -807,7 +807,7 @@ class LetsFG:
         Start a booking. Returns a job immediately — it does NOT book inline.
 
         A booking takes minutes: the rate is re-blocked at the supplier, every
-        price and date rail is checked, the 10% reservation fee is charged to
+        price and date rail is checked, the 5% reservation fee is charged to
         your card, and only then is the room committed. No proxy holds a
         connection that long, so this returns at once and you poll
         :meth:`hotel_booking` for the outcome. Use
@@ -917,7 +917,7 @@ class LetsFG:
         ladder applies and can reach 100%. The ladder ships in the booking's
         ``terms``, so you can always see the cost before calling this.
 
-        The 10% reservation fee is NOT refunded.
+        The 5% reservation fee is NOT refunded.
 
         This drives a browser at the supplier and takes over a minute. If it
         times out, do not assume it failed — re-check before retrying.

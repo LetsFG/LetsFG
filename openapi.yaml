@@ -8,7 +8,7 @@ info:
     Claude, Cursor, Windsurf) and developers.
 
     Hotels authenticate on a Developer API key (X-API-Key) and reject the PFS Bearer token.
-    They require a card on file for every call, search included, and booking charges a 10%
+    They require a card on file for every call, search included, and booking charges a 5%
     non-refundable reservation fee with the balance paid directly to the supplier.
 
     ## How It Works
@@ -559,7 +559,7 @@ paths:
 
         Only free-cancellation, pay-later rates are returned — those are the rates where the guest's
         balance can safely be settled with the supplier after booking, which is what makes the
-        10%-now/rest-later model work. The result set is therefore smaller than a metasearch's, and
+        5%-now/rest-later model work. The result set is therefore smaller than a metasearch's, and
         every row in it can actually be booked.
 
         `price` is what the guest pays. There is no wholesale figure in the response to quote by
@@ -612,7 +612,7 @@ paths:
         This is not ceremony — it is what makes it impossible to charge a card and then lose the
         confirmation to a timeout.
 
-        The 10% reservation fee is charged BEFORE the room is committed, so a declined card costs
+        The 5% reservation fee is charged BEFORE the room is committed, so a declined card costs
         nothing: no reservation exists and nothing is charged.
 
         Send `expected_price` and `expected_balance` back exactly as search returned them. The
@@ -705,7 +705,7 @@ paths:
         Free until `balance_due_by`; after that the hotel's own cancellation ladder applies and can
         reach 100%. That ladder ships in the booking's `terms`, so the cost is knowable first.
 
-        The 10% reservation fee is NOT refunded.
+        The 5% reservation fee is NOT refunded.
 
         Drives a browser at the supplier and takes over a minute. If it times out, do not assume it
         failed — re-check before retrying.

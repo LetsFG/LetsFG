@@ -13,7 +13,7 @@ metadata:
 
 # Hotel Search and Booking
 
-Real, bookable hotel inventory through LetsFG. Search is free; booking charges 10% of the
+Real, bookable hotel inventory through LetsFG. Search is free; booking charges 5% of the
 price to the card on file and hands you a pay link for the balance.
 
 ## Read this before your first call
@@ -31,7 +31,7 @@ reach the point of commitment and discover you cannot pay.
 
 **Only free-cancellation, pay-later rates are sold.** Those are the rates where the guest's
 balance can safely be settled with the supplier after booking, which is what makes the
-10%-now/rest-later model work at all. You will see fewer results than a metasearch shows.
+5%-now/rest-later model work at all. You will see fewer results than a metasearch shows.
 Every one of them can actually be booked.
 
 ## How the money works
@@ -39,7 +39,7 @@ Every one of them can actually be booked.
 | Step | Who is charged | Amount |
 |------|----------------|--------|
 | Search | nobody | free |
-| Book | the agent's card, immediately | 10% of the price, **non-refundable** |
+| Book | the agent's card, immediately | 5% of the price, **non-refundable** |
 | Balance | the guest pays the supplier directly, via `pay_link` | the rest, by `balance_due_by` |
 
 `balance_due_by` is the supplier's own auto-cancellation date, not a date LetsFG invents.
@@ -101,7 +101,7 @@ MCP tools, in call order: `resolve_hotel_city` → `search_hotels` → `book_hot
 4. **Use the guest's real email.** The voucher and the pay link go there; a typo loses the
    booking. It is validated before anything is charged.
 5. **Tell the guest the fee is non-refundable** before you book. Cancelling returns the
-   balance obligation, never the 10%.
+   balance obligation, never the 5%.
 6. **A cancellation timeout is not a failure.** It drives a browser at the supplier and takes
    over a minute. Re-check before retrying.
 

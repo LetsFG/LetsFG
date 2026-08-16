@@ -134,14 +134,14 @@ print(booking["confirmation"], booking["pay_link"])
 
 ### How you pay
 
-**10% now, the rest to the hotel later.** At booking we charge 10% of the price
+**5% now, the rest to the hotel later.** At booking we charge 5% of the price
 to your card as a reservation fee. The remaining balance is paid **directly to
 the supplier** through a `pay_link` we return — we never hold it.
 
 `balance_due_by` is the supplier's own auto-cancellation date, not a date we
 invent. Miss it and the room is released.
 
-The 10% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
+The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
 else; after it, the hotel's own cancellation ladder applies and can reach 100%.
 That ladder ships in the booking's `terms`, so you can always see the cost before
 you cancel.
@@ -156,7 +156,7 @@ you cancel.
   hotel signup.
 - **Only free-cancellation, pay-later rates are sold.** Those are the rates where
   the balance can safely be settled with the supplier after booking, which is
-  what makes 10%-now/rest-later work at all. You will see fewer results than a
+  what makes 5%-now/rest-later work at all. You will see fewer results than a
   metasearch shows you. Every one of them can actually be booked.
 - **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
   booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
@@ -271,7 +271,7 @@ Same hotel, same room type, same 2-night stay, same free-cancellation policy —
 
 > **$207 cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type. Prices quoted in PLN at booking, converted to USD at that day's rate.
 
-**Why the difference?** LetsFG sells at wholesale cost — no markup for demand, no loyalty-program cross-subsidy. You're not paying for the room upfront: 10% books it now, and the remaining 90% isn't due until the hotel's own cancellation deadline. Cancel before that deadline and you lose nothing but the 10%; the rest was never charged. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually hold risk-free.
+**Why the difference?** LetsFG sells at wholesale cost — no markup for demand, no loyalty-program cross-subsidy. You're not paying for the room upfront: 5% books it now, and the remaining 95% isn't due until the hotel's own cancellation deadline. Cancel before that deadline and you lose nothing but the 5%; the rest was never charged. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually hold risk-free.
 
 ---
 
@@ -297,14 +297,14 @@ When you're ready to integrate it into your own agent, keep reading.
 
 | How you use it | Search | Flight booking | Hotel booking | Runs where? |
 |----------------|--------|----------------|----------------|-------------|
-| **CLI / Python SDK / npm** | ✅ Free (`letsfg auth`, zero-amount card setup) | No LetsFG fee either way | 10% non-refundable reservation fee | Our servers |
-| **MCP Server** | ✅ Free (`letsfg auth`) | No LetsFG fee either way | 10% reservation fee | Our servers |
-| **PFS** (raw API via letsfg.co) | ✅ Free (Bearer token, zero-amount setup or $0.01 via MPP) | No LetsFG fee either way | 10% reservation fee | Our servers |
+| **CLI / Python SDK / npm** | ✅ Free (`letsfg auth`, zero-amount card setup) | No LetsFG fee either way | 5% non-refundable reservation fee | Our servers |
+| **MCP Server** | ✅ Free (`letsfg auth`) | No LetsFG fee either way | 5% reservation fee | Our servers |
+| **PFS** (raw API via letsfg.co) | ✅ Free (Bearer token, zero-amount setup or $0.01 via MPP) | No LetsFG fee either way | 5% reservation fee | Our servers |
 | **Developer API** | Prepaid credits | Included (direct airline URLs) | — (flights only) | Our servers |
 
 **CLI / SDK / MCP / PFS = free search, no LetsFG fee on flight booking.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and both searching and booking are free for 90 days. No credits, no unlock step. `letsfg book` / `POST /api/agent-book` returns either a confirmed order or a direct airline link — no LetsFG fee either way (you still pay the ticket price itself, plus Stripe's own processing cut, same as any card charge).
 
-**Hotels = 10% now to hold a free-cancellation rate, on every path.** That 10% is what pays for flexibility: it books the room today, but the remaining 90% isn't charged until the hotel's own cancellation deadline, paid straight to the hotel via a `pay_link`. Cancel before that deadline and the only cost is the 10% already paid. See [Hotels](#-hotels--new-and-live) above.
+**Hotels = 5% now to hold a free-cancellation rate, on every path.** That 5% is what pays for flexibility: it books the room today, but the remaining 95% isn't charged until the hotel's own cancellation deadline, paid straight to the hotel via a `pay_link`. Cancel before that deadline and the only cost is the 5% already paid. See [Hotels](#-hotels--new-and-live) above.
 
 **Developer API = prepaid, business use.** [letsfg.co/developers](https://letsfg.co/developers) returns direct airline booking URLs with no per-booking fee. Monthly billing: $0.50/search for the first 10, $0.20 for 11–1,000, then $0.10/search. Resets monthly. Minimum top-up: $5.
 

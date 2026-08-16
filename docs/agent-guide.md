@@ -45,7 +45,7 @@ booking = lfg.book_hotel_and_wait(...)     # async: returns a job, polls to comp
 print(booking["confirmation"], booking["pay_link"])
 ```
 
-Only free-cancellation, pay-later rates are sold. Booking charges 10% to the card on file as a
+Only free-cancellation, pay-later rates are sold. Booking charges 5% to the card on file as a
 non-refundable reservation fee; the balance goes straight to the supplier through `pay_link` by
 `balance_due_by`. A card is required for hotel **search** as well as booking. Full detail:
 [Hotels](hotels.md).

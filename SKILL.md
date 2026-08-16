@@ -66,7 +66,7 @@ Search real, bookable hotel inventory.
 - **Endpoint:** `POST /api/v1/hotels/search`
 - **Input:** city_id, city_name, check_in, check_out, adults, children, child_ages, nationality, limit
 - **Output:** hotels[] each with offers[] carrying `price` (what the guest pays),
-  `reservation_fee_now` (the 10%), `balance_to_supplier`, `balance_due_by`,
+  `reservation_fee_now` (the 5%), `balance_to_supplier`, `balance_due_by`,
   `free_cancellation_until`, `combination_id_v2`
 - **Note:** Only free-cancellation, pay-later rates are sold, so the result set is smaller than a
   metasearch and every rate returned can actually be booked. Keep `session_id` and the chosen
@@ -124,7 +124,7 @@ Book an offer.
 
 ### book_hotel
 Start a hotel booking. Returns a job, NOT a booking.
-- **Cost:** 10% of the price charged immediately to the card on file as a NON-REFUNDABLE
+- **Cost:** 5% of the price charged immediately to the card on file as a NON-REFUNDABLE
   reservation fee. The balance is paid directly to the supplier through the returned `pay_link`.
 - **Endpoint:** `POST /api/v1/hotels/book`
 - **Input:** session_id, hotel_code, combination_id_v2, expected_price, expected_balance, city_id,
@@ -153,7 +153,7 @@ Collect the result of a booking started with `book_hotel`.
 ### cancel_hotel_booking
 Release a hotel reservation.
 - **Cost:** Free until `balance_due_by`; after that the hotel's own ladder applies and can reach
-  100%. The 10% reservation fee is NOT refunded.
+  100%. The 5% reservation fee is NOT refunded.
 - **Endpoint:** `POST /api/v1/hotels/cancel`
 - **Input:** confirmation
 - **Output:** confirmation, charge
@@ -234,7 +234,7 @@ Before your first unlock, attach a payment method via `POST /api/v1/agents/setup
 6. POST /api/v1/hotels/cancel              → Optional; free until balance_due_by
 ```
 
-10% is charged to the card at step 4 as a non-refundable reservation fee; the balance is paid
+5% is charged to the card at step 4 as a non-refundable reservation fee; the balance is paid
 directly to the supplier through `pay_link` by `balance_due_by`, which is the supplier's own
 auto-cancellation date. Never repeat step 4 for the same rate — that books the room twice.
 

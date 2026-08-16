@@ -10,9 +10,9 @@ hand the guest a pay link — with the same Developer API key it uses for flight
 
 ## How you pay
 
-**10% now, the balance to the hotel later.**
+**5% now, the balance to the hotel later.**
 
-At booking we charge 10% of the price to your card as a **non-refundable**
+At booking we charge 5% of the price to your card as a **non-refundable**
 reservation fee. The rest is paid **directly to the supplier** through a
 `pay_link` we return — we never hold it.
 
@@ -28,7 +28,7 @@ pay. Every hotel endpoint returns `402` without a payment method.
 
 **Only free-cancellation, pay-later rates are sold.** Those are the rates where
 the balance can safely be settled with the supplier after booking, which is what
-makes 10%-now/rest-later work. You will see fewer results than a metasearch.
+makes 5%-now/rest-later work. You will see fewer results than a metasearch.
 Every one of them can actually be booked.
 
 ## Booking is asynchronous
@@ -103,7 +103,7 @@ print(booking["confirmation"], booking["pay_link"])
 
 `POST /hotels/cancel` with the `confirmation`. Free until `balance_due_by`;
 after that the hotel's own ladder applies and can reach 100%. That ladder ships
-in the booking's `terms`, so you can always see the cost first. **The 10%
+in the booking's `terms`, so you can always see the cost first. **The 5%
 reservation fee is not refunded.**
 
 Cancellation drives a browser at the supplier and takes over a minute. If it

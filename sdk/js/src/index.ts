@@ -496,7 +496,7 @@ export class LetsFG {
   //
   // Only free-cancellation, pay-later rates are sold. Those are the rates where
   // the guest's balance can safely be settled with the supplier after booking,
-  // which is what makes 10%-now/rest-later work. The result set is smaller than
+  // which is what makes 5%-now/rest-later work. The result set is smaller than
   // a metasearch's, and every row in it can actually be booked.
 
   /**
@@ -518,7 +518,7 @@ export class LetsFG {
    * — so this gets its own generous timeout rather than the client default.
    *
    * Each offer carries `price` (what the guest pays), `reservation_fee_now`
-   * (the 10% taken at booking), `balance_to_supplier`, `balance_due_by` and
+   * (the 5% taken at booking), `balance_to_supplier`, `balance_due_by` and
    * `free_cancellation_until`. There is no wholesale figure to quote by mistake.
    *
    * Keep `session_id` and the chosen offer's `combination_id_v2`: together they
@@ -557,7 +557,7 @@ export class LetsFG {
    * Start a booking. Returns a job immediately — it does NOT book inline.
    *
    * A booking takes minutes: the rate is re-blocked at the supplier, every
-   * price and date rail is checked, the 10% reservation fee is charged to your
+   * price and date rail is checked, the 5% reservation fee is charged to your
    * card, and only then is the room committed. No proxy holds a connection that
    * long, so this returns at once and you poll hotelBooking() for the outcome.
    * Use bookHotelAndWait() if you would rather block.
@@ -662,7 +662,7 @@ export class LetsFG {
    *
    * Free until `balance_due_by`; after that the hotel's own cancellation ladder
    * applies and can reach 100%. The ladder ships in the booking's `terms`, so
-   * you can see the cost before calling this. The 10% reservation fee is NOT
+   * you can see the cost before calling this. The 5% reservation fee is NOT
    * refunded.
    *
    * This drives a browser at the supplier and takes over a minute. If it times

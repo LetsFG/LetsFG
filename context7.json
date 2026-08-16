@@ -7,7 +7,7 @@
     "Hotels require a payment method on file for SEARCH as well as booking. A hotel search opens a real session at the supplier, so it returns 402 without a card.",
     "Hotel booking is asynchronous. POST /hotels/book returns a booking_job_id, not a booking. Poll GET /hotels/booking/{job_id} until status is succeeded or failed.",
     "Never retry a hotel booking blindly. Calling /hotels/book twice for the same rate books the room twice and charges two reservation fees. Poll the job instead.",
-    "Hotel booking charges 10% of the price to the card as a NON-REFUNDABLE reservation fee. The balance is paid directly to the supplier via the returned pay_link by balance_due_by.",
+    "Hotel booking charges 5% of the price to the card as a NON-REFUNDABLE reservation fee. The balance is paid directly to the supplier via the returned pay_link by balance_due_by.",
     "balance_due_by is the supplier's own auto-cancellation date, not advisory. Miss it and the room is released.",
     "Send expected_price and expected_balance back to /hotels/book exactly as /hotels/search returned them, or the booking is refused as a price mismatch.",
     "Only free-cancellation, pay-later hotel rates are sold, so the result set is smaller than a metasearch. Every rate returned can actually be booked.",

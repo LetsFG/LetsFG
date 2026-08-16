@@ -183,7 +183,7 @@ To avoid unexpected updates:
 | `search_flights` | Search hundreds of airlines via server-side engine | FREE | None (read-only) |
 | `resolve_hotel_city` | Place name -> supplier city id | FREE | None (read-only) |
 | `search_hotels` | Search bookable, free-cancellation hotel rates | Free up to 1,000/booking, then $5/1,000 — needs a card on file | Opens a supplier session |
-| `book_hotel` | Start a hotel booking (async, returns a job id) | 10% now, balance to the supplier | Charges the card, books the room |
+| `book_hotel` | Start a hotel booking (async, returns a job id) | 5% now, balance to the supplier | Charges the card, books the room |
 | `get_hotel_booking` | Collect the booking result and pay link | FREE | None (read-only) |
 | `cancel_hotel_booking` | Release a reservation | Free until `balance_due_by`, then the hotel's ladder | Cancels the booking |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
@@ -413,14 +413,14 @@ print(booking["confirmation"], booking["pay_link"])
 
 ### How you pay
 
-**10% now, the rest to the hotel later.** At booking we charge 10% of the price
+**5% now, the rest to the hotel later.** At booking we charge 5% of the price
 to your card as a reservation fee. The remaining balance is paid **directly to
 the supplier** through a `pay_link` we return — we never hold it.
 
 `balance_due_by` is the supplier's own auto-cancellation date, not a date we
 invent. Miss it and the room is released.
 
-The 10% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
+The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
 else; after it, the hotel's own cancellation ladder applies and can reach 100%.
 That ladder ships in the booking's `terms`, so you can always see the cost before
 you cancel.
@@ -446,7 +446,7 @@ is not metered, only the search call itself.
   hotel signup.
 - **Only free-cancellation, pay-later rates are sold.** Those are the rates where
   the balance can safely be settled with the supplier after booking, which is
-  what makes 10%-now/rest-later work at all. You will see fewer results than a
+  what makes 5%-now/rest-later work at all. You will see fewer results than a
   metasearch shows you. Every one of them can actually be booked.
 - **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
   booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
