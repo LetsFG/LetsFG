@@ -553,7 +553,17 @@ class LetsFG:
         """
         Resolve a city/airport name to IATA codes.
 
-        Uses Bearer token (PFS path) if available, otherwise falls back to API key.
+        Requires a Developer API key. There is NO location endpoint on the PFS
+        Bearer lane.
+
+        This used to try `GET {base}/api/locations?q=...` first whenever a
+        Bearer token was present. That route has never existed on letsfg.co: it
+        returns the 404 HTML page, so `json.loads` raised, and because the only
+        thing caught here was BearerTokenError the failure surfaced as a raw
+        HTTPError/JSONDecodeError instead of falling through to the working
+        path below. Verified against production 2026-08-16 (404, text/html).
+        If a PFS-lane resolver is ever added, restore this branch — but point
+        it at a route that exists and check the status before parsing.
 
         Args:
             query: City or airport name (e.g., "London", "Berlin")
@@ -561,28 +571,6 @@ class LetsFG:
         Returns:
             List of matching locations with IATA codes.
         """
-        from letsfg.connectors.auth import get_bearer_token, BearerTokenError
-        try:
-            token = get_bearer_token()
-            base = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
-            req = Request(
-                f"{base}/api/locations?q={quote(query, safe='')}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "User-Agent": "LetsFG-Python-SDK/1.0.3",
-                },
-                method="GET",
-            )
-            with urlopen(req, timeout=self.timeout) as resp:
-                data = json.loads(resp.read().decode())
-            if isinstance(data, dict) and "locations" in data:
-                return data["locations"]
-            if isinstance(data, list):
-                return data
-            return [data] if data else []
-        except BearerTokenError:
-            pass
-
         self._require_api_key()
         data = self._get(f"/api/v1/flights/locations/{quote(query, safe='')}")
         if isinstance(data, dict) and "locations" in data:

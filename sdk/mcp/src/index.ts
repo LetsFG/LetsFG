@@ -93,7 +93,25 @@ async function apiRequest(method: string, path: string, body?: Record<string, un
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const data = await resp.json();
+  // Parse defensively. This used to be a bare `await resp.json()`, which threw
+  // on ANY non-JSON body and surfaced to the agent as
+  // `Error: SyntaxError: Unexpected token '<', "<!DOCTYPE "...` — the real
+  // status (404/502/a Cloudflare challenge page) was destroyed on the way out.
+  // An agent cannot act on that; it can act on "status 404".
+  const raw = await resp.text();
+  let data: unknown;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    return {
+      error: true,
+      status_code: resp.status,
+      detail: resp.status >= 400
+        ? `HTTP ${resp.status} — non-JSON response from ${path}`
+        : `Expected JSON from ${path} but got ${resp.headers.get('content-type') ?? 'unknown'} (HTTP ${resp.status})`,
+    };
+  }
+
   if (resp.status >= 400) {
     return { error: true, status_code: resp.status, detail: (data as Record<string, string>).detail || JSON.stringify(data) };
   }
@@ -101,10 +119,24 @@ async function apiRequest(method: string, path: string, body?: Record<string, un
 }
 
 async function resolveLocationCloud(query: string): Promise<unknown> {
-  const path = API_KEY
-    ? `/developers/api/v1/flights/locations/${encodeURIComponent(query)}`
-    : `/api/locations?q=${encodeURIComponent(query)}`;
-  return apiRequest('GET', path);
+  // There is NO location endpoint on the PFS Bearer lane. This used to fall
+  // back to a website-side locations route for key-less callers; that route has
+  // never existed on letsfg.co (verified 2026-08-16: 404, text/html), so every
+  // Bearer-token user got a SyntaxError off the 404 HTML page. Same dead-end as
+  // unlock_flight_offer below, which was already fixed for this reason. The
+  // literal path is deliberately not written here — a source guard in
+  // index.test.ts asserts it appears nowhere in this file.
+  if (!API_KEY) {
+    return {
+      error: true,
+      status_code: 400,
+      detail:
+        'resolve_location needs a Developer API key (LETSFG_API_KEY); there is no ' +
+        'location endpoint on the PFS Bearer lane. Pass an IATA code directly ' +
+        '(e.g. LON, WAW, JFK) — a city code expands to every airport in that city.',
+    };
+  }
+  return apiRequest('GET', `/developers/api/v1/flights/locations/${encodeURIComponent(query)}`);
 }
 
 // ── Resources ───────────────────────────────────────────────────────────

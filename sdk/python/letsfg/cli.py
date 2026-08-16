@@ -83,10 +83,25 @@ def _handle_auth_error(e: LetsFGError) -> None:
 
 
 def _err(msg: str):
+    """Print an error and STOP.
+
+    This used to only print, and 18 of its call sites relied on it stopping.
+    They fell through into code that assumed the call had succeeded, so the
+    FIRST thing a new user ever ran -- `letsfg search` before `letsfg auth` --
+    printed the correct "run letsfg auth" message and then died on
+    `result.get(...)` with an UnboundLocalError traceback (result was never
+    assigned). Same for every other failure of that command: expired token,
+    network error, 500.
+
+    Fixed in the helper rather than at each call site on purpose: local.py's
+    own comment records issue #163 coming straight back because a call site
+    was patched instead of the helper it should have gone in.
+    """
     if HAS_RICH:
         console.print(f"[red]Error:[/red] {msg}")
     else:
         print(f"Error: {msg}", file=sys.stderr)
+    raise typer.Exit(1)
 
 
 def _warn_developer_api_command(cmd: str):

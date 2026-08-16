@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = join(__dir, 'index.ts');
@@ -46,6 +47,29 @@ function readNextMessage(proc: ChildProcessWithoutNullStreams, timeoutMs = 5000)
 }
 
 // ── Protocol smoke tests ──────────────────────────────────────────────────
+
+// Source-level guards. Deliberately do NOT spawn: these must still run when the
+// spawn-based tests below can't (they shell out to `npx`, which is ENOENT on
+// Windows, so the whole suite goes red for reasons unrelated to the code).
+describe('MCP server — dead-route guards', () => {
+  const src = readFileSync(SERVER_PATH, 'utf8');
+
+  it('never calls /api/locations — that route does not exist on letsfg.co', () => {
+    // 2026-08-16: resolve_location sent every key-less (PFS Bearer) caller to
+    // `/api/locations?q=`, which 404s with the HTML error page. The agent got
+    // `SyntaxError: Unexpected token '<'` instead of an answer. This is the
+    // THIRD time a PFS dead-end shipped here (see unlock_flight_offer's own
+    // comment), so it gets a guard rather than another comment.
+    assert.ok(!src.includes('/api/locations'), '/api/locations is a 404 — use the Developer API locations path');
+  });
+
+  it('parses responses defensively, never a bare resp.json()', () => {
+    // A bare `await resp.json()` destroys the real status on any HTML body
+    // (404 page, 502, Cloudflare challenge) and reports a JSON syntax error.
+    assert.ok(!/const\s+data\s*=\s*await\s+resp\.json\(\)\s*;/.test(src),
+      'read resp.text() and JSON.parse it, so a non-JSON body still reports its status');
+  });
+});
 
 describe('MCP server — initialize', () => {
   let proc: ChildProcessWithoutNullStreams;

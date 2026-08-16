@@ -414,12 +414,17 @@ export class LetsFG {
 
   /**
    * Resolve a city/airport name to IATA codes.
+   *
+   * Developer API key only. There is no location endpoint on the PFS Bearer
+   * lane — the same dead end `unlock()` documents below. This used to send
+   * PFS callers to `/api/locations?q=`, a route that has never existed on
+   * letsfg.co (verified 2026-08-16: 404, text/html), so they got a JSON parse
+   * error off the 404 page instead of an answer. Pass an IATA code directly
+   * on the PFS lane; a city code expands to every airport in that city.
    */
   async resolveLocation(query: string): Promise<Array<Record<string, unknown>>> {
-    this.requireAuth();
-    const path = this.usingPFS
-      ? `/api/locations?q=${encodeURIComponent(query)}`
-      : `/developers/api/v1/flights/locations/${encodeURIComponent(query)}`;
+    this.requireApiKey();
+    const path = `/developers/api/v1/flights/locations/${encodeURIComponent(query)}`;
     const data = await this.getWithAuth<Array<Record<string, unknown>> | { locations: Array<Record<string, unknown>> }>(path);
     return Array.isArray(data) ? data : (data as { locations: Array<Record<string, unknown>> }).locations || [];
   }
