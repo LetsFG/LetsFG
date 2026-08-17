@@ -29,8 +29,8 @@ jobs:
       matrix:
         package: [sdk/js, sdk/mcp]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: '20'
           cache: npm
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-test-gate')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
@@ -63,7 +63,8 @@ jobs:
           WATCH_PATHS="sdk/js/src sdk/mcp/src"
 
           # Get files Added (A) or Renamed (R) in this PR vs base branch
-          NEW_FILES=$(git diff --name-only --diff-filter=AR "origin/${{ github.base_ref }}"...HEAD | \
+          BASE_REF="${{ github.base_ref }}"
+          NEW_FILES=$(git diff --name-only --diff-filter=AR "origin/$BASE_REF"...HEAD | \
             grep -E '\.(ts|tsx)$' | \
             grep -v '\.test\.(ts|tsx)$' | \
             grep -v '\.d\.ts$' || true)
@@ -117,8 +118,8 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
       - name: Install package + pytest
