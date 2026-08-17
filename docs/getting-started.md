@@ -114,7 +114,7 @@ For API-only onboarding, send a Stripe-generated `payment_method_id` or `token`.
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/setup-payment \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"payment_method_id": "pm_123"}'
 ```
@@ -125,7 +125,7 @@ If you have a browser available, you can also start hosted onboarding from the d
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/top-up \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"amount_cents": 2500}'
 ```
@@ -136,7 +136,7 @@ Search is not enabled until balance exists. Top-up is the step that activates pu
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/flights/search \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-07-15", "adults": 1, "currency": "USD"}'
 ```
@@ -145,7 +145,7 @@ curl -X POST https://letsfg.co/developers/api/v1/flights/search \
 
 ```bash
 curl https://letsfg.co/developers/api/v1/agents/me \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 The profile response shows whether payment is ready, whether API access is enabled, and how much prepaid balance remains.

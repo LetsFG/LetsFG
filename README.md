@@ -384,7 +384,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name":"my-agent","email":"you@example.com"}'
 
 curl -X POST https://letsfg.co/developers/api/v1/flights/search \
-  -H "X-API-Key: trav_..." \
+  -H "X-API-Key: letsfg_..." \
   -H "Content-Type: application/json" \
   -d '{"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}'
 ```
@@ -441,7 +441,7 @@ Run `letsfg auth` inside the MCP session once (a zero-amount card setup — noth
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }
@@ -469,7 +469,7 @@ print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 ```typescript
 import { LetsFG } from 'letsfg';
 
-const bt = new LetsFG({ apiKey: 'trav_...' });
+const bt = new LetsFG({ apiKey: 'letsfg_...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 console.log(`${flights.totalResults} offers`);
 ```

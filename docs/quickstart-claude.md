@@ -33,7 +33,7 @@ curl -s -X POST https://letsfg.co/developers/api/v1/agents/register \
   -d '{"agent_name": "claude-desktop", "email": "you@example.com"}'
 ```
 
-Copy the `api_key` from the response (starts with `trav_`).
+Copy the `api_key` from the response (starts with `letsfg_`).
 
 Public REST docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
 
@@ -57,7 +57,7 @@ Open `Settings → Developer → Edit Config` or edit the file directly:
     "letsfg": {
       "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
-        "X-API-Key": "trav_your_key_here"
+        "X-API-Key": "letsfg_your_key_here"
       }
     }
   }

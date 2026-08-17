@@ -25,7 +25,7 @@ describe('LetsFG class', () => {
   });
 
   it('instantiates with explicit config', () => {
-    const client = new LetsFG({ apiKey: 'trav_test', timeout: 5000 });
+    const client = new LetsFG({ apiKey: 'letsfg_test', timeout: 5000 });
     assert.ok(client instanceof LetsFG);
   });
 

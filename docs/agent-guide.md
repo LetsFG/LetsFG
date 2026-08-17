@@ -26,7 +26,7 @@ bt = LetsFG()  # uses LETSFG_BEARER_TOKEN from environment
 result = bt.search("LHR", "JFK", "2026-06-01")
 
 # Developer API — prepaid credits, direct booking URLs, no per-booking fee
-bt = LetsFG(api_key="trav_...")
+bt = LetsFG(api_key="letsfg_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
@@ -37,7 +37,7 @@ result = bt.search("LHR", "JFK", "2026-06-01")
 ### Hotels
 
 ```python
-lfg = LetsFG(api_key="trav_...")          # Bearer tokens do NOT work for hotels
+lfg = LetsFG(api_key="letsfg_...")          # Bearer tokens do NOT work for hotels
 city  = lfg.hotel_destinations("Warsaw")[0]
 stays = lfg.search_hotels(city_id=city["Id"], city_name=city["Name"],
                           check_in="2026-11-10", check_out="2026-11-12", adults=2)

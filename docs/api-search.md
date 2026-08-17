@@ -40,7 +40,7 @@ Always resolve ambiguous place names before you search.
 
 ```bash
 curl https://letsfg.co/developers/api/v1/flights/locations/London \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 Use metro codes such as `LON` when you want all airports in a city, or specific airport codes such as `LHR` when the integration should be strict.
@@ -72,7 +72,7 @@ Use metro codes such as `LON` when you want all airports in a city, or specific 
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/flights/search \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "origin": "LON",
@@ -207,7 +207,7 @@ Results are cached for 5 minutes. A second search for the same route and date re
 
 ```bash
 curl https://letsfg.co/developers/api/v1/flights/providers \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 Use this endpoint when you want to understand which provider families are visible to the current public API environment.
@@ -249,7 +249,7 @@ free, no credit consumed.
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/flights/parse-query \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"query": "morning flight from New York to Chicago next Friday, 2 adults"}'
 ```
@@ -269,7 +269,7 @@ Results arrive in 2–5 seconds.
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/flights/discover \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "origin": "JFK",

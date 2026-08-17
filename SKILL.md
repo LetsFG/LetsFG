@@ -196,7 +196,7 @@ Get a token: `POST /api/agent-access/request` → present a card at the returned
 requires an `X-API-Key` header.
 
 ```
-X-API-Key: trav_...
+X-API-Key: letsfg_...
 ```
 
 Get your key by calling `POST /api/v1/agents/register` with agent_name and email. The key is permanent — save it once.
@@ -263,8 +263,8 @@ letsfg search GDN BER 2026-03-03 --json
 ```
 
 Developer API instead? `letsfg register` + `letsfg setup-payment` once, then
-`letsfg search ... --api-key trav_...`, `letsfg unlock off_xxx --api-key trav_...`,
-`letsfg book off_xxx --api-key trav_... --passenger '{"id":"pas_0",...}' --email ...`.
+`letsfg search ... --api-key letsfg_...`, `letsfg unlock off_xxx --api-key letsfg_...`,
+`letsfg book off_xxx --api-key letsfg_... --passenger '{"id":"pas_0",...}' --email ...`.
 
 ## Python SDK Usage
 
@@ -297,7 +297,7 @@ else:
     print(f"Booking link (nothing charged): {result['booking_url']}")
 ```
 
-Developer API instead? `LetsFG(api_key="trav_...")`, then `bt.unlock(offer_id)`
+Developer API instead? `LetsFG(api_key="letsfg_...")`, then `bt.unlock(offer_id)`
 before `bt.book(...)` — returns a `BookingResult` with `booking_reference` (PNR).
 
 ## MCP Server Setup
@@ -310,7 +310,7 @@ before `bt.book(...)` — returns a `BookingResult` with `booking_reference` (PN
     "letsfg": {
       "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
-        "X-API-Key": "trav_..."
+        "X-API-Key": "letsfg_..."
       }
     }
   }
@@ -392,7 +392,7 @@ Developer API:
 from letsfg import LetsFG, AuthenticationError
 
 try:
-    bt = LetsFG(api_key="trav_...")
+    bt = LetsFG(api_key="letsfg_...")
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except AuthenticationError:
     # API key invalid or expired — re-register

@@ -126,7 +126,7 @@ letsfg locations "New York"
 ```bash
 #!/bin/bash
 set -euo pipefail
-export LETSFG_API_KEY=trav_...
+export LETSFG_API_KEY=letsfg_...
 
 # Resolve locations
 ORIGIN=$(letsfg locations "London" --json | jq -r '.[0].iata_code')

@@ -29,7 +29,7 @@ GET  /flights/results/{id}   →  {status: "complete", offers: [...]}  ← done
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/flights/search/async \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "origin": "JFK",
@@ -59,7 +59,7 @@ billing (one credit charged on completion).
 
 ```bash
 curl https://letsfg.co/developers/api/v1/flights/results/async_a1b2c3d4e5f6 \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 While running:

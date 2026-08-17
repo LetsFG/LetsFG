@@ -10,7 +10,7 @@
  *   letsfg me
  *
  * Developer API only (separate paid product):
- *   letsfg unlock off_xxx --api-key trav_...
+ *   letsfg unlock off_xxx --api-key letsfg_...
  *   letsfg register --name my-agent --email agent@example.com
  */
 

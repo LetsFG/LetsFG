@@ -50,7 +50,7 @@ Create `.cursor/mcp.json` in your project root (or global config):
     "letsfg": {
       "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
-        "X-API-Key": "trav_your_key_here"
+        "X-API-Key": "letsfg_your_key_here"
       }
     }
   }

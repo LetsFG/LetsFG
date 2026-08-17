@@ -59,7 +59,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }
@@ -77,7 +77,7 @@ Add to `.cursor/mcp.json` in your project root:
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }
@@ -95,7 +95,7 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }
@@ -112,7 +112,7 @@ mcpServers:
     command: npx
     args: ["-y", "letsfg-mcp"]
     env:
-      LETSFG_API_KEY: trav_your_api_key
+      LETSFG_API_KEY: letsfg_your_api_key
 ```
 
 ### Any MCP-Compatible Agent
@@ -140,7 +140,7 @@ If you get `spawn npx ENOENT` on Windows, use the full path to `npx`:
       "command": "C:\\Program Files\\nodejs\\npx.cmd",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }
@@ -156,7 +156,7 @@ Or use `node` directly:
       "command": "node",
       "args": ["C:\\Users\\YOU\\AppData\\Roaming\\npm\\node_modules\\letsfg-mcp\\dist\\index.js"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }
@@ -301,7 +301,7 @@ All search runs server-side at letsfg.co. No local browsers or scrapers are invo
 
 - **TLS everywhere** — all communication uses HTTPS. The server-side engine connects to airline websites over HTTPS.
 - **No card storage** — payment cards are tokenized by Stripe. LetsFG never sees or stores raw card numbers.
-- **API key scoping** — `LETSFG_API_KEY` grants access only to your agent's account. Keys are prefixed `trav_` for easy identification and revocation.
+- **API key scoping** — `LETSFG_API_KEY` grants access only to your agent's account. Keys are prefixed `letsfg_` for easy identification and revocation.
 - **PII handling** — passenger names, emails, and DOBs are sent to the airline for booking (required by airlines). LetsFG does not store passenger PII after forwarding to the airline.
 - **No tracking** — no cookies, no session-based pricing, no fingerprinting. Every search returns the same raw airline price.
 - **Open source** — the SDK and MCP server code is MIT-licensed and auditable at [github.com/LetsFG/LetsFG](https://github.com/LetsFG/LetsFG).

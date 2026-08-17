@@ -6,7 +6,7 @@ Search is free. Booking charges the price shown on the offer.
 
     from letsfg import LetsFG
 
-    bt = LetsFG(api_key="trav_...")
+    bt = LetsFG(api_key="letsfg_...")
     
     # Setup payment (one-time — required before booking via PFS path)
     bt.setup_payment(token="tok_visa")

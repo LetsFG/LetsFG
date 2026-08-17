@@ -13,7 +13,7 @@
  * const flights = await bt.search('GDN', 'BER', '2026-03-03');
  *
  * // Developer API (prepaid credits)
- * const bt2 = new LetsFG({ apiKey: 'trav_...' });
+ * const bt2 = new LetsFG({ apiKey: 'letsfg_...' });
  * const flights2 = await bt2.search('LHR', 'JFK', '2026-04-15');
  * ```
  */

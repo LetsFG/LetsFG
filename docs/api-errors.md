@@ -44,7 +44,7 @@
 
 ```bash
 curl https://letsfg.co/developers/api/v1/agents/me \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 These fields matter most:

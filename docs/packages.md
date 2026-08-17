@@ -44,7 +44,7 @@ Provides:
 ```python
 from letsfg import LetsFG
 
-bt = LetsFG(api_key="trav_...")
+bt = LetsFG(api_key="letsfg_...")
 flights = bt.search("LHR", "JFK", "2026-04-15")
 ```
 
@@ -67,7 +67,7 @@ Provides:
 ```typescript
 import { LetsFG } from 'letsfg';
 
-const bt = new LetsFG({ apiKey: 'trav_...' });
+const bt = new LetsFG({ apiKey: 'letsfg_...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 ```
 
@@ -98,7 +98,7 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_API_KEY": "trav_your_api_key"
+        "LETSFG_API_KEY": "letsfg_your_api_key"
       }
     }
   }

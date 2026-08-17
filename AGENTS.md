@@ -173,15 +173,15 @@ prepaid Developer API instead of a PFS Bearer token, `book` requires a prior
 the offer for booking:
 
 ```bash
-letsfg unlock off_xxx --api-key trav_...
+letsfg unlock off_xxx --api-key letsfg_...
 # Output: Confirmed price: EUR 189.50, Fee: $3.00
-letsfg book off_xxx --api-key trav_... --passenger '{"id":"pas_xxx",...}' --email you@example.com
+letsfg book off_xxx --api-key letsfg_... --passenger '{"id":"pas_xxx",...}' --email you@example.com
 ```
 
 ```python
 from letsfg import LetsFG
 
-bt = LetsFG(api_key="trav_...")
+bt = LetsFG(api_key="letsfg_...")
 flights = bt.search("LHR", "JFK", "2026-06-01")
 unlocked = bt.unlock(flights.cheapest.id)
 booked = bt.book(unlocked.offer_id, passengers=[...], contact_email="you@example.com")
@@ -251,7 +251,7 @@ print(f'{result["total_results"]} offers, cheapest: {cheapest["price"]} {cheapes
 ```
 
 The `LetsFG` client class (`from letsfg import LetsFG`) wraps the paid Developer
-API instead — use it only if you're on prepaid credits (`api_key="trav_..."`).
+API instead — use it only if you're on prepaid credits (`api_key="letsfg_..."`).
 
 ### JavaScript/TypeScript SDK + CLI
 ```bash
@@ -280,7 +280,7 @@ const result = await bt.book(
     "letsfg": {
       "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
-        "X-API-Key": "trav_your_api_key"
+        "X-API-Key": "letsfg_your_api_key"
       }
     }
   }
@@ -346,17 +346,17 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name": "my-agent", "email": "agent@example.com"}'
 
-# Response: { "agent_id": "ag_xxx", "api_key": "trav_xxxxx..." }
+# Response: { "agent_id": "ag_xxx", "api_key": "letsfg_xxxxx..." }
 ```
 
 ```bash
 # Environment variable (recommended)
-export LETSFG_API_KEY=trav_...
+export LETSFG_API_KEY=letsfg_...
 letsfg search LHR JFK 2026-04-15 --api-key $LETSFG_API_KEY
 
 # cURL (raw HTTP)
 curl -X POST https://letsfg.co/developers/api/v1/flights/search \
-  -H "X-API-Key: trav_..." \
+  -H "X-API-Key: letsfg_..." \
   -H "Content-Type: application/json" \
   -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-04-15"}'
 ```
@@ -364,7 +364,7 @@ curl -X POST https://letsfg.co/developers/api/v1/flights/search \
 ```python
 from letsfg import LetsFG
 
-bt = LetsFG(api_key="trav_...")  # or LetsFG() to read LETSFG_API_KEY
+bt = LetsFG(api_key="letsfg_...")  # or LetsFG() to read LETSFG_API_KEY
 creds = LetsFG.register("my-agent", "agent@example.com")  # register inline
 ```
 

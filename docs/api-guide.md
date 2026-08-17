@@ -124,7 +124,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
     -d '{"agent_name": "my-agent", "email": "you@example.com", "owner_name": "My Team"}'
 
 curl -X POST https://letsfg.co/developers/api/v1/flights/search \
-    -H "X-API-Key: trav_your_api_key" \
+    -H "X-API-Key: letsfg_your_api_key" \
     -H "Content-Type: application/json" \
     -d '{"origin": "LHR", "destination": "JFK", "date_from": "2026-07-15", "adults": 1, "currency": "USD"}'
 ```

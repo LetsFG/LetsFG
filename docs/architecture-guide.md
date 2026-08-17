@@ -284,7 +284,7 @@ import asyncio
 from letsfg import LetsFG
 
 async def handle_multiple_users(requests):
-    bt = LetsFG(api_key="trav_...")
+    bt = LetsFG(api_key="letsfg_...")
     tasks = [
         asyncio.to_thread(bt.search, r["origin"], r["dest"], r["date"])
         for r in requests

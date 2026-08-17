@@ -23,7 +23,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(title="LetsFG Proxy")
-LETSFG_API_KEY = "trav_your_api_key"
+LETSFG_API_KEY = "letsfg_your_api_key"
 LETSFG_BASE = "https://letsfg.co/developers/api/v1"
 
 
@@ -231,7 +231,7 @@ Store your API key securely:
 
 ```bash
 # .env
-LETSFG_API_KEY=trav_your_api_key
+LETSFG_API_KEY=letsfg_your_api_key
 ```
 
 Never hardcode API keys in source code or commit them to version control.

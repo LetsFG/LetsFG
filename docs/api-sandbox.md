@@ -21,8 +21,23 @@ schema, same response schema — but returns realistic fake data instantly.
 https://letsfg.co/developers/api/v1/sandbox/
 ```
 
-Add `sandbox/` between `v1/` and the endpoint name. Your API key and all headers
-stay the same.
+Add `sandbox/` between `v1/` and the endpoint name.
+
+> ### The sandbox does not need a key — and there is only ever one key
+>
+> The sandbox is open: you can call it with **no API key at all**, so you can
+> try LetsFG before adding a card. If you *do* send a key it must be a real,
+> current one — an unknown key is rejected with exactly the 401 production
+> returns, so a sandbox call can no longer pass while the same key fails live.
+>
+> There is **no separate sandbox key and no separate production key**, and
+> nothing to activate to "switch on" production. It is one key, from
+> <https://letsfg.co/developers>, for both. If production returns
+> `401 This API key is not valid for any LetsFG account`, the key your code is
+> sending is not the key on your account — almost always because it was
+> rotated after your code was deployed. Rotating (and email recovery) issues a
+> new key and kills the old one immediately. Copy the current value from the
+> portal into your app.
 
 | Real endpoint | Sandbox equivalent |
 |---|---|
@@ -36,7 +51,7 @@ stay the same.
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/sandbox/flights/search \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "origin": "JFK",
@@ -87,7 +102,7 @@ going live.
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/sandbox/flights/multi-search \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "origin": "JFK",
@@ -105,5 +120,15 @@ confirms no credits were used.
 1. Build and test your full integration against the sandbox — iterate freely, no cost.
 2. Verify that your code correctly reads `offers`, `passenger_ids`, and `airlines_summary`.
 3. Confirm your `departure_time_from`/`to` filter logic returns the expected subset.
-4. Switch to production endpoints (drop `sandbox/` from the path) when ready.
-5. Credits are only consumed by production searches.
+4. Check your credentials against a **free production** endpoint before you switch —
+   `GET /v1/agents/me` costs nothing and either returns your account or tells you
+   the key is wrong. This is the one thing the sandbox cannot confirm for you if
+   you were calling it anonymously.
+5. Switch to production endpoints (drop `sandbox/` from the path) when ready.
+6. Credits are only consumed by production searches.
+
+```bash
+# Step 4 — free, no credits, no card needed
+curl https://letsfg.co/developers/api/v1/agents/me \
+  -H "X-API-Key: letsfg_your_api_key"
+```

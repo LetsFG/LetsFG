@@ -30,7 +30,7 @@ Typical response fields:
 ```json
 {
   "agent_id": "ag_123",
-  "api_key": "trav_abc123",
+  "api_key": "letsfg_abc123",
   "stripe_customer_id": "cus_123",
   "payment_ready": false,
   "tier": "developer"
@@ -43,7 +43,7 @@ The public proxy accepts only Stripe-generated `payment_method_id` or `token` va
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/setup-payment \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"payment_method_id": "pm_123"}'
 ```
@@ -52,7 +52,7 @@ You can also send a Stripe token:
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/setup-payment \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"token": "tok_visa"}'
 ```
@@ -63,7 +63,7 @@ Search stays blocked until balance exists. The current public minimum is `500` c
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/top-up \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"amount_cents": 2500, "auto_refill_enabled": true, "auto_refill_amount_cents": 2500}'
 ```
@@ -72,7 +72,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/top-up \
 
 ```bash
 curl https://letsfg.co/developers/api/v1/agents/me \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 Check these fields before you search:
@@ -99,7 +99,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/hosted-checkout \
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/hosted-checkout/complete \
   -H "Content-Type: application/json" \
-  -d '{"session_id": "cs_test_123", "api_key": "trav_your_api_key"}'
+  -d '{"session_id": "cs_test_123", "api_key": "letsfg_your_api_key"}'
 ```
 
 If you prefer the human UI, you can also go straight to [letsfg.co/en/developers](https://letsfg.co/en/developers).
@@ -110,7 +110,7 @@ If you prefer the human UI, you can also go straight to [letsfg.co/en/developers
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/billing-portal \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"return_url": "https://example.com/account"}'
 ```
@@ -119,7 +119,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/billing-portal \
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/billing-settings \
-  -H "X-API-Key: trav_your_api_key" \
+  -H "X-API-Key: letsfg_your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"auto_refill_enabled": true, "auto_refill_amount_cents": 2500}'
 ```
@@ -128,7 +128,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/billing-settings \
 
 ```bash
 curl -X POST https://letsfg.co/developers/api/v1/agents/rotate-key \
-  -H "X-API-Key: trav_your_api_key"
+  -H "X-API-Key: letsfg_your_api_key"
 ```
 
 Update every client after key rotation. Old keys should be treated as revoked immediately.

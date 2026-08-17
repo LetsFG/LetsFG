@@ -50,7 +50,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
     "letsfg": {
       "url": "https://letsfg.co/developers/api/mcp",
       "headers": {
-        "X-API-Key": "trav_your_key_here"
+        "X-API-Key": "letsfg_your_key_here"
       }
     }
   }

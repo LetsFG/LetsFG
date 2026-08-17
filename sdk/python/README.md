@@ -236,7 +236,7 @@ Developer API path adds `unlock()` before `book()`, and its own error modes:
 ```python
 from letsfg import LetsFG, LetsFGError, PaymentRequiredError, OfferExpiredError
 
-bt = LetsFG(api_key="trav_...")
+bt = LetsFG(api_key="letsfg_...")
 try:
     unlocked = bt.unlock(offer_id)
     booking = bt.book(offer_id=unlocked.offer_id, passengers=[...], contact_email="...")

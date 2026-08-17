@@ -15,7 +15,7 @@ Programmatic search (free, requires Bearer token):
 
 Full API (search + unlock + book, requires API key):
     from letsfg import LetsFG
-    bt = LetsFG(api_key="trav_...")
+    bt = LetsFG(api_key="letsfg_...")
     flights = bt.search("GDN", "BER", "2026-03-03")
     bt.unlock(flights.offers[0].id)
     bt.book(flights.offers[0].id, passenger={...})
