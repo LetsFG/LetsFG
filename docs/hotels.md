@@ -3,10 +3,10 @@
 Hotels are live. Your agent can search real bookable inventory, book a room, and
 hand the guest a pay link — with the same Developer API key it uses for flights.
 
-!!! warning "Hotels need an X-API-Key, not the PFS Bearer token"
-    The Bearer token used for programmatic flight search is rejected by every
-    hotel endpoint. If you only hold a Bearer token you cannot book a hotel yet.
-    This asymmetry is being closed; today it is simply how it works.
+!!! note "One credential covers flights and hotels"
+    The same token you use for programmatic flight search reaches every hotel
+    endpoint too — a Developer API key also works. Hotels do require a card on
+    file for search as well as booking, which `letsfg auth` already provides.
 
 ## How you pay
 

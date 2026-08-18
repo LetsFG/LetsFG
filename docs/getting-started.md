@@ -23,8 +23,8 @@
 | Public Developer API | Managed cloud search, products, teams, no per-booking fee | Register, attach Stripe, top up balance | Prepaid credits | Direct airline URLs, no fee |
 | Hotels | Booking a room, not a flight | Developer API key + card on file | Free search, card required | 5% at booking, balance via pay link |
 
-**Hotels are the one exception to the warning above.** They authenticate on a Developer API key and
-reject the PFS Bearer token, so an agent that only ran `letsfg auth` cannot reach them yet. See
+**Hotels work on the same credential.** They accept either the PFS token from `letsfg auth` or a
+Developer API key, and need a card on file — which `letsfg auth` already puts there. See
 [Hotels](hotels.md).
 
 ## Option A: Free search with Bearer token

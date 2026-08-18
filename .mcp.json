@@ -1,11 +1,14 @@
 {
   "letsfg": {
     "command": "npx",
-    "args": ["-y", "letsfg-mcp"],
+    "args": [
+      "-y",
+      "letsfg-mcp"
+    ],
     "env": {
-      "LETSFG_API_KEY": "${LETSFG_API_KEY}"
+      "LETSFG_BEARER_TOKEN": "${LETSFG_BEARER_TOKEN}"
     },
-    "description": "Flight and hotel search & booking for AI agents. Server-side engine covers hundreds of airlines with per-flight reliability history, plus real bookable hotel rates with free cancellation and pay-later terms. Hotel booking charges a 5% non-refundable reservation fee; the balance is paid to the supplier by balance_due_by. Set LETSFG_API_KEY to reach both flights and hotels, or LETSFG_BEARER_TOKEN (from `letsfg auth`) for free flight-only access — set one, not both.",
+    "description": "Flight and hotel search & booking for AI agents. Server-side engine covers hundreds of airlines with per-flight reliability history, plus real bookable hotel rates with free cancellation and pay-later terms. ONE credential covers both: the free token from `letsfg auth` (zero-amount card setup, nothing charged) or a Developer API key. Hotels need a card on file — which `letsfg auth` already puts there — and booking charges a 5% non-refundable reservation fee, balance paid to the supplier by balance_due_by.",
     "homepage": "https://letsfg.co",
     "repository": "https://github.com/LetsFG/LetsFG"
   }

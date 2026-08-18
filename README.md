@@ -300,7 +300,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | **CLI / Python SDK / npm** | ✅ Free (`letsfg auth`, zero-amount card setup) | No LetsFG fee either way | 5% non-refundable reservation fee | Our servers |
 | **MCP Server** | ✅ Free (`letsfg auth`) | No LetsFG fee either way | 5% reservation fee | Our servers |
 | **PFS** (raw API via letsfg.co) | ✅ Free (Bearer token, zero-amount setup or $0.01 via MPP) | No LetsFG fee either way | 5% reservation fee | Our servers |
-| **Developer API** | Prepaid credits | Included (direct airline URLs) | — (flights only) | Our servers |
+| **Developer API** | Prepaid credits | Included (direct airline URLs) | 5% reservation fee | Our servers |
 
 **CLI / SDK / MCP / PFS = free search, no LetsFG fee on flight booking.** Run `letsfg auth` once (a zero-amount card setup — nothing is charged) and both searching and booking are free for 90 days. No credits, no unlock step. `letsfg book` / `POST /api/agent-book` returns either a confirmed order or a direct airline link — no LetsFG fee either way (you still pay the ticket price itself, plus Stripe's own processing cut, same as any card charge).
 

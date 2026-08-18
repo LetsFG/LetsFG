@@ -20,14 +20,14 @@
       "environmentVariables": [
         {
           "name": "LETSFG_BEARER_TOKEN",
-          "description": "Free PFS Bearer token from `letsfg auth` (zero-amount card setup, nothing charged, 90-day token). Covers flight search and booking. Hotel tools do not accept it — they need LETSFG_API_KEY.",
+          "description": "Free token from `letsfg auth` (zero-amount card setup, nothing charged, 90-day token). Reaches both flights and hotels — the same card authorises both products.",
           "isRequired": false,
           "format": "string",
           "isSecret": true
         },
         {
           "name": "LETSFG_API_KEY",
-          "description": "Developer API key (prepaid credits) from letsfg.co/developers. Required for all hotel tools, and for unlock_flight_offer, resolve_location and get_agent_profile.",
+          "description": "Developer API key (prepaid credits) from letsfg.co/developers. Also reaches both flights and hotels; required for the account and payment tools.",
           "isRequired": false,
           "format": "string",
           "isSecret": true

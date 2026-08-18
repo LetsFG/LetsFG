@@ -1,5 +1,5 @@
 {
-  "_comment": "Pick ONE auth mode. LETSFG_API_KEY alone reaches flights AND hotels. A Bearer token makes flight search free but cannot reach hotel tools — and if BOTH vars are set the Bearer token wins and every hotel tool returns 401.",
+  "_comment": "One credential reaches BOTH flights and hotels: the free token from `letsfg auth` (LETSFG_BEARER_TOKEN) or a Developer API key (LETSFG_API_KEY). Hotels additionally need a card on file, which `letsfg auth` already provides. If both vars are set the Bearer token is used.",
   "mcpServers": {
     "letsfg": {
       "command": "npx",
@@ -8,7 +8,7 @@
         "letsfg-mcp"
       ],
       "env": {
-        "LETSFG_API_KEY": "YOUR_API_KEY_HERE"
+        "LETSFG_BEARER_TOKEN": "YOUR_FREE_TOKEN_HERE (run `letsfg auth`) — or use LETSFG_API_KEY"
       }
     }
   }

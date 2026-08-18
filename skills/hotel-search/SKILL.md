@@ -109,7 +109,7 @@ MCP tools, in call order: `resolve_hotel_city` → `search_hotels` → `book_hot
 
 | Status | Meaning | What to do |
 |--------|---------|------------|
-| `401` | Bearer token used, or bad key | Hotels need a Developer API key |
+| `401` | Credential invalid or expired | Re-run `letsfg auth`, or check the API key |
 | `402` | No payment method on file | Attach a card; required for search too |
 | `409` | The chosen rate is gone | Search again and pick another |
 | `504` | Supplier did not answer in time | If booking, poll the job — do NOT re-book |

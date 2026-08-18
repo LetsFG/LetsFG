@@ -15,15 +15,15 @@ LetsFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP 
 
 ## Overview
 
-Every package below covers **flights and hotels**. Hotels need a Developer API key (the PFS Bearer token does not reach them) and a card on file for search as well as booking — see [Hotels](hotels.md).
+Every package below covers **flights and hotels**, on **one credential**: the free token from `letsfg auth`, or a Developer API key. Hotels additionally need a card on file for search as well as booking — which `letsfg auth` already provides — see [Hotels](hotels.md).
 
 | Package | Install | What it is | API Key Required? |
 |---------|---------|------------|-------------------|
 | **Python SDK + CLI** | `pip install letsfg` | SDK + CLI, server-side search via letsfg.co | Free Bearer token (`letsfg auth`) or Developer API key |
 | **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Free Bearer token or Developer API key |
 | **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | Free Bearer token or Developer API key |
-| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed | Developer API key |
-| **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install | Developer API key (flights + hotels) or Bearer token (flights only) |
+| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed | Free token or Developer API key |
+| **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install | Free token or Developer API key |
 
 ## Python SDK
 
@@ -87,7 +87,7 @@ npx letsfg-mcp
 
 The MCP server connects to the letsfg.co server-side engine. Add `LETSFG_BEARER_TOKEN` (from `letsfg auth`) for free flight search, or `LETSFG_API_KEY` for the Developer API and all hotel tools.
 
-> **Set one, not both.** If both are present the Bearer token takes precedence, and every hotel tool then fails with 401.
+> Either credential reaches **both** flights and hotels. If both are set, the Bearer token is used.
 
 ### Configuration
 
@@ -111,8 +111,8 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LETSFG_BEARER_TOKEN` | (none) | Bearer token from `letsfg auth` (free PFS flight search and booking). **Flights only** — hotel tools reject it with 401 |
-| `LETSFG_API_KEY` | (none) | Developer API key. The only mode that reaches **both flights and hotels**; also required for unlock, account and payment tools |
+| `LETSFG_BEARER_TOKEN` | (none) | Free token from `letsfg auth` (zero-amount card setup). Reaches **flights and hotels** |
+| `LETSFG_API_KEY` | (none) | Developer API key (prepaid credits). Also reaches both; required for the account and payment tools |
 | `LETSFG_BASE_URL` | `https://letsfg.co/developers` | Override the website-owned public API base |
 
 ### Remote MCP (Streamable HTTP)
@@ -123,7 +123,7 @@ If your client supports remote MCP servers, connect directly without installing 
 https://letsfg.co/developers/api/mcp
 ```
 
-Remote MCP follows the same paid public API lifecycle as direct REST usage: register, attach Stripe, top up prepaid balance, then search.
+Remote MCP accepts the same free token as the local server — run `letsfg auth` once and point your client at the URL. A Developer API key also works.
 
 For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 
@@ -138,7 +138,7 @@ For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 | `unlock_flight_offer` | Confirm price and reserve. **[Developer API only]** — not part of the agent flow; on a Bearer token call `book_flight` directly | API key |
 | `book_flight` | Create the airline booking | Bearer or API key |
 
-**Hotels** — every hotel tool needs `LETSFG_API_KEY`; a Bearer token is rejected with 401.
+**Hotels** — need a card on file (a search opens a real supplier session). Either credential works.
 
 | Tool | Description | Auth |
 |------|-------------|------|
@@ -164,7 +164,7 @@ For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 | Path | Search mode | Auth | Best for |
 |------|-------------|------|----------|
 | `npx letsfg-mcp` | Server-side at letsfg.co | Bearer token (`letsfg auth`) or Developer API key | Free search in Claude, Cursor, and Windsurf |
-| `https://letsfg.co/developers/api/mcp` | Server-side at letsfg.co | Developer API key required | Account-managed search through the paid public API |
+| `https://letsfg.co/developers/api/mcp` | Server-side at letsfg.co | Free token or Developer API key | No install — flights and hotels over Streamable HTTP |
 
 ## API Endpoints
 

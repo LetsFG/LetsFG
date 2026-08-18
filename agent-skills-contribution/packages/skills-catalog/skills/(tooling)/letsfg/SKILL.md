@@ -5,9 +5,8 @@ description: >-
   prices from airlines and the major booking sites, with per-flight reliability history. Use when user asks to
   "find flights", "search flights", "book a flight", "compare airline prices",
   "find cheap flights", "fly from X to Y", or any flight-related travel query.
-  Hotels need a Developer API key (the flight Bearer token does not reach them) and a card
-  on file for search as well as booking. Do NOT use for car rentals or non-flight,
-  non-hotel travel bookings.
+  Hotels need a card on file for search as well as booking; either credential
+  reaches them. Do NOT use for car rentals or non-flight, non-hotel travel bookings.
 license: MIT
 metadata:
   author: LetsFG - github.com/LetsFG
