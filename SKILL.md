@@ -1,6 +1,6 @@
 ---
 name: letsfg
-description: "LetsFG — Agent-native flight and hotel search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates — free cancellation, pay-later, 5% non-refundable reservation fee. letsfg.co"
+description: "LetsFG — Agent-native flight and hotel search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates — free cancellation and pay-later: hold the room with a small upfront charge, then settle the balance by link up to the hotel's own deadline. letsfg.co"
 ---
 
 # SKILL.md — LetsFG Capabilities
