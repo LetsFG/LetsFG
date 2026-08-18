@@ -117,7 +117,7 @@ Cascade can chain LetsFG tools in multi-step flows:
 Cascade will:
 1. `search_flights("LON", "IST", "2026-04-10", return: "2026-04-15")`
 2. `resolve_hotel_city("Istanbul")` then `search_hotels(city_id, city_name, "2026-04-10", "2026-04-15")`
-   — hotels need a Developer API key (not the PFS Bearer token) and a card on file
+   — hotels need a card on file; either credential reaches them
 3. Present both results together
 
 ## Troubleshooting

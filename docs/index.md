@@ -104,7 +104,7 @@ The canonical public surfaces are:
 
 ## Hotels
 
-Hotels are live: real bookable inventory, free-cancellation and pay-later rates only, 5% charged at booking as a non-refundable reservation fee and the balance paid straight to the supplier through a pay link. They need a Developer API key and a card on file for every call, search included. Start at [Hotels](hotels.md).
+Hotels are live: real bookable inventory, free-cancellation and pay-later rates only, 5% charged at booking as a non-refundable reservation fee and the balance paid straight to the supplier through a pay link. They need a card on file for every call, search included — and either credential reaches them: the free token from `letsfg auth` or a Developer API key. Start at [Hotels](hotels.md).
 
 ## Start from the right page
 

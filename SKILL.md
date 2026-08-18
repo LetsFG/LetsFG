@@ -62,7 +62,7 @@ Resolve a place name to the supplier city id that hotel search needs.
 Search real, bookable hotel inventory.
 - **Cost:** FREE, but a payment method on file is REQUIRED — for search, not just booking. A hotel
   search opens a real session at the supplier, so it returns HTTP 402 without a card.
-- **Auth:** Developer API key (`X-API-Key`) only. The PFS Bearer token used for flights is rejected.
+- **Auth:** Either a Developer API key (`X-API-Key`) or the free PFS token from `letsfg auth`. The same card authorises flights and hotels.
 - **Endpoint:** `POST /api/v1/hotels/search`
 - **Input:** city_id, city_name, check_in, check_out, adults, children, child_ages, nationality, limit
 - **Output:** hotels[] each with offers[] carrying `price` (what the guest pays),

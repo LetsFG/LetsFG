@@ -150,7 +150,7 @@ export LETSFG_API_KEY=trav_your_api_key
 | `unlock_flight_offer` | Confirm live price and reserve for 30 min. **[Developer API only]** — on a Bearer token call `book_flight` directly |
 | `book_flight` | Book with passenger details |
 
-**Hotels** — every hotel tool needs `LETSFG_API_KEY`; a Bearer token is rejected with 401.
+**Hotels** — need a card on file (a search opens a real supplier session). Either credential works.
 
 | Tool | Description |
 |------|-------------|

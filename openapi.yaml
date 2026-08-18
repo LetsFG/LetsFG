@@ -7,7 +7,7 @@ info:
     plus real bookable hotel inventory — built for AI agents (OpenClaw, Perplexity Computer,
     Claude, Cursor, Windsurf) and developers.
 
-    Hotels authenticate on a Developer API key (X-API-Key) and reject the PFS Bearer token.
+    Hotels accept either a Developer API key (X-API-Key) or the free PFS token — the same card authorises both.
     They require a card on file for every call, search included, and booking charges a 5%
     non-refundable reservation fee with the balance paid directly to the supplier.
 
