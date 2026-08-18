@@ -5,7 +5,7 @@
     "env": {
       "LETSFG_API_KEY": "${LETSFG_API_KEY}"
     },
-    "description": "Flight search & booking for AI agents. Server-side engine covers hundreds of airlines. Zero price bias, raw airline prices. Free search with letsfg auth (payment-token Bearer auth, nothing charged) or prepaid Developer API.",
+    "description": "Flight and hotel search & booking for AI agents. Server-side engine covers hundreds of airlines with per-flight reliability history, plus real bookable hotel rates with free cancellation and pay-later terms. Hotel booking charges a 5% non-refundable reservation fee; the balance is paid to the supplier by balance_due_by. Set LETSFG_API_KEY to reach both flights and hotels, or LETSFG_BEARER_TOKEN (from `letsfg auth`) for free flight-only access — set one, not both.",
     "homepage": "https://letsfg.co",
     "repository": "https://github.com/LetsFG/LetsFG"
   }

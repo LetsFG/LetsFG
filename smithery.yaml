@@ -9,10 +9,10 @@ startCommand:
     properties:
       LETSFG_API_KEY:
         type: string
-        description: "LetsFG Developer API key (prepaid credits). Get one free at letsfg.co/developers. REQUIRED for all hotel tools — the Bearer token below does not reach them. For flights you can use LETSFG_BEARER_TOKEN instead."
+        description: "LetsFG Developer API key (prepaid credits). Get one at letsfg.co/developers. This is the only mode that reaches BOTH flights and hotels — all hotel tools require it. Hotel search and booking also need a card on file, and booking charges a 5% non-refundable reservation fee."
       LETSFG_BEARER_TOKEN:
         type: string
-        description: "LetsFG PFS Bearer token for free FLIGHT search and booking. Get one via 'letsfg auth' (zero-amount card setup, nothing charged, 90-day token). Not needed if LETSFG_API_KEY is set. Does NOT work for hotels — those need LETSFG_API_KEY."
+        description: "LetsFG PFS Bearer token for FREE flight search and booking. Get one via 'letsfg auth' (zero-amount card setup, nothing charged, 90-day token). Flights only — hotel tools reject it with 401. Set this OR LETSFG_API_KEY, never both: the Bearer token takes precedence and would break every hotel tool."
     required: []
   commandFunction: |-
     (config) => ({

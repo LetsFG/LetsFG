@@ -1,6 +1,6 @@
 ---
 name: letsfg
-description: "LetsFG — Agent-native flight search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo). Per-flight reliability history and instant booking. letsfg.co"
+description: "LetsFG — Agent-native flight and hotel search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates — free cancellation, pay-later, 5% non-refundable reservation fee. letsfg.co"
 ---
 
 # SKILL.md — LetsFG Capabilities
@@ -115,7 +115,7 @@ Book an offer.
   - **Python:** `bt.book(offer_id=..., passengers=[{...}], contact_email=..., search_id=...)`
 - **Developer API:** Requires `unlock` first. Creates a real airline reservation with PNR code, and
   charges ticket price via Stripe before booking.
-  - **Cost:** Ticket price + Stripe processing fee (2.9% + 30¢). Zero markup — LetsFG does not add any margin.
+  - **Cost:** Ticket price + Stripe processing fee (2.9% + 30¢), plus the `unlock` fee charged at the prerequisite step (1% of the ticket, min $3). LetsFG adds no margin to the fare itself.
   - **Prerequisite:** Payment method must be attached via `setup_payment` first.
   - **Input:** offer_id, passengers (id, given_name, family_name, born_on, gender, title, email, phone_number), contact_email
   - **Output:** booking_reference (airline PNR), status, flight_price, currency

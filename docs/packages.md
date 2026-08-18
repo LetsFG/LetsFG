@@ -23,7 +23,7 @@ Every package below covers **flights and hotels**. Hotels need a Developer API k
 | **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Free Bearer token or Developer API key |
 | **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | Free Bearer token or Developer API key |
 | **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed | Developer API key |
-| **Smithery** | [smithery.ai/server/letsfg-mcp](https://smithery.ai/server/letsfg-mcp) | One-click MCP install | Developer API key |
+| **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install | Developer API key (flights + hotels) or Bearer token (flights only) |
 
 ## Python SDK
 
@@ -85,7 +85,9 @@ Model Context Protocol server for AI assistants like Claude Desktop, Cursor, and
 npx letsfg-mcp
 ```
 
-The MCP server connects to the letsfg.co server-side engine. Add `LETSFG_BEARER_TOKEN` (from `letsfg auth`) for free search, or `LETSFG_API_KEY` for the Developer API.
+The MCP server connects to the letsfg.co server-side engine. Add `LETSFG_BEARER_TOKEN` (from `letsfg auth`) for free flight search, or `LETSFG_API_KEY` for the Developer API and all hotel tools.
+
+> **Set one, not both.** If both are present the Bearer token takes precedence, and every hotel tool then fails with 401.
 
 ### Configuration
 
@@ -109,8 +111,8 @@ Add to your MCP config (Claude Desktop, Cursor, etc.):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LETSFG_BEARER_TOKEN` | (none) | Bearer token from `letsfg auth` (free PFS search) |
-| `LETSFG_API_KEY` | (none) | Developer API key for account, payment, unlock, and booking |
+| `LETSFG_BEARER_TOKEN` | (none) | Bearer token from `letsfg auth` (free PFS flight search and booking). **Flights only** — hotel tools reject it with 401 |
+| `LETSFG_API_KEY` | (none) | Developer API key. The only mode that reaches **both flights and hotels**; also required for unlock, account and payment tools |
 | `LETSFG_BASE_URL` | `https://letsfg.co/developers` | Override the website-owned public API base |
 
 ### Remote MCP (Streamable HTTP)
@@ -127,14 +129,33 @@ For the exact onboarding flow, use [Onboarding and Billing](api-onboarding.md).
 
 ### Available Tools
 
-| Tool | Description |
-|------|-------------|
-| `search_flights` | Search via the letsfg.co server-side engine |
-| `get_agent_profile` | View account info and usage stats |
-| `resolve_location` | Convert city names to IATA codes |
-| `setup_payment` | Attach a Stripe payment method |
-| `unlock_flight_offer` | Confirm price and reserve (payment required) |
-| `book_flight` | Create airline booking after unlock |
+**Flights**
+
+| Tool | Description | Auth |
+|------|-------------|------|
+| `search_flights` | Search via the letsfg.co server-side engine | Bearer or API key |
+| `resolve_location` | Convert city names to IATA codes | API key |
+| `unlock_flight_offer` | Confirm price and reserve. **[Developer API only]** — not part of the agent flow; on a Bearer token call `book_flight` directly | API key |
+| `book_flight` | Create the airline booking | Bearer or API key |
+
+**Hotels** — every hotel tool needs `LETSFG_API_KEY`; a Bearer token is rejected with 401.
+
+| Tool | Description | Auth |
+|------|-------------|------|
+| `resolve_hotel_city` | Resolve a place name to the supplier city id `search_hotels` needs. Call this first | API key |
+| `search_hotels` | Search real, bookable, free-cancellation pay-later rates. Needs a card on file — a search opens a real supplier session. Takes up to a few minutes | API key + card |
+| `book_hotel` | Book one rate. Charges **5% of the price as a non-refundable reservation fee**; the balance is paid to the supplier via the returned pay link by `balance_due_by`. Returns a `booking_job_id`, not a booking | API key + card |
+| `get_hotel_booking` | Poll the booking job until `succeeded` or `failed`. **Never retry `book_hotel` blindly** — it books the room twice | API key |
+| `cancel_hotel_booking` | Release a reservation | API key |
+
+**Account and setup**
+
+| Tool | Description | Auth |
+|------|-------------|------|
+| `authenticate` | Zero-amount Stripe card setup (nothing charged) → returns a 90-day Bearer token | none |
+| `setup_payment` | Attach a Stripe payment method | API key |
+| `get_agent_profile` | View account info and usage stats | API key |
+| `load_resources` | Load the in-server usage guide | none |
 
 [npm page →](https://www.npmjs.com/package/letsfg-mcp)
 
