@@ -207,7 +207,7 @@ for (const offer of result.offers) {
 
 ### Searching Multiple Sources in Parallel
 
-LetsFG's backend already queries all GDS/NDC sources in parallel (Amadeus, Duffel, Sabre, Kiwi, and 200 airline connectors). A single `search()` call covers all sources. However, you can parallelize **multiple searches** at the application level:
+LetsFG's backend already queries all GDS/NDC sources in parallel (Amadeus, Duffel, Sabre, Kiwi, and LetsFG's own airline connectors). A single `search()` call covers all sources. However, you can parallelize **multiple searches** at the application level:
 
 ```typescript
 import LetsFG from "letsfg";

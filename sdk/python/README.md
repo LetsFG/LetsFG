@@ -369,7 +369,7 @@ letsfg locations "Berlin"
 | `locations` | Resolve city name to IATA codes | FREE |
 | `book` | Book an offer from your search (`--search-id` required) | Ticket price only, no LetsFG fee |
 | `me` | Show agent profile and usage stats | FREE |
-| `unlock` | **[Developer API only]** Unlock offer (confirms price, reveals booking URL). Requires `--api-key` | 1% of ticket, min $3 |
+| `unlock` | **[Developer API only]** Unlock offer (confirms price, reveals booking URL). Requires `--api-key`. Legacy | — |
 | `register` | **[Developer API only]** Register new Developer API key | FREE |
 | `setup-payment` | **[Developer API only]** Attach payment card (required for unlock) | FREE |
 

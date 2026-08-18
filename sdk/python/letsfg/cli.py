@@ -572,7 +572,7 @@ def unlock(
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """[Developer API only] Unlock a flight offer — 1% of ticket price (min $3).
+    """[Developer API only] Unlock a flight offer (legacy).
 
     Not part of the agent flow: there is no unlock endpoint on a PFS Bearer token.
     Use `letsfg book` directly after `letsfg search`.

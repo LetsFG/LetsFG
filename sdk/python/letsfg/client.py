@@ -328,7 +328,7 @@ class LetsFG:
 
     Pricing:
       - Search: FREE (unlimited, requires Bearer token or API key)
-      - Unlock: 1% of ticket price (min $3) via Stripe or MPP crypto. Free with Developer API.
+      - Unlock: Developer API only, legacy. Not part of the agent flow.
       - Book: Ticket price via Stripe. Developer API only.
     """
 
@@ -583,9 +583,8 @@ class LetsFG:
         """
         Unlock a flight offer — confirms live price, reveals direct booking URL.
 
-        Cost: 1% of ticket price (min $3). Developer API only — there is no
-        unlock endpoint on a PFS Bearer token, so PFS callers book directly.
-        Free with Developer API.
+        Developer API only, legacy — there is no unlock endpoint on a PFS
+        Bearer token, so PFS callers book directly.
         Required before booking.
 
         Args:

@@ -92,7 +92,7 @@ Resolve city names to IATA airport/city codes.
 
 ### unlock_flight_offer
 Confirm live price with airline and reveal the direct booking URL. Reserves the offer for 30 minutes.
-- **Cost:** 1% of ticket price (min $3) — **Developer API only**. There is no unlock step on a PFS Bearer token: call `/api/agent-book` instead.
+- **Developer API only.** There is no unlock step on a PFS Bearer token: call `/api/agent-book` instead. Legacy path — not part of the agent flow.
 - **Endpoint:** `POST /api/v1/bookings/unlock`
 - **Input:** offer_id from search results (only required parameter)
 - **Output:** confirmed_price, confirmed_currency, booking_url, offer_expires_at
@@ -218,7 +218,7 @@ Before your first unlock, attach a payment method via `POST /api/v1/agents/setup
 1. POST /api/v1/agents/register        → Get API key (once)
 2. POST /api/v1/agents/setup-payment   → Attach payment card (once)
 3. POST /api/v1/flights/search         → Search flights (FREE)
-4. POST /api/v1/bookings/unlock        → Unlock offer (1% fee, min $3) → returns booking_url
+4. POST /api/v1/bookings/unlock        → Unlock offer (legacy, Developer API only) → returns booking_url
 5. POST /api/v1/bookings/book          → Book flight (ticket price charged via Stripe)
 ```
 
@@ -334,7 +334,7 @@ The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 | `search_flights` | Search hundreds of airlines via server-side engine | FREE |
 | `resolve_location` | City name → IATA code | FREE |
 | `book_flight` | Book an offer. PFS: direct, no unlock step. Developer API: requires `unlock_flight_offer` first | Ticket price only, no LetsFG fee (PFS) |
-| `unlock_flight_offer` | **[Developer API only]** Confirm price, reveal booking URL, reserve 30min | 1% of ticket (min $3) |
+| `unlock_flight_offer` | **[Developer API only]** Confirm price, reveal booking URL, reserve 30min. Legacy — not part of the agent flow | — |
 | `setup_payment` | **[Developer API only]** Attach payment card | FREE |
 | `get_agent_profile` | View usage stats | FREE |
 
@@ -442,7 +442,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 | Setup payment | **Free** |
 | View profile | **Free** |
 | Book flight (PFS, no unlock needed) | **The price shown on the offer** — no LetsFG fee |
-| Unlock offer (Developer API only) | **1% of ticket (min $3)** — Stripe card or MPP crypto |
+| Unlock offer (Developer API only) | Legacy path, not part of the agent flow — use `book_flight` directly |
 | Book flight (Developer API, after unlock) | **The price shown on the offer** |
 | Hotel booking | Room price only |
 | Hotel cancellation | Per cancellation policy |
@@ -457,5 +457,5 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 - E-tickets sent directly to passenger email
 - Search is always free and unlimited
 - PFS (Bearer token): book directly, no unlock step, no LetsFG fee on booking
-- Developer API: unlock reveals the direct booking URL for 1% of the ticket (min $3), then book
+- Developer API: unlock reveals the direct booking URL, then book (legacy — the agent flow books directly)
 - API designed for machines, not browsers

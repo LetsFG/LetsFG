@@ -241,7 +241,7 @@ const TOOLS = [
       'prepaid Developer API) and refuses to run on a Bearer token, because the PFS unlock endpoint does not ' +
       'exist — calling it that way used to 404.\n\n' +
       'If you authenticated with `letsfg auth`, go straight from search_flights to book_flight.\n\n' +
-      'Cost when used with a Developer API key: 1% of ticket price (min $3). Not idempotent.',
+      'Requires a Developer API key. Legacy path — not idempotent.',
     inputSchema: {
       type: 'object',
       required: ['offer_id'],
