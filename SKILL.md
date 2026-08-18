@@ -115,7 +115,7 @@ Book an offer.
   - **Python:** `bt.book(offer_id=..., passengers=[{...}], contact_email=..., search_id=...)`
 - **Developer API:** Requires `unlock` first. Creates a real airline reservation with PNR code, and
   charges ticket price via Stripe before booking.
-  - **Cost:** Ticket price + Stripe processing fee (2.9% + 30¢), plus the `unlock` fee charged at the prerequisite step (1% of the ticket, min $3). LetsFG adds no margin to the fare itself.
+  - **Cost:** Ticket price + Stripe processing fee (2.9% + 30¢).
   - **Prerequisite:** Payment method must be attached via `setup_payment` first.
   - **Input:** offer_id, passengers (id, given_name, family_name, born_on, gender, title, email, phone_number), contact_email
   - **Output:** booking_reference (airline PNR), status, flight_price, currency
