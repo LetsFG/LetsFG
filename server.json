@@ -1,47 +1,44 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.LetsFG/letsfg",
-  "title": "LetsFG",
-  "description": "Flights and hotels for AI agents. Every airline, OTA and booking site searched at once with per-flight reliability history, plus bookable hotel rates with free cancellation and pay-later terms.",
+  "title": "LetsFG — Flights & Hotels",
+  "description": "Search and book flights and hotels: hundreds of airlines, plus pay-later hotel rates.",
+  "websiteUrl": "https://letsfg.co",
   "repository": {
     "url": "https://github.com/LetsFG/LetsFG",
     "source": "github"
   },
-  "version": "2026.4.9",
+  "version": "2026.5.68",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "letsfg-mcp",
-      "version": "2026.4.9",
+      "version": "2026.5.68",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Your LetsFG API key (optional — only needed for unlock/book. Search runs locally, no key required).",
+          "name": "LETSFG_BEARER_TOKEN",
+          "description": "Free PFS Bearer token from `letsfg auth` (zero-amount card setup, nothing charged, 90-day token). Covers flight search and booking. Hotel tools do not accept it — they need LETSFG_API_KEY.",
           "isRequired": false,
           "format": "string",
-          "isSecret": true,
-          "name": "LETSFG_API_KEY"
+          "isSecret": true
+        },
+        {
+          "name": "LETSFG_API_KEY",
+          "description": "Developer API key (prepaid credits) from letsfg.co/developers. Required for all hotel tools, and for unlock_flight_offer, resolve_location and get_agent_profile.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
         }
       ]
-    },
+    }
+  ],
+  "remotes": [
     {
-      "registryType": "pypi",
-      "identifier": "letsfg",
-      "version": "2026.4.9",
-      "transport": {
-        "type": "stdio"
-      },
-      "environmentVariables": [
-        {
-          "description": "Your LetsFG API key (optional — only needed for unlock/book. Search runs locally, no key required).",
-          "isRequired": false,
-          "format": "string",
-          "isSecret": true,
-          "name": "LETSFG_API_KEY"
-        }
-      ]
+      "type": "streamable-http",
+      "url": "https://letsfg.co/developers/api/mcp"
     }
   ]
 }

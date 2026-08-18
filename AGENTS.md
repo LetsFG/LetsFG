@@ -169,7 +169,7 @@ which goes to that exact offer.
 
 **Developer API alternative (paid, unlock required first):** if you're on the
 prepaid Developer API instead of a PFS Bearer token, `book` requires a prior
-`unlock` (1% of ticket price, min $3) which confirms the live price and reveals
+`unlock` (legacy) which confirms the live price and reveals
 the offer for booking:
 
 ```bash
@@ -327,7 +327,7 @@ which one is present.
 | `letsfg me` | View profile & usage | Free |
 | `letsfg register` | **[Paid Developer API only — most agents should not run this]** Creates a billing account | Free |
 | `letsfg setup-payment` | **[Paid Developer API only — use `letsfg auth` instead]** | Free |
-| `letsfg unlock <offer_id> --api-key <key>` | **[Developer API only]** Confirm price, required before `book` on that path | 1% of ticket, min $3 |
+| `letsfg unlock <offer_id> --api-key <key>` | **[Developer API only]** Confirm price, required before `book` on that path. Legacy | — |
 | `letsfg recover --email <email>` | Recover lost Developer API key via email | Free |
 
 ## Developer API Authentication (paid, only if you need it)
@@ -671,7 +671,7 @@ if candidates:
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
 | Auth | FREE on the card lanes | Zero-amount Stripe setup: no charge, no hold. The MPP lane costs $0.01 once as verification. |
 | Book | Price shown on the offer | `POST /api/agent-book`. Returns a confirmed order, or a direct booking link for that exact offer. No LetsFG fee. |
-| Unlock | 1% of ticket, min $3 | **Developer API only.** Not part of the agent flow — there is no unlock step on a PFS Bearer token. |
+| Unlock | — | **Developer API only, legacy.** Not part of the agent flow — there is no unlock step on a PFS Bearer token. |
 
 ## Rate Limits and Timeouts
 

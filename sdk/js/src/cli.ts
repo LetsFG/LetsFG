@@ -399,7 +399,7 @@ Developer API only (a SEPARATE paid product — most agents should not use these
 they create a billing account. Use auth above instead):
   register --name ... --email ... Create a paid Developer API account
   setup-payment                   Attach a card to that paid account
-  unlock <offer_id>               [Developer API only] Unlock offer — 1% of ticket (min $3)
+  unlock <offer_id>               [Developer API only] Unlock offer (legacy)
 
 Options:
   --json, -j          Output raw JSON

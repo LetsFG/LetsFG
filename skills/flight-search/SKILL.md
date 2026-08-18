@@ -162,7 +162,7 @@ Search returns structured offers:
 }
 ```
 
-### 3. Unlock — Developer API only (1% of ticket, min $3)
+### 3. Unlock — Developer API only (legacy, not part of the agent flow)
 
 Confirms live price with airline and reveals the direct booking URL. Locks offer for 30 minutes. Charged to your card (or paid via MPP crypto); free on the prepaid Developer API.
 
@@ -297,7 +297,7 @@ except PaymentRequiredError:
 |-----------|------|---------------|------------|
 | `search` | Free | Yes | Yes |
 | `resolve_location` | Free | Yes | Yes |
-| `unlock` | **[Developer API only]** 1% of ticket (min $3) | No — charges fee | No |
+| `unlock` | **[Developer API only]** Legacy — not part of the agent flow | No | No |
 | `book` | Ticket price | Only with `idempotency_key` | With key: yes |
 
 ## Reference Files

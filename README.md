@@ -511,7 +511,7 @@ for offer in result.offers[:5]:
 | `letsfg setup-payment` | **[Developer API only]** Attach a payment method (required for `unlock`) — not part of the agent flow |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
-| `letsfg unlock <offer_id>` | **[Developer API only]** Confirm live price & pay unlock fee (1% of ticket, min $3). Not part of the agent flow — use `letsfg book` |
+| `letsfg unlock <offer_id>` | **[Developer API only]** Confirm live price and reveal the booking URL. Legacy — not part of the agent flow, use `letsfg book` |
 | `letsfg book <offer_id>` | Book the flight |
 | `letsfg me` | View profile & usage stats |
 

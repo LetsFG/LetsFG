@@ -431,8 +431,8 @@ export class LetsFG {
 
   /**
    * Unlock a flight offer — confirms live price, reveals direct airline booking URL.
-   * Cost: 1% of ticket price, min $3. Developer API only — there is no unlock
-   * endpoint on a PFS Bearer token, so PFS callers use book() directly.
+   * Developer API only, legacy — there is no unlock endpoint on a PFS Bearer
+   * token, so PFS callers use book() directly.
    */
   async unlock(offerId: string): Promise<UnlockResult> {
     this.requireApiKey();

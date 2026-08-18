@@ -141,12 +141,33 @@ export LETSFG_API_KEY=trav_your_api_key
 
 ## Available MCP Tools
 
+**Flights**
+
 | Tool | Description |
 |------|-------------|
 | `search_flights` | Search hundreds of airlines for flights |
 | `resolve_location` | Convert city names to IATA codes |
-| `unlock_flight_offer` | Confirm live price and reserve for 30 min |
+| `unlock_flight_offer` | Confirm live price and reserve for 30 min. **[Developer API only]** — on a Bearer token call `book_flight` directly |
 | `book_flight` | Book with passenger details |
+
+**Hotels** — every hotel tool needs `LETSFG_API_KEY`; a Bearer token is rejected with 401.
+
+| Tool | Description |
+|------|-------------|
+| `resolve_hotel_city` | Resolve a place name to the supplier city id. Call this first |
+| `search_hotels` | Search bookable, free-cancellation pay-later rates. Needs a card on file — a search opens a real supplier session |
+| `book_hotel` | Book one rate. Charges 5% of the price as a non-refundable reservation fee; the balance goes to the supplier via the returned pay link. Returns a `booking_job_id` |
+| `get_hotel_booking` | Poll the job until `succeeded` or `failed`. Never retry `book_hotel` blindly — it books the room twice |
+| `cancel_hotel_booking` | Release a reservation |
+
+**Account and setup**
+
+| Tool | Description |
+|------|-------------|
+| `authenticate` | Zero-amount Stripe card setup (nothing charged) → 90-day Bearer token |
+| `setup_payment` | Attach a Stripe payment method |
+| `get_agent_profile` | Account info and usage stats |
+| `load_resources` | Load the in-server usage guide |
 
 ## Verification
 
