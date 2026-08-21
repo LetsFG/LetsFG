@@ -84,7 +84,6 @@ LetsFG gives your AI agent flight **and hotel** search and booking superpowers. 
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
 [![npm](https://img.shields.io/npm/v/letsfg-mcp?label=npm%20%28MCP%29)](https://www.npmjs.com/package/letsfg-mcp)
 [![Connector Health](https://letsfg.co/developers/api/v1/analytics/connectors/health/badge)](https://letsfg.co/developers/connectors/health)
-[![smithery badge](https://smithery.ai/badge/letsfg)](https://smithery.ai/servers/letsfg)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <br>
