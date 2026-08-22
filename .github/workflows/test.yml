@@ -29,8 +29,8 @@ jobs:
       matrix:
         package: [sdk/js, sdk/mcp]
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with:
           node-version: '20'
           cache: npm
@@ -51,11 +51,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-test-gate')
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           fetch-depth: 0
 
       - name: Check new source files have tests
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
 
@@ -63,7 +65,6 @@ jobs:
           WATCH_PATHS="sdk/js/src sdk/mcp/src"
 
           # Get files Added (A) or Renamed (R) in this PR vs base branch
-          BASE_REF="${{ github.base_ref }}"
           NEW_FILES=$(git diff --name-only --diff-filter=AR "origin/$BASE_REF"...HEAD | \
             grep -E '\.(ts|tsx)$' | \
             grep -v '\.test\.(ts|tsx)$' | \
@@ -118,8 +119,8 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
       - name: Install package + pytest

@@ -1,0 +1,13 @@
+# Actions are pinned to immutable commit SHAs (supply-chain hardening), which
+# means they no longer follow the upstream major tag. Dependabot is what keeps
+# them current: it bumps the SHA and rewrites the trailing "# vX.Y.Z" comment.
+# Without this file, a pinned action stays frozen forever — including through
+# upstream security fixes.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
