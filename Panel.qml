@@ -1341,7 +1341,7 @@ Panel {
           return
         }
       }
-      // Not deployed yet (see tools/website-stars-endpoint.ts): read the count
+      // Not deployed yet (/api/stars/social): read the count
       // off the badge letsfg.co already serves, and the faces from GitHub --
       // which is where the site's own homepage loads them from.
       fetchStarsBadge()

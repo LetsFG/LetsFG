@@ -359,6 +359,31 @@ function searchUrl() { return apiUrl("/api/search") }
 // is re-checked against the pinned origin -- an id that came off the network
 // is going into a URL a browser will open, so it is treated as untrusted.
 // Returns "" when anything is missing, and "" means "not clickable".
+// A booking URL that came off the network, constrained to the pinned origin.
+//
+// safeHttpsUrl validates the SHAPE of a URL -- scheme, hostname characters, no
+// userinfo, no control characters. That is not a host check, and it should not
+// be: it is the shared sanitiser for logos, tiles and avatars, each of which
+// applies its own allowlist afterwards. Booking links were the one consumer
+// that did not, and they are the one consumer whose result is handed to the
+// user's BROWSER.
+//
+// The gap is narrow but real: "https://checkout.stripe.com.evil.com/x" passes
+// a shape check and reads, to a person glancing at a URL bar, like Stripe. In
+// an unsandboxed shell plugin the response from letsfg.co is the last thing
+// that should be able to choose which page opens, even though trusting that
+// host is already implied by handing it the token.
+//
+// Today /api/search returns no booking_url at all -- not one in a 244-offer
+// response -- so this changes no behaviour; the panel builds the link itself
+// via offerUrl(). It is here so that the day the field does appear, a URL
+// pointing anywhere else is dropped rather than opened.
+function offerBookingUrl(raw) {
+  var url = safeHttpsUrl(raw)
+  if (url.length === 0) return ""
+  return url.indexOf(API_ORIGIN + "/") === 0 ? url : ""
+}
+
 function offerUrl(searchId, offer, opts) {
   var sid = String(searchId === null || searchId === undefined ? "" : searchId)
   if (!/^[A-Za-z0-9_\-]{1,120}$/.test(sid)) return ""
@@ -1024,7 +1049,7 @@ function summarizeOffers(result, maxOffers) {
       returnAirline: ret ? safeText(ret.airline, 48) : "",
       // "" here means "no link we are willing to open", never "open something
       // else" -- the panel disables the row instead of guessing.
-      bookingUrl: safeHttpsUrl(o.booking_url),
+      bookingUrl: offerBookingUrl(o.booking_url),
       // The API's own position. Sorting by price or duration must be able to
       // get back to the ranked order, and "best" IS that order.
       rank: out.length,
@@ -1846,7 +1871,7 @@ function decodeEntities(value) {
 // ---- Social proof ----------------------------------------------------------
 //
 // letsfg.co serves the star count as an SVG badge (/api/stars/badge) and, once
-// tools/website-stars-endpoint.ts is deployed, as JSON at /api/stars/social.
+// letsfg.co serves it, as JSON at /api/stars/social.
 // Prefer the JSON; fall back to reading the badge's own aria-label, which is
 // the human-facing string and therefore the stable part of that document.
 //
@@ -1863,7 +1888,7 @@ function parseStarsJson(text) {
 }
 
 // Stargazers for the avatar row. Accepts both shapes: the JSON route in
-// tools/website-stars-endpoint.ts ({avatars:[{login,avatar}]}) and GitHub's own
+// /api/stars/social ({avatars:[{login,avatar}]}) and GitHub's own
 // /stargazers ([{login,avatar_url}]), so the plugin works before that route is
 // deployed and improves the moment it is.
 //
@@ -1903,7 +1928,7 @@ function avatarInitials(login) {
   return (cleaned.slice(0, 2) || "lf").toUpperCase()
 }
 
-// Interim path for the faces, until tools/website-stars-endpoint.ts is
+// Interim path for the faces, until /api/stars/social is
 // deployed: letsfg.co's own homepage already server-renders the avatar URLs,
 // so they are lifted from that HTML rather than calling GitHub directly.
 //
@@ -2034,7 +2059,7 @@ var TIME_FILTERS = [
 // ties. Deliberately un-clever -- "cheapest+fastest with a stops tiebreak".
 //
 // Keep this in step with sortCards(). If that function changes, this must too;
-// tools/check-ranking-parity.ts compares them on a real payload.
+// A parity harness compares them on a real payload before each release.
 // The rest of letsfg.co's allCards pipeline, after deduplicateOffers:
 // drop non-positive prices, sort by price, then drop repeated ids keeping the
 // first (which is the cheapest, because the list is already price-sorted).
@@ -2231,7 +2256,7 @@ function module_exports_shim() {
     airlineLogoUrl: airlineLogoUrl, airlineLogoFallbackUrl: airlineLogoFallbackUrl,
     distinctCarriers: distinctCarriers, bagsFor: bagsFor,
     retryAfterFromBody: retryAfterFromBody,
-    safeText: safeText, safeHttpsUrl: safeHttpsUrl, redact: redact,
+    safeText: safeText, safeHttpsUrl: safeHttpsUrl, offerBookingUrl: offerBookingUrl, redact: redact,
     apiUrl: apiUrl, searchUrl: searchUrl, resultsUrl: resultsUrl, offerUrl: offerUrl,
     parseTokenConfig: parseTokenConfig, createSession: createSession,
     agentRequestUrl: agentRequestUrl, agentVerifyUrl: agentVerifyUrl,

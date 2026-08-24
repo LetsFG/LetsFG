@@ -22,10 +22,20 @@ import os
 import re
 import sys
 
-DEFAULT_WEBSITE = os.path.join(os.path.expanduser("~"), "Desktop", "LetsFG-private", "website")
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "airports.json")
 
-website = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_WEBSITE
+# The website source is not in this repository, so there is no default that
+# could be right: pass the path, or set LETSFG_WEBSITE_DIR. Guessing one would
+# only produce a confusing failure three functions later.
+website = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LETSFG_WEBSITE_DIR", "")
+if not website:
+    sys.exit(
+        "usage: build-airports.py <path-to-website-dir>
+"
+        "   or: LETSFG_WEBSITE_DIR=<path> build-airports.py
+"
+        "The directory must contain app/airports.ts."
+    )
 
 # ---- The curated list: 200-odd majors, with localised names we reduce to `en`.
 airports = {}

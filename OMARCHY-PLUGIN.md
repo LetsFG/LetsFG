@@ -222,8 +222,8 @@ Two files, both inside Quickshell's own per-shell state directory
   convenience.
 - **The homepage's social proof** — the star count and the stargazer faces.
   First `GET /api/stars/social` on letsfg.co, which carries both. Until
-  `tools/website-stars-endpoint.ts` is deployed, the count comes from the
-  existing `GET /api/stars/badge` and the avatar URLs are read out of
+  letsfg.co serves that route, the count comes from the existing
+  `GET /api/stars/badge` and the avatar URLs are read out of
   letsfg.co's own homepage HTML, which already server-renders them. All of
   that is letsfg.co, and a failure hides the line rather than inventing a
   number.
@@ -320,9 +320,13 @@ Two files, both inside Quickshell's own per-shell state directory
 **Handling of responses.** Every value that comes back over the network is
 treated as untrusted: length-capped, stripped of control characters and
 bidirectional overrides before it can reach a text label, and rendered as
-`Text.PlainText`. Booking URLs must pass an https allowlist — scheme, hostname
-shape, no userinfo, no control characters — and an offer whose URL fails is
-shown but not clickable. Response bodies are size-checked before parsing, since
+`Text.PlainText`. **Booking URLs must be on `letsfg.co`** — they pass an https
+shape check (scheme, hostname shape, no userinfo, no control characters) and
+are then pinned to that one origin, so a response cannot choose which page your
+browser opens; an offer whose URL fails is shown but not clickable. The shape
+check alone is not enough for that job and is not asked to do it:
+`https://checkout.stripe.com.evil.com/x` is a well-formed https URL that reads
+like Stripe at a glance, which is why the origin check exists on top of it. Response bodies are size-checked before parsing, since
 a large `JSON.parse` in the shell process is a frozen desktop, and a non-JSON
 body (an HTML error page) is an error message rather than an exception.
 
@@ -344,7 +348,7 @@ review.
 
 **Verified.** The logic in `Model.js` — input validation, URL allowlisting,
 token parsing and confinement, response parsing, the poll state machine, offer
-shaping, throttling — is covered by 422 assertions that run without Qt:
+shaping, throttling — is covered by 432 assertions that run without Qt:
 
 ```bash
 node test/model-test.js
@@ -412,7 +416,6 @@ Issues and fixes welcome.
 | `tools/build-airports.py` | Regenerates `assets/airports.json` from the website |
 | `tools/build-icons.py` | Rasterises the Lucide icons into tinted PNGs |
 | `tools/build-ranking.py` | Compiles letsfg.co's ranking engine into `assets/ranking.js` |
-| `tools/website-stars-endpoint.ts` | Drop-in JSON stars route for the website repo |
 
 ---
 

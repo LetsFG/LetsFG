@@ -25,7 +25,9 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "assets", "ranking.js")
-DEFAULT_SDK = os.path.join(os.path.expanduser("~"), "Desktop", "LetsFG", "sdk", "js")
+# The plugin ships from the same repository as the SDK it compiles, so the
+# default is a sibling directory rather than somebody's home folder.
+DEFAULT_SDK = os.path.normpath(os.path.join(HERE, "..", "sdk", "js"))
 
 # Dependency order: ranking imports from both of the others.
 MODULES = ["trip-purpose.ts", "offer-details.ts", "ranking.ts"]
