@@ -487,6 +487,48 @@ for offer in result.offers[:5]:
 
 ---
 
+## 🖥️ Omarchy desktop plugin
+
+Search hundreds of airlines from the [Omarchy](https://omarchy.org) bar. Type
+two airport codes and a date, press Search, click an offer to open it. The
+panel lives in this repo — `manifest.json`, `BarWidget.qml`, `Panel.qml` and
+`Model.js` at the root — and runs on the same engine as the CLI and the MCP
+server, ordered by the same open-source ranking algorithm in `sdk/js/src/ranking.ts`.
+
+<p align="center"><img src="preview.png" alt="LetsFG Flights panel in the Omarchy bar" width="820"></p>
+
+**Install**
+
+```bash
+omarchy plugin add https://github.com/LetsFG/LetsFG.git --enable
+```
+
+Then add **LetsFG Flights** to a bar section in the Omarchy bar settings, open
+it, and press **Add a card to continue** — a zero-amount Stripe setup, nothing
+is charged — or run `letsfg auth` in a terminal and the panel picks that token
+up. Search is then free and unlimited.
+
+**Remove**
+
+```bash
+omarchy plugin remove io.github.letsfg.flights
+```
+
+That removes the plugin only. Your token is yours — delete
+`~/.letsfg/config.json` yourself if you want it gone.
+
+**The plugin bundles no API keys.** It authenticates with a token you create
+and can revoke, it never asks for card details, and it never starts a search on
+its own — no background poll, no price watch, no refresh timer. Every host it
+can contact, every file it reads or writes, and the anonymous installation id
+it sends so we can tell whether anyone is using it, are documented in full in
+**[OMARCHY-PLUGIN.md](OMARCHY-PLUGIN.md)**.
+
+Requires the Omarchy Quattro shell. MIT, like the rest of this repo. Not
+affiliated with, sponsored by, or endorsed by Omarchy or 37signals.
+
+---
+
 ## Install
 
 | Package | Command | What you get |
@@ -497,6 +539,7 @@ for offer in result.offers[:5]:
 | **Remote MCP** | `https://letsfg.co/developers/api/mcp` | No install (API key required) |
 | **Agent Skill** | `npx skills add LetsFG/LetsFG` | Install flight search skill for any AI agent ([skills.sh](https://skills.sh)) |
 | **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install |
+| **Omarchy plugin** | `omarchy plugin add https://github.com/LetsFG/LetsFG.git --enable` | Flight search in the Omarchy bar ([details](OMARCHY-PLUGIN.md)) |
 
 ---
 

@@ -104,3 +104,12 @@ sdk/python/_*_pre_*.jpg
 # Private service directories (not part of public SDK)
 services_flight-search-worker/
 services_connector-worker/
+
+# ── Omarchy plugin ────────────────────────────────────────────────────────────
+# Runtime state written by the plugin and by its preview harness.
+# THIS HOLDS A REAL PFS BEARER TOKEN — never commit it.
+state/
+preview/home/
+*.token
+*-auth.json
+tools/_ranking_build/

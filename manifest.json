@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.letsfg.flights",
+  "name": "LetsFG Flights",
+  "version": "1.0.0",
+  "author": "LetsFG",
+  "license": "MIT",
+  "description": "Search hundreds of airlines from the bar. Uses your own LetsFG token; no keys are bundled.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "LetsFG Flights",
+    "description": "Flight search panel backed by letsfg.co",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
