@@ -98,6 +98,19 @@ describe('MCP server — dead-route guards', () => {
     assert.equal((code.match(/'User-Agent':/g) ?? []).length, 1,
       "the UA is set once, in letsfgHeaders() — a second literal is a call site the override can't reach");
   });
+
+  it('the default User-Agent still names letsfg-mcp', () => {
+    // #206 moved the default to the conventional `Mozilla/5.0 (compatible; …)`
+    // form because the bare token was challenged from datacenter IPs. The point
+    // of that form is that it stays IDENTIFIABLE — dropping our own name from it
+    // would turn a declared client into an anonymous one, and would silently
+    // break any allowlist keyed on the `letsfg-mcp/` substring.
+    const ua = /const USER_AGENT = `([^`]+)`/.exec(code)?.[1];
+    assert.ok(ua, 'USER_AGENT must be defined in one place');
+    assert.match(ua!, /^Mozilla\/5\.0 \(compatible; /, 'use the declared-bot UA form');
+    assert.ok(ua!.includes('letsfg-mcp/'), 'the UA must still name letsfg-mcp');
+    assert.ok(ua!.includes('+https://'), 'declared-bot UAs carry a contact URL');
+  });
 });
 
 describe('MCP server — initialize', () => {

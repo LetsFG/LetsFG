@@ -28,7 +28,22 @@ import * as readline from 'readline';
 const BASE_URL = (process.env.LETSFG_BASE_URL || 'https://letsfg.co').replace(/\/$/, '');
 const BEARER_TOKEN = process.env.LETSFG_BEARER_TOKEN || '';
 const API_KEY = process.env.LETSFG_API_KEY || '';
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
+
+// The bare token `letsfg-mcp/1.3.0` was being challenged by the edge in front of
+// letsfg.co from datacenter/VPS IPs — which is where MCP servers live — while a
+// request from the SAME host with a `Mozilla/5.0 (compatible; …)` UA got a 200
+// (issue #206, measured by the reporter on their own box, twice).
+//
+// This is the conventional form for a well-behaved automated client — the shape
+// Googlebot, Bingbot and every other declared crawler uses, and the shape bot
+// heuristics are tuned to accept. It is not a disguise: the product, the version
+// and a contact URL are all still in the string, so we remain as identifiable in
+// a log as before, and `X-Client-Type: mcp` still names us outright.
+//
+// Keep the `letsfg-mcp/<version>` token in it. Any server-side allowlist keyed on
+// this client matches on that substring, not on the whole string.
+const USER_AGENT = `Mozilla/5.0 (compatible; letsfg-mcp/${VERSION}; +https://github.com/LetsFG/LetsFG)`;
 
 // Poll fast and poll FIRST. The old loop slept 10s before its opening poll,
 // which put a hard 10s floor under every search however fast the engine
@@ -80,7 +95,7 @@ const lateMergeInbound = (r: Record<string, unknown>): boolean =>
 // is not a workaround a user can apply themselves (#206).
 function letsfgHeaders(opts: { json?: boolean; auth?: boolean } = {}): Record<string, string> {
   const headers: Record<string, string> = {
-    'User-Agent': (process.env.LETSFG_USER_AGENT || '').trim() || `letsfg-mcp/${VERSION}`,
+    'User-Agent': (process.env.LETSFG_USER_AGENT || '').trim() || USER_AGENT,
     'X-Client-Type': 'mcp',
   };
   if (opts.json) headers['Content-Type'] = 'application/json';

@@ -337,7 +337,11 @@ the request never reached the search engine — something in the network path in
 `letsfg.co` answered it, and no token can get past that. It is seen from datacenter and
 VPS IPs, which is where MCP servers normally run.
 
-Override the client's User-Agent as a stopgap:
+**Upgrade first: `2026.5.74` and later send a declared-bot User-Agent that is not singled
+out this way** (`Mozilla/5.0 (compatible; letsfg-mcp/1.3.1; +https://github.com/LetsFG/LetsFG)`).
+If you pinned an older version, that is the likeliest cause.
+
+If it still happens, override the User-Agent yourself:
 
 ```json
 "env": {
