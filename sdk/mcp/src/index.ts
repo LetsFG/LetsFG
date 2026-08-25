@@ -251,7 +251,7 @@ const TOOLS = [
       'information, NOT an absence of Wi-Fi. '  +
       'Covers airlines across all continents including low-cost carriers.\n\n' +
       'Search is async: this tool polls for you, including waiting out the late split-ticket merge.\n\n' +
-      'Some offers are SPLIT TICKETS: two separately-issued tickets through a hub, bought from two different sellers, because no one seller offers the combination. They carry `split_ticket: "true"`, `combo_type: "virtual_interlining"` and `self_transfer: "unprotected"`. ALWAYS tell the user when an offer is a split ticket and what unprotected means: the tickets are not linked, so if the first flight is late and the connection is missed, the second airline owes nothing — no rebooking, no refund. Never present a split ticket as though it were one through-fare.\n\n' +
+      'Some offers are SPLIT TICKETS: two separately-issued tickets through a hub, each leg booked from whatever is cheapest for it (usually two different airlines), because no one seller offers the combination as a single ticket. They carry `split_ticket: "true"`, `combo_type: "virtual_interlining"` and `self_transfer: "unprotected"`. ALWAYS tell the user when an offer is a split ticket and what unprotected means: the tickets are not linked, so if the first flight is late and the connection is missed, the second airline owes nothing — no rebooking, no refund. Never present a split ticket as though it were one through-fare.\n\n' +
       'Requires LETSFG_BEARER_TOKEN or LETSFG_API_KEY. ' +
       'See letsfg://guide resource for the full authenticate->search->book workflow.',
     inputSchema: {
@@ -581,7 +581,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
             ...(airlines.length > 1 ? { airlines } : {}),
             // Virtual interlining: separate one-way fares stitched across airlines.
             ...(o.is_combo ? { virtual_interline: true } : {}),
-            // A split ticket is TWO separately-issued tickets from two sellers.
+            // A split ticket is TWO separately-issued tickets, each leg from whatever is
+            // cheapest for it -- usually two different airlines.
             // The condition travels with the price or the agent misrepresents it.
             ...(isSplit ? {
               split_ticket: true,
@@ -592,7 +593,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
               // `source` on a split reads "split:<sellerA>+<sellerB>" -- the two
               // sellers are the whole point, so pass it through unmangled.
               ...(o.source ? { sold_by: o.source } : {}),
-              warning: 'Two separately-issued tickets bought from different sellers. '
+              warning: 'Two separate tickets, each leg booked from whatever is cheapest (usually two different airlines). '
                      + 'The tickets are not linked: if the first flight is delayed and '
                      + 'the connection is missed, the second airline owes nothing '
                      + '(no rebooking, no refund). Tell the user this alongside the price.',
