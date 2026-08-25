@@ -40,6 +40,38 @@ var API_ORIGIN = "https://letsfg.co"
 // before it is parsed and an oversized one is an error, not a slow path.
 var MAX_RESPONSE_CHARS = 2 * 1024 * 1024
 
+// Per-endpoint response caps, enforced by Panel.qml's newRequest() while the
+// bytes are still arriving -- not after the body has been materialised.
+//
+// Checking a finished responseText is a consumer-side check: by the time the
+// string exists, the allocation this is meant to prevent has already happened
+// inside the long-lived shell process. These bound the TRANSFER.
+//
+// Sizes are measured against the live endpoints, not guessed, so a real
+// response is never refused:
+//
+//   /api/results, 194 offers ....... 903 KiB   (cap 2 MiB,   ~2.3x)
+//   letsfg.co homepage HTML ........ 190 KiB   (cap 1 MiB,   ~5.5x)
+//   /api/stars/social ..............  13 KiB   (cap 512 KiB, ~39x)
+//
+var RESPONSE_CAP_SEARCH = MAX_RESPONSE_CHARS
+var RESPONSE_CAP_PAGE = 1024 * 1024
+var RESPONSE_CAP_SMALL = 512 * 1024
+
+// How long any single request may stay open. Bounds the transfer when the byte
+// check cannot: Qt buffers before it hands us a LOADING tick, so bytes alone
+// are not a hard ceiling. Generous enough that a real search never trips it --
+// a settling search polls repeatedly rather than holding one long request.
+var REQUEST_DEADLINE_MS = 30000
+
+// The default is the SMALL one on purpose: a new call site that forgets to
+// pick a cap gets the tightest, not the loosest.
+function responseCap(requested) {
+  var n = Number(requested)
+  if (!isFinite(n) || n <= 0) return RESPONSE_CAP_SMALL
+  return Math.min(Math.floor(n), RESPONSE_CAP_SEARCH)
+}
+
 // Caps on anything rendered. The API is ours, but "ours" is not a safety
 // property -- a compromised or spoofed response must not be able to paint
 // outside the panel or wedge the layout.
@@ -2248,6 +2280,9 @@ function module_exports_shim() {
   if (typeof module === "undefined" || !module || typeof module.exports !== "object") return
   module.exports = {
     API_ORIGIN: API_ORIGIN, MAX_RESPONSE_CHARS: MAX_RESPONSE_CHARS,
+    RESPONSE_CAP_SEARCH: RESPONSE_CAP_SEARCH, RESPONSE_CAP_PAGE: RESPONSE_CAP_PAGE,
+    RESPONSE_CAP_SMALL: RESPONSE_CAP_SMALL, responseCap: responseCap,
+    REQUEST_DEADLINE_MS: REQUEST_DEADLINE_MS,
     MAX_RENDERED_OFFERS: MAX_RENDERED_OFFERS, POLL_INTERVAL_MS: POLL_INTERVAL_MS,
     POLL_TIMEOUT_MS: POLL_TIMEOUT_MS, GRACE_POLL_MS: GRACE_POLL_MS, GRACE_POLLS: GRACE_POLLS, GRACE_WATCHDOG_MS: GRACE_WATCHDOG_MS, MAX_POLLS: MAX_POLLS,
     MIN_SEARCH_INTERVAL_MS: MIN_SEARCH_INTERVAL_MS, BREAKER_TRIP_AFTER: BREAKER_TRIP_AFTER,

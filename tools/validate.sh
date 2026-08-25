@@ -77,6 +77,34 @@ if [ -f "$DIR/Panel.qml" ]; then
   python3 "$DIR/tools/check-search-invariant.py" "$DIR/Panel.qml" || fails=$((fails+1))
 fi
 
+# Every response must be byte-bounded WHILE IT ARRIVES. A marketplace security
+# review found that ten request paths kept and parsed whole responses with no
+# byte bound, and that the one cap that existed ran against a finished body --
+# after the allocation it was meant to prevent. The fix centralises
+# construction in newRequest(); this rule is what stops an eleventh path from
+# quietly reintroducing the finding.
+if [ -f "$DIR/Panel.qml" ]; then
+  raw=$(grep -c 'new XMLHttpRequest()' "$DIR/Panel.qml" 2>/dev/null || echo 0)
+  # One construction, inside newRequest(). The other match is the comment above it.
+  if [ "$raw" -gt 2 ]; then
+    fail "XMLHttpRequest is constructed outside newRequest() ($raw sites) — the response cap would not apply"
+  else
+    pass "every request is built by newRequest(), so the response cap always applies"
+  fi
+  # Exactly one assignment, and it must be the guard inside newRequest().
+  # A caller assigning it would silently replace the cap with its own handler.
+  assigns=$(grep -c '^\s*[A-Za-z_][A-Za-z0-9_]*\.onreadystatechange = ' "$DIR/Panel.qml" 2>/dev/null || echo 0)
+  guard_line=$(grep -n '\.onreadystatechange = ' "$DIR/Panel.qml" | head -1 | cut -d: -f1)
+  factory_line=$(grep -n 'function newRequest(' "$DIR/Panel.qml" | head -1 | cut -d: -f1)
+  if [ "$assigns" -ne 1 ]; then
+    fail "onreadystatechange is assigned $assigns time(s); only newRequest()'s guard may assign it"
+  elif [ -z "$guard_line" ] || [ -z "$factory_line" ] || [ "$guard_line" -lt "$factory_line" ]; then
+    fail "the onreadystatechange guard is not inside newRequest()"
+  else
+    pass "only newRequest() installs the response guard"
+  fi
+fi
+
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS"; else echo "FAIL — $fails problem(s)"; fi
 exit $([ "$fails" -eq 0 ] && echo 0 || echo 1)

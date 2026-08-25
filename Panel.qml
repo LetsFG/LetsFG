@@ -69,10 +69,9 @@ Panel {
     root.authError = ""
     root.authStage = "requesting"
 
-    var xhr = trackRequest(new XMLHttpRequest())
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(xhr)
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      if (xhr.oversized) { root.authStage = ""; root.authError = oversizedMessage(); return }
       // A 402 is the SUCCESS case here: it carries the setup link. Treating it
       // as an error would break the only path that works.
       if (xhr.status !== 200 && xhr.status !== 402) {
@@ -108,10 +107,9 @@ Panel {
     root.authError = ""
     root.authStage = "verifying"
 
-    var xhr = trackRequest(new XMLHttpRequest())
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(xhr)
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      if (xhr.oversized) { root.authStage = ""; root.authError = oversizedMessage(); return }
       var v = Model.parseAgentVerify(xhr.responseText, Math.floor(Date.now() / 1000))
       if (!v.ok) {
         // Back to `awaiting`, not cleared: the card may simply not be added
@@ -260,10 +258,9 @@ Panel {
     if (root.hotelQuery.length < 2) { root.hotelSuggestions = []; return }
     if (!root.session.ready()) return
     var q = root.hotelQuery
-    var xhr = trackRequest(new XMLHttpRequest())
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(xhr)
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      if (xhr.oversized) return
       // A stale reply for a query the user has moved on from must not
       // repopulate the list underneath them.
       if (q !== root.hotelQuery) return
@@ -316,12 +313,11 @@ Panel {
     hotelWatchdog.restart()
 
     var nights = root.hotelNights
-    var xhr = trackRequest(new XMLHttpRequest())
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(xhr)
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
       hotelWatchdog.stop()
       root.hotelBusy = false
+      if (xhr.oversized) { root.hotelStatus = ""; root.hotelError = oversizedMessage(); return }
       patchHotelGate({ inFlight: false })
 
       if (xhr.status !== 200) {
@@ -704,17 +700,18 @@ Panel {
 
   function postSearch(seq, body) {
     var url = Model.searchUrl()
-    var xhr = new XMLHttpRequest()
+    var xhr = newRequest(Model.RESPONSE_CAP_SEARCH)
     root.activeXhr = xhr
 
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
+    xhr.onDone = function () {
       // Superseded, cancelled, or the panel was torn down. Drop it silently:
       // this is the check that makes a stale response harmless rather than a
       // result that overwrites a newer search.
       if (seq !== root.activeSeq) return
 
       noteRateLimit(xhr)
+
+      if (xhr.oversized) { fail(seq, oversizedMessage()); return }
 
       if (xhr.status !== 200 && xhr.status !== 201) {
         if (handleAuthFailure(xhr.status, xhr.responseText)) { finish(seq, ""); return }
@@ -766,13 +763,19 @@ Panel {
     var url
     try { url = Model.resultsUrl(root.searchId) } catch (e) { fail(seq, "Bad search id from letsfg.co"); return }
 
-    var xhr = new XMLHttpRequest()
+    var xhr = newRequest(Model.RESPONSE_CAP_SEARCH)
     root.activeXhr = xhr
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
+    xhr.onDone = function () {
       if (seq !== root.activeSeq) return
 
       noteRateLimit(xhr)
+
+      // BEFORE the status check below, and terminal rather than retried.
+      // An aborted transfer reports status 0, which would otherwise fall into
+      // "a single bad poll is not a failed search" and schedule another poll --
+      // turning a refusal into an unbounded retry loop against exactly the
+      // endpoint that just sent something oversized.
+      if (xhr.oversized) { fail(seq, oversizedMessage()); return }
 
       if (xhr.status === 429) { fail(seq, Model.describeHttpError(429, xhr.responseText)); return }
       if (xhr.status !== 200) {
@@ -1257,6 +1260,114 @@ Panel {
   // search path never hit this because it parks its request on activeXhr.
   property var auxRequests: []
 
+  // The ONLY place an XMLHttpRequest is constructed.
+  //
+  // A marketplace security review found that every request path kept and
+  // parsed a complete letsfg.co response with no byte bound, and that the
+  // search watchdog bounded elapsed TIME but not bytes already received --
+  // and did not cover the auxiliary requests at all. That was correct.
+  // Model.MAX_RESPONSE_CHARS existed, but it was checked inside parseJsonBody,
+  // against a finished responseText: by then the allocation it was meant to
+  // prevent had already happened inside the long-lived shell process, and only
+  // 2 of the 10 request paths went through it.
+  //
+  // Fixing ten call sites would have reproduced the reported defect -- one
+  // forgotten path is the whole finding. So construction is centralised here,
+  // the guard is installed before the caller sees the object, and
+  // tools/validate.sh fails the build if `new XMLHttpRequest()` appears
+  // anywhere else. Same mechanical rule as beginSearch()'s call sites.
+  //
+  // Callers set `xhr.onDone` instead of `onreadystatechange`; assigning the
+  // latter would silently remove the guard.
+  function newRequest(cap, deadlineMs) {
+    var limit = Model.responseCap(cap)
+    var xhr = new XMLHttpRequest()
+    xhr.oversized = false
+    xhr.truncated = false
+    xhr.onDone = null
+    // Every request is bounded in TIME as well as bytes, and the two are not
+    // redundant. Qt hands the body to onreadystatechange in whatever size
+    // chunks it has already buffered -- measured against a hostile endless
+    // response, one request saw 64 MiB in a single LOADING tick -- so the byte
+    // check cannot fire before Qt's first buffer. A deadline bounds the
+    // transfer regardless, and unlike the search watchdog it applies to the
+    // auxiliary requests too.
+    xhr.deadlineAt = Date.now() + (isFinite(deadlineMs) && deadlineMs > 0 ? deadlineMs : Model.REQUEST_DEADLINE_MS)
+
+    xhr.onreadystatechange = function () {
+      // HEADERS_RECEIVED -- refuse before a single body byte is buffered when
+      // the server declares an honest length. Absent on chunked responses, so
+      // this is an early-out and never the guard itself.
+      if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
+        var declared = NaN
+        try { declared = parseInt(xhr.getResponseHeader("Content-Length"), 10) } catch (e) { declared = NaN }
+        if (isFinite(declared) && declared > limit) {
+          xhr.oversized = true
+          xhr.abort()
+        }
+        return
+      }
+
+      // LOADING -- the load-bearing check. Bytes are still arriving; stop the
+      // transfer the moment they pass the cap instead of letting the body
+      // finish. Without this a chunked response walks past the header check.
+      if (xhr.readyState === XMLHttpRequest.LOADING) {
+        if (responseLength(xhr) > limit) {
+          xhr.oversized = true
+          xhr.abort()
+        }
+        return
+      }
+
+      if (xhr.readyState !== XMLHttpRequest.DONE) return
+      releaseRequest(xhr)
+
+      // abort() still delivers a DONE. A body that arrived complete but over
+      // the cap (no LOADING tick fired) is caught here as a backstop.
+      if (!xhr.oversized && responseLength(xhr) > limit) xhr.oversized = true
+      // An aborted transfer leaves a partial body. Nothing may parse it: half
+      // a JSON document is malformed, but half an HTML page parses fine and
+      // yields quietly wrong results.
+      if (xhr.oversized) xhr.truncated = true
+
+      if (typeof xhr.onDone === "function") xhr.onDone()
+    }
+
+    return trackRequest(xhr)
+  }
+
+  // Aborts any request that has outlived its deadline. A single shared Timer
+  // rather than one per request: this plugin creates no QML objects at
+  // runtime, and Qt.createQmlObject is a surface it does not want.
+  Timer {
+    id: requestDeadlineSweep
+    interval: 1000
+    repeat: true
+    running: root.auxRequests.length > 0
+    onTriggered: {
+      var now = Date.now()
+      for (var i = 0; i < root.auxRequests.length; i++) {
+        var r = root.auxRequests[i]
+        if (!r || !isFinite(r.deadlineAt) || now < r.deadlineAt) continue
+        r.oversized = true
+        r.truncated = true
+        try { r.abort() } catch (e) { /* already finished */ }
+      }
+    }
+  }
+
+  // responseText on an aborted or empty request can throw rather than return "".
+  function responseLength(xhr) {
+    try { return xhr.responseText ? xhr.responseText.length : 0 } catch (e) { return 0 }
+  }
+
+  // What a caller shows when the guard fired. Deliberately not a network
+  // error: an oversized response is a refusal, and must never read as
+  // something worth retrying.
+  function oversizedMessage() {
+    return "letsfg.co sent an unexpectedly large response; it was not loaded."
+  }
+
   function trackRequest(xhr) {
     var next = root.auxRequests.slice()
     next.push(xhr)
@@ -1295,11 +1406,9 @@ Panel {
     if (!root.showMap || root.destCode.length !== 3) return
     if (!Model.isValidDate(root.departDate)) return
 
-    var xhr = trackRequest(new XMLHttpRequest())
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(xhr)
-      if (xhr.status !== 200) return
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      if (xhr.oversized || xhr.status !== 200) return
       try { root.transferInfo = Model.parseTransfers(xhr.responseText) } catch (e) { /* no pill */ }
     }
     try {
@@ -1328,10 +1437,9 @@ Panel {
   function fetchStars() {
     if (root.starCount.length > 0) return
 
-    var xhr = trackRequest(new XMLHttpRequest())
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(xhr)
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      if (xhr.oversized) { fetchStarsBadge(); return }
       if (xhr.status === 200) {
         var v = Model.parseStarsJson(xhr.responseText)
         if (v.length > 0) {
@@ -1355,10 +1463,9 @@ Panel {
   }
 
   function fetchStarsBadge() {
-    var badge = trackRequest(new XMLHttpRequest())
-    badge.onreadystatechange = function () {
-      if (badge.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(badge)
+    var badge = newRequest(Model.RESPONSE_CAP_SMALL)
+    badge.onDone = function () {
+      if (badge.oversized) return
       if (badge.status === 200) root.starCount = Model.parseStarsBadge(badge.responseText)
     }
     try {
@@ -1368,10 +1475,12 @@ Panel {
   }
 
   function fetchStargazers() {
-    var page = trackRequest(new XMLHttpRequest())
-    page.onreadystatechange = function () {
-      if (page.readyState !== XMLHttpRequest.DONE) return
-      releaseRequest(page)
+    var page = newRequest(Model.RESPONSE_CAP_PAGE)
+    page.onDone = function () {
+      // A truncated page is the dangerous case: half a JSON document is
+      // malformed and rejected, but half an HTML page parses cleanly and
+      // yields quietly wrong social proof.
+      if (page.oversized || page.truncated) return
       if (page.status !== 200) return
       if (root.showAvatars) root.stargazers = Model.parseStargazersFromHtml(page.responseText, 5)
       // The same document carries the real popularity ranking, so one fetch

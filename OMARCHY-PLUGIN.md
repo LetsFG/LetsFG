@@ -326,9 +326,48 @@ are then pinned to that one origin, so a response cannot choose which page your
 browser opens; an offer whose URL fails is shown but not clickable. The shape
 check alone is not enough for that job and is not asked to do it:
 `https://checkout.stripe.com.evil.com/x` is a well-formed https URL that reads
-like Stripe at a glance, which is why the origin check exists on top of it. Response bodies are size-checked before parsing, since
-a large `JSON.parse` in the shell process is a frozen desktop, and a non-JSON
-body (an HTML error page) is an error message rather than an exception.
+like Stripe at a glance, which is why the origin check exists on top of it. A non-JSON body (an HTML error page) is an error
+message rather than an exception.
+
+**Every response is bounded while it arrives, not after.** A marketplace
+security review pointed out that size-checking a finished `responseText` is a
+consumer-side check — by the time the string exists, the allocation it was
+meant to prevent has already happened inside the long-lived shell process — and
+that only 2 of the 10 request paths went through it at all. Both were true.
+
+Requests are now built by one factory, `newRequest()` in `Panel.qml`, which
+installs the guard before the caller sees the object. Three bounds apply to
+every request, auxiliary ones included:
+
+- a `Content-Length` check at `HEADERS_RECEIVED`, which refuses before a single
+  body byte is buffered — an early-out only, since letsfg.co serves everything
+  chunked and declares no length;
+- an incremental length check at `LOADING` that aborts the transfer mid-flight;
+- a deadline, swept once a second, that aborts any request outliving it.
+
+Caps are measured against the live endpoints rather than guessed, so a real
+response is never refused: 2 MiB for a search (a 194-offer payload is 903 KiB),
+1 MiB for the homepage parse (190 KiB), 512 KiB for everything else (13 KiB).
+A request that trips any bound is a refusal, never a retry — an aborted poll
+reports `status` 0, which would otherwise land in "a single bad poll is not a
+failed search" and become an unbounded retry loop against the endpoint that
+just misbehaved. A truncated body is never parsed: half a JSON document is
+malformed and rejected, but half an HTML page parses cleanly and would yield
+quietly wrong results.
+
+**What that does and does not guarantee.** Verified against a local server that
+answers with an endless chunked body: the plugin hangs up on it, and the
+connection is closed from our side. But Qt hands the body to
+`onreadystatechange` in whatever size it has already buffered — measured at up
+to 64 MiB in a single `LOADING` tick on loopback — so the byte check cannot
+fire below Qt's own buffer. Bytes are bounded at the first tick we are given;
+an endless response is bounded by the deadline. Neither is a hard byte ceiling
+below Qt's buffering, and this document will not claim one.
+
+`tools/validate.sh` fails the build if `XMLHttpRequest` is constructed anywhere
+but that factory, or if a call site assigns `onreadystatechange` (which would
+silently replace the guard) — the same mechanical rule that protects
+`beginSearch()`, because one forgotten path was the whole finding.
 
 **Your token is as safe as your home directory.** The plugin keeps it in a
 closure rather than a QML property, so it is not casually readable by other
@@ -348,7 +387,7 @@ review.
 
 **Verified.** The logic in `Model.js` — input validation, URL allowlisting,
 token parsing and confinement, response parsing, the poll state machine, offer
-shaping, throttling — is covered by 432 assertions that run without Qt:
+shaping, throttling — is covered by 445 assertions that run without Qt:
 
 ```bash
 node test/model-test.js
