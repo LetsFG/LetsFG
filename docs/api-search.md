@@ -21,7 +21,7 @@
 |----------|--------|---------|---------|
 | `/flights/locations/{query}` | GET | Resolve a city, airport, or metro area to IATA codes | No |
 | `/flights/parse-query` | POST | Parse a natural language query into search params | No |
-| `/flights/search` | POST | Run a single-destination paid search (blocking, 60–90 s) | **1 credit** |
+| `/flights/search` | POST | Run a single-destination paid search (blocking, 8–10 s) | **1 credit** |
 | `/flights/search/async` | POST | Start a search in background, returns search_id immediately | **1 credit** |
 | `/flights/results/{search_id}` | GET | Poll results of an async search | No |
 | `/flights/discover` | POST | Indicative prices for up to 20 destinations — single call, single credit | **1 credit** |
@@ -181,6 +181,31 @@ airBaltic) resolve even when the aircraft type is unknown; every other carrier
 needs the aircraft type, and not every source reports one. A missing field is
 therefore common and carries no negative information.
 
+## Split tickets
+
+Some offers are built from **two separately-issued tickets** through a hub,
+bought from two different sellers, because no single seller offers the
+combination. They are flagged, never disguised:
+
+| Field | Value on a split offer |
+|---|---|
+| `split_ticket` | `"true"` |
+| `combo_type` | `"virtual_interlining"` |
+| `self_transfer` | `"unprotected"` |
+
+`self_transfer: "unprotected"` is the important one. The two tickets are not
+linked to each other: if the first flight is delayed and the connection is
+missed, the second airline has no obligation — no rebooking, no
+refund, no duty of care. Surface that alongside the price. An agent that
+relays the saving without the condition is misrepresenting the offer.
+
+The probe that builds these is gated server-side: it runs two extra connector
+fan-outs, so it is only attempted when the through-fare is expensive enough and
+the journey long enough to be worth it. Most searches never fire it.
+
+Split offers merge in **after** the search first reports `completed` —
+see [Async search with polling](#async-search-with-polling).
+
 ## What to persist from results
 
 - `passenger_ids` for any later passenger mapping or booking continuation
@@ -195,8 +220,8 @@ The developer API uses the same airline connector fleet as the [letsfg.co](https
 | Route type | Typical response time |
 |------------|-----------------------|
 | Europe intra-continental | 20–40 seconds |
-| Transatlantic | 30–60 seconds |
-| US domestic | 60–90 seconds |
+| Transatlantic | 8–10 seconds |
+| US domestic | 8–10 seconds |
 | Asia-Pacific / Latin America | 40–80 seconds |
 
 Response times reflect how long the relevant connectors take to return results. The API returns as soon as a useful set of offers is available — set your client timeout to at least **90 seconds** to handle the full range.
@@ -221,7 +246,7 @@ A `200 OK` response with `total_results: 0` means the search ran successfully bu
 - **Niche or unserved route** — some city pairs have no direct or connecting service.
 - **Cabin class filter** — `cabin_class: "F"` (first class) eliminates most LCCs; try `"M"` (economy) first.
 
-If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds. The same connector fleet is used for both; a second request will usually return cached results immediately.
+If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds — the search itself returns in 8–10 s, but a generous ceiling costs nothing and covers a slow supplier. The same connector fleet is used for both; a second request will usually return cached results immediately.
 
 ## Departure time filters
 
@@ -339,6 +364,13 @@ to all destinations in the batch.
 For products that need a loading state while results arrive, use
 `POST /flights/search/async` → `GET /flights/results/{search_id}`.
 See [Async Search and Polling](api-polling.md) for the full guide and code examples.
+
+
+**`completed` is not the end.** Poll immediately, then every 2 s. When `status`
+leaves `searching` the connector fan-out is done, but the offer set may still be
+growing: `split_ticket_pending` and `gf_enrich_pending` stay `true` while a late
+merge is inbound. Keep polling while either is set, and bound the wait so a flag
+that never clears cannot hang your client.
 
 ## Sandbox — zero-cost testing
 

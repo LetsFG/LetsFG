@@ -77,7 +77,7 @@ always returns the same set of offers, so your tests are reproducible across run
 |---|---|---|
 | Connectors fired | Yes (hundreds) | No |
 | Credits charged | Yes (1 per search) | No |
-| Response time | 60–90 s | < 1 s |
+| Response time | 8–10 s | < 1 s |
 | `booking_url` | Real airline link | Placeholder |
 | `parse-query` NL accuracy | Full Gemini parse | Stub (returns missing fields) |
 | `total_results` | Real count | Fake large number (~800–1 800) |

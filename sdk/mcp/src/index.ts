@@ -30,8 +30,31 @@ const BEARER_TOKEN = process.env.LETSFG_BEARER_TOKEN || '';
 const API_KEY = process.env.LETSFG_API_KEY || '';
 const VERSION = '1.3.0';
 
-const PFS_POLL_INTERVAL_MS = 10_000;
+// Poll fast and poll FIRST. The old loop slept 10s before its opening poll,
+// which put a hard 10s floor under every search however fast the engine
+// answered — the speedup was real and no caller could ever see it.
+const PFS_POLL_INTERVAL_MS = 2_000;
 const PFS_POLL_TIMEOUT_MS = 120_000;
+
+// A search reports `completed` BEFORE its offer set stops growing. The split
+// probe fires two extra connector fan-outs and merges its result in late, so
+// the cheapest itinerary on the whole search is routinely one that does not
+// exist yet at the moment the status turns terminal. The server says so:
+// `split_ticket_pending` (and `gf_enrich_pending` for the Google Flights
+// enrich) stay true until that merge lands.
+//
+// Stopping at `completed` is therefore how you silently discard the cheapest
+// offer. Keep polling while either flag is set.
+//
+// This costs nothing on the vast majority of searches: the split probe is
+// gated server-side and never fires on most routes, so the flags are already
+// false on the first poll and this loop exits immediately.
+const LATE_MERGE_POLL_MS = 3_000;
+const LATE_MERGE_GRACE_MS = 45_000;
+
+const NON_TERMINAL = ['pending', 'searching'];
+const lateMergeInbound = (r: Record<string, unknown>): boolean =>
+  Boolean(r.split_ticket_pending) || Boolean(r.gf_enrich_pending);
 
 // ── Cloud Search (PFS Bearer token path) ───────────────────────────────
 
@@ -53,9 +76,7 @@ async function searchPFS(params: Record<string, unknown>): Promise<Record<string
 
   const { search_id } = await resp.json() as { search_id: string };
 
-  const deadline = Date.now() + PFS_POLL_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
+  const poll = async (): Promise<Record<string, unknown> | null> => {
     const pollResp = await fetch(`${BASE_URL}/api/results/${search_id}`, {
       // Carry the token on the poll too, not just the POST: results are the
       // agent's own, and the token is what buckets rate limiting to this agent.
@@ -64,12 +85,32 @@ async function searchPFS(params: Record<string, unknown>): Promise<Record<string
         'Authorization': `Bearer ${BEARER_TOKEN}`,
       },
     });
-    if (pollResp.ok) {
-      const result = await pollResp.json() as Record<string, unknown>;
-      if (!['pending', 'searching'].includes(result.status as string)) return result;  // API reports in-progress as 'searching'; only 'completed' (etc.) is terminal
-    }
+    if (!pollResp.ok) return null;
+    return await pollResp.json() as Record<string, unknown>;
+  };
+
+  const deadline = Date.now() + PFS_POLL_TIMEOUT_MS;
+  let terminal: Record<string, unknown> | null = null;
+
+  // Phase 1 — poll immediately, then every PFS_POLL_INTERVAL_MS, until the API
+  // stops reporting the search as in-progress.
+  while (Date.now() < deadline) {
+    const result = await poll();
+    if (result && !NON_TERMINAL.includes(result.status as string)) { terminal = result; break; }
+    await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
   }
-  return { error: true, detail: 'Search timed out after 120s.' };
+  if (!terminal) return { error: true, detail: 'Search timed out after 120s.' };
+
+  // Phase 2 — terminal, but possibly still growing. Wait out the late merge,
+  // bounded: a flag that never clears must not hang the agent, so the grace is
+  // a ceiling and not a condition.
+  const lateDeadline = Date.now() + LATE_MERGE_GRACE_MS;
+  while (lateMergeInbound(terminal) && Date.now() < lateDeadline) {
+    await new Promise(r => setTimeout(r, LATE_MERGE_POLL_MS));
+    const merged = await poll();
+    if (merged && !NON_TERMINAL.includes(merged.status as string)) terminal = merged;
+  }
+  return terminal;
 }
 
 // ── API Client ──────────────────────────────────────────────────────────
@@ -172,7 +213,8 @@ const GUIDE_TEXT =
   '\n' +
   '## Search Tips\n' +
   '- Search is free — search multiple dates, cabin classes, airport combos liberally\n' +
-  '- Search takes 60-90s (async: POST /api/search -> poll /api/results/<id> every 10s)\n' +
+  '- Search is async: POST /api/search -> poll /api/results/<id>. Poll immediately, then every 2s — do not sleep before the first poll\n' +
+  '- A search reports `completed` BEFORE it stops growing. While `split_ticket_pending` or `gf_enrich_pending` is true, keep polling: the cheapest offer often lands after the status turns terminal\n' +
   '- Covers hundreds of airlines across all continents including low-cost carriers\n';
 
 const RESOURCES = [
@@ -199,7 +241,8 @@ const TOOLS = [
       'Anything ending in "_some" has at least one leg WITHOUT it. An absent field means no '+
       'information, NOT an absence of Wi-Fi. '  +
       'Covers airlines across all continents including low-cost carriers.\n\n' +
-      'Search is async (60-90s): this tool handles the polling automatically.\n\n' +
+      'Search is async: this tool polls for you, including waiting out the late split-ticket merge.\n\n' +
+      'Some offers are SPLIT TICKETS: two separately-issued tickets through a hub, bought from two different sellers, because no one seller offers the combination. They carry `split_ticket: "true"`, `combo_type: "virtual_interlining"` and `self_transfer: "unprotected"`. ALWAYS tell the user when an offer is a split ticket and what unprotected means: the tickets are not linked, so if the first flight is late and the connection is missed, the second airline owes nothing — no rebooking, no refund. Never present a split ticket as though it were one through-fare.\n\n' +
       'Requires LETSFG_BEARER_TOKEN or LETSFG_API_KEY. ' +
       'See letsfg://guide resource for the full authenticate->search->book workflow.',
     inputSchema: {

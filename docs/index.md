@@ -41,8 +41,8 @@ LetsFG has two access paths — pick the one that matches your setup:
 
 | Path | How | Speed | Search cost | Booking URL |
 |------|-----|-------|-------------|-------------|
-| **CLI / SDK** (`letsfg auth`) | Server-side search + booking; one-time zero-amount card setup → 90-day Bearer token | 60–90 s | Free | No LetsFG fee |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
+| **CLI / SDK** (`letsfg auth`) | Server-side search + booking; one-time zero-amount card setup → 90-day Bearer token | 8–10 s | Free | No LetsFG fee |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 8–10 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
 - Use **CLI / SDK** if you want free search and booking — run `letsfg auth` once for a 90-day Bearer token ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `letsfg book` calls `POST /api/agent-book` directly — no unlock step, no LetsFG fee, just the ticket price.

@@ -311,8 +311,22 @@ export function cheapestOffer(result: FlightSearchResult): FlightOffer | null {
 // ── Client ────────────────────────────────────────────────────────────────
 
 const DEFAULT_BASE_URL = 'https://letsfg.co';
-const PFS_POLL_INTERVAL_MS = 10_000;
+// Poll fast and poll FIRST. The old loop slept 10s before its opening poll,
+// putting a hard 10s floor under every search however fast the engine answered.
+const PFS_POLL_INTERVAL_MS = 2_000;
 const PFS_POLL_TIMEOUT_MS = 120_000;
+
+// A search reports `completed` BEFORE its offer set stops growing: the split
+// probe merges in late, so the cheapest itinerary on the search is routinely
+// one that does not exist yet when the status turns terminal. The server
+// publishes `split_ticket_pending` / `gf_enrich_pending` until it lands, and
+// stopping at `completed` silently discards the cheaper offer.
+//
+// Free on most searches — the split probe is gated server-side and never fires
+// on the majority of routes, so these flags are already false on poll one.
+const LATE_MERGE_POLL_MS = 3_000;
+const LATE_MERGE_GRACE_MS = 45_000;
+const NON_TERMINAL = ['pending', 'searching'];
 
 export class LetsFG {
   private bearerToken: string;
@@ -357,7 +371,7 @@ export class LetsFG {
    *
    * Uses PFS (Bearer token) or Developer API (X-API-Key) depending on config.
    * PFS: async polling (POST /api/search -> poll /api/results/<id> every 10s).
-   * Developer API: synchronous 60-90s call.
+   * Developer API: synchronous call.
    *
    * @param origin - IATA code (e.g., "GDN", "LON")
    * @param destination - IATA code (e.g., "BER", "BCN")
@@ -398,18 +412,37 @@ export class LetsFG {
   private async searchPFS(body: Record<string, unknown>): Promise<FlightSearchResult> {
     const { search_id } = await this.postWithBearer<{ search_id: string }>('/api/search', body);
 
+    type PollResult = FlightSearchResult & {
+      status?: string;
+      split_ticket_pending?: boolean;
+      gf_enrich_pending?: boolean;
+    };
+    const poll = () => this.getNoAuth<PollResult>(`/api/results/${search_id}`);
+    const inbound = (r: PollResult) => Boolean(r.split_ticket_pending || r.gf_enrich_pending);
+
     const deadline = Date.now() + PFS_POLL_TIMEOUT_MS;
+    let terminal: PollResult | null = null;
+
+    // Poll immediately, then on the interval, until the search stops reporting
+    // itself in-progress. (Only 'completed' etc. is terminal — see PR #165.)
     while (Date.now() < deadline) {
+      const result = await poll();
+      if (!NON_TERMINAL.includes(result.status as string)) { terminal = result; break; }
       await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
-      const result = await this.getNoAuth<FlightSearchResult & { status?: string }>(
-        `/api/results/${search_id}`
-      );
-      // API reports in-progress as 'searching'; only 'completed' (etc.) is terminal — see PR #165
-      if (!['pending', 'searching'].includes(result.status as string)) {
-        return result as FlightSearchResult;
-      }
     }
-    throw new LetsFGError('Search timed out after 120s. Try polling /api/results/<id> directly.', 504);
+    if (!terminal) {
+      throw new LetsFGError('Search timed out after 120s. Try polling /api/results/<id> directly.', 504);
+    }
+
+    // Terminal, but maybe still growing. Bounded wait: a flag that never clears
+    // must not hang the caller.
+    const lateDeadline = Date.now() + LATE_MERGE_GRACE_MS;
+    while (inbound(terminal) && Date.now() < lateDeadline) {
+      await new Promise(r => setTimeout(r, LATE_MERGE_POLL_MS));
+      const merged = await poll();
+      if (!NON_TERMINAL.includes(merged.status as string)) terminal = merged;
+    }
+    return terminal as FlightSearchResult;
   }
 
   /**

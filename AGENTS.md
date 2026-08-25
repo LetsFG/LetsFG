@@ -41,8 +41,8 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search, no LetsFG fee on booking |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
+| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 8–10 s | Free auth, free search, no LetsFG fee on booking |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 8–10 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
 
 **Quick decision:**
 - You are an agent that wants to search and book → **use the CLI / SDK / MCP** with a PFS payment token (`letsfg auth`, described below). This is almost certainly you.
@@ -69,7 +69,7 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **LetsFG** | **60–90 s** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
+| **LetsFG** | **8–10 s** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
 
 ## Pricing Model (PFS — what agents use)
 
@@ -120,7 +120,7 @@ curl -X POST https://letsfg.co/api/search \
   -H "Content-Type: application/json" \
   -d '{"origin":"GDN","destination":"BCN","date_from":"2026-06-15"}'
 # → {"search_id": "abc123"}
-# Poll every 10s:
+# Poll immediately, then every 2s:
 curl https://letsfg.co/api/results/abc123 -H "Authorization: Bearer <your_token>"
 ```
 
@@ -679,7 +679,7 @@ The API has generous limits. Search is completely free and unlimited.
 
 | Endpoint | Rate Limit | Typical Latency | Notes |
 |----------|-----------|-----------------|-------|
-| Search (PFS / Dev API full) | 60 req/min per agent | 60–90 s | Async: POST returns `search_id` instantly, poll `/results/<id>` every 10 s |
+| Search (PFS / Dev API full) | 60 req/min per agent | 8–10 s | Async: POST returns `search_id` instantly, poll `/results/<id>` every 2 s; keep polling while `split_ticket_pending` is true |
 | Search (Dev API discover) | 60 req/min per agent | 2–5 s | Synchronous, up to 20 destinations |
 | Resolve location | 120 req/min per agent | <1 s | |
 | Book (PFS) | 20 req/min per agent | up to 60 s | |
