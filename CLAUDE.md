@@ -52,9 +52,9 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 8–10 s (longer if a split probe fires) | Free auth, free search |
-| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 8–10 s (longer if a split probe fires) | Free auth, free search |
-| **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 8–10 s (full search) | Prepaid credits |
+| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
+| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
+| **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 8–10 s to first results (full search) | Prepaid credits |
 
 Auth for CLI/PFS: one-time payment-token enrolment (`letsfg auth`) → 90-day Bearer token.
 It is a **zero-amount** Stripe setup — the card is validated and vaulted, nothing is
@@ -224,7 +224,7 @@ Base: `https://letsfg.co/developers/api/v1`
 | `POST` | `/api/v1/agents/top-up` | Fund prepaid balance | No |
 | `POST` | `/api/v1/flights/parse-query` | Parse natural language query → IATA codes, dates | **Free** |
 | `POST` | `/api/v1/flights/discover` | Indicative prices for up to 20 destinations, 2–5 s | **1 credit** |
-| `POST` | `/api/v1/flights/search` | Full search, single destination, 8–10 s | **1 credit** |
+| `POST` | `/api/v1/flights/search` | Full search, single destination, 8–10 s to first results | **1 credit** |
 | `POST` | `/api/v1/flights/search/async` | Start full search async → `search_id` | **1 credit** |
 | `GET`  | `/api/v1/flights/results/{id}` | Poll async search results | No |
 | `POST` | `/api/v1/flights/multi-search` | Full search, N destinations (max 10) | **1 credit/dest** |

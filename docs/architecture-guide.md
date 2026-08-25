@@ -265,10 +265,10 @@ This prevents scenarios where all top results are from one airline.
 
 ### Latency and Search Time
 
-Full searches take 8–10 seconds (determined by the slowest connector at letsfg.co). Use the discover endpoint for indicative pricing when 2–5 second results suffice:
+Full searches take 8–10 s to first results (determined by the slowest connector at letsfg.co). Use the discover endpoint for indicative pricing when 2–5 second results suffice:
 
 ```python
-# Full search (8-10s): best coverage, all connectors
+# Full search (8-10s to first results): best coverage, all connectors
 result = bt.search("LHR", "BCN", "2026-06-01")
 
 # Discover endpoint (2-5s): indicative prices for up to 20 destinations
@@ -304,7 +304,7 @@ Typical search latency by source type (all run server-side):
 | GDS providers | 2–10 s | Server queries Amadeus, Duffel, Sabre in parallel |
 | LCC connectors | 3–30 s | Airline-specific integration |
 
-Total search time equals the **maximum** of all active sources (they run in parallel), not the sum. Typical end-to-end: 8–10 s to `completed`.
+Total search time equals the **maximum** of all active sources (they run in parallel), not the sum. Typical end-to-end: 8–10 s to first results to `completed`.
 
 That terminal status is the point the *connector fan-out* is done, not the point the offer set stops changing. The split-ticket probe is dispatched after it and merges in late; `split_ticket_pending` stays true until it does. Treat `completed` as "the fast path is finished", not as "nothing more is coming".
 

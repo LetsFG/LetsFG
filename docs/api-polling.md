@@ -11,7 +11,7 @@
 > To search and book flights, run `letsfg auth` — a zero-amount card setup
 > (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
 
-The standard `POST /flights/search` blocks until results are ready (8–10 seconds).
+The standard `POST /flights/search` blocks until results are ready (8–10 s to first results).
 If your product needs to show a loading state while results arrive, use the async
 flow: start the search immediately, then poll for updates.
 
@@ -48,7 +48,7 @@ Response arrives in under a second:
   "status": "pending",
   "poll_url": "https://letsfg.co/developers/api/v1/flights/results/async_a1b2c3d4...",
   "poll_interval_seconds": 2,
-  "note": "Poll immediately, then every 2s. Results arrive in 8-10s. Keep polling while split_ticket_pending or gf_enrich_pending is true."
+  "note": "Poll immediately, then every 2s. Results arrive in 8-10s to first results. Keep polling while split_ticket_pending or gf_enrich_pending is true."
 }
 ```
 

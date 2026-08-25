@@ -20,7 +20,7 @@ Guidelines for building autonomous AI agents that search, evaluate, and book fli
 All search runs server-side at letsfg.co. Authenticate once with `letsfg auth` (a zero-amount card setup (nothing charged), 90-day Bearer token) or use a prepaid Developer API key.
 
 ```python
-# PFS search — free Bearer token, server-side, 8-10 s
+# PFS search — free Bearer token, server-side, 8-10 s to first results
 from letsfg import LetsFG
 bt = LetsFG()  # uses LETSFG_BEARER_TOKEN from environment
 result = bt.search("LHR", "JFK", "2026-06-01")
@@ -30,7 +30,7 @@ bt = LetsFG(api_key="letsfg_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
-**When to use PFS (Bearer token):** This is the agent path — search and booking. Auth is a zero-amount card setup; nothing is charged. 8–10 s per search. Run `letsfg auth` once.
+**When to use PFS (Bearer token):** This is the agent path — search and booking. Auth is a zero-amount card setup; nothing is charged. 8–10 s to first results per search. Run `letsfg auth` once.
 
 **When to use Developer API:** Managed cloud search, billing controls, volume usage, and direct airline URLs with no per-booking fee. Register at [letsfg.co/developers](https://letsfg.co/developers). It is also the **only** way to reach hotels.
 
@@ -72,7 +72,7 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 
 6. **Use REAL passenger details.** Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.
 
-7. **Search is async, and `completed` is not the end.** The engine returns in 8–10 s. Poll `GET /api/results/<search_id>` immediately and then every 2 s — do not sleep before the first poll, or you put a floor under a search that is already faster than it.
+7. **Search is async, and `completed` is not the end.** The engine returns in 8–10 s to first results. Poll `GET /api/results/<search_id>` immediately and then every 2 s — do not sleep before the first poll, or you put a floor under a search that is already faster than it.
 
    A search reports `status: "completed"` **before its offer set stops growing**. The split-ticket probe runs two extra connector fan-outs and merges its result in afterwards, so the cheapest itinerary on the search is often one that does not exist yet at the moment the status turns terminal. The response carries `split_ticket_pending` (and `gf_enrich_pending` for the Google Flights enrich) while that is still inbound.
 

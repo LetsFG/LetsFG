@@ -201,7 +201,7 @@ search_flights  →  unlock_flight_offer  →  setup_payment (once)  →  book_f
     (free)              (quote)              (attach card)        (ticket price, creates PNR)
 ```
 
-1. `search_flights("LON", "BCN", "2026-06-15")` — server-side search returns offers from hundreds of airlines in 8–10 s
+1. `search_flights("LON", "BCN", "2026-06-15")` — server-side search returns offers from hundreds of airlines in 8–10 s to first results
 2. `unlock_flight_offer("off_xxx")` — confirms live price with airline, reserves for 30 min
 3. `setup_payment(token)` — attach a payment card once (required before booking)
 4. `book_flight("off_xxx", passengers, email)` — creates real booking, airline sends e-ticket

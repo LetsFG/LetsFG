@@ -257,7 +257,7 @@ are not part of that contract.
 | | **Path 1 — CLI / SDK** | **Path 2 — PFS** (Programmatic Flight Search via letsfg.co) | **Path 3 — Developer API** |
 |---|---|---|---|
 | **Best for** | Developers, personal use, AI agents — easiest way in | Scripts/agents calling the API directly with a Bearer token | High-volume commercial integrations that want prepaid billing. **Most agents should not use this** |
-| **Speed** | 8–10 s | 8–10 s | 2–5 s (discover) · 8–10 s (full search) |
+| **Speed** | 8–10 s to first results | 8–10 s to first results | 2–5 s (discover) · 8–10 s to first results (full search) |
 | **Search cost** | Free (one-time `letsfg auth`, nothing charged) | Free (one-time `letsfg auth`, nothing charged) | Prepaid credits ($0.50/$0.20/$0.10 per search, monthly tiers) |
 | **Booking** | `POST /api/agent-book` | `POST /api/agent-book` | Direct airline URLs |
 | **Setup** | `pip install letsfg && letsfg auth` | Payment method on file — see below | [letsfg.co/developers](https://letsfg.co/developers) |
@@ -361,7 +361,7 @@ When you're ready to integrate it into your own agent, keep reading.
 |---|---|---|
 | Price | Inflated (tracking, cookies, surge) | **Stable across repeat searches. $133 cheaper across 5 routes, verified 2026-08-05.** |
 | Coverage | Misses budget airlines | **Hundreds of airlines — OTAs, budget carriers, full-service** |
-| Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 8–10 s · API discover: 2–5 s** |
+| Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 8–10 s to first results · API discover: 2–5 s** |
 | Repeat search raises price? | Yes | **Never** |
 | Works in AI agents? | No API | **CLI · MCP · PFS (`letsfg auth`, free) · Developer API (prepaid)** |
 | Booking | Redirects to OTA checkout | **Real airline PNR, e-ticket to inbox** |
@@ -614,12 +614,12 @@ letsfg auth (once) → Bearer token (90-day) → Search (free) → Book via lets
 ```
 
 1. **Auth** — `letsfg auth` runs the payment-token flow: `POST /api/agent-access/request` → add a card at the printed `setup_url` (or confirm the SetupIntent headlessly) → `POST /api/agent-access/verify`. Nothing is charged. Token saved to `~/.letsfg/config.json`, valid 90 days.
-2. **Search** — `letsfg search LHR BCN 2026-06-15` calls `POST https://letsfg.co/api/search`, polls until done (8–10 s), and applies the open-source ranking algorithm locally.
+2. **Search** — `letsfg search LHR BCN 2026-06-15` calls `POST https://letsfg.co/api/search`, polls until done (8–10 s to first results), and applies the open-source ranking algorithm locally.
 3. **Book** — `POST /api/agent-book`. Returns either a confirmed order or a direct booking link for that exact offer. No LetsFG fee either way.
 
 ### Polling: `completed` is not the end
 
-A search returns in 8–10 s. Poll `GET /api/results/<search_id>`
+A search returns in 8–10 s to first results. Poll `GET /api/results/<search_id>`
 **immediately** and then every 2 s — a loop that sleeps first puts a
 floor under a search that is already faster than the sleep.
 
@@ -641,7 +641,7 @@ bound expires.
 The Python and JS SDKs and the MCP server already do this, with a 90 s ceiling
 — the same window the server uses to decide a result has settled.
 So a search that fires a split probe can take meaningfully longer than the
-8–10 s fast path, and it is the split offer you are waiting for.
+8–10 s to first results fast path, and it is the split offer you are waiting for.
 Set `LETSFG_WAIT_FOR_SPLIT=0` if you would rather have the fast answer.
 
 Most searches never fire the probe, so both flags are usually already false on
@@ -664,7 +664,7 @@ Register → Fund balance → Discover or Search (credits) → Direct booking UR
 ```
 
 1. **Discover** — `POST /flights/discover` with up to 20 destinations, get indicative prices sorted cheapest-first. 1 credit, 2–5 s. Use to rank options before committing to a full search.
-2. **Full search** — `POST /flights/search` (blocking) or `/flights/search/async` (non-blocking + poll). 1 credit, 8–10 s.
+2. **Full search** — `POST /flights/search` (blocking) or `/flights/search/async` (non-blocking + poll). 1 credit, 8–10 s to first results.
 3. **Book** — each offer includes a direct airline `booking_url`. No LetsFG fee, no checkout step.
 
 <details>
@@ -712,7 +712,7 @@ Product / Team / Agent
         ▼
 letsfg.co/developers/api/v1
   ├─ /flights/discover      (indicative prices, 20 dest, 1 credit, 2–5 s)
-  ├─ /flights/search        (full search, 1 credit, 8–10 s)
+  ├─ /flights/search        (full search, 1 credit, 8–10 s to first results)
   ├─ /flights/search/async  (non-blocking + poll)
   ├─ /flights/parse-query   (Gemini NL parsing, free)
   └─ /sandbox/flights/*     (fake data, same schema, free)

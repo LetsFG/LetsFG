@@ -11,7 +11,7 @@
 |---|---|---|
 | **Search cost** | Free (one-time `letsfg auth`, nothing charged) | Prepaid credits |
 | **Booking** | `POST /api/agent-book` — confirmed order or a booking link, no LetsFG fee | Direct airline URL (unlock required first, 1% fee min $3) |
-| **Speed** | 8–10 s, longer if a split probe fires | 2–5 s (discover) · 8–10 s (full) |
+| **Speed** | 8–10 s to first results; longer on a split | 2–5 s (discover) · 8–10 s to first results (full) |
 | **Setup** | `pip install letsfg && letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no per-booking fee.
@@ -258,7 +258,7 @@ except LetsFGError as e:
 
 ### Timeout and Retry Pattern
 
-Full cloud search takes 8–10 s (async polling). Use retry with backoff for transient errors:
+Full cloud search takes 8–10 s to first results (async polling). Use retry with backoff for transient errors:
 
 ```python
 import time
@@ -288,7 +288,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 | Endpoint | Rate Limit | Typical Latency |
 |----------|-----------|------------------|
-| Search | No hard limit (billing is the natural governor) | 8–10 s |
+| Search | No hard limit (billing is the natural governor) | 8–10 s to first results |
 | Resolve location | 120 req/min | < 1 s |
 | Unlock | 20 req/min | 2–5 s |
 | Book | 10 req/min | 3–10 s |

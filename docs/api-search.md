@@ -21,7 +21,7 @@
 |----------|--------|---------|---------|
 | `/flights/locations/{query}` | GET | Resolve a city, airport, or metro area to IATA codes | No |
 | `/flights/parse-query` | POST | Parse a natural language query into search params | No |
-| `/flights/search` | POST | Run a single-destination paid search (blocking, 8–10 s) | **1 credit** |
+| `/flights/search` | POST | Run a single-destination paid search (blocking, 8–10 s to first results) | **1 credit** |
 | `/flights/search/async` | POST | Start a search in background, returns search_id immediately | **1 credit** |
 | `/flights/results/{search_id}` | GET | Poll results of an async search | No |
 | `/flights/discover` | POST | Indicative prices for up to 20 destinations — single call, single credit | **1 credit** |
@@ -217,8 +217,8 @@ The developer API uses the same airline connector fleet as the [letsfg.co](https
 | Route type | Typical response time |
 |------------|-----------------------|
 | Europe intra-continental | 20–40 seconds |
-| Transatlantic | 8–10 seconds |
-| US domestic | 8–10 seconds |
+| Transatlantic | 8–10 s to first results |
+| US domestic | 8–10 s to first results |
 | Asia-Pacific / Latin America | 40–80 seconds |
 
 Response times reflect how long the relevant connectors take to return results. The API returns as soon as a useful set of offers is available — set your client timeout to at least **90 seconds** to handle the full range.
@@ -243,7 +243,7 @@ A `200 OK` response with `total_results: 0` means the search ran successfully bu
 - **Niche or unserved route** — some city pairs have no direct or connecting service.
 - **Cabin class filter** — `cabin_class: "F"` (first class) eliminates most LCCs; try `"M"` (economy) first.
 
-If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds — the search itself returns in 8–10 s, but a generous ceiling costs nothing and covers a slow supplier. The same connector fleet is used for both; a second request will usually return cached results immediately.
+If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds — the search itself returns in 8–10 s to first results, but a generous ceiling costs nothing and covers a slow supplier. The same connector fleet is used for both; a second request will usually return cached results immediately.
 
 ## Departure time filters
 
@@ -364,7 +364,7 @@ See [Async Search and Polling](api-polling.md) for the full guide and code examp
 
 
 **Poll immediately, then every 2 s.** A loop that sleeps before its first poll
-puts a floor under a search that now returns in 8–10 s.
+puts a floor under a search that now returns in 8–10 s to first results.
 
 On the agent lane (`letsfg.co/api/search`) a result can keep growing after it
 first reports `completed`, and the response carries `split_ticket_pending` /
