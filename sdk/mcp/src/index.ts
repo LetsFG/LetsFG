@@ -565,7 +565,15 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
           const airlines = [...new Set(
             [o.airline, ...legs.map(l => l.airline), ...segs.map(sg => sg.airline)].filter(Boolean)
           )] as string[];
-          const isSplit = String(o.split_ticket) === 'true';
+          // The split fields are published BOTH ways: `split_ticket` is a
+          // top-level boolean, while `self_transfer`, `split_hub` and
+          // `split_connect_hours` live in the nested `conditions` object.
+          // Reading only the top level silently drops `self_transfer` on every
+          // ordinary self-transfer offer, which is the one field an agent must
+          // never omit.
+          const cond = (o.conditions || {}) as Record<string, unknown>;
+          const isSplit = o.split_ticket === true || String(cond.split_ticket) === 'true';
+          const selfTransfer = cond.self_transfer ?? o.self_transfer;
           return {
             offer_id: o.id ?? o.offer_ref,
             price: `${o.price} ${o.currency}`,
@@ -577,12 +585,18 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
             // The condition travels with the price or the agent misrepresents it.
             ...(isSplit ? {
               split_ticket: true,
-              self_transfer: o.self_transfer ?? 'unprotected',
+              self_transfer: selfTransfer ?? 'unprotected',
+              ...(cond.split_hub ? { connecting_via: cond.split_hub } : {}),
+              ...(cond.split_connect_hours ? { connection_hours: cond.split_connect_hours } : {}),
+              ...(o.split_saving_vs_through ? { saving_vs_through_fare: o.split_saving_vs_through } : {}),
+              // `source` on a split reads "split:<sellerA>+<sellerB>" -- the two
+              // sellers are the whole point, so pass it through unmangled.
+              ...(o.source ? { sold_by: o.source } : {}),
               warning: 'Two separately-issued tickets bought from different sellers. '
                      + 'The tickets are not linked: if the first flight is delayed and '
                      + 'the connection is missed, the second airline owes nothing '
                      + '(no rebooking, no refund). Tell the user this alongside the price.',
-            } : (o.self_transfer ? { self_transfer: o.self_transfer } : {})),
+            } : (selfTransfer ? { self_transfer: selfTransfer } : {})),
             ...(o.booking_url ? { booking_url: o.booking_url } : {}),
             // Only present when there is something to say. Absent does NOT mean
             // the flight has no Wi-Fi -- see the tool description.
