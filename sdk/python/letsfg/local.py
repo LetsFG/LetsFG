@@ -44,8 +44,14 @@ _IN_PROGRESS = ("pending", "running", "searching")
 #
 # Costs nothing on most searches: the probe is gated server-side and never
 # fires on the majority of routes, so the flags are already false on poll one.
+# How long to wait is NOT a guess: the server stamps a result as settled
+# SETTLE_MS = 90s after it first reports `completed`, and that is the window in
+# which it expects the set to still be growing. A measured GDN->SFO run had the
+# split land at 51s -- a 45s ceiling would have given up ~6s short of the offer
+# this feature exists to find. Set LETSFG_WAIT_FOR_SPLIT=0 to skip the wait.
 _LATE_MERGE_INTERVAL = 3
-_LATE_MERGE_GRACE = 45   # seconds; a flag that never clears must not hang us
+_LATE_MERGE_GRACE = 90   # seconds; a flag that never clears must not hang us
+_WAIT_FOR_SPLIT = os.environ.get("LETSFG_WAIT_FOR_SPLIT", "").strip() != "0" 
 
 # Must match the UA the rest of the package sends. urllib's default
 # ("Python-urllib/3.x") is blocked outright by Cloudflare with error 1010, so a
@@ -163,7 +169,7 @@ async def search_local(
 
     # Terminal, but the offer set may still be growing.
     waited = 0
-    while _late_merge_inbound(terminal) and waited < _LATE_MERGE_GRACE:
+    while _WAIT_FOR_SPLIT and _late_merge_inbound(terminal) and waited < _LATE_MERGE_GRACE:
         await asyncio.sleep(_LATE_MERGE_INTERVAL)
         waited += _LATE_MERGE_INTERVAL
         print("+", end="", flush=True)   # a late merge is landing, not a stall

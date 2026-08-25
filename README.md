@@ -636,7 +636,13 @@ terminal. The response says so:
 
 Keep polling while either is true, and **bound the wait** — a flag
 that never clears must not hang your agent. Take whatever has landed when the
-bound expires. The Python and JS SDKs and the MCP server already do this.
+bound expires.
+
+The Python and JS SDKs and the MCP server already do this, with a 90 s ceiling
+— the same window the server uses to decide a result has settled.
+So a search that fires a split probe can take meaningfully longer than the
+8–10 s fast path, and it is the split offer you are waiting for.
+Set `LETSFG_WAIT_FOR_SPLIT=0` if you would rather have the fast answer.
 
 Most searches never fire the probe, so both flags are usually already false on
 the first poll and this costs nothing.

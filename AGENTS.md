@@ -41,7 +41,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 8–10 s | Free auth, free search, no LetsFG fee on booking |
+| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 8–10 s (longer if a split probe fires) | Free auth, free search, no LetsFG fee on booking |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 8–10 s (full search) | Prepaid credits (monthly tiers — see below); direct booking URLs, no per-booking fee |
 
 **Quick decision:**
@@ -69,7 +69,9 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **LetsFG** | **8–10 s** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
+| **LetsFG** | **8–10 s*** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
+
+* Time to `completed`. A search that fires a split-ticket probe keeps growing after that: the SDKs and MCP server poll on for up to 90 s more to collect the split offer, which is often the cheapest one. Set `LETSFG_WAIT_FOR_SPLIT=0` to take the fast answer instead.
 
 ## Pricing Model (PFS — what agents use)
 

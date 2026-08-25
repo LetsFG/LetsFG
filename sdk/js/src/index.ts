@@ -324,8 +324,17 @@ const PFS_POLL_TIMEOUT_MS = 120_000;
 //
 // Free on most searches — the split probe is gated server-side and never fires
 // on the majority of routes, so these flags are already false on poll one.
+// How long to wait for it is NOT a guess: the server stamps a result as
+// settled SETTLE_MS = 90s after it first reports `completed`, and that is the
+// window in which it expects the set to still be growing. A measured
+// GDN->SFO run had the split land at 51s. 45s would have given up ~6s short of
+// the offer this whole feature exists to find, so the ceiling tracks the
+// server's own settle window.
+//
+// Set LETSFG_WAIT_FOR_SPLIT=0 to skip the wait and take the fast answer.
 const LATE_MERGE_POLL_MS = 3_000;
-const LATE_MERGE_GRACE_MS = 45_000;
+const LATE_MERGE_GRACE_MS = 90_000;
+const WAIT_FOR_SPLIT = (process.env.LETSFG_WAIT_FOR_SPLIT || '').trim() !== '0';
 const NON_TERMINAL = ['pending', 'searching'];
 
 export class LetsFG {
@@ -437,7 +446,7 @@ export class LetsFG {
     // Terminal, but maybe still growing. Bounded wait: a flag that never clears
     // must not hang the caller.
     const lateDeadline = Date.now() + LATE_MERGE_GRACE_MS;
-    while (inbound(terminal) && Date.now() < lateDeadline) {
+    while (WAIT_FOR_SPLIT && inbound(terminal) && Date.now() < lateDeadline) {
       await new Promise(r => setTimeout(r, LATE_MERGE_POLL_MS));
       const merged = await poll();
       if (!NON_TERMINAL.includes(merged.status as string)) terminal = merged;

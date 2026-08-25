@@ -11,7 +11,7 @@
 |---|---|---|
 | **Search cost** | Free (Bearer token via `letsfg auth` — zero-amount card setup) | Prepaid credits |
 | **Booking** | `POST /api/agent-book` — confirmed order or a booking link, no LetsFG fee | Direct airline URL (unlock required first) |
-| **Speed** | 8–10 s | 2–5 s (discover) · 8–10 s (full) |
+| **Speed** | 8–10 s, longer if a split probe fires | 2–5 s (discover) · 8–10 s (full) |
 | **Setup** | `npm install letsfg` then `letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.

@@ -52,8 +52,8 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 8–10 s | Free auth, free search |
-| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 8–10 s | Free auth, free search |
+| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 8–10 s (longer if a split probe fires) | Free auth, free search |
+| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 8–10 s (longer if a split probe fires) | Free auth, free search |
 | **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 8–10 s (full search) | Prepaid credits |
 
 Auth for CLI/PFS: one-time payment-token enrolment (`letsfg auth`) → 90-day Bearer token.

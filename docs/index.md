@@ -41,7 +41,7 @@ LetsFG has two access paths — pick the one that matches your setup:
 
 | Path | How | Speed | Search cost | Booking URL |
 |------|-----|-------|-------------|-------------|
-| **CLI / SDK** (`letsfg auth`) | Server-side search + booking; one-time zero-amount card setup → 90-day Bearer token | 8–10 s | Free | No LetsFG fee |
+| **CLI / SDK** (`letsfg auth`) | Server-side search + booking; one-time zero-amount card setup → 90-day Bearer token | 8–10 s (longer if a split probe fires) | Free | No LetsFG fee |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 8–10 s (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
