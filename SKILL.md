@@ -39,8 +39,8 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. H
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS Bearer token) | **Almost every agent.** Search + booking | 60–90 s | Free auth, free search |
-| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | 2–5 s (discover) · 60–90 s (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
+| **CLI / SDK / MCP** (PFS Bearer token) | **Almost every agent.** Search + booking | 8–10 s to first results | Free auth, free search |
+| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume | 2–5 s (discover) · 8–10 s to first results (full search) | Prepaid credits; direct booking URLs, no per-booking fee |
 
 ## Skills
 
@@ -425,7 +425,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 | Endpoint | Rate Limit | Typical Latency |
 |----------|-----------|------------------|
-| Search flights | No hard limit (billing is the natural governor) | 2–5 s (discover) · 60–90 s (full search) |
+| Search flights | No hard limit (billing is the natural governor) | 2–5 s (discover) · 8–10 s to first results (full search) |
 | Resolve location | 120 req/min | <1s |
 | Unlock | 20 req/min | 2-5s |
 | Book | 10 req/min | 3-10s |

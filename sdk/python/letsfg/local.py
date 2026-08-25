@@ -23,8 +23,35 @@ from urllib.error import HTTPError
 from letsfg.connectors.auth import get_bearer_token, BearerTokenError
 
 _BASE_URL = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
-_POLL_INTERVAL = 10   # seconds
-_MAX_POLLS = 36       # 6 minutes max
+# Poll fast and poll FIRST. The old loop slept 10s before its opening poll,
+# which put a hard 10s floor under every search however fast the engine
+# answered.
+_POLL_INTERVAL = 2    # seconds
+_MAX_POLLS = 90       # ~3 minutes at 2s
+
+# The API's own vocabulary. `searching` is in-progress; anything else is
+# terminal. The old check tested membership in ("done", "complete", "finished")
+# -- none of which the API ever sends -- and then fell through to "has offers
+# and is not pending/running", which returns a HALF-FINISHED search the moment
+# the first connector lands.
+_IN_PROGRESS = ("pending", "running", "searching")
+
+# A search reports `completed` BEFORE its offer set stops growing. The split
+# probe fires two extra connector fan-outs and merges late, so the cheapest
+# itinerary is routinely one that does not exist yet when the status turns
+# terminal; the server publishes `split_ticket_pending` / `gf_enrich_pending`
+# until it lands. Stopping at `completed` silently discards the cheaper offer.
+#
+# Costs nothing on most searches: the probe is gated server-side and never
+# fires on the majority of routes, so the flags are already false on poll one.
+# How long to wait is NOT a guess: the server stamps a result as settled
+# SETTLE_MS = 90s after it first reports `completed`, and that is the window in
+# which it expects the set to still be growing. A measured GDN->SFO run had the
+# split land at 51s -- a 45s ceiling would have given up ~6s short of the offer
+# this feature exists to find. Set LETSFG_WAIT_FOR_SPLIT=0 to skip the wait.
+_LATE_MERGE_INTERVAL = 3
+_LATE_MERGE_GRACE = 90   # seconds; a flag that never clears must not hang us
+_WAIT_FOR_SPLIT = os.environ.get("LETSFG_WAIT_FOR_SPLIT", "").strip() != "0" 
 
 # Must match the UA the rest of the package sends. urllib's default
 # ("Python-urllib/3.x") is blocked outright by Cloudflare with error 1010, so a
@@ -112,26 +139,46 @@ async def search_local(
     if not search_id:
         return result  # direct response (e.g. sandbox mode)
 
-    print(f"  Searching [{search_id[:8]}] ", end="", flush=True)
-    for _ in range(_MAX_POLLS):
-        await asyncio.sleep(_POLL_INTERVAL)
-        print(".", end="", flush=True)
+    def _poll() -> dict:
         poll_req = Request(
             f"{_BASE_URL}/api/results/{search_id}",
             headers=_headers(token, json_body=False),
             method="GET",
         )
         with urlopen(poll_req, timeout=15) as resp:
-            data = json.loads(resp.read())
-        status = data.get("status", "")
-        if status in ("done", "complete", "finished") or (
-            data.get("offers") and status not in ("pending", "running")
-        ):
-            print()
-            return data
+            return json.loads(resp.read())
+
+    def _late_merge_inbound(d: dict) -> bool:
+        return bool(d.get("split_ticket_pending") or d.get("gf_enrich_pending"))
+
+    print(f"  Searching [{search_id[:8]}] ", end="", flush=True)
+
+    terminal: dict | None = None
+    for i in range(_MAX_POLLS):
+        if i:
+            await asyncio.sleep(_POLL_INTERVAL)
+        print(".", end="", flush=True)
+        data = _poll()
+        if data.get("status", "") not in _IN_PROGRESS:
+            terminal = data
+            break
+
+    if terminal is None:
+        print()
+        return {"offers": [], "total_results": 0, "search_id": search_id}
+
+    # Terminal, but the offer set may still be growing.
+    waited = 0
+    while _WAIT_FOR_SPLIT and _late_merge_inbound(terminal) and waited < _LATE_MERGE_GRACE:
+        await asyncio.sleep(_LATE_MERGE_INTERVAL)
+        waited += _LATE_MERGE_INTERVAL
+        print("+", end="", flush=True)   # a late merge is landing, not a stall
+        merged = _poll()
+        if merged.get("status", "") not in _IN_PROGRESS:
+            terminal = merged
 
     print()
-    return {"offers": [], "total_results": 0, "search_id": search_id}
+    return terminal
 
 
 async def book_offer(

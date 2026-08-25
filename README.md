@@ -208,12 +208,56 @@ for o in offers:
 
 Full semantics: [docs/api-search.md](docs/api-search.md#starlink-wi-fi).
 
+## ⇄ Split tickets — two sellers, one trip
+
+A long-haul searched as one journey comes back as one through-fare, because
+every site is reselling the same ticket. Searched as two independent legs
+through a hub, each leg can be bought from whichever site is cheapest for that
+leg — and those are usually two different sites. Nobody sells the
+combination, so nobody quotes it.
+
+LetsFG builds that itinerary for you and returns it alongside the through-fares.
+Split offers are flagged, never disguised:
+
+| Field | Value on a split offer |
+|---|---|
+| `split_ticket` | `"true"` |
+| `combo_type` | `"virtual_interlining"` |
+| `self_transfer` | `"unprotected"` |
+
+```python
+for o in offers:
+    if o.get("split_ticket") == "true":
+        print(o["price"], "— two separate tickets, self-transfer not protected")
+```
+
+**Read `self_transfer` before you present the price.** `unprotected` means the
+two tickets are not linked: if the first flight is late and the connection is
+missed, the second airline owes nothing — no rebooking, no refund, no
+duty of care. That is the trade you are being offered in exchange for the
+saving, and it has to reach the traveller. We only build a split when the
+connection has a real buffer, and we say so on the offer — but an
+agent that relays the price without the condition is misrepresenting it.
+
+**The probe is gated.** Two extra connector fan-outs cost real money, so a
+split is only attempted when the through-fare is expensive enough, the journey
+long enough, and the market has somewhere to break the trip. Most searches
+never fire it, and a search that fires it does not always find a saving.
+
+**It lands after `completed`.** See
+[Polling: `completed` is not the end](#polling-completed-is-not-the-end).
+
+**Where it runs.** letsfg.co, and the agent lane behind it — the CLI,
+the Python and JS SDKs, and the MCP server. The paid Developer API is served by
+a different backend; `self_transfer` is returned there, but split-ticket offers
+are not part of that contract.
+
 ## Three ways to use LetsFG
 
 | | **Path 1 — CLI / SDK** | **Path 2 — PFS** (Programmatic Flight Search via letsfg.co) | **Path 3 — Developer API** |
 |---|---|---|---|
 | **Best for** | Developers, personal use, AI agents — easiest way in | Scripts/agents calling the API directly with a Bearer token | High-volume commercial integrations that want prepaid billing. **Most agents should not use this** |
-| **Speed** | 60–90 s | 60–90 s | 2–5 s (discover) · 60–90 s (full search) |
+| **Speed** | 8–10 s to first results | 8–10 s to first results | 2–5 s (discover) · 8–10 s to first results (full search) |
 | **Search cost** | Free (one-time `letsfg auth`, nothing charged) | Free (one-time `letsfg auth`, nothing charged) | Prepaid credits ($0.50/$0.20/$0.10 per search, monthly tiers) |
 | **Booking** | `POST /api/agent-book` | `POST /api/agent-book` | Direct airline URLs |
 | **Setup** | `pip install letsfg && letsfg auth` | Payment method on file — see below | [letsfg.co/developers](https://letsfg.co/developers) |
@@ -317,7 +361,7 @@ When you're ready to integrate it into your own agent, keep reading.
 |---|---|---|
 | Price | Inflated (tracking, cookies, surge) | **Stable across repeat searches. $133 cheaper across 5 routes, verified 2026-08-05.** |
 | Coverage | Misses budget airlines | **Hundreds of airlines — OTAs, budget carriers, full-service** |
-| Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 60–90 s · API discover: 2–5 s** |
+| Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 8–10 s to first results · API discover: 2–5 s** |
 | Repeat search raises price? | Yes | **Never** |
 | Works in AI agents? | No API | **CLI · MCP · PFS (`letsfg auth`, free) · Developer API (prepaid)** |
 | Booking | Redirects to OTA checkout | **Real airline PNR, e-ticket to inbox** |
@@ -570,8 +614,38 @@ letsfg auth (once) → Bearer token (90-day) → Search (free) → Book via lets
 ```
 
 1. **Auth** — `letsfg auth` runs the payment-token flow: `POST /api/agent-access/request` → add a card at the printed `setup_url` (or confirm the SetupIntent headlessly) → `POST /api/agent-access/verify`. Nothing is charged. Token saved to `~/.letsfg/config.json`, valid 90 days.
-2. **Search** — `letsfg search LHR BCN 2026-06-15` calls `POST https://letsfg.co/api/search`, polls until done (60–90 s), and applies the open-source ranking algorithm locally.
+2. **Search** — `letsfg search LHR BCN 2026-06-15` calls `POST https://letsfg.co/api/search`, polls until done (8–10 s to first results), and applies the open-source ranking algorithm locally.
 3. **Book** — `POST /api/agent-book`. Returns either a confirmed order or a direct booking link for that exact offer. No LetsFG fee either way.
+
+### Polling: `completed` is not the end
+
+A search returns in 8–10 s to first results. Poll `GET /api/results/<search_id>`
+**immediately** and then every 2 s — a loop that sleeps first puts a
+floor under a search that is already faster than the sleep.
+
+When `status` leaves `searching`, the connector fan-out is done — but
+the offer set may still be growing. The split-ticket probe is dispatched after
+the fan-out and merges its result in late, so the cheapest itinerary on the
+search is routinely one that does not exist yet at the moment the status turns
+terminal. The response says so:
+
+| Flag | Meaning while `true` |
+|---|---|
+| `split_ticket_pending` | a split-ticket probe is still running |
+| `gf_enrich_pending` | the Google Flights enrich has not merged yet |
+
+Keep polling while either is true, and **bound the wait** — a flag
+that never clears must not hang your agent. Take whatever has landed when the
+bound expires.
+
+The Python and JS SDKs and the MCP server already do this, with a 90 s ceiling
+— the same window the server uses to decide a result has settled.
+So a search that fires a split probe can take meaningfully longer than the
+8–10 s to first results fast path, and it is the split offer you are waiting for.
+Set `LETSFG_WAIT_FOR_SPLIT=0` if you would rather have the fast answer.
+
+Most searches never fire the probe, so both flags are usually already false on
+the first poll and this costs nothing.
 
 ### PFS — raw API (same as CLI, without the wrapper)
 
@@ -580,7 +654,7 @@ Payment method on file -> Bearer token (90-day) -> POST /api/search -> poll GET 
 ```
 
 1. **Get a Bearer token** — `POST /api/agent-access/request` → present a payment method (hosted card page, headless SetupIntent, or MPP) → `POST /api/agent-access/verify`. Nothing is charged on the card lanes. Token valid 90 days.
-2. **Search** — `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>`. Returns `{ search_id }`. Poll `GET /api/results/<search_id>` every 10 s until `status: "done"`.
+2. **Search** — `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>`. Returns `{ search_id }`. Poll `GET /api/results/<search_id>` immediately, then every 2 s, until `status` leaves `searching`. Then keep polling while `split_ticket_pending` or `gf_enrich_pending` is true — the split-ticket offer merges in after the status turns terminal.
 3. **Book** — `POST /api/agent-book`. No LetsFG fee.
 
 ### Developer API — paid, direct booking URLs
@@ -590,7 +664,7 @@ Register → Fund balance → Discover or Search (credits) → Direct booking UR
 ```
 
 1. **Discover** — `POST /flights/discover` with up to 20 destinations, get indicative prices sorted cheapest-first. 1 credit, 2–5 s. Use to rank options before committing to a full search.
-2. **Full search** — `POST /flights/search` (blocking) or `/flights/search/async` (non-blocking + poll). 1 credit, 60–90 s.
+2. **Full search** — `POST /flights/search` (blocking) or `/flights/search/async` (non-blocking + poll). 1 credit, 8–10 s to first results.
 3. **Book** — each offer includes a direct airline `booking_url`. No LetsFG fee, no checkout step.
 
 <details>
@@ -622,7 +696,7 @@ POST letsfg.co/api/search  (bot-protected, token required)
 letsfg.co server-side search engine
         │
         ▼
-GET /api/results/<search_id>  (poll every 10 s until done)
+GET /api/results/<search_id>  (poll every 2 s; keep going while split_ticket_pending)
         │
         ▼
 Ranking applied locally (sdk/js/src/ranking.ts, open-source)
@@ -638,7 +712,7 @@ Product / Team / Agent
         ▼
 letsfg.co/developers/api/v1
   ├─ /flights/discover      (indicative prices, 20 dest, 1 credit, 2–5 s)
-  ├─ /flights/search        (full search, 1 credit, 60–90 s)
+  ├─ /flights/search        (full search, 1 credit, 8–10 s to first results)
   ├─ /flights/search/async  (non-blocking + poll)
   ├─ /flights/parse-query   (Gemini NL parsing, free)
   └─ /sandbox/flights/*     (fake data, same schema, free)

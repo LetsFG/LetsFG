@@ -21,7 +21,7 @@
 |----------|--------|---------|---------|
 | `/flights/locations/{query}` | GET | Resolve a city, airport, or metro area to IATA codes | No |
 | `/flights/parse-query` | POST | Parse a natural language query into search params | No |
-| `/flights/search` | POST | Run a single-destination paid search (blocking, 60–90 s) | **1 credit** |
+| `/flights/search` | POST | Run a single-destination paid search (blocking, 8–10 s to first results) | **1 credit** |
 | `/flights/search/async` | POST | Start a search in background, returns search_id immediately | **1 credit** |
 | `/flights/results/{search_id}` | GET | Poll results of an async search | No |
 | `/flights/discover` | POST | Indicative prices for up to 20 destinations — single call, single credit | **1 credit** |
@@ -181,6 +181,28 @@ airBaltic) resolve even when the aircraft type is unknown; every other carrier
 needs the aircraft type, and not every source reports one. A missing field is
 therefore common and carries no negative information.
 
+## Self-transfer and split tickets
+
+An offer may carry `self_transfer`. `"protected"` means the seller stands
+behind the connection; `"unprotected"` means it does not — if the first flight
+is late and the connection is missed, the onward airline has no obligation: no
+rebooking, no refund, no duty of care. Surface that alongside the price.
+Relaying the saving without the condition misrepresents the offer.
+
+LetsFG also *builds* split itineraries: two separately-issued tickets through a
+hub, bought from two different sellers, because no single seller offers the
+combination. Those offers carry `split_ticket: "true"` and
+`combo_type: "virtual_interlining"` alongside `self_transfer: "unprotected"`.
+
+> **Lane note.** The split-ticket builder runs on the agent search lane
+> (`POST https://letsfg.co/api/search` — the CLI, the Python and JS SDKs and
+> the MCP server). This Developer API is served by a different backend, and
+> split offers are not part of its documented contract. Treat `split_ticket`
+> as a field to *honour if present*, not one to expect. `self_transfer` is
+> returned by this API and should always be checked.
+
+See the [agent guide](agent-guide.md) for the split-ticket lane.
+
 ## What to persist from results
 
 - `passenger_ids` for any later passenger mapping or booking continuation
@@ -195,8 +217,8 @@ The developer API uses the same airline connector fleet as the [letsfg.co](https
 | Route type | Typical response time |
 |------------|-----------------------|
 | Europe intra-continental | 20–40 seconds |
-| Transatlantic | 30–60 seconds |
-| US domestic | 60–90 seconds |
+| Transatlantic | 8–10 s to first results |
+| US domestic | 8–10 s to first results |
 | Asia-Pacific / Latin America | 40–80 seconds |
 
 Response times reflect how long the relevant connectors take to return results. The API returns as soon as a useful set of offers is available — set your client timeout to at least **90 seconds** to handle the full range.
@@ -221,7 +243,7 @@ A `200 OK` response with `total_results: 0` means the search ran successfully bu
 - **Niche or unserved route** — some city pairs have no direct or connecting service.
 - **Cabin class filter** — `cabin_class: "F"` (first class) eliminates most LCCs; try `"M"` (economy) first.
 
-If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds. The same connector fleet is used for both; a second request will usually return cached results immediately.
+If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds — the search itself returns in 8–10 s to first results, but a generous ceiling costs nothing and covers a slow supplier. The same connector fleet is used for both; a second request will usually return cached results immediately.
 
 ## Departure time filters
 
@@ -339,6 +361,16 @@ to all destinations in the batch.
 For products that need a loading state while results arrive, use
 `POST /flights/search/async` → `GET /flights/results/{search_id}`.
 See [Async Search and Polling](api-polling.md) for the full guide and code examples.
+
+
+**Poll immediately, then every 2 s.** A loop that sleeps before its first poll
+puts a floor under a search that now returns in 8–10 s to first results.
+
+On the agent lane (`letsfg.co/api/search`) a result can keep growing after it
+first reports `completed`, and the response carries `split_ticket_pending` /
+`gf_enrich_pending` to say so — see the
+[agent guide](agent-guide.md). Those flags are not part of this API's contract;
+if you see them, honour them the same way.
 
 ## Sandbox — zero-cost testing
 

@@ -11,7 +11,9 @@
     "balance_due_by is the supplier's own auto-cancellation date, not advisory. Miss it and the room is released.",
     "Send expected_price and expected_balance back to /hotels/book exactly as /hotels/search returned them, or the booking is refused as a price mismatch.",
     "Only free-cancellation, pay-later hotel rates are sold, so the result set is smaller than a metasearch. Every rate returned can actually be booked.",
-    "Do not call /agents/register or /agents/setup-payment for flights. Those create a paid prepaid billing account most agents do not want; use `letsfg auth` instead."
+    "Do not call /agents/register or /agents/setup-payment for flights. Those create a paid prepaid billing account most agents do not want; use `letsfg auth` instead.",
+    "A flight search returns in 8-10 s to first results, but `status: completed` is NOT the end. Poll GET /api/results/<id> immediately and then every 2s; keep polling while `split_ticket_pending` or `gf_enrich_pending` is true. The cheapest offer often merges in AFTER the status turns terminal. Bound the wait so a flag that never clears cannot hang the client.",
+    "Some flight offers are SPLIT TICKETS: two separately-issued tickets through a hub from two different sellers. They carry split_ticket=\"true\", combo_type=\"virtual_interlining\" and self_transfer=\"unprotected\". Always tell the user: the tickets are not linked, so a missed connection means the second airline owes nothing - no rebooking, no refund. Never present a split ticket as one through-fare."
   ],
   "url": "https://context7.com/letsfg/letsfg",
   "public_key": "pk_HrakXLAVA5rtCurZJE1U8"

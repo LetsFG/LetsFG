@@ -1,5 +1,7 @@
 # Smithery configuration for LetsFG MCP Server
 # Flights and hotels: search, book and cancel from any MCP agent.
+# Flight search returns in 8-10s and can include split tickets (two tickets,
+# two sellers, one trip) - always flagged with self_transfer: unprotected.
 # https://smithery.ai/docs/publishing
 
 startCommand:
