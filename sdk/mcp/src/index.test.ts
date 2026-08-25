@@ -53,6 +53,10 @@ function readNextMessage(proc: ChildProcessWithoutNullStreams, timeoutMs = 5000)
 // Windows, so the whole suite goes red for reasons unrelated to the code).
 describe('MCP server — dead-route guards', () => {
   const src = readFileSync(SERVER_PATH, 'utf8');
+  // Guards that assert a pattern is ABSENT must look at code only. This file
+  // documents the bugs it fixed by quoting them, so matching raw source makes a
+  // comment describing the old mistake read as the mistake itself.
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
   it('never calls /api/locations — that route does not exist on letsfg.co', () => {
     // 2026-08-16: resolve_location sent every key-less (PFS Bearer) caller to
@@ -66,8 +70,33 @@ describe('MCP server — dead-route guards', () => {
   it('parses responses defensively, never a bare resp.json()', () => {
     // A bare `await resp.json()` destroys the real status on any HTML body
     // (404 page, 502, Cloudflare challenge) and reports a JSON syntax error.
-    assert.ok(!/const\s+data\s*=\s*await\s+resp\.json\(\)\s*;/.test(src),
+    assert.ok(!/const\s+data\s*=\s*await\s+resp\.json\(\)\s*;/.test(code),
       'read resp.text() and JSON.parse it, so a non-JSON body still reports its status');
+    assert.ok(!/await\s+\w*[Rr]esp\.json\(\)/.test(code),
+      'every response body goes through readJson() — no call site parses its own');
+  });
+
+  // Walks EVERY request in the file rather than checking one function. The
+  // per-function version of this test is exactly what let #163 ship twice: it
+  // passed the whole time the second call site was broken, because it was only
+  // ever asked about the first one. #206 was the same shape again — the search
+  // POST and its results poll were the two requests that built their own
+  // headers, and they are the two that carry a real search.
+  it('every fetch() sends headers built by letsfgHeaders()', () => {
+    const fetches = [...code.matchAll(/fetch\(([\s\S]*?)\n\s*\}\);/g)].map((m) => m[1]);
+    assert.ok(fetches.length >= 4, `expected to find the request call sites, found ${fetches.length}`);
+    for (const call of fetches) {
+      assert.ok(/headers:\s*letsfgHeaders\(/.test(call),
+        `a fetch() builds its own headers instead of calling letsfgHeaders():\n${call.slice(0, 200)}`);
+    }
+  });
+
+  it('the User-Agent is overridable, and set in exactly one place', () => {
+    // A client on the wrong side of an edge/WAF rule cannot fix the rule. Without
+    // an override its only options are downgrade or wait (#206).
+    assert.ok(src.includes('LETSFG_USER_AGENT'), 'LETSFG_USER_AGENT must override the client UA');
+    assert.equal((code.match(/'User-Agent':/g) ?? []).length, 1,
+      "the UA is set once, in letsfgHeaders() — a second literal is a call site the override can't reach");
   });
 });
 

@@ -330,6 +330,25 @@ Windows can't find `npx` in PATH. Use the full path:
 ```
 Or install globally and use `node` directly (see Windows config above).
 
+### HTTP 403 with an anti-bot challenge page (VPS / datacenter hosts)
+
+If a tool returns `HTTP 403 … an anti-bot challenge page was returned instead of the API`,
+the request never reached the search engine — something in the network path in front of
+`letsfg.co` answered it, and no token can get past that. It is seen from datacenter and
+VPS IPs, which is where MCP servers normally run.
+
+Override the client's User-Agent as a stopgap:
+
+```json
+"env": {
+  "LETSFG_BEARER_TOKEN": "eyJ...",
+  "LETSFG_USER_AGENT": "Mozilla/5.0 (compatible; letsfg-mcp)"
+}
+```
+
+Please also open an issue with your host and egress IP — the durable fix belongs on our
+side, not in your config.
+
 ### Search returns 0 results
 
 - Check IATA codes are correct — use `resolve_location` first

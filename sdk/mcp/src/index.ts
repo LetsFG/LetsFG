@@ -65,37 +65,108 @@ const NON_TERMINAL = ['pending', 'searching'];
 const lateMergeInbound = (r: Record<string, unknown>): boolean =>
   Boolean(r.split_ticket_pending) || Boolean(r.gf_enrich_pending);
 
+// ── Request headers ─────────────────────────────────────────────────────
+
+// Every request in this file goes through this one helper. That is the whole
+// point of it existing: issue #163 was a missing User-Agent, fixed once in the
+// Python SDK's auth path, and came straight back on its search path — because
+// the fix patched a call site instead of a helper. This module had the same
+// split (`X-Client-Type: mcp` was on the generic API client but on NEITHER the
+// search POST nor its results poll), so any server-side rule keyed on that
+// header applied to every tool EXCEPT the two that carry a real search.
+//
+// LETSFG_USER_AGENT overrides the UA. It exists because a client cannot fix an
+// edge/WAF rule it is on the wrong side of, and waiting for one to be changed
+// is not a workaround a user can apply themselves (#206).
+function letsfgHeaders(opts: { json?: boolean; auth?: boolean } = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': (process.env.LETSFG_USER_AGENT || '').trim() || `letsfg-mcp/${VERSION}`,
+    'X-Client-Type': 'mcp',
+  };
+  if (opts.json) headers['Content-Type'] = 'application/json';
+  // `auth: false` is for the enrollment call, which is how a caller GETS a
+  // credential — sending a stale one there could only ever confuse it.
+  if (opts.auth !== false) {
+    if (BEARER_TOKEN) headers['Authorization'] = `Bearer ${BEARER_TOKEN}`;
+    else if (API_KEY) headers['X-API-Key'] = API_KEY;
+  }
+  return headers;
+}
+
+// A challenge/error page is HTML, and every caller here wants JSON. Turning
+// "<!DOCTYPE html>…" into `SyntaxError: Unexpected token '<'` destroys the only
+// two facts the agent could act on: the status, and that something in front of
+// the API — not the API — answered. Name that explicitly.
+function describeNonJsonResponse(status: number, body: string, path: string): string {
+  const looksLikeHtml = /^\s*<(?:!doctype|html)/i.test(body);
+  const looksLikeChallenge = looksLikeHtml
+    && /just a moment|cf-browser-verification|challenge-platform|attention required/i.test(body);
+
+  if (looksLikeChallenge) {
+    return `HTTP ${status} from ${path}: an anti-bot challenge page was returned instead of the API. `
+      + `This is the network path in front of letsfg.co answering, not the search itself — a valid token cannot get past it. `
+      + `It is most often seen from datacenter/VPS IPs. Set LETSFG_USER_AGENT to override the client User-Agent, `
+      + `or report the host and egress IP at https://github.com/LetsFG/LetsFG/issues.`;
+  }
+  if (looksLikeHtml) {
+    return `HTTP ${status} from ${path}: got an HTML page where JSON was expected — the request did not reach the API.`;
+  }
+  return `HTTP ${status} from ${path}: non-JSON response (${body.slice(0, 120)})`;
+}
+
+/** Read a response as JSON, or return an actionable error object — never throw. */
+async function readJson(resp: Response, path: string): Promise<Record<string, unknown>> {
+  const raw = await resp.text();
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+  } catch {
+    return { error: true, status_code: resp.status, detail: describeNonJsonResponse(resp.status, raw, path) };
+  }
+  if (!resp.ok) {
+    const detail = (data.detail as string) || (data.error as string) || `HTTP ${resp.status}`;
+    return { error: true, status_code: resp.status, detail };
+  }
+  return data;
+}
+
 // ── Cloud Search (PFS Bearer token path) ───────────────────────────────
 
 async function searchPFS(params: Record<string, unknown>): Promise<Record<string, unknown>> {
   const resp = await fetch(`${BASE_URL}/api/search`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${BEARER_TOKEN}`,
-      'User-Agent': `letsfg-mcp/${VERSION}`,
-    },
+    headers: letsfgHeaders({ json: true }),
     body: JSON.stringify(params),
   });
 
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
-    return { error: true, status_code: resp.status, detail: (data as Record<string, string>).detail || `HTTP ${resp.status}` };
-  }
+  const started = await readJson(resp, '/api/search');
+  if (started.error) return started;
 
-  const { search_id } = await resp.json() as { search_id: string };
+  const { search_id } = started as unknown as { search_id: string };
+
+  // Distinguishes "the search isn't finished yet" from "we are being turned
+  // away". The old poll returned bare `null` for BOTH, so a 403 that started
+  // mid-search burned the entire 120s timeout and then reported it as a
+  // timeout — the one diagnosis guaranteed to send the user looking in the
+  // wrong place. A poll that is being REFUSED will still be refused in 2s.
+  let pollRefusal: Record<string, unknown> | null = null;
 
   const poll = async (): Promise<Record<string, unknown> | null> => {
     const pollResp = await fetch(`${BASE_URL}/api/results/${search_id}`, {
       // Carry the token on the poll too, not just the POST: results are the
       // agent's own, and the token is what buckets rate limiting to this agent.
-      headers: {
-        'User-Agent': `letsfg-mcp/${VERSION}`,
-        'Authorization': `Bearer ${BEARER_TOKEN}`,
-      },
+      headers: letsfgHeaders(),
     });
-    if (!pollResp.ok) return null;
-    return await pollResp.json() as Record<string, unknown>;
+    const data = await readJson(pollResp, `/api/results/${search_id}`);
+    if (data.error) {
+      // 5xx and 429 are transient — a search in flight legitimately produces
+      // them, and giving up on the first one would throw away a live search.
+      // 401/403 are a verdict on the caller, and re-asking cannot change it.
+      const status = data.status_code as number | undefined;
+      if (status === 401 || status === 403) pollRefusal = data;
+      return null;
+    }
+    return data;
   };
 
   const deadline = Date.now() + PFS_POLL_TIMEOUT_MS;
@@ -106,6 +177,7 @@ async function searchPFS(params: Record<string, unknown>): Promise<Record<string
   while (Date.now() < deadline) {
     const result = await poll();
     if (result && !NON_TERMINAL.includes(result.status as string)) { terminal = result; break; }
+    if (pollRefusal) return pollRefusal;
     await new Promise(r => setTimeout(r, PFS_POLL_INTERVAL_MS));
   }
   if (!terminal) return { error: true, detail: 'Search timed out after 120s.' };
@@ -125,21 +197,9 @@ async function searchPFS(params: Record<string, unknown>): Promise<Record<string
 // ── API Client ──────────────────────────────────────────────────────────
 
 async function apiRequest(method: string, path: string, body?: Record<string, unknown>): Promise<unknown> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'User-Agent': `letsfg-mcp/${VERSION}`,
-    'X-Client-Type': 'mcp',
-  };
-
-  if (BEARER_TOKEN) {
-    headers['Authorization'] = `Bearer ${BEARER_TOKEN}`;
-  } else if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
-  }
-
   const resp = await fetch(`${BASE_URL}${path}`, {
     method,
-    headers,
+    headers: letsfgHeaders({ json: true }),
     body: body ? JSON.stringify(body) : undefined,
   });
 
@@ -148,24 +208,7 @@ async function apiRequest(method: string, path: string, body?: Record<string, un
   // `Error: SyntaxError: Unexpected token '<', "<!DOCTYPE "...` — the real
   // status (404/502/a Cloudflare challenge page) was destroyed on the way out.
   // An agent cannot act on that; it can act on "status 404".
-  const raw = await resp.text();
-  let data: unknown;
-  try {
-    data = raw ? JSON.parse(raw) : {};
-  } catch {
-    return {
-      error: true,
-      status_code: resp.status,
-      detail: resp.status >= 400
-        ? `HTTP ${resp.status} — non-JSON response from ${path}`
-        : `Expected JSON from ${path} but got ${resp.headers.get('content-type') ?? 'unknown'} (HTTP ${resp.status})`,
-    };
-  }
-
-  if (resp.status >= 400) {
-    return { error: true, status_code: resp.status, detail: (data as Record<string, string>).detail || JSON.stringify(data) };
-  }
-  return data;
+  return await readJson(resp, path);
 }
 
 async function resolveLocationCloud(query: string): Promise<unknown> {
@@ -766,10 +809,12 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       // agent sees setup_url, which is the whole point of the response.
       const resp = await fetch(`${BASE_URL}/api/agent-access/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': `letsfg-mcp/${VERSION}` },
+        headers: letsfgHeaders({ json: true, auth: false }),
         body: '{}',
       });
-      return JSON.stringify(await resp.json(), null, 2);
+      // readJson, not resp.json(): a challenge page here used to throw a bare
+      // SyntaxError at the agent, hiding the fact that enrollment never ran.
+      return JSON.stringify(await readJson(resp, '/api/agent-access/request'), null, 2);
     }
 
     case 'setup_payment': {
