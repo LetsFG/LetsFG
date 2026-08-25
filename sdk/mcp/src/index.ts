@@ -547,28 +547,64 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
 
       if (result.error) return JSON.stringify(result, null, 2);
 
+      // /api/search offers are FLAT: origin/destination/departure_time/stops/
+      // duration_minutes sit at the top level, the carrier is the SINGULAR
+      // `airline`, and round-trip legs live in `trip_breakdown`. There is no
+      // `o.outbound.segments` -- reading it returned `outbound: null` with the
+      // airline dropped on EVERY offer (issue #199). This shape was fixed and
+      // shipped in 2026.5.70 but the fix never landed in the repo, so the
+      // source still carried the bug; restored here.
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
       const summary: Record<string, unknown> = {
         total_offers: offers.length,
         search_id: result.search_id,
         offers: offers.map(o => {
-          const ob = o.outbound as Record<string, unknown> | undefined;
-          const segs = (ob?.segments || []) as Array<Record<string, string>>;
+          const segs = (o.segments || []) as Array<Record<string, unknown>>;
+          const legs = (o.trip_breakdown || []) as Array<Record<string, unknown>>;
+          const ret = legs.find(l => l.leg === 'return');
+          const airlines = [...new Set(
+            [o.airline, ...legs.map(l => l.airline), ...segs.map(sg => sg.airline)].filter(Boolean)
+          )] as string[];
+          const isSplit = String(o.split_ticket) === 'true';
           return {
-            offer_id: o.id,
+            offer_id: o.id ?? o.offer_ref,
             price: `${o.price} ${o.currency}`,
-            airlines: o.airlines,
-            booking_url: o.booking_url,
+            airline: o.airline ?? airlines[0] ?? null,
+            ...(airlines.length > 1 ? { airlines } : {}),
+            // Virtual interlining: separate one-way fares stitched across airlines.
+            ...(o.is_combo ? { virtual_interline: true } : {}),
+            // A split ticket is TWO separately-issued tickets from two sellers.
+            // The condition travels with the price or the agent misrepresents it.
+            ...(isSplit ? {
+              split_ticket: true,
+              self_transfer: o.self_transfer ?? 'unprotected',
+              warning: 'Two separately-issued tickets bought from different sellers. '
+                     + 'The tickets are not linked: if the first flight is delayed and '
+                     + 'the connection is missed, the second airline owes nothing '
+                     + '(no rebooking, no refund). Tell the user this alongside the price.',
+            } : (o.self_transfer ? { self_transfer: o.self_transfer } : {})),
+            ...(o.booking_url ? { booking_url: o.booking_url } : {}),
             // Only present when there is something to say. Absent does NOT mean
             // the flight has no Wi-Fi -- see the tool description.
             ...(o.starlink ? { starlink: o.starlink } : {}),
-            outbound: segs.length ? {
-              from: segs[0].origin,
-              to: segs[segs.length - 1].destination,
-              departure: segs[0].departure,
-              airline: segs[0].airline_name || segs[0].airline,
-              stops: ob?.stopovers,
-            } : null,
+            outbound: {
+              from: o.origin ?? null,
+              to: o.destination ?? null,
+              departure: o.departure_time ?? null,
+              arrival: o.arrival_time ?? null,
+              stops: o.stops ?? Math.max(0, segs.length - 1),
+              duration_minutes: o.duration_minutes ?? null,
+            },
+            // Round-trips carry a return leg in trip_breakdown; one-ways don't.
+            ...(ret ? {
+              return: {
+                from: ret.origin ?? null,
+                to: ret.destination ?? null,
+                departure: ret.departure_time ?? null,
+                arrival: ret.arrival_time ?? null,
+                airline: ret.airline ?? null,
+              },
+            } : {}),
           };
         }),
       };
