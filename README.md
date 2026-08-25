@@ -247,6 +247,11 @@ never fire it, and a search that fires it does not always find a saving.
 **It lands after `completed`.** See
 [Polling: `completed` is not the end](#polling-completed-is-not-the-end).
 
+**Where it runs.** letsfg.co, and the agent lane behind it — the CLI,
+the Python and JS SDKs, and the MCP server. The paid Developer API is served by
+a different backend; `self_transfer` is returned there, but split-ticket offers
+are not part of that contract.
+
 ## Three ways to use LetsFG
 
 | | **Path 1 — CLI / SDK** | **Path 2 — PFS** (Programmatic Flight Search via letsfg.co) | **Path 3 — Developer API** |

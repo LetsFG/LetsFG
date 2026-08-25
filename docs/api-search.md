@@ -181,30 +181,27 @@ airBaltic) resolve even when the aircraft type is unknown; every other carrier
 needs the aircraft type, and not every source reports one. A missing field is
 therefore common and carries no negative information.
 
-## Split tickets
+## Self-transfer and split tickets
 
-Some offers are built from **two separately-issued tickets** through a hub,
-bought from two different sellers, because no single seller offers the
-combination. They are flagged, never disguised:
+An offer may carry `self_transfer`. `"protected"` means the seller stands
+behind the connection; `"unprotected"` means it does not — if the first flight
+is late and the connection is missed, the onward airline has no obligation: no
+rebooking, no refund, no duty of care. Surface that alongside the price.
+Relaying the saving without the condition misrepresents the offer.
 
-| Field | Value on a split offer |
-|---|---|
-| `split_ticket` | `"true"` |
-| `combo_type` | `"virtual_interlining"` |
-| `self_transfer` | `"unprotected"` |
+LetsFG also *builds* split itineraries: two separately-issued tickets through a
+hub, bought from two different sellers, because no single seller offers the
+combination. Those offers carry `split_ticket: "true"` and
+`combo_type: "virtual_interlining"` alongside `self_transfer: "unprotected"`.
 
-`self_transfer: "unprotected"` is the important one. The two tickets are not
-linked to each other: if the first flight is delayed and the connection is
-missed, the second airline has no obligation — no rebooking, no
-refund, no duty of care. Surface that alongside the price. An agent that
-relays the saving without the condition is misrepresenting the offer.
+> **Lane note.** The split-ticket builder runs on the agent search lane
+> (`POST https://letsfg.co/api/search` — the CLI, the Python and JS SDKs and
+> the MCP server). This Developer API is served by a different backend, and
+> split offers are not part of its documented contract. Treat `split_ticket`
+> as a field to *honour if present*, not one to expect. `self_transfer` is
+> returned by this API and should always be checked.
 
-The probe that builds these is gated server-side: it runs two extra connector
-fan-outs, so it is only attempted when the through-fare is expensive enough and
-the journey long enough to be worth it. Most searches never fire it.
-
-Split offers merge in **after** the search first reports `completed` —
-see [Async search with polling](#async-search-with-polling).
+See the [agent guide](agent-guide.md) for the split-ticket lane.
 
 ## What to persist from results
 
@@ -366,11 +363,14 @@ For products that need a loading state while results arrive, use
 See [Async Search and Polling](api-polling.md) for the full guide and code examples.
 
 
-**`completed` is not the end.** Poll immediately, then every 2 s. When `status`
-leaves `searching` the connector fan-out is done, but the offer set may still be
-growing: `split_ticket_pending` and `gf_enrich_pending` stay `true` while a late
-merge is inbound. Keep polling while either is set, and bound the wait so a flag
-that never clears cannot hang your client.
+**Poll immediately, then every 2 s.** A loop that sleeps before its first poll
+puts a floor under a search that now returns in 8–10 s.
+
+On the agent lane (`letsfg.co/api/search`) a result can keep growing after it
+first reports `completed`, and the response carries `split_ticket_pending` /
+`gf_enrich_pending` to say so — see the
+[agent guide](agent-guide.md). Those flags are not part of this API's contract;
+if you see them, honour them the same way.
 
 ## Sandbox — zero-cost testing
 
