@@ -208,14 +208,15 @@ for o in offers:
 
 Full semantics: [docs/api-search.md](docs/api-search.md#starlink-wi-fi).
 
-## ⇄ Split tickets — two airlines, one trip
+## ⇄ Split tickets — two tickets, one trip
 
 A long-haul searched as one journey comes back as one through-fare, because
 everyone is reselling the same ticket. Searched as two independent legs through
-a hub, each leg can be flown on whichever airline is cheapest for that hop — and
-those are almost always two different airlines, typically a low-cost carrier for
-the short leg and a separate airline for the long one. Nobody sells the
-combination as one ticket, so nobody quotes it.
+a hub, each leg is booked from whatever is cheapest for that hop — whichever
+airline, whichever seller. Usually that lands on two different airlines (often a
+low-cost carrier for the short leg and a separate airline for the long one), but
+the only rule is "cheapest for each leg". Nobody sells the combination as one
+ticket, so nobody quotes it — which is exactly why it is cheaper.
 
 LetsFG builds that itinerary for you and returns it alongside the through-fares.
 Split offers are flagged, never disguised:
@@ -265,7 +266,7 @@ are not part of that contract.
 | Vilnius → Bangkok | $370 | **$337** | **$33 (9%)** | Athens | Ryanair + Air Arabia | 5 h |
 | Shanghai → Vilnius | $406 | **$377** | **$29 (7%)** | London | Shenzhen Airlines + Wizz Air | 12 h |
 
-<sub>Measured August 2026 on live searches (one adult, one way, ~2 months out). Each split is <strong>two separate tickets on two different airlines</strong> with an <strong>unprotected self-transfer</strong> — if the first flight is late, the second airline owes you nothing. Prices move constantly; these won't reproduce exactly. 5 of 26 long-haul routes searched produced a split cheaper than the best single ticket — the win shows up at secondary cities with no cheap direct long-haul. Regenerate with <code>tools/split-comparison.py</code>.</sub>
+<sub>Measured August 2026 on live searches (one adult, one way, ~2 months out). Each split is <strong>two separate tickets</strong> (here, two different airlines) with an <strong>unprotected self-transfer</strong> — if the first flight is late, the second airline owes you nothing. Prices move constantly; these won't reproduce exactly. 5 of 26 long-haul routes searched produced a split cheaper than the best single ticket — the win shows up at secondary cities with no cheap direct long-haul. Regenerate with <code>tools/split-comparison.py</code>.</sub>
 <!-- SPLIT-TABLE:END -->
 
 The numbers above come from real searches and are reproducible: the script runs
