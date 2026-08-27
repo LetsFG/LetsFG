@@ -110,12 +110,22 @@ var POLL_INTERVAL_MS = 1200
 var GRACE_POLL_MS = 3000
 var GRACE_POLLS = 40
 
+// The website allows the search phase a full 3 minutes
+// (ResultsClient.tsx: POLL_MAX_DURATION_MS = 3 * 60 * 1000). The panel
+// used half that, so a slow route that the site finishes, the panel cut
+// off mid-search -- the same shape of loss as stopping at `completed`.
+var POLL_TIMEOUT_MS = 180000
+var MAX_POLLS = Math.ceil(POLL_TIMEOUT_MS / POLL_INTERVAL_MS)
+
 // The watchdog budget for the late-merge wait, which is a different phase from
 // the search: the search has already answered. Covers the full grace window
 // (40 x 3s) plus room for one slow poll on top.
-var GRACE_WATCHDOG_MS = GRACE_POLL_MS * GRACE_POLLS + 30000
-var POLL_TIMEOUT_MS = 90000
-var MAX_POLLS = Math.ceil(POLL_TIMEOUT_MS / POLL_INTERVAL_MS)
+// Derived from BOTH phases, not just the grace window. It is re-armed when
+// the panel enters the late merge, so it has to outlast the grace window it
+// guards AND the search budget it replaces -- raising the search budget to
+// the site's 3 minutes broke that invariant when this was grace-only, and
+// the suite caught it.
+var GRACE_WATCHDOG_MS = Math.max(GRACE_POLL_MS * GRACE_POLLS, POLL_TIMEOUT_MS) + 30000
 
 // Early return. The slowest one or two meta connectors routinely run 40-50s
 // after every other source has finished, and the tail adds more offers rather
@@ -2125,6 +2135,47 @@ function dedupePricedOffers(offers) {
   return out
 }
 
+// 2431 -> "2,431". The scan volume runs into the thousands and an ungrouped
+// run of digits is exactly where a reader loses an order of magnitude.
+function groupThousands(n) {
+  var v = Math.round(Number(n))
+  if (!isFinite(v) || v <= 0) return "0"
+  var str = String(v), out = "", c = 0, i
+  for (i = str.length - 1; i >= 0; i--) {
+    out = str.charAt(i) + out
+    c = c + 1
+    if (c % 3 === 0 && i > 0) out = "," + out
+  }
+  return out
+}
+
+// How many raw supplier rows the search actually read, and how many sources
+// handed them over. Mirrors website/lib/scan-counts.ts.
+//
+// `total_results` is the DEDUPLICATED list -- the same physical flight sold by
+// Skyscanner, Kayak, Momondo, Kiwi and Google is one entry. The scan volume is
+// what sits behind it, and it is the half nobody could otherwise know. Both
+// travel together; neither replaces the other. Un-deduplicating the shown count
+// would only put the panel back out of agreement with the site.
+//
+// Three things this has to survive, all of which otherwise publish a lie:
+//   - an FSW that predates the field: absent means UNKNOWN, not zero;
+//   - a durable-cache entry written before it shipped: same answer;
+//   - a producer reporting fewer scanned than we display, which is
+//     arithmetically impossible -- floor at `shown` rather than print a number
+//     the very next line contradicts.
+function normalizeScanCounts(source, shown) {
+  function int(v) {
+    var n = (typeof v === "number") ? v : parseFloat(v)
+    return (isFinite(n) && n > 0) ? Math.round(n) : 0
+  }
+  var src = (source && typeof source === "object") ? source : {}
+  var raw = (src.total_scanned !== undefined) ? int(src.total_scanned)
+                                              : int(src.total_offers_scanned)
+  var floor = (isFinite(shown) && shown > 0) ? Math.round(shown) : 0
+  return { totalOffersScanned: Math.max(raw, floor), sourcesScanned: int(src.sources_scanned) }
+}
+
 function sortOffers(offers, key) {
   var list = (offers || []).slice()
   var dur = function (o) { return o && o.durationMinutes > 0 ? o.durationMinutes : Infinity }
@@ -2304,6 +2355,8 @@ function module_exports_shim() {
     isAuthFailure: isAuthFailure,
     isTerminalStatus: isTerminalStatus, pollDecision: pollDecision, mergeOffers: mergeOffers,
     dedupePricedOffers: dedupePricedOffers,
+    normalizeScanCounts: normalizeScanCounts,
+    groupThousands: groupThousands,
     summarizeOffers: summarizeOffers, cheapestLabel: cheapestLabel,
     formatDuration: formatDuration, formatPrice: formatPrice, stopsLabel: stopsLabel,
     clockTime: clockTime, shortDate: shortDate, dayOffset: dayOffset, dayLabel: dayLabel,

@@ -125,6 +125,13 @@ Window {
     // display sort is applied afterwards by visibleOffers, as in a real search.
     var shaped = Model.summarizeOffers({ offers: panelLoader.item.prepareRaw(payload.offers) })
     panelLoader.item.offers = shaped
+    // The scan volume travels on the payload beside the offers, and the live
+    // path picks it up in the poll handler. Without it here the fixture cannot
+    // exercise the "N flights checked" header at all -- which is how a display
+    // change gets called verified while never having run.
+    var scan = Model.normalizeScanCounts(payload, shaped.length)
+    if (scan.totalOffersScanned > panelLoader.item.scannedCount)
+      panelLoader.item.scannedCount = scan.totalOffersScanned
     // Same transition a real search causes: the panel leaves its homepage
     // state and learns the city names from the payload.
     panelLoader.item.hasSearched = true

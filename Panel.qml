@@ -174,6 +174,17 @@ Panel {
   property var pollState: ({ lastCount: -1, stablePolls: 0 })
 
   property bool busy: false
+  // `busy` spans two phases: collecting offers, and waiting out a late
+  // merge once the search itself has answered. The status line already
+  // distinguishes them; the results header did not, and showed "still
+  // searching" beside a frozen count for the whole grace window (up to
+  // GRACE_POLLS x GRACE_POLL_MS = 120s), which reads as a hang.
+  property bool lateMerge: false
+  // The scan volume behind the deduplicated list. letsfg.co publishes both
+  // ("2,431 flights checked · 312 options") because the shown count alone
+  // understates the search by roughly 10x, and a big number ALONE above 312
+  // cards reads as a broken page. 0 means the producer did not report it.
+  property int scannedCount: 0
   property string statusText: ""
   property string errorText: ""
   property var offers: []
@@ -579,6 +590,8 @@ Panel {
     root.activeSeq = seq
 
     root.busy = true
+    root.lateMerge = false
+    root.scannedCount = 0
     // Straight to the results view. Waiting for the first offer meant the
     // panel sat on the homepage for the whole search and then jumped, which
     // reads as nothing happening.
@@ -626,6 +639,7 @@ Panel {
     if (seq !== root.activeSeq) return
     watchdog.stop()
     root.busy = false
+    root.lateMerge = false
     root.activeXhr = null
     patchGate({ inFlight: false })
     root.statusText = message
@@ -656,6 +670,7 @@ Panel {
     var noted = Model.noteFailure(root.gate)
     patchGate({ inFlight: false, consecutiveFailures: noted.consecutiveFailures, breakerOpen: noted.breakerOpen })
     root.busy = false
+    root.lateMerge = false
     root.activeXhr = null
     root.statusText = ""
     root.errorText = Model.redact(message)
@@ -668,6 +683,7 @@ Panel {
     pollTimer.stop()
     patchGate({ inFlight: false, consecutiveFailures: 0, breakerOpen: false })
     root.busy = false
+    root.lateMerge = false
     root.activeXhr = null
     root.errorText = ""
     root.statusText = root.offers.length + " offers, best value first"
@@ -809,6 +825,11 @@ Panel {
         ? (Array.isArray(result.offers) ? result.offers : [])
         : Model.mergeOffers(root.rawOffers, result.offers)
       var shaped = Model.summarizeOffers({ offers: root.prepareRaw(root.rawOffers) })
+      var scan = Model.normalizeScanCounts(result, shaped.length)
+      // Never let it fall back down: a later poll served from the durable
+      // cache can omit the field entirely, and a count that drops mid-search
+      // reads as offers being taken away.
+      if (scan.totalOffersScanned > root.scannedCount) root.scannedCount = scan.totalOffersScanned
       if (shaped.length > 0) {
         root.offers = shaped
         root.hasSearched = true
@@ -845,6 +866,7 @@ Panel {
       // rather than claiming offers are still being collected, and poll on the
       // site's slower grace cadence instead of hammering every 1.2s.
       if (decision.reason === "late-merge") {
+        root.lateMerge = true
         root.statusText = shaped.length > 0
           ? (shaped.length + " offers — checking for better fares…")
           : "Checking for better fares…"
@@ -859,6 +881,7 @@ Panel {
         watchdog.interval = Model.GRACE_WATCHDOG_MS
         watchdog.restart()
       } else {
+        root.lateMerge = false
         root.statusText = shaped.length > 0
           ? ("Collecting offers… " + shaped.length + " so far")
           : "Collecting offers…"
@@ -3409,6 +3432,15 @@ Panel {
                 }
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
+                  visible: root.visibleOffers.length > 0 && root.scannedCount > root.visibleOffers.length
+                  text: Model.groupThousands(root.scannedCount) + " flights checked  ·"
+                  color: root.inkMuted
+                  font.family: root.brandFont
+                  font.pixelSize: Style.font.bodySmall
+                  textFormat: Text.PlainText
+                }
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
                   visible: root.visibleOffers.length > 0
                   text: String(root.visibleOffers.length)
                   color: root.inkPrimary
@@ -3422,7 +3454,8 @@ Panel {
                   text: root.visibleOffers.length === 0
                     ? "Searching hundreds of airlines…"
                     : (root.visibleOffers.length === root.offers.length
-                       ? "flights found" : ("of " + root.offers.length))
+                       ? (root.scannedCount > root.visibleOffers.length ? "options" : "flights found")
+                       : ("of " + root.offers.length + (root.scannedCount > root.offers.length ? " options" : "")))
                   color: root.inkMuted
                   font.family: root.brandFont
                   font.pixelSize: Style.font.bodySmall
@@ -3431,7 +3464,8 @@ Panel {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   visible: root.busy && root.visibleOffers.length > 0
-                  text: "·  still searching"
+                  text: root.lateMerge ? "·  checking for better fares"
+                                      : "·  still searching"
                   color: root.brandOrange
                   font.family: root.brandFont
                   font.pixelSize: Style.font.bodySmall - 1

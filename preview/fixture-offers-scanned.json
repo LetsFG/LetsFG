@@ -1,0 +1,229 @@
+{
+  "_comment": "Canned /api/search offers for visual work, so the layout can be iterated without spending live searches (the Bearer lane allows 3 per 10 minutes). Field shapes and values are copied from real GDN->BCN and WAW->LIS responses. Deliberately mixed: direct and connecting, next-day arrivals, bags included and not, a virtual interline, a carrier the logo CDN has no art for (U2), and one with no airline_code at all, so both the logo path and the initials fallback are on screen at once. NOTE: no booking_url on any offer -- the live API returns none, so the deep link is built from search_id + offer id.",
+  "status": "completed",
+  "offers": [
+    {
+      "id": "wo_fixture01",
+      "price": 97,
+      "currency": "EUR",
+      "airline": "Wizz Air",
+      "airline_code": "W6",
+      "flight_number": "W61705",
+      "origin": "GDN",
+      "destination": "BCN",
+      "destination_name": "Barcelona",
+      "departure_time": "2026-09-06T18:35:00",
+      "arrival_time": "2026-09-06T21:40:00",
+      "stops": 0,
+      "duration_minutes": 185,
+      "is_combo": false,
+      "segments": [
+        {
+          "airline": "Wizz Air",
+          "destination": "BCN",
+          "airline_code": "W6"
+        }
+      ],
+      "ancillaries": {
+        "cabin_bag": {
+          "included": true
+        },
+        "checked_bag": {
+          "included": false,
+          "price": 42.77,
+          "currency": "USD"
+        }
+      },
+      "origin_name": "Gda\u0144sk"
+    },
+    {
+      "id": "wo_fixture02",
+      "price": 107,
+      "currency": "EUR",
+      "airline": "Ryanair",
+      "airline_code": "FR",
+      "flight_number": "FR2317",
+      "origin": "GDN",
+      "destination": "BCN",
+      "departure_time": "2026-09-06T06:15:00",
+      "arrival_time": "2026-09-06T09:20:00",
+      "stops": 0,
+      "duration_minutes": 185,
+      "is_combo": false,
+      "segments": [
+        {
+          "airline": "Ryanair",
+          "destination": "BCN",
+          "airline_code": "FR"
+        }
+      ],
+      "ancillaries": {
+        "cabin_bag": {
+          "included": true
+        },
+        "checked_bag": {
+          "included": true
+        }
+      },
+      "origin_name": "Gda\u0144sk",
+      "destination_name": "Barcelona"
+    },
+    {
+      "id": "wo_fixture03",
+      "price": 118,
+      "currency": "EUR",
+      "airline": "LOT Polish Airlines",
+      "airline_code": "LO",
+      "flight_number": "LO3805",
+      "origin": "GDN",
+      "destination": "BCN",
+      "departure_time": "2026-09-06T21:25:00",
+      "arrival_time": "2026-09-07T11:40:00",
+      "stops": 1,
+      "duration_minutes": 855,
+      "is_combo": false,
+      "segments": [
+        {
+          "airline": "LOT Polish Airlines",
+          "destination": "WAW",
+          "airline_code": "LO",
+          "arrival_time": "2026-09-06T08:05:00"
+        },
+        {
+          "airline": "LOT Polish Airlines",
+          "destination": "BCN",
+          "airline_code": "LO",
+          "departure_time": "2026-09-06T16:30:00"
+        }
+      ],
+      "ancillaries": {
+        "cabin_bag": {
+          "included": true
+        },
+        "checked_bag": {
+          "included": true
+        }
+      },
+      "origin_name": "Gda\u0144sk",
+      "destination_name": "Barcelona",
+      "conditions": {
+        "long_layover": "10h connection \u2014 you wait at the airport between flights"
+      },
+      "starlink": "likely_all"
+    },
+    {
+      "id": "wo_fixture04",
+      "price": 124.5,
+      "currency": "EUR",
+      "airline": "Lufthansa",
+      "airline_code": "LH",
+      "flight_number": "LH1614",
+      "origin": "GDN",
+      "destination": "BCN",
+      "departure_time": "2026-09-06T13:15:00",
+      "arrival_time": "2026-09-06T22:45:00",
+      "stops": 1,
+      "duration_minutes": 570,
+      "is_combo": false,
+      "segments": [
+        {
+          "airline": "Lufthansa",
+          "destination": "FRA",
+          "airline_code": "LH"
+        },
+        {
+          "airline": "Lufthansa",
+          "destination": "BCN",
+          "airline_code": "LH"
+        }
+      ],
+      "ancillaries": {
+        "cabin_bag": {
+          "included": true
+        }
+      },
+      "origin_name": "Gda\u0144sk",
+      "destination_name": "Barcelona"
+    },
+    {
+      "id": "wo_fixture05",
+      "price": 133,
+      "currency": "EUR",
+      "airline": "easyJet",
+      "airline_code": "U2",
+      "flight_number": "U28442",
+      "origin": "GDN",
+      "destination": "BCN",
+      "departure_time": "2026-09-06T10:05:00",
+      "arrival_time": "2026-09-06T19:55:00",
+      "stops": 1,
+      "duration_minutes": 590,
+      "is_combo": true,
+      "segments": [
+        {
+          "airline": "easyJet",
+          "destination": "MXP",
+          "airline_code": "U2"
+        },
+        {
+          "airline": "Vueling",
+          "destination": "BCN",
+          "airline_code": "VU"
+        }
+      ],
+      "trip_breakdown": [
+        {
+          "leg": "outbound",
+          "airline": "easyJet",
+          "departure_time": "2026-09-06T10:05:00"
+        }
+      ],
+      "ancillaries": {},
+      "origin_name": "Gda\u0144sk",
+      "destination_name": "Barcelona",
+      "conditions": {
+        "self_transfer": "unprotected"
+      }
+    },
+    {
+      "id": "wo_fixture06",
+      "price": 168,
+      "currency": "EUR",
+      "airline": "Norwegian Air Shuttle",
+      "origin": "GDN",
+      "destination": "BCN",
+      "departure_time": "2026-09-06T07:40:00",
+      "arrival_time": "2026-09-06T23:10:00",
+      "stops": 2,
+      "duration_minutes": 930,
+      "is_combo": false,
+      "segments": [
+        {
+          "airline": "Norwegian",
+          "destination": "OSL"
+        },
+        {
+          "airline": "Norwegian",
+          "destination": "CPH"
+        },
+        {
+          "airline": "Norwegian",
+          "destination": "BCN"
+        }
+      ],
+      "ancillaries": {
+        "cabin_bag": {
+          "included": false,
+          "price": 29.99,
+          "currency": "EUR"
+        }
+      },
+      "origin_name": "Gda\u0144sk",
+      "destination_name": "Barcelona",
+      "airline_code": "DY"
+    }
+  ],
+  "search_id": "ws_fixture0000000",
+  "total_offers_scanned": 2431,
+  "sources_scanned": 9
+}
