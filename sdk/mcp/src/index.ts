@@ -613,8 +613,41 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       // shipped in 2026.5.70 but the fix never landed in the repo, so the
       // source still carried the bug; restored here.
       const offers = (result.offers || []) as Array<Record<string, unknown>>;
+      // Two counts, deliberately.
+      //
+      // `total_offers` is what this response CONTAINS — deduplicated, one entry
+      // per bookable itinerary. `total_offers_scanned` is the raw supplier
+      // volume behind it, and it is routinely an order of magnitude larger: the
+      // same physical flight listed by Skyscanner, Kayak, Momondo, Kiwi and
+      // Google is five scanned rows and one option.
+      //
+      // A model reading only the first number tells the user we checked ~270
+      // flights, which understates the search by roughly 10x. Emitted with an
+      // explicit note so the difference cannot be read as a discrepancy.
+      //
+      // Omitted rather than reported as 0 when the backend did not send it (an
+      // older API or FSW): a zero here reads as "we scanned nothing", which is
+      // a worse lie than saying nothing at all.
+      const scanned = result.total_offers_scanned;
+      const scannedSources = result.sources_scanned;
+      const scanFields: Record<string, unknown> =
+        typeof scanned === 'number' && scanned > offers.length
+          ? {
+              total_offers_scanned: scanned,
+              ...(typeof scannedSources === 'number' && scannedSources > 0
+                ? { sources_scanned: scannedSources }
+                : {}),
+              counts_note:
+                `Scanned ${scanned} offer rows` +
+                (typeof scannedSources === 'number' && scannedSources > 0
+                  ? ` from ${scannedSources} sources`
+                  : '') +
+                `; ${offers.length} distinct bookable options remain after deduplication.`,
+            }
+          : {};
       const summary: Record<string, unknown> = {
         total_offers: offers.length,
+        ...scanFields,
         search_id: result.search_id,
         offers: offers.map(o => {
           const segs = (o.segments || []) as Array<Record<string, unknown>>;

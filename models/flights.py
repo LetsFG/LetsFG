@@ -144,7 +144,29 @@ class FlightSearchResponse(BaseModel):
     destination: str
     currency: str = "EUR"
     offers: list[FlightOffer] = []
-    total_results: int = 0
+    total_results: int = Field(
+        0,
+        description=(
+            "Bookable options in `offers` after deduplication — the same physical "
+            "flight sold by several sellers is collapsed to one entry here."
+        ),
+    )
+    total_offers_scanned: int = Field(
+        0,
+        description=(
+            "Raw offer rows read from every source BEFORE deduplication. Legitimately "
+            "much larger than total_results: one shown option is routinely worth ten or "
+            "more supplier rows. 0 means the search backend did not report it, not that "
+            "nothing was scanned."
+        ),
+    )
+    sources_scanned: int = Field(
+        0,
+        description=(
+            "Distinct suppliers that returned at least one offer row for this search. "
+            "0 means not reported."
+        ),
+    )
     airlines_summary: list[AirlineSummary] = Field(
         default_factory=list,
         description="Cheapest offer per airline — quick overview of all options.",

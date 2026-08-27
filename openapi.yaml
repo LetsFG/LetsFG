@@ -134,7 +134,13 @@ components:
           description: "Passenger IDs to use when booking (e.g. pas_0, pas_1)"
         total_results:
           type: integer
-          description: "Total number of matching offers"
+          description: "Bookable options in `offers` after deduplication — the same physical flight sold by several sellers is collapsed to one entry."
+        total_offers_scanned:
+          type: integer
+          description: "Raw offer rows read from every source BEFORE deduplication. Legitimately much larger than total_results: one shown option is routinely worth ten or more supplier rows. 0 means the search backend did not report it, not that nothing was scanned."
+        sources_scanned:
+          type: integer
+          description: "Distinct suppliers that returned at least one offer row for this search. 0 means not reported."
         offers:
           type: array
           items:

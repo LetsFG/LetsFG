@@ -130,8 +130,19 @@ class FlightSearchResult:
     currency: str
     offers: list[FlightOffer]
     total_results: int
+    """Bookable options in `offers` after deduplication."""
     search_params: dict
     pricing_note: str
+    # Appended with defaults, deliberately. Adding a field without a default
+    # ahead of these would break every positional construction of this class,
+    # including any in a caller's code we cannot see.
+    total_offers_scanned: int = 0
+    """Raw offer rows read from every source BEFORE deduplication. Routinely an
+    order of magnitude larger than total_results — the same physical flight sold
+    by five sellers is five scanned rows and one option. 0 means the backend did
+    not report it, not that nothing was scanned."""
+    sources_scanned: int = 0
+    """Distinct suppliers that returned at least one row. 0 means not reported."""
 
     @classmethod
     def from_dict(cls, d: dict) -> "FlightSearchResult":
@@ -144,6 +155,8 @@ class FlightSearchResult:
             currency=d.get("currency", "EUR"),
             offers=[FlightOffer.from_dict(o) for o in d.get("offers", [])],
             total_results=d.get("total_results", 0),
+            total_offers_scanned=d.get("total_offers_scanned", 0),
+            sources_scanned=d.get("sources_scanned", 0),
             search_params=d.get("search_params", {}),
             pricing_note=d.get("pricing_note", ""),
         )

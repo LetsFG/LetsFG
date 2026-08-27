@@ -85,7 +85,15 @@ export interface FlightSearchResult {
   destination: string;
   currency: string;
   offers: FlightOffer[];
+  /** Bookable options in `offers` after deduplication. */
   total_results: number;
+  /** Raw offer rows read from every source BEFORE deduplication. Routinely an
+   *  order of magnitude larger than total_results — the same physical flight
+   *  sold by five sellers is five scanned rows and one option. 0 means the
+   *  backend did not report it, not that nothing was scanned. */
+  total_offers_scanned?: number;
+  /** Distinct suppliers that returned at least one row. 0 = not reported. */
+  sources_scanned?: number;
   search_params: Record<string, unknown>;
   pricing_note: string;
 }
