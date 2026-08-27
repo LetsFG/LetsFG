@@ -134,7 +134,16 @@ class FlightSearchRequest(BaseModel):
     max_stopovers: int = Field(2, ge=0, le=4, description="Max connections per direction")
     currency: str = Field("EUR", min_length=3, max_length=3)
     locale: str = Field("en", description="Language for city/airport names")
-    limit: int = Field(50, ge=1, le=200, description="Max results to return")
+    limit: int = Field(
+        50, ge=1, le=5000,
+        description=(
+            "Max results to return. The ceiling is 5000, not 200: a single meta "
+            "connector routinely has more than 200 real offers to give (kayak "
+            "BER->LIS, measured 2026-08-27: 549 result rows / 2,536 parsed "
+            "offers), and a 200 cap threw most of them away before anything "
+            "downstream could rank them."
+        ),
+    )
     sort: str = Field("price", description="Sort by: price, duration, departure_time")
     departure_time_from: Optional[str] = Field(
         None,
