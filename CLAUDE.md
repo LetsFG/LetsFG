@@ -61,9 +61,10 @@ letsfg.co/connect, where a card (or Revolut Pay / Google Pay) is saved in a **0.
 setup** — nothing is charged, no Revolut account needed, card details never touch LetsFG.
 The token is card-backed and can book. Over raw HTTP send it as `Authorization: Bearer`.
 The Stripe enrolment lanes (setup_url / SetupIntent / tok_ / pm_) and the earlier Twitter/X
-challenge are retired (2026-09-02); every token they issued was revoked. `letsfg auth` and
-the SDKs' `payment_auth` still implement the retired lane and do not issue a token — the
-SDKs read `LETSFG_BEARER_TOKEN` / `~/.letsfg/config.json` instead.
+challenge are retired (2026-09-02); every token they issued was revoked. `letsfg auth` now drives that
+same connect flow itself: it registers as an OAuth client (dynamic registration), opens
+letsfg.co/connect for the card, and stores the access + refresh tokens in
+`~/.letsfg/config.json`. The SDKs also read `LETSFG_BEARER_TOKEN`.
 
 ## Repository Structure
 
