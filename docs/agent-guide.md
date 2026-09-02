@@ -131,13 +131,13 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 | Endpoint | Rate Limit | Timeout |
 |----------|-----------|--------|
-| Search (MCP) | **10 req/min** per IP | 180s (airline APIs can be slow) |
+| Search (MCP / Bearer token) | **10 per 10 min**, 30 per hour, 100 per day — per card on file | 180s (airline APIs can be slow) |
 | Search (API) | 60 req/min per agent | 30s |
 | Resolve location | 120 req/min per agent | 5s |
 | Unlock | 20 req/min per agent | 15s |
 | Book | 10 req/min per agent | 30s |
 
-> **MCP search rate limit:** The MCP server uses cloud-based search which is rate limited to **10 requests per minute** per IP address. The server returns `rate_limit` info in every search response so you can track remaining quota. If you hit the limit, you'll get a 429 response with a `retry_after` value.
+> **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are limited per card on file to **10 per 10 minutes, 30 per hour and 100 per day** (raised from 3 / 10 / 25 on 2026-09-02, see [#208](https://github.com/LetsFG/LetsFG/issues/208)). Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.
 
 ### Programmatic access requires a Bearer token
 

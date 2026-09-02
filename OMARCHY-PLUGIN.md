@@ -155,7 +155,7 @@ That is a deliberate constraint, for three reasons that all point the same way:
    never a malicious user — it is a refresh loop nobody noticed, running for
    weeks.
 3. **Your token's quota is small and measured.** The Bearer lane allows
-   **3 searches per 10 minutes, 10 per hour, and 25 per day** — that is the
+   **10 searches per 10 minutes, 30 per hour, and 100 per day** — that is the
    server's own wording in its 429, not an estimate. A background refresh would
    spend the lot without you asking. When you do hit it, the panel reads the
    `retry_after_seconds` the server sends and stays blocked for exactly that
