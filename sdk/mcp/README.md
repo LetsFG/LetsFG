@@ -210,7 +210,7 @@ To avoid unexpected updates:
 | `cancel_hotel_booking` | Release a reservation | Free until `balance_due_by`, then the hotel's ladder | Cancels the booking |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
 | `book_flight` | Start a real booking: fare held on the connected card, a LetsFG agent buys the ticket, captured on a real PNR | Ticket price (LetsFG's markup is inside the price) | Places a hold, creates the booking |
-| `get_flight_booking` | Poll a booking started by `book_flight` (hosted MCP) | FREE | None (read-only) |
+| `get_flight_booking` | Poll a booking started by `book_flight` until `completed` / `failed` / `needs_attention` | FREE | None (read-only) |
 | `unlock_flight_offer` | **Developer API only** — confirm live price, reserve 30 min | 1% fee, min $3 | Confirms price |
 | `setup_payment` | **Developer API only** — attach a card to a paid prepaid account. Not how agents connect | FREE | Updates payment |
 | `get_agent_profile` | Usage stats & payment status | FREE | None (read-only) |
@@ -232,9 +232,12 @@ No unlock step, no booking-link fallback, no separate LetsFG fee. Never call
 `book_flight` twice for the same trip while one is in progress — that would
 place a second hold.
 
-> The stdio server in this package still runs the pre-2026-09-02 `book_flight`
-> (one passenger, expects a booking link on failure) — it is being updated to
-> the hold + poll flow. Use the hosted MCP to book today.
+> The stdio server books through the same `/api/agent-book` hold + poll flow as the
+> hosted MCP: `book_flight` returns a `booking_ref`, then `get_flight_booking`
+> reports the outcome. It takes **one passenger per call** and refuses more rather
+> than silently booking only the first. (Until 2026-09-02 this package had no
+> `get_flight_booking` at all, so a stdio agent could start a booking and never
+> learn whether it landed — that is fixed.)
 
 **Developer API (prepaid credits, no per-booking fee):**
 

@@ -400,6 +400,27 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_flight_booking',
+    description:
+      'Poll a flight booking started by book_flight. REQUIRED to learn the outcome: on a PFS ' +
+      'Bearer token book_flight returns a booking_ref and state "booking_in_progress", not a ' +
+      'PNR - the booking itself takes 4-11 minutes.\n\n' +
+      'Call it every 20-30 s with that booking_ref until state is terminal:\n' +
+      '  completed       -> PNR issued, card charged\n' +
+      '  failed          -> the hold was released, nothing was charged\n' +
+      '  needs_attention -> a human is looking at it; do NOT rebook\n\n' +
+      'Do not rebook while the state is still moving, and do not treat a slow poll as a ' +
+      'failure - the money is HELD, not taken, until the airline confirms. Refs last one hour ' +
+      'past the booking start.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        booking_ref: { type: 'string', description: 'The booking_ref book_flight returned' },
+      },
+      required: ['booking_ref'],
+    },
+  },
+  {
     name: 'resolve_hotel_city',
     description:
       'Convert a place name to the supplier city id that search_hotels needs. Always call this first if you ' +
@@ -741,6 +762,22 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       };
       if (args.idempotency_key) body.idempotency_key = args.idempotency_key;
       const result = await apiRequest('POST', '/developers/api/v1/bookings/book', body);
+      return JSON.stringify(result, null, 2);
+    }
+
+    case 'get_flight_booking': {
+      // book_flight on a Bearer token starts an ASYNC booking and hands back a
+      // booking_ref. Without this tool the stdio server could start a booking and
+      // then had no way to learn the outcome - the agent went blind on a live
+      // charge. The hosted MCP has always exposed this; the stdio package did not.
+      const ref = String(args.booking_ref || '').trim();
+      if (!ref) {
+        return JSON.stringify({
+          error: 'booking_ref_required',
+          detail: 'Pass the booking_ref that book_flight returned.',
+        }, null, 2);
+      }
+      const result = await apiRequest('POST', '/api/agent-book/status', { booking_ref: ref });
       return JSON.stringify(result, null, 2);
     }
 
