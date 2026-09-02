@@ -47,7 +47,7 @@ Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
 
 ## Option B: Local MCP server (`npx letsfg-mcp`)
 
-Use this only if you cannot use a remote server. It needs a card-backed token in its environment — the one issued through the connect flow above (`letsfg auth`, the old Stripe setup, was retired on 2026-09-02; a connect-flow login for the CLI is coming).
+Use this only if you cannot use a remote server. It needs a card-backed token in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same card screen and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
 
 ```json
 {

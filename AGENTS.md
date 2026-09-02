@@ -1073,10 +1073,12 @@ again. Only `completed` with a PNR means booked.
 `payment_method_id`, `card_token`) and the earlier Twitter/X challenge. Every
 token they issued has been revoked — such a token now answers `401 TOKEN_REVOKED`,
 and `POST /api/agent-access/verify` answers `410` for a Stripe credential. Connect
-the card again at <https://letsfg.co/connect>. `letsfg auth` and the stdio
-server's `authenticate` tool still implement the retired flow and cannot mint a
-token today; a connect-flow login for the CLI is coming. Until then the CLI and
-SDKs read the token from `LETSFG_BEARER_TOKEN` (or `~/.letsfg/config.json`).
+the card again at <https://letsfg.co/connect>. `letsfg auth` (npm and PyPI)
+now drives that connect flow from the terminal — it registers itself as an
+OAuth client, opens the card screen, and stores the token; the stdio server's
+`authenticate` tool returns the current instructions (`add_card_url`, `how`)
+rather than minting one. The CLI and SDKs otherwise read the token from
+`LETSFG_BEARER_TOKEN` (or `~/.letsfg/config.json`).
 
 **One card = one account.** A payment method identifies exactly one account.
 Connecting a card that is already in use does not create a second account: it

@@ -35,7 +35,7 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 |---------|-------------|
 | `letsfg register` | **[Developer API only]** Create a PAID prepaid account + API key. Most agents want the card-backed token from the connect flow instead |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
-| `letsfg auth` | **Retired 2026-09-02** — it drove the Stripe card setup, whose tokens were all revoked. Connect through the MCP at `letsfg.co/developers/api/mcp` instead (the consent step saves a card at `letsfg.co/connect`) and put the token in `LETSFG_BEARER_TOKEN`. A connect-flow login for the CLI is coming |
+| `letsfg auth` | Connect a card at `letsfg.co/connect` and store the token. Registers itself as an OAuth client (PKCE + loopback redirect), opens a browser for a person to approve, writes `~/.letsfg/config.json`. `--no-browser` prints the URL. The old Stripe setup was retired 2026-09-02 and its tokens revoked |
 | `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | **[Developer API only]** Unlock offer details. No unlock step exists on PFS |

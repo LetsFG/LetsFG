@@ -1,7 +1,7 @@
 """
 LetsFG flight connectors — run server-side at letsfg.co.
 
-Authenticate once via Twitter/X (free, 90-day token), then search instantly:
+Connect a card once at letsfg.co/connect (nothing is charged), then search:
     letsfg auth
     letsfg search WAW BCN 2026-07-15
 """

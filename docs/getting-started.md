@@ -39,7 +39,7 @@ Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and ap
 
 That works in claude.ai, Claude Desktop, Claude Code (`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`), ChatGPT, Cursor, Windsurf — anything that speaks remote MCP with OAuth. Over the MCP the token is carried for you. Over raw HTTP send it as `Authorization: Bearer <token>`.
 
-> `letsfg auth` (the old Stripe card setup) was retired on 2026-09-02 together with every token it issued. A connect-flow login for the CLI and SDKs is coming; until then the token comes from the MCP connection and the SDK/CLI read it from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`.
+> Prefer the terminal? **`letsfg auth`** (npm or PyPI) runs the same connect flow: it registers itself as an OAuth client, opens the card screen for a person to approve, and writes the token to `~/.letsfg/config.json`. `--no-browser` prints the URL instead. The SDK and CLI otherwise read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. The old Stripe card setup was retired on 2026-09-02 together with every token it issued.
 
 ### 2. Search
 

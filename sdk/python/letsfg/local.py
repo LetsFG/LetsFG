@@ -2,9 +2,10 @@
 Cloud-backed flight search and booking for LetsFG.
 
 Connectors run server-side at letsfg.co — same response schema, results
-in seconds. Authenticate once with `letsfg auth`, which puts a payment method
-on file via a zero-amount Stripe setup (nothing is charged) and returns a
-90-day Bearer token.
+in seconds. Authenticate once with `letsfg auth`, which connects a card at
+letsfg.co/connect in a 0.00 Revolut setup (nothing is charged) and stores an
+OAuth token. The access token lasts about an hour and refreshes itself from a
+30-day rotating refresh token.
 
 API flow:
     POST /api/search         → { search_id }

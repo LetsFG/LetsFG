@@ -1,11 +1,11 @@
 """
 LetsFG — Agent-native flight search & booking SDK.
 
-Search hundreds of airlines via the LetsFG cloud engine. Authenticate once with Twitter/X
-for a free 90-day Bearer token, then search instantly.
+Search hundreds of airlines via the LetsFG cloud engine. Connect a card once at
+letsfg.co/connect -- nothing is charged -- then search instantly.
 
 Quick start (CLI):
-    letsfg auth               # one-time Twitter/X auth
+    letsfg auth               # one-time card connect, opens a browser
     letsfg search WAW BCN 2026-07-15
 
 Programmatic search (free, requires Bearer token):

@@ -164,8 +164,8 @@ export LETSFG_API_KEY=trav_your_api_key
 
 | Tool | Description |
 |------|-------------|
-| `authenticate` | Zero-amount Stripe card setup (nothing charged) → 90-day Bearer token |
-| `setup_payment` | Attach a Stripe payment method |
+| `authenticate` | Returns the current connect instructions (`add_card_url`, `how`) — a person adds a card at letsfg.co/connect, nothing charged |
+| `setup_payment` | **[Developer API only]** Attach a Stripe payment method to a paid billing account |
 | `get_agent_profile` | Account info and usage stats |
 | `load_resources` | Load the in-server usage guide |
 

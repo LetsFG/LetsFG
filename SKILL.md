@@ -226,9 +226,9 @@ Get a token — the one way in:
 (`add_card_url`, `how`). The Stripe enrolment lanes (`setup_url`, `setup_intent`,
 `card_token`) were retired on 2026-09-02 and every token they issued was revoked
 (`401 TOKEN_REVOKED`; `/api/agent-access/verify` answers `410` for a Stripe
-credential) — reconnect at letsfg.co/connect. `letsfg auth` still runs that
-retired flow and cannot mint a token; the CLI and SDKs read the token from
-`LETSFG_BEARER_TOKEN`. One card = one account; quotas are per card. Full flow:
+credential) — reconnect at letsfg.co/connect. `letsfg auth` (npm or PyPI) now
+drives that connect flow from the terminal and stores the token; the CLI and
+SDKs otherwise read it from `LETSFG_BEARER_TOKEN`. One card = one account; quotas are per card. Full flow:
 <https://letsfg.co/for-agents>.
 
 **Developer API (business / high-volume):** every endpoint except `register`

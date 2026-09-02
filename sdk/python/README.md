@@ -443,7 +443,7 @@ letsfg locations "Berlin"
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `auth` | **Retired 2026-09-02** (Stripe card setup) — cannot issue a token today. Connect through the MCP instead; a connect-flow login is coming | — |
+| `auth` | Connect a card at letsfg.co/connect and store the token — self-registers, PKCE + loopback redirect, opens a browser. `--no-browser` prints the URL | FREE |
 | `search` | Search flights between any two airports, prints `search_id` | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
 | `book` | Start a booking for an offer from your search (`--search-id` required). Fare held on your card, captured on a real PNR; poll `/api/agent-book/status` | Ticket price only, no LetsFG fee |

@@ -52,11 +52,15 @@ is carried on every tool call for you.
 npx letsfg-mcp
 ```
 
-It needs that same card-backed token in `LETSFG_BEARER_TOKEN`. There is no
-way to mint one from the command line today: `letsfg auth` and this server's
-`authenticate` tool still run the Stripe card setup that was retired on
-2026-09-02 (every token it issued was revoked, 401 `TOKEN_REVOKED`). A
-connect-flow login is coming; until then use the hosted MCP above.
+It needs that same card-backed token in `LETSFG_BEARER_TOKEN`. To mint one
+from the command line, run **`letsfg auth`**: it registers itself as an OAuth
+client, opens letsfg.co/connect for a person to approve, and writes the token to
+`~/.letsfg/config.json` (`--no-browser` prints the URL instead). This server's
+own `authenticate` tool returns the current instructions rather than minting a
+token, since a person has to approve in a browser either way.
+
+> **Retired 2026-09-02:** the Stripe card setup and every token it issued
+> (401 `TOKEN_REVOKED`). Reconnect at letsfg.co/connect.
 
 ---
 
