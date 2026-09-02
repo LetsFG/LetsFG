@@ -125,7 +125,7 @@ Same hotel, same room type, same 2-night stay, same free-cancellation policy —
 
 Search any route, compare live results, and unlock the booking links for the flights you want — no installation needed.
 
-**Agents / scripts (free server-side):** Get a Bearer token by putting a payment method on file (nothing is charged) → use `POST /api/search` and `POST /api/agent-book`. This is **PFS — Programmatic Flight Search** powered by the letsfg.co engine, free for 90 days per token. See [letsfg.co/for-agents](https://letsfg.co/for-agents) for the full guide.
+**Agents / scripts (free server-side):** Get a Bearer token by putting a payment method on file (nothing is charged) → use `POST /api/search` and `POST /api/agent-book`. This is **PFS — Programmatic Flight Search** powered by the letsfg.co engine. Search is free; the token is short-lived and refreshes itself. See [letsfg.co/for-agents](https://letsfg.co/for-agents) for the full guide.
 
 When you're ready to integrate it into your own agent, keep reading.
 
