@@ -522,40 +522,27 @@ def search(
 
 @app.command()
 def auth(
-    payment_method_id: Optional[str] = typer.Option(
-        None, "--payment-method", help="Stripe pm_... you already hold (headless, no browser)"
-    ),
-    card_token: Optional[str] = typer.Option(
-        None, "--card-token", help="Stripe tok_... you already hold (headless, no browser)"
-    ),
-    setup_session_id: Optional[str] = typer.Option(
-        None, "--setup-session", help="Finish an enrolment already started (cs_...)"
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Print the connect URL instead of opening a browser"
     ),
 ):
-    """Authenticate — one-time, 90-day token. Nothing is charged.
+    """Connect a card at letsfg.co/connect. Nothing is charged.
 
-    Adds a payment method on file via a zero-amount Stripe setup (no charge, no
-    authorization hold). That card is what lets your agent book, and it replaces
-    the Twitter/X challenge retired 2026-07-29.
+    Registers this client (OAuth 2.1 + PKCE, loopback redirect), opens the card
+    screen, and stores the token in ~/.letsfg/config.json. A PERSON approves it
+    once in a browser — there is no endpoint that mints a token from card
+    details, so never ask a user for a card number.
+
+    You pay the fare only when you book, and it is held, not taken, until the
+    airline confirms. The access token lasts about an hour and refreshes itself
+    from the stored refresh token.
 
     Unrelated to `letsfg register` / `letsfg setup-payment`, which belong to the
     separate paid Developer API.
     """
-    from letsfg.connectors.auth import (
-        payment_auth,
-        verify_payment_method,
-        BearerTokenError,
-    )
+    from letsfg.connectors.auth import connect_auth, BearerTokenError
     try:
-        if payment_method_id or card_token or setup_session_id:
-            verify_payment_method(
-                setup_session_id=setup_session_id,
-                payment_method_id=payment_method_id,
-                card_token=card_token,
-            )
-            print("\n  ✓ Authenticated. Nothing was charged.")
-        else:
-            payment_auth()
+        connect_auth(open_browser=not no_browser)
         print("\n  You're all set. Run: letsfg search WAW BCN 2026-07-15\n")
     except BearerTokenError as e:
         _err(str(e))

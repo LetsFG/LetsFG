@@ -48,10 +48,24 @@ and it books. One card = one account; quotas are per card (10 searches per
 
 The SDK reads the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`.
 
-> `letsfg auth` still runs the Stripe card setup that was retired on
-> 2026-09-02 and cannot get a token today; every token issued that way was
-> revoked (401 `TOKEN_REVOKED`). A connect-flow login for the CLI and SDKs is
-> coming — until then, connect through the MCP.
+Or skip the MCP client entirely and run **`letsfg auth`**, which does the same
+connect flow from the terminal: it registers itself as an OAuth client (PKCE +
+loopback redirect), opens the card screen for a person to approve, and writes
+the token to `~/.letsfg/config.json`. Add `--no-browser` to print the URL
+instead of opening one. The access token lasts about an hour and refreshes
+itself from a stored 30-day refresh token — call `ensure_bearer_token()` in a
+long-lived process and it renews silently.
+
+```bash
+letsfg auth                # opens a browser
+letsfg auth --no-browser   # prints the URL to open yourself
+```
+
+> **Retired 2026-09-02:** the Stripe enrolment lanes (`setup_url`,
+> `setup_session_id`, `payment_method_id`, `card_token`) and every token they
+> issued (401 `TOKEN_REVOKED`). `verify_payment_method()` now raises and says
+> so. There is no endpoint that mints a token from card details — a person
+> must approve once in a browser, so never ask a user for a card number.
 
 ```python
 from letsfg import LetsFG
