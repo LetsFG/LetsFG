@@ -1,25 +1,3 @@
-
-
-> **MPP (updated 2026-07-30):** the MPP (Machine Payments Protocol) `402`
-> challenge is **live**, as a card-free *enrolment* lane for agents holding a
-> Tempo wallet. It costs **$0.01 once**, as verification only — MPP has no
-> zero-amount intent, so a card-free rail has to settle something. Search and
-> booking stay free. Earlier revisions of this page described an MPP charge at
-> *unlock* time; that never shipped. See <https://letsfg.co/for-agents>.
-
-
-> ### ⚠️ Agents: do not create a Developer API account
->
-> Do **NOT** call `/developers/api/v1/agents/register` or
-> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
-> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
-> paid, prepaid-balance product for high-volume commercial integrations and
-> create a billing account you almost certainly do not want.
->
-> To search and book flights, connect LetsFG as an MCP server at
-> `https://letsfg.co/developers/api/mcp`. Approving the connection opens
-> letsfg.co/connect, where a card is added in a 0.00 setup (nothing charged).
-> See <https://letsfg.co/for-agents>.
 <div align="center">
 
 <a href="https://github.com/LetsFG/LetsFG">
@@ -101,213 +79,6 @@ LetsFG gives your AI agent flight **and hotel** search and booking superpowers. 
 
 ---
 
-## 🏨 Hotels — new, and live
-
-Your agent can now book hotels, not just flights. Same API key, same card on file.
-
-```python
-from letsfg import LetsFG
-lfg = LetsFG()
-
-city = lfg.hotel_destinations("Warsaw")[0]
-stays = lfg.search_hotels(
-    city_id=city["Id"], city_name=city["Name"],
-    check_in="2026-11-10", check_out="2026-11-12", adults=2,
-)
-
-hotel = stays["hotels"][0]
-offer = hotel["offers"][0]
-print(hotel["name"], offer["price"], stays["currency"])
-# Hotel Gromada Warszawa Centrum 669.86 PLN
-
-booking = lfg.book_hotel_and_wait(
-    session_id=stays["session_id"],
-    hotel_code=hotel["hotel_code"],
-    combination_id_v2=offer["combination_id_v2"],
-    expected_price=offer["price"],
-    expected_balance=offer["balance_to_supplier"],
-    city_id=city["Id"], city_name=city["Name"],
-    check_in="2026-11-10", check_out="2026-11-12",
-    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
-    email="guest@example.com", phone="512345678",
-)
-print(booking["confirmation"], booking["pay_link"])
-```
-
-### How you pay
-
-**5% now, the rest to the hotel later.** At booking we charge 5% of the price
-to your card as a reservation fee. The remaining balance is paid **directly to
-the supplier** through a `pay_link` we return — we never hold it.
-
-`balance_due_by` is the supplier's own auto-cancellation date, not a date we
-invent. Miss it and the room is released.
-
-The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
-else; after it, the hotel's own cancellation ladder applies and can reach 100%.
-That ladder ships in the booking's `terms`, so you can always see the cost before
-you cancel.
-
-### Things worth knowing before you build
-
-- **A card on file is required for every hotel call, including search.** That is
-  unusual and it is deliberate: a hotel search opens a real session at the
-  supplier, and booking blocks a real rate. We would rather refuse up front than
-  let you reach the point of commitment and discover you cannot pay. The same
-  card that authorises flight booking authorises hotels — there is no separate
-  hotel signup.
-- **Only free-cancellation, pay-later rates are sold.** Those are the rates where
-  the balance can safely be settled with the supplier after booking, which is
-  what makes 5%-now/rest-later work at all. You will see fewer results than a
-  metasearch shows you. Every one of them can actually be booked.
-- **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
-  booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
-  `status` is `succeeded` or `failed`, or call `book_hotel_and_wait` and let the
-  SDK do it. This is not ceremony: it is what makes it impossible to charge a
-  card and then lose the confirmation to a timeout.
-- **The fee is charged before the room is committed.** A declined card therefore
-  costs nothing to unwind — no reservation exists and nothing is charged.
-- **Do not retry a booking blindly.** Calling `book_hotel` twice for the same
-  rate books the room twice and charges two reservation fees.
-- `price` is what the guest pays. There is no wholesale figure in the response to
-  quote by mistake.
-
-### JavaScript
-
-```javascript
-import { LetsFG } from 'letsfg';
-const lfg = new LetsFG({ apiKey: process.env.LETSFG_API_KEY });
-
-const [city] = await lfg.hotelDestinations('Warsaw');
-const stays = await lfg.searchHotels({
-  cityId: city.Id, cityName: city.Name,
-  checkIn: '2026-11-10', checkOut: '2026-11-12', adults: 2,
-});
-
-const booking = await lfg.bookHotelAndWait({ /* ...offer + guest details... */ });
-console.log(booking.confirmation, booking.pay_link);
-```
-
-### MCP
-
-Five new tools, in the order you call them: `resolve_hotel_city` →
-`search_hotels` → `book_hotel` → `get_hotel_booking` → `cancel_hotel_booking`.
-
-
-## ✦ Starlink Wi-Fi on results
-
-Offers tell you whether the flight has Starlink, in two honest tiers. A solid
-verdict (`confirmed_all`) means the airline has fitted **every** aircraft of that
-type. A hedged one (`likely_all`) means the rollout on that type is real but
-incomplete — as of August 2026 United was ~29% of its fleet — so it is reported
-as a signal, never a promise. An absent field means no information, not an
-absence of Wi-Fi.
-
-```python
-for o in offers:
-    if o.get("starlink") == "confirmed_all":
-        print(f"{o['owner_airline']} {o['price']} — Starlink on every leg")
-```
-
-Full semantics: [docs/api-search.md](docs/api-search.md#starlink-wi-fi).
-
-## ⇄ Split tickets — two tickets, one trip
-
-A long-haul searched as one journey comes back as one through-fare, because
-everyone is reselling the same ticket. Searched as two independent legs through
-a hub, each leg is booked from whatever is cheapest for that hop — whichever
-airline, whichever seller. Usually that lands on two different airlines (often a
-low-cost carrier for the short leg and a separate airline for the long one), but
-the only rule is "cheapest for each leg". Nobody sells the combination as one
-ticket, so nobody quotes it — which is exactly why it is cheaper.
-
-LetsFG builds that itinerary for you and returns it alongside the through-fares.
-Split offers are flagged, never disguised:
-
-| Field | Value on a split offer |
-|---|---|
-| `split_ticket` | `"true"` |
-| `combo_type` | `"virtual_interlining"` |
-| `self_transfer` | `"unprotected"` |
-
-```python
-for o in offers:
-    if o.get("split_ticket") == "true":
-        print(o["price"], "— two separate tickets, self-transfer not protected")
-```
-
-**Read `self_transfer` before you present the price.** `unprotected` means the
-two tickets are not linked: if the first flight is late and the connection is
-missed, the second airline owes nothing — no rebooking, no refund, no
-duty of care. That is the trade you are being offered in exchange for the
-saving, and it has to reach the traveller. We only build a split when the
-connection has a real buffer, and we say so on the offer — but an
-agent that relays the price without the condition is misrepresenting it.
-
-**The probe is gated.** Two extra connector fan-outs cost real money, so a
-split is only attempted when the through-fare is expensive enough, the journey
-long enough, and the market has somewhere to break the trip. Most searches
-never fire it, and a search that fires it does not always find a saving.
-
-**It lands after `completed`.** See
-[Polling: `completed` is not the end](#polling-completed-is-not-the-end).
-
-**Where it runs.** letsfg.co, and the agent lane behind it — the CLI,
-the Python and JS SDKs, and the MCP server. The paid Developer API is served by
-a different backend; `self_transfer` is returned there, but split-ticket offers
-are not part of that contract.
-
-
-### What it actually saves
-
-<!-- SPLIT-TABLE:START — generated by tools/split-comparison.py, do not hand-edit -->
-| Route | Cheapest single ticket | Split — two tickets | You save | Connect via | Two airlines | Layover |
-|---|---|---|---|---|---|---|
-| Stuttgart → Shanghai | $552 | **$461** | **$91 (16%)** | Budapest | Wizz Air + Qatar Airways | 6 h |
-| Katowice → Dubai | $283 | **$216** | **$67 (24%)** | Istanbul | Wizz Air + Pegasus | 15 h |
-| Chongqing → Gdansk | $429 | **$387** | **$42 (10%)** | Stockholm | China Eastern + Ryanair | 10 h |
-| Vilnius → Bangkok | $370 | **$337** | **$33 (9%)** | Athens | Ryanair + Air Arabia | 5 h |
-| Shanghai → Vilnius | $406 | **$377** | **$29 (7%)** | London | Shenzhen Airlines + Wizz Air | 12 h |
-
-<sub>Measured August 2026 on live searches (one adult, one way, ~2 months out). Each split is <strong>two separate tickets</strong> (here, two different airlines) with an <strong>unprotected self-transfer</strong> — if the first flight is late, the second airline owes you nothing. Prices move constantly; these won't reproduce exactly. 5 of 26 long-haul routes searched produced a split cheaper than the best single ticket — the win shows up at secondary cities with no cheap direct long-haul. Regenerate with <code>tools/split-comparison.py</code>.</sub>
-<!-- SPLIT-TABLE:END -->
-
-The numbers above come from real searches and are reproducible: the script runs
-the same public search anyone can run, compares the cheapest split against the
-cheapest single ticket **in the same result set**, and writes the raw offers to
-`split-comparison.json` so any row can be checked. Routes that produced no split
-are reported too rather than dropped quietly — most searches never fire
-a split probe, and a table that hid that would misrepresent how often this
-happens.
-
-## Three ways to use LetsFG
-
-| | **Path 1 — MCP / CLI / SDK** | **Path 2 — PFS** (Programmatic Flight Search via letsfg.co) | **Path 3 — Developer API** |
-|---|---|---|---|
-| **Best for** | AI agents (Claude, ChatGPT, Cursor, Windsurf), personal use — easiest way in | Scripts/agents calling the API directly with a Bearer token | High-volume commercial integrations that want prepaid billing. **Most agents should not use this** |
-| **Speed** | 8–10 s to first results | 8–10 s to first results | 2–5 s (discover) · 8–10 s to first results (full search) |
-| **Search cost** | Free (card connected once, nothing charged) | Free (card connected once, nothing charged) | Prepaid credits ($0.50/$0.20/$0.10 per search, monthly tiers) |
-| **Booking** | `book_flight` — fare held on your card, agent buys the ticket, real PNR | `POST /api/agent-book` — same flow | Direct airline URLs |
-| **Setup** | Add `https://letsfg.co/developers/api/mcp` as an MCP server, approve, add a card | Same token, sent as `Authorization: Bearer` — see below | [letsfg.co/developers](https://letsfg.co/developers) |
-| **Runs where** | Our servers (ranking local in the SDK) | Our servers | Our servers |
-
-- **MCP / CLI / SDK (Path 1):** add `https://letsfg.co/developers/api/mcp` as an MCP server in Claude, ChatGPT, Cursor or Windsurf and approve the connection. The consent step opens **letsfg.co/connect**, where the person adds a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup: nothing is charged, no Revolut account is needed, and card details go to Revolut, never to LetsFG. The token you get back is card-backed: it searches for free and it can book. The Python and JS SDKs read that token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json` and apply the open-source ranking algorithm locally. (A connect-flow login for the CLI is coming; `letsfg auth` still points at the retired Stripe enrolment and does not issue a token.)
-
-- **PFS — Programmatic Flight Search (Path 2):** For scripts and agents that call the API directly. letsfg.co is human-only by default (Cloudflare Turnstile + bot protection), so the card-backed token from the connect flow is the only programmatic way in. Send it on every request:
-  1. Search: `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>` → `{ search_id }`
-  2. Poll: `GET https://letsfg.co/api/results/<search_id>` (never counts against the rate limit)
-  3. Book: `POST https://letsfg.co/api/agent-book` → `{ booking_ref }` within seconds
-  4. Wait: `POST https://letsfg.co/api/agent-book/status` with `{ booking_ref }` every 20–30 s until `completed` (PNR), `failed` (hold released, nothing charged) or `needs_attention`
-
-  `POST /api/agent-access/request` still answers `402` with `add_card_url` and these steps as JSON, so an agent that starts from the endpoint lands in the same place. The MPP lane (a wallet, no card) is unchanged: answer the `WWW-Authenticate: Payment` challenge ($0.01 once) and verify with `Authorization: Payment`. The Stripe `setup_url` / SetupIntent lanes were retired on 2026-09-02 and every token they issued was revoked; reconnect at letsfg.co/connect. Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents).
-
-- **Developer API (Path 3):** Paid server-side search at [letsfg.co/developers](https://letsfg.co/developers). Prepaid credits, direct airline booking URLs (no checkout step), full NL query parsing, and a `/discover` endpoint that checks 20 destinations in one call for 1 credit (2–5 s). Includes a free sandbox at `/sandbox/flights/*`. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
-
-> **Free server-side search:** Use Path 1 or PFS — connect a card once at letsfg.co/connect (nothing charged) and searches run free on our servers. No Playwright, no local install beyond the SDK.<br>
-> **Direct booking URLs with no per-booking fee:** Use the Developer API (Path 3) — prepaid credits, instant results, no checkout layer.
-
----
-
 ## Real prices: LetsFG vs Google Flights
 
 We searched 5 routes on Google Flights and LetsFG on the same day (2026-08-05), for flights departing 2026-09-16. Same airline, same number of stops — LetsFG was cheaper every time:
@@ -357,6 +128,34 @@ Search any route, compare live results, and unlock the booking links for the fli
 **Agents / scripts (free server-side):** Get a Bearer token by putting a payment method on file (nothing is charged) → use `POST /api/search` and `POST /api/agent-book`. This is **PFS — Programmatic Flight Search** powered by the letsfg.co engine, free for 90 days per token. See [letsfg.co/for-agents](https://letsfg.co/for-agents) for the full guide.
 
 When you're ready to integrate it into your own agent, keep reading.
+
+---
+
+## Three ways to use LetsFG
+
+| | **Path 1 — MCP / CLI / SDK** | **Path 2 — PFS** (Programmatic Flight Search via letsfg.co) | **Path 3 — Developer API** |
+|---|---|---|---|
+| **Best for** | AI agents (Claude, ChatGPT, Cursor, Windsurf), personal use — easiest way in | Scripts/agents calling the API directly with a Bearer token | High-volume commercial integrations that want prepaid billing. **Most agents should not use this** |
+| **Speed** | 8–10 s to first results | 8–10 s to first results | 2–5 s (discover) · 8–10 s to first results (full search) |
+| **Search cost** | Free (card connected once, nothing charged) | Free (card connected once, nothing charged) | Prepaid credits ($0.50/$0.20/$0.10 per search, monthly tiers) |
+| **Booking** | `book_flight` — fare held on your card, agent buys the ticket, real PNR | `POST /api/agent-book` — same flow | Direct airline URLs |
+| **Setup** | Add `https://letsfg.co/developers/api/mcp` as an MCP server, approve, add a card | Same token, sent as `Authorization: Bearer` — see below | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Runs where** | Our servers (ranking local in the SDK) | Our servers | Our servers |
+
+- **MCP / CLI / SDK (Path 1):** add `https://letsfg.co/developers/api/mcp` as an MCP server in Claude, ChatGPT, Cursor or Windsurf and approve the connection. The consent step opens **letsfg.co/connect**, where the person adds a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup: nothing is charged, no Revolut account is needed, and card details go to Revolut, never to LetsFG. The token you get back is card-backed: it searches for free and it can book. The Python and JS SDKs read that token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json` and apply the open-source ranking algorithm locally. (A connect-flow login for the CLI is coming; `letsfg auth` still points at the retired Stripe enrolment and does not issue a token.)
+
+- **PFS — Programmatic Flight Search (Path 2):** For scripts and agents that call the API directly. letsfg.co is human-only by default (Cloudflare Turnstile + bot protection), so the card-backed token from the connect flow is the only programmatic way in. Send it on every request:
+  1. Search: `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>` → `{ search_id }`
+  2. Poll: `GET https://letsfg.co/api/results/<search_id>` (never counts against the rate limit)
+  3. Book: `POST https://letsfg.co/api/agent-book` → `{ booking_ref }` within seconds
+  4. Wait: `POST https://letsfg.co/api/agent-book/status` with `{ booking_ref }` every 20–30 s until `completed` (PNR), `failed` (hold released, nothing charged) or `needs_attention`
+
+  `POST /api/agent-access/request` still answers `402` with `add_card_url` and these steps as JSON, so an agent that starts from the endpoint lands in the same place. The MPP lane (a wallet, no card) is unchanged: answer the `WWW-Authenticate: Payment` challenge ($0.01 once) and verify with `Authorization: Payment`. The Stripe `setup_url` / SetupIntent lanes were retired on 2026-09-02 and every token they issued was revoked; reconnect at letsfg.co/connect. Full guide and response schema: [letsfg.co/for-agents](https://letsfg.co/for-agents).
+
+- **Developer API (Path 3):** Paid server-side search at [letsfg.co/developers](https://letsfg.co/developers). Prepaid credits, direct airline booking URLs (no checkout step), full NL query parsing, and a `/discover` endpoint that checks 20 destinations in one call for 1 credit (2–5 s). Includes a free sandbox at `/sandbox/flights/*`. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
+
+> **Free server-side search:** Use Path 1 or PFS — connect a card once at letsfg.co/connect (nothing charged) and searches run free on our servers. No Playwright, no local install beyond the SDK.<br>
+> **Direct booking URLs with no per-booking fee:** Use the Developer API (Path 3) — prepaid credits, instant results, no checkout layer.
 
 ---
 
@@ -574,6 +373,187 @@ result = await search_local("GDN", "BCN", "2026-06-15")
 for offer in result.offers[:5]:
     print(f"{offer.airlines[0]}: {offer.currency} {offer.price}")
 ```
+
+---
+
+## ⇄ Split tickets — two tickets, one trip
+
+A long-haul searched as one journey comes back as one through-fare, because
+everyone is reselling the same ticket. Searched as two independent legs through
+a hub, each leg is booked from whatever is cheapest for that hop — whichever
+airline, whichever seller. Usually that lands on two different airlines (often a
+low-cost carrier for the short leg and a separate airline for the long one), but
+the only rule is "cheapest for each leg". Nobody sells the combination as one
+ticket, so nobody quotes it — which is exactly why it is cheaper.
+
+LetsFG builds that itinerary for you and returns it alongside the through-fares.
+Split offers are flagged, never disguised:
+
+| Field | Value on a split offer |
+|---|---|
+| `split_ticket` | `"true"` |
+| `combo_type` | `"virtual_interlining"` |
+| `self_transfer` | `"unprotected"` |
+
+```python
+for o in offers:
+    if o.get("split_ticket") == "true":
+        print(o["price"], "— two separate tickets, self-transfer not protected")
+```
+
+**Read `self_transfer` before you present the price.** `unprotected` means the
+two tickets are not linked: if the first flight is late and the connection is
+missed, the second airline owes nothing — no rebooking, no refund, no
+duty of care. That is the trade you are being offered in exchange for the
+saving, and it has to reach the traveller. We only build a split when the
+connection has a real buffer, and we say so on the offer — but an
+agent that relays the price without the condition is misrepresenting it.
+
+**The probe is gated.** Two extra connector fan-outs cost real money, so a
+split is only attempted when the through-fare is expensive enough, the journey
+long enough, and the market has somewhere to break the trip. Most searches
+never fire it, and a search that fires it does not always find a saving.
+
+**It lands after `completed`.** See
+[Polling: `completed` is not the end](#polling-completed-is-not-the-end).
+
+**Where it runs.** letsfg.co, and the agent lane behind it — the CLI,
+the Python and JS SDKs, and the MCP server. The paid Developer API is served by
+a different backend; `self_transfer` is returned there, but split-ticket offers
+are not part of that contract.
+
+
+### What it actually saves
+
+<!-- SPLIT-TABLE:START — generated by tools/split-comparison.py, do not hand-edit -->
+| Route | Cheapest single ticket | Split — two tickets | You save | Connect via | Two airlines | Layover |
+|---|---|---|---|---|---|---|
+| Stuttgart → Shanghai | $552 | **$461** | **$91 (16%)** | Budapest | Wizz Air + Qatar Airways | 6 h |
+| Katowice → Dubai | $283 | **$216** | **$67 (24%)** | Istanbul | Wizz Air + Pegasus | 15 h |
+| Chongqing → Gdansk | $429 | **$387** | **$42 (10%)** | Stockholm | China Eastern + Ryanair | 10 h |
+| Vilnius → Bangkok | $370 | **$337** | **$33 (9%)** | Athens | Ryanair + Air Arabia | 5 h |
+| Shanghai → Vilnius | $406 | **$377** | **$29 (7%)** | London | Shenzhen Airlines + Wizz Air | 12 h |
+
+<sub>Measured August 2026 on live searches (one adult, one way, ~2 months out). Each split is <strong>two separate tickets</strong> (here, two different airlines) with an <strong>unprotected self-transfer</strong> — if the first flight is late, the second airline owes you nothing. Prices move constantly; these won't reproduce exactly. 5 of 26 long-haul routes searched produced a split cheaper than the best single ticket — the win shows up at secondary cities with no cheap direct long-haul. Regenerate with <code>tools/split-comparison.py</code>.</sub>
+<!-- SPLIT-TABLE:END -->
+
+The numbers above come from real searches and are reproducible: the script runs
+the same public search anyone can run, compares the cheapest split against the
+cheapest single ticket **in the same result set**, and writes the raw offers to
+`split-comparison.json` so any row can be checked. Routes that produced no split
+are reported too rather than dropped quietly — most searches never fire
+a split probe, and a table that hid that would misrepresent how often this
+happens.
+
+## ✦ Starlink Wi-Fi on results
+
+Offers tell you whether the flight has Starlink, in two honest tiers. A solid
+verdict (`confirmed_all`) means the airline has fitted **every** aircraft of that
+type. A hedged one (`likely_all`) means the rollout on that type is real but
+incomplete — as of August 2026 United was ~29% of its fleet — so it is reported
+as a signal, never a promise. An absent field means no information, not an
+absence of Wi-Fi.
+
+```python
+for o in offers:
+    if o.get("starlink") == "confirmed_all":
+        print(f"{o['owner_airline']} {o['price']} — Starlink on every leg")
+```
+
+Full semantics: [docs/api-search.md](docs/api-search.md#starlink-wi-fi).
+
+## 🏨 Hotels — new, and live
+
+Your agent can now book hotels, not just flights. Same API key, same card on file.
+
+```python
+from letsfg import LetsFG
+lfg = LetsFG()
+
+city = lfg.hotel_destinations("Warsaw")[0]
+stays = lfg.search_hotels(
+    city_id=city["Id"], city_name=city["Name"],
+    check_in="2026-11-10", check_out="2026-11-12", adults=2,
+)
+
+hotel = stays["hotels"][0]
+offer = hotel["offers"][0]
+print(hotel["name"], offer["price"], stays["currency"])
+# Hotel Gromada Warszawa Centrum 669.86 PLN
+
+booking = lfg.book_hotel_and_wait(
+    session_id=stays["session_id"],
+    hotel_code=hotel["hotel_code"],
+    combination_id_v2=offer["combination_id_v2"],
+    expected_price=offer["price"],
+    expected_balance=offer["balance_to_supplier"],
+    city_id=city["Id"], city_name=city["Name"],
+    check_in="2026-11-10", check_out="2026-11-12",
+    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
+    email="guest@example.com", phone="512345678",
+)
+print(booking["confirmation"], booking["pay_link"])
+```
+
+### How you pay
+
+**5% now, the rest to the hotel later.** At booking we charge 5% of the price
+to your card as a reservation fee. The remaining balance is paid **directly to
+the supplier** through a `pay_link` we return — we never hold it.
+
+`balance_due_by` is the supplier's own auto-cancellation date, not a date we
+invent. Miss it and the room is released.
+
+The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
+else; after it, the hotel's own cancellation ladder applies and can reach 100%.
+That ladder ships in the booking's `terms`, so you can always see the cost before
+you cancel.
+
+### Things worth knowing before you build
+
+- **A card on file is required for every hotel call, including search.** That is
+  unusual and it is deliberate: a hotel search opens a real session at the
+  supplier, and booking blocks a real rate. We would rather refuse up front than
+  let you reach the point of commitment and discover you cannot pay. The same
+  card that authorises flight booking authorises hotels — there is no separate
+  hotel signup.
+- **Only free-cancellation, pay-later rates are sold.** Those are the rates where
+  the balance can safely be settled with the supplier after booking, which is
+  what makes 5%-now/rest-later work at all. You will see fewer results than a
+  metasearch shows you. Every one of them can actually be booked.
+- **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
+  booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
+  `status` is `succeeded` or `failed`, or call `book_hotel_and_wait` and let the
+  SDK do it. This is not ceremony: it is what makes it impossible to charge a
+  card and then lose the confirmation to a timeout.
+- **The fee is charged before the room is committed.** A declined card therefore
+  costs nothing to unwind — no reservation exists and nothing is charged.
+- **Do not retry a booking blindly.** Calling `book_hotel` twice for the same
+  rate books the room twice and charges two reservation fees.
+- `price` is what the guest pays. There is no wholesale figure in the response to
+  quote by mistake.
+
+### JavaScript
+
+```javascript
+import { LetsFG } from 'letsfg';
+const lfg = new LetsFG({ apiKey: process.env.LETSFG_API_KEY });
+
+const [city] = await lfg.hotelDestinations('Warsaw');
+const stays = await lfg.searchHotels({
+  cityId: city.Id, cityName: city.Name,
+  checkIn: '2026-11-10', checkOut: '2026-11-12', adults: 2,
+});
+
+const booking = await lfg.bookHotelAndWait({ /* ...offer + guest details... */ });
+console.log(booking.confirmation, booking.pay_link);
+```
+
+### MCP
+
+Five new tools, in the order you call them: `resolve_hotel_city` →
+`search_hotels` → `book_hotel` → `get_hotel_booking` → `cancel_hotel_booking`.
+
 
 ---
 
