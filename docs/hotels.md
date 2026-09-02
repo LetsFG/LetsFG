@@ -6,7 +6,8 @@ hand the guest a pay link — with the same Developer API key it uses for flight
 !!! note "One credential covers flights and hotels"
     The same token you use for programmatic flight search reaches every hotel
     endpoint too — a Developer API key also works. Hotels do require a card on
-    file for search as well as booking, which `letsfg auth` already provides.
+    file for search as well as booking, which the connect step at
+    <https://letsfg.co/connect> already saves.
 
 ## How you pay
 

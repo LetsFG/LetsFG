@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 Practical guides for building travel applications with LetsFG in Python and JavaScript/TypeScript.
 
@@ -167,7 +169,8 @@ class TravelAssistant:
         return dict(sorted(by_airline.items(), key=lambda x: x[1]["price"]))
 
     async def unlock_and_book(self, offer_id: str, search_id: str):
-        """Unlock an offer to get the live price, then return booking details."""
+        """Developer API path: unlock an offer to get the live price, then return booking details.
+        On a card-backed Bearer token there is no unlock — call bt.book() directly."""
         unlocked = await asyncio.to_thread(bt.unlock, offer_id, search_id)
         return {
             "confirmed_price": unlocked["price"],
@@ -357,10 +360,11 @@ Once configured, the AI agent gets access to these tools:
 |------|-------------|
 | `search_flights` | Search flights across all sources |
 | `resolve_location` | Convert city/airport names to IATA codes |
-| `unlock_flight_offer` | Lock in a live price for an offer |
-| `book_flight` | Complete a booking |
+| `unlock_flight_offer` | **[Developer API only]** Lock in a live price for an offer. Not needed on a card-backed token |
+| `book_flight` | Start the booking: fare held on the connected card, a LetsFG agent buys the ticket, hold captured only against a real PNR. Returns `booking_ref` |
+| `get_flight_booking` | Poll a booking every 20–30 s until `completed` / `failed` / `needs_attention` (4–11 min) |
 | `get_agent_profile` | Check agent capabilities and limits |
-| `setup_payment` | Configure payment methods |
+| `setup_payment` | **[Developer API only]** Attach a payment method to the paid account |
 
 ### Agent Best Practices
 
@@ -372,16 +376,17 @@ Agent flow:
 2. resolve_location("Barcelona")  → BCN
 3. search_flights("LHR", "BCN", "2026-06-01", sort="price", limit=5)
 4. Present results to user
-5. If user wants to book:
-   unlock_flight_offer(offer_id, search_id)  → confirmed price
-   book_flight(offer_id, search_id, passengers)
+5. If user wants to book (card-backed token):
+   book_flight(search_id, offer_id, passengers, contact_email)  → booking_ref in seconds
+   get_flight_booking(booking_ref) every 20-30 s            → completed + PNR (4-11 min)
+   (Developer API key: unlock_flight_offer first, then book_flight)
 ```
 
 **Key patterns for AI agents:**
 
 - **Always resolve locations first** — don't assume IATA codes from city names
 - **Search with `limit`** — agents don't need 500 results, 5-20 is enough for a conversation
-- **Unlock before booking** — prices can change between search and book; `unlock` confirms the live price
+- **No unlock on the card-backed lane** — `book_flight` holds the fare on the card and captures it only against a real PNR, so a moved price is a `failed` booking with nothing charged, never a surprise. On a Developer API key, `unlock` confirms the live price first
 - **Handle partial failures gracefully** — some sources may timeout; the search still returns results from working sources
 
 ---
@@ -482,7 +487,9 @@ async def resilient_book(origin, dest, date, passengers, max_search_retries=2):
         best = search["offers"][0]
         unlocked = bt.unlock(best["id"], search["search_id"])
 
-    # Step 3: Book (not retryable — payment involved)
+    # Step 3: Book (not retryable — payment involved). On a Bearer token this
+    # STARTS the booking and returns booking_ref; poll POST /api/agent-book/status
+    # every 20-30 s until completed / failed / needs_attention.
     booking = bt.book(best["id"], search["search_id"], passengers)
     return {
         "status": "booked",

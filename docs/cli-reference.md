@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 The `letsfg` CLI is available via both Python and JavaScript. Same commands, same interface.
 
@@ -31,13 +33,13 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 
 | Command | Description |
 |---------|-------------|
-| `letsfg register` | **[Developer API only]** Create a PAID prepaid account + API key. Most agents want `letsfg auth` |
+| `letsfg register` | **[Developer API only]** Create a PAID prepaid account + API key. Most agents want the card-backed token from the connect flow instead |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
-| `letsfg auth` | Put a card on file (zero-amount, nothing charged) to get a 90-day Bearer token |
+| `letsfg auth` | **Retired 2026-09-02** — it drove the Stripe card setup, whose tokens were all revoked. Connect through the MCP at `letsfg.co/developers/api/mcp` instead (the consent step saves a card at `letsfg.co/connect`) and put the token in `LETSFG_BEARER_TOKEN`. A connect-flow login for the CLI is coming |
 | `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | **[Developer API only]** Unlock offer details. No unlock step exists on PFS |
-| `letsfg book <offer_id>` | Book the flight. On PFS this goes straight to `/api/agent-book` — no unlock needed |
+| `letsfg book <offer_id>` | Book the flight. On PFS this goes straight to `/api/agent-book` — no unlock needed. The fare is held on the connected card and captured only against a real PNR; the command returns the started booking's `booking_ref`, which you poll at `POST /api/agent-book/status` (4–11 min) |
 | `letsfg setup-payment` | **[Developer API only]** Attach a card to that paid account. Not how agents authenticate |
 | `letsfg me` | View profile & usage stats |
 
@@ -83,7 +85,7 @@ letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
 letsfg search LON BCN 2026-04-01 --max-stops 0 --json
 ```
 
-Search runs server-side at letsfg.co. Run `letsfg auth` once to get a free Bearer token, then search is free and unlimited.
+Search runs server-side at letsfg.co. With a card-backed token in `LETSFG_BEARER_TOKEN`, search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
 
 ### Multi-Passenger
 
@@ -137,10 +139,11 @@ RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
 OFFER_ID=$(echo "$RESULTS" | jq -r '.offers[0].id')
 echo "Best offer: $OFFER_ID"
 
-# Unlock
+# Unlock — Developer API key only; skip this step on a Bearer token
 letsfg unlock "$OFFER_ID"
 
-# Book
+# Book (on a Bearer token: holds the fare on the connected card, returns booking_ref;
+# poll POST /api/agent-book/status every 20-30 s until completed / failed)
 letsfg book "$OFFER_ID" \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
@@ -170,6 +173,6 @@ The code expires in 15 minutes. Once verified, a new API key is issued and your 
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_BEARER_TOKEN` | Bearer token from `letsfg auth` (PFS search + booking) |
+| `LETSFG_BEARER_TOKEN` | Card-backed token from the connect flow (PFS search + booking) |
 | `LETSFG_API_KEY` | Developer API key for prepaid account search, unlock, and book |
 | `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co/developers`) |

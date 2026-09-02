@@ -9,10 +9,10 @@
 
 | | **CLI / SDK** (this package) | **Developer API** |
 |---|---|---|
-| **Search cost** | Free (Bearer token via `letsfg auth` — zero-amount card setup) | Prepaid credits |
-| **Booking** | `POST /api/agent-book` — confirmed order or a booking link, no LetsFG fee | Direct airline URL (unlock required first) |
+| **Search cost** | Free (card-backed token from [letsfg.co/connect](https://letsfg.co/connect), nothing charged) | Prepaid credits |
+| **Booking** | `POST /api/agent-book` — fare held on your card, a LetsFG agent buys the ticket, captured only on a real PNR. Every offer. | Direct airline URL (unlock required first) |
 | **Speed** | 8–10 s to first results; longer on a split | 2–5 s (discover) · 8–10 s to first results (full) |
-| **Setup** | `npm install letsfg` then `letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Setup** | `npm install letsfg`, then connect at [letsfg.co/developers/api/mcp](https://letsfg.co/developers/api/mcp) | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no checkout step.
 
@@ -22,13 +22,31 @@
 npm install letsfg
 ```
 
+## Getting a token
+
+Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and
+approve the connection — in Claude, ChatGPT, Cursor, Windsurf, or Claude Code
+(`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`).
+The consent step opens [letsfg.co/connect](https://letsfg.co/connect), where you
+add a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup.
+Nothing is charged, no Revolut account is needed, and the card details go to
+Revolut, never to LetsFG. The token you get back is card-backed: it searches
+and it books. One card = one account; quotas are per card (10 searches per
+10 min, 30 per hour, 100 per day — polling never counts).
+
+Pass it as `bearerToken`, or set `LETSFG_BEARER_TOKEN` for the CLI.
+
+> `letsfg auth` still runs the Stripe card setup that was retired on
+> 2026-09-02 and cannot get a token today; every token issued that way was
+> revoked (401 `TOKEN_REVOKED`). A connect-flow login for the CLI and SDKs is
+> coming — until then, connect through the MCP.
+
 ## Quick Start (SDK)
 
 ```typescript
 import { LetsFG, cheapestOffer, offerSummary } from 'letsfg';
 
-// PFS — free. Get a Bearer token once with `letsfg auth` (zero-amount card
-// setup, nothing charged), then pass it here.
+// PFS — free. The card-backed token from the connect flow (see above).
 const bt = new LetsFG({ bearerToken: 'eyJ...' });
 
 // Search — FREE
@@ -36,21 +54,61 @@ const flights = await bt.search('GDN', 'BER', '2026-03-03');
 const best = cheapestOffer(flights);
 console.log(offerSummary(best));
 
-// Book — free, ticket price only, no LetsFG fee. No unlock step.
+// Book — ticket price only, no LetsFG fee, no unlock step. Starts the booking:
+// the fare is HELD on your card and a LetsFG agent buys the ticket (4-11 min).
 const result = await bt.book(
   best.id,
-  [{ given_name: 'John', family_name: 'Doe', born_on: '1990-01-15', gender: 'm' }],
+  [{
+    given_name: 'John', family_name: 'Doe', born_on: '1990-01-15', gender: 'm',
+    nationality: 'GB', phone_number: '+447700900123', phone_country: 'GB',
+    address_line1: '1 Analytical Way', address_city: 'London',
+    address_postal: 'N1 9GU', address_country: 'GB',
+  }],
   'john@example.com',
   '',
   '',
   flights.search_id,
 );
-if (result.booked) {
-  console.log(`Order: ${result.order_id}`);
-} else {
-  console.log(`Booking link (nothing charged): ${result.booking_url}`);
-}
+const bookingRef = result.booking_ref as string;
+
+// Poll until it lands (every 20-30 s): completed | failed | needs_attention
+let status: Record<string, unknown>;
+do {
+  await new Promise(r => setTimeout(r, 25_000));
+  status = await (await fetch('https://letsfg.co/api/agent-book/status', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer eyJ...', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ booking_ref: bookingRef }),
+  })).json();
+} while (status.state === 'booking_in_progress');
+console.log(status); // { state: 'completed', pnr: 'ABC123', charged_amount: 93, currency: 'EUR' }
 ```
+
+### How booking works
+
+`bt.book()` posts to `POST /api/agent-book` and does exactly what the website
+checkout does: the fare plus LetsFG's markup is **held** on the connected card
+(not taken), a LetsFG booking agent buys the ticket from the seller, and the
+hold is captured only once a real airline PNR exists. If the booking fails the
+hold is released and nothing is charged. Every offer can be booked this way —
+no unlock step, no booking-link fallback, no separate LetsFG fee.
+
+The call returns within seconds with a `booking_ref`; the booking itself takes
+4–11 minutes. Poll `POST /api/agent-book/status` with `{"booking_ref": ...}`
+every 20–30 s (the SDK has no helper for this yet):
+
+| `state` | Meaning |
+|---|---|
+| `booking_in_progress` | the agent is at the seller's checkout — keep waiting |
+| `completed` | booked — `pnr`, `charged_amount`, `currency` are in the answer |
+| `failed` | not booked — the hold was released, nothing charged; see `failure_reason` |
+| `needs_attention` | a human at LetsFG is checking it — do **not** book again |
+
+One traveller per call, with the details an airline checkout asks for: name,
+date of birth, gender, nationality, email, phone with its country, residence
+address (passport optional). A missing detail returns `missing_details` with
+`missing_fields` and charges nothing. Never start a second booking for the
+same trip while one is in progress — that would place a second hold.
 
 Prefer the paid Developer API instead? Pass `apiKey` instead of `bearerToken` —
 `search()`/`book()` dispatch automatically. That path requires `unlock()`
@@ -59,11 +117,12 @@ Prefer the paid Developer API instead? Pass `apiKey` instead of `bearerToken` �
 ## Quick Start (CLI)
 
 ```bash
-export LETSFG_BEARER_TOKEN=<your-bearer-token>  # from `letsfg auth`
+export LETSFG_BEARER_TOKEN=<your-bearer-token>  # card-backed, from the connect flow
 
 letsfg search GDN BER 2026-03-03 --sort price
 letsfg search LON BCN 2026-04-01 --json  # Machine-readable
-letsfg book off_xxx --search-id srch_xxx -p '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m"}' -e john@example.com
+letsfg book off_xxx --search-id srch_xxx -p '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","nationality":"GB","phone_number":"+447700900123","phone_country":"GB","address_line1":"1 Analytical Way","address_city":"London","address_postal":"N1 9GU","address_country":"GB"}' -e john@example.com
+# prints the booking_ref — poll POST /api/agent-book/status until completed
 ```
 
 ## API
@@ -74,8 +133,9 @@ letsfg book off_xxx --search-id srch_xxx -p '{"given_name":"John","family_name":
 ### `bt.resolveLocation(query)`
 ### `bt.unlock(offerId)` — Developer API only
 ### `bt.book(offerId, passengers, contactEmail, contactPhone?, idempotencyKey?, searchId?)`
-Dispatches on which credential is set: `bearerToken` → free PFS booking via
-`POST /api/agent-book` (pass `searchId`, one passenger). `apiKey` → paid
+Dispatches on which credential is set: `bearerToken` → PFS booking via
+`POST /api/agent-book` (pass `searchId`, one passenger with full details;
+returns `booking_ref` — poll `POST /api/agent-book/status`). `apiKey` → paid
 Developer API `book` (requires `unlock()` first, supports multiple passengers
 and `idempotencyKey`).
 ### `bt.setupPayment(token?)` — Developer API only
@@ -118,7 +178,7 @@ MIT
 
 ## 🏨 Hotels — new, and live
 
-Your agent can now book hotels, not just flights. Same API key, same card on file.
+Your agent can book hotels as well as flights. Same card-backed token or API key, same card on file.
 
 ```python
 from letsfg import LetsFG

@@ -8,12 +8,32 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
+> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> See <https://letsfg.co/for-agents>.
 
 Configure the LetsFG MCP server for your AI coding agent.
 
-## Get an API Key First
+## Agents: connect, don't register
+
+The way in is the remote server at `https://letsfg.co/developers/api/mcp`. Your
+client runs OAuth; the consent step opens <https://letsfg.co/connect>, where the
+person saves a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut
+setup — nothing is charged, no Revolut account needed. The token the client
+receives is card-backed: it searches for free and it can book. Booking holds the
+fare on that card, a LetsFG booking agent buys the ticket, and the hold is
+captured only once a real airline PNR exists.
+
+```bash
+# Claude Code
+claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
+```
+
+claude.ai / ChatGPT: add a custom connector with that URL and approve it.
+Cursor / Windsurf: see the remote config below, with no headers.
+
+## Developer API key (paid product — only if you need it)
 
 ```bash
 pip install letsfg
@@ -21,7 +41,7 @@ letsfg register --name my-agent --email you@example.com
 # Save the trav_xxx key
 
 # Attach a payment method (required before unlock)
-letsfg setup-payment --token tok_visa
+letsfg setup-payment
 ```
 
 Or via cURL:
@@ -34,16 +54,26 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
 
 ## Remote MCP (Streamable HTTP) — No Install
 
-Works with any client that supports HTTP-based MCP.
+Works with any client that supports HTTP-based MCP. Agents (PFS): no headers —
+the client runs OAuth and the consent step saves the card at letsfg.co/connect.
+Windsurf uses `"serverUrl"` instead of `"url"`.
+
+```json
+{
+  "mcpServers": {
+    "letsfg": { "url": "https://letsfg.co/developers/api/mcp" }
+  }
+}
+```
+
+Developer API accounts use the same URL with a key instead of OAuth:
 
 ```json
 {
   "mcpServers": {
     "letsfg": {
       "url": "https://letsfg.co/developers/api/mcp",
-      "headers": {
-        "X-API-Key": "trav_your_api_key"
-      }
+      "headers": { "X-API-Key": "trav_your_api_key" }
     }
   }
 }
@@ -156,8 +186,9 @@ export LETSFG_API_KEY=trav_your_api_key
 |------|-------------|
 | `search_flights` | Search hundreds of airlines for flights via the LetsFG cloud engine |
 | `resolve_location` | Convert city names to IATA codes |
-| `unlock_flight_offer` | Confirm live price and reserve for 30 min |
-| `book_flight` | Book with passenger details |
+| `book_flight` | Start a booking with one traveller's details. PFS: holds the fare on the connected card, returns a `booking_ref` in seconds |
+| `get_flight_booking` | Poll a PFS booking every 20–30 s (4–11 min): `booking_in_progress` → `completed` (PNR) / `failed` (hold released) / `needs_attention` |
+| `unlock_flight_offer` | **Developer API only** — confirm live price and reserve for 30 min |
 
 ## Verification
 

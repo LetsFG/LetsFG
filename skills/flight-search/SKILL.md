@@ -15,12 +15,12 @@ metadata:
 
 # Flight Search
 
-> **MPP (updated 2026-07-30):** the MPP (Machine Payments Protocol) `402`
-> challenge is **live**, as a card-free *enrolment* lane for agents holding a
-> Tempo wallet. It costs **$0.01 once**, as verification only — MPP has no
-> zero-amount intent, so a card-free rail has to settle something. Search and
-> booking stay free. Earlier revisions of this page described an MPP charge at
-> *unlock* time; that never shipped. See <https://letsfg.co/for-agents>.
+> **MPP:** a card-free *enrolment* lane for agents holding a Tempo wallet is
+> offered only when the `402` from `POST /api/agent-access/request` carries an
+> `mpp` object. It costs **$0.01 once**, as verification only. Search stays free
+> and booking costs the price on the offer. Earlier revisions of this page
+> described an MPP charge at *unlock* time; that never shipped. See
+> <https://letsfg.co/for-agents>.
 
 > ### ⚠️ Agents: do not create a Developer API account
 >
@@ -30,13 +30,15 @@ metadata:
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
+> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> See <https://letsfg.co/for-agents>.
 
 Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines plus the major booking sites,
 Compares airlines and the major booking sites in one pass, with per-flight reliability history.
 
-**Two-step flow:** Search (free) → Book (`POST /api/agent-book`, the price shown on the offer). The unlock step below is **Developer API only** and is not part of the agent flow.
+**Agent flow (PFS):** Search (free) → Book (`POST /api/agent-book`, the price shown on the offer) → Poll (`POST /api/agent-book/status`). Booking works exactly like the website checkout: the fare plus LetsFG's markup is held on the card connected at <https://letsfg.co/connect> (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. A failed booking releases the hold — nothing charged. It takes 4–11 minutes; over the MCP the two steps are `book_flight` and `get_flight_booking`. The unlock step below is **Developer API only** and is not part of the agent flow.
 
 ## Why Use This
 
@@ -105,7 +107,7 @@ letsfg register --name my-agent --email agent@example.com
 Then attach a payment method (required before unlock):
 
 ```bash
-letsfg setup-payment --token tok_visa
+letsfg setup-payment
 ```
 
 ## Workflow
@@ -261,7 +263,7 @@ good_connections = [
 | `RATE_LIMITED` (429) | Transient | Wait and retry |
 | `INVALID_IATA` (422) | Validation | Use `resolve_location()` to fix |
 | `OFFER_EXPIRED` (410) | Business | Search again for fresh offers |
-| `PAYMENT_REQUIRED` (402) | Business | Attach a card: `letsfg setup-payment` (or pay via MPP on the 402 challenge) |
+| `PAYMENT_REQUIRED` (402) | Business | PFS: connect a card at the `add_card_url` (https://letsfg.co/connect). Developer API: `letsfg setup-payment` |
 | `FARE_CHANGED` (409) | Business | Re-unlock to get current price |
 
 ```python
@@ -273,8 +275,8 @@ except OfferExpiredError:
     # Airline sold the seats — search again
     flights = bt.search(origin, dest, date)
 except PaymentRequiredError:
-    # No card on file — attach one (or pay via MPP crypto on the 402 challenge)
-    print("Attach a card: letsfg setup-payment")
+    # No card on file — Developer API: letsfg setup-payment; PFS: https://letsfg.co/connect
+    print("Attach a card first")
 ```
 
 ## Search Flags
@@ -298,7 +300,7 @@ except PaymentRequiredError:
 | `search` | Free | Yes | Yes |
 | `resolve_location` | Free | Yes | Yes |
 | `unlock` | **[Developer API only]** Legacy — not part of the agent flow | No | No |
-| `book` | Ticket price | Only with `idempotency_key` | With key: yes |
+| `book` | Price shown on the offer | Developer API: only with `idempotency_key`. PFS: **no** — a second call places a second hold; poll `/api/agent-book/status` instead | With key: yes |
 
 ## Reference Files
 

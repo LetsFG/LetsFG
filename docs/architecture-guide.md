@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 Deep dive into how LetsFG's server-side search engine works — connector orchestration, failure handling, caching strategies, and performance optimization. All search runs on letsfg.co infrastructure.
 
@@ -203,7 +205,7 @@ class FlightSearchCache:
 | Price tracking / alerts | 30-60 minutes | Alerts don't need second-level precision |
 | Historical analysis | 24 hours | Trends over days, not minutes |
 
-**Important:** Always call `unlock()` before booking. The unlock step confirms the live price with the airline regardless of cache state. Cached search results are for display; unlocked prices are the source of truth.
+**Important (Developer API):** call `unlock()` before booking. The unlock step confirms the live price with the airline regardless of cache state. Cached search results are for display; unlocked prices are the source of truth. On the card-backed PFS lane there is no unlock step: `book_flight` / `POST /api/agent-book` holds the fare on the connected card and the hold is captured only against a real PNR, so a stale price never gets charged.
 
 ## Result Processing Pipeline
 

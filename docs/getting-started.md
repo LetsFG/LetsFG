@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 <div class="docs-callout">
   <strong>Pick the correct path first.</strong> Use Option A (free Bearer token) if you want search with no credit card. Use Option B (Developer API) if you want direct airline booking URLs or managed billing.
@@ -17,45 +19,39 @@
 
 ## Choose the right mode
 
-| Mode | Best for | Setup | Search cost | Booking URL |
-|------|----------|-------|-------------|-------------|
-| CLI / SDK (Bearer token) | Agents, developers, zero-cost search | `pip install letsfg` then `letsfg auth` | Free | `POST /api/agent-book` |
+| Mode | Best for | Setup | Search cost | Booking |
+|------|----------|-------|-------------|---------|
+| MCP / SDK (card-backed token) | Agents, assistants, zero-cost search and booking | Connect the MCP at `letsfg.co/developers/api/mcp`; consent saves a card at `letsfg.co/connect` | Free | `book_flight` / `POST /api/agent-book` — fare held on the card, captured against a real PNR |
 | Public Developer API | Managed cloud search, products, teams, no per-booking fee | Register, attach Stripe, top up balance | Prepaid credits | Direct airline URLs, no fee |
 | Hotels | Booking a room, not a flight | Developer API key + card on file | Free search, card required | 5% at booking, balance via pay link |
 
-**Hotels work on the same credential.** They accept either the PFS token from `letsfg auth` or a
-Developer API key, and need a card on file — which `letsfg auth` already puts there. See
+**Hotels work on the same credential.** They accept either the card-backed PFS token or a
+Developer API key, and need a card on file — which the connect step already saves. See
 [Hotels](hotels.md).
 
-## Option A: Free search with Bearer token
+## Option A: Free search and booking with a card-backed token
 
 All search runs server-side at letsfg.co. No local browsers or Playwright required.
 
-### 1. Install
+### 1. Connect once
+
+Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and approve the connection. The consent step opens <https://letsfg.co/connect>, where you save a card in a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay; no Revolut account needed, and the card details go to Revolut, never to LetsFG. Nothing is charged until you book, and even then the money is held, not taken, until the airline confirms.
+
+That works in claude.ai, Claude Desktop, Claude Code (`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`), ChatGPT, Cursor, Windsurf — anything that speaks remote MCP with OAuth. Over the MCP the token is carried for you. Over raw HTTP send it as `Authorization: Bearer <token>`.
+
+> `letsfg auth` (the old Stripe card setup) was retired on 2026-09-02 together with every token it issued. A connect-flow login for the CLI and SDKs is coming; until then the token comes from the MCP connection and the SDK/CLI read it from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`.
+
+### 2. Search
+
+> Find me the cheapest flight from London to Barcelona on June 15
+
+Or from the CLI / SDK with the token in the environment:
 
 ```bash
 pip install letsfg
-```
-
-### 2. Authenticate once
-
-```bash
-letsfg auth
-```
-
-This opens Stripe's hosted card page. Add a card — it is a zero-amount setup, so nothing is charged and no authorization hold is placed — then confirm. Your 90-day Bearer token is saved automatically. Renew by repeating this step.
-
-No browser available? Mint a single-use card token against the LetsFG publishable key and skip the hosted page: `letsfg auth --card-token tok_...`
-
-### 3. Run the first search
-
-```bash
+export LETSFG_BEARER_TOKEN=eyJ...
 letsfg search LHR BCN 2026-06-15
 ```
-
-No payment method required. Search is free and unlimited with the Bearer token.
-
-### 4. Use the Python SDK for programmatic control
 
 ```python
 from letsfg import LetsFG
@@ -66,31 +62,40 @@ for offer in result.offers[:5]:
     print(f"{offer.airlines[0]}: {offer.currency} {offer.price}")
 ```
 
-### Unlocking search results (concierge flow)
+Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card. Polling results never counts.
 
-To book, call `POST /api/agent-book` with your Bearer token. It returns either a confirmed order or a direct booking link for that exact offer.
+### 3. Book
+
+Booking works exactly like the website checkout, on the connected card. The fare plus LetsFG's markup is **held** (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails, the hold is released and nothing is charged. Every offer a search returns is bookable this way — there is no unlock step and no separate LetsFG fee.
+
+Over the MCP: `book_flight` starts it and returns a `booking_ref` within seconds; poll `get_flight_booking` every 20–30 s. A booking takes 4–11 minutes.
+
+Over HTTP, the same two calls:
 
 ```bash
-# Step 1 — initiate checkout
-curl -X POST https://letsfg.co/api/developers/checkout \
+# Step 1 — start (one traveller per call; real details, the e-ticket goes to contact_email)
+curl -X POST https://letsfg.co/api/agent-book \
+  -H "Authorization: Bearer eyJ..." \
   -H "Content-Type: application/json" \
-  -d '{
-    "offer_id":      "off_xxx",
-    "offer_ref":     "<offer_ref from search result>",
-    "payment_token": "<payment_token from search result>",
-    "currency":      "USD",
-    "price":         "312.50"
-  }'
-# Returns: { "checkout_url": "https://checkout.stripe.com/...", "stripe_session_id": "..." }
+  -d '{"search_id":"ws_abc123","offer_id":"ws_off_...",
+       "contact_email":"traveller@example.com",
+       "passenger":{"given_name":"Ada","family_name":"Lovelace","born_on":"1990-04-01",
+                    "gender":"f","nationality":"GB","phone_number":"+15551234567",
+                    "phone_country":"US","address_line1":"1 Analytical Way",
+                    "address_city":"London","address_postal":"N1 9GU","address_country":"GB"}}'
+# → {"booking_ref":"eyJ...","state":"booking_in_progress"}
 
-# Step 2 — open checkout_url in a browser (human or agent presents it to the user)
-
-# Step 3 — poll until paid (fee = max(price × 1%, $3.00))
-curl "https://letsfg.co/api/developers/payment-verify?token=<payment_token>"
-# Returns: { "verified": true, "booking_url": "https://airline.com/..." }
+# Step 2 — poll every 20-30 s
+curl -X POST https://letsfg.co/api/agent-book/status \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"booking_ref":"eyJ..."}'
+# → {"state":"completed","pnr":"ABC123","charged_amount":93,"currency":"EUR"}
 ```
 
-Keep polling `payment-verify` every few seconds until `verified` is `true`.
+`state` walks `booking_in_progress` → `completed` (PNR, captured amount) | `failed` (hold released, nothing charged, `failure_reason`) | `needs_attention` (a human at LetsFG is checking it — do not book again). A missing passenger field answers `missing_details` with `missing_fields` and charges nothing. Never start a second booking for the same trip while one is in progress.
+
+Full contract: [Building AI Agents](agent-guide.md) and <https://letsfg.co/for-agents>.
 
 ---
 

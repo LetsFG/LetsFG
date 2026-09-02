@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 <div class="docs-callout">
   <strong>Most paid API failures are state failures.</strong> In practice, the search path breaks more often because the account is not ready than because the request body is malformed. Treat <code>GET /agents/me</code> as the source of truth before you send paid search traffic.

@@ -52,13 +52,18 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **CLI / SDK** | `pip install letsfg` + `letsfg auth` — wraps PFS with auth and ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
-| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
+| **MCP / CLI / SDK** | Hosted MCP at `https://letsfg.co/developers/api/mcp` (card connected at the consent step); `pip install letsfg` wraps PFS with ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
+| **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` → poll `/api/agent-book/status` | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
 | **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 8–10 s to first results (full search) | Prepaid credits |
 
-Auth for CLI/PFS: one-time payment-token enrolment (`letsfg auth`) → 90-day Bearer token.
-It is a **zero-amount** Stripe setup — the card is validated and vaulted, nothing is
-charged and no authorization hold is placed. Replaced the Twitter/X challenge 2026-07-29.
+Auth for MCP/CLI/PFS: connect the hosted MCP and approve it. The OAuth consent step opens
+letsfg.co/connect, where a card (or Revolut Pay / Google Pay) is saved in a **0.00 Revolut
+setup** — nothing is charged, no Revolut account needed, card details never touch LetsFG.
+The token is card-backed and can book. Over raw HTTP send it as `Authorization: Bearer`.
+The Stripe enrolment lanes (setup_url / SetupIntent / tok_ / pm_) and the earlier Twitter/X
+challenge are retired (2026-09-02); every token they issued was revoked. `letsfg auth` and
+the SDKs' `payment_auth` still implement the retired lane and do not issue a token — the
+SDKs read `LETSFG_BEARER_TOKEN` / `~/.letsfg/config.json` instead.
 
 ## Repository Structure
 
@@ -104,20 +109,31 @@ LetsFG/
 
 ### Two-Step Flow (PFS — what agents use)
 1. **Search** (free) → `POST /api/search` with Bearer token → `search_id`; poll `GET /api/results/<search_id>` immediately, then every 2 s. `completed` is not the end — keep polling while `split_ticket_pending` or `gf_enrich_pending` is true
-2. **Book** → `POST /api/agent-book`. Either `{booked: true, order_id}` or
-   `{booked: false, booking_url}` — the latter means the booking genuinely did not
-   complete and **nothing was charged**; it is a normal outcome, not a retryable error.
+2. **Book** → `POST /api/agent-book` with `search_id`, `offer_id`, `contact_email` and ONE
+   traveller's real details (name, date of birth, gender, nationality, phone + country,
+   residence address; passport optional). Exactly what the website checkout does: the fare
+   plus LetsFG's markup is **held** on the connected card, a LetsFG booking agent buys the
+   ticket, and the hold is captured only once a real airline PNR exists. Returns
+   `{ booking_ref }` within seconds; the booking takes 4–11 minutes.
+3. **Wait** → `POST /api/agent-book/status { booking_ref }` every 20–30 s. `completed`
+   carries `pnr` and `charged_amount`; `failed` means the hold was released and nothing was
+   charged; `needs_attention` means a human at LetsFG is checking it — do not book again.
+   Never start a second booking for the same trip while one is in progress (second hold).
+   A missing detail returns `missing_fields` and charges nothing. Over the MCP these are
+   `book_flight` and `get_flight_booking`. There is no unlock step and no booking-link
+   fallback on this lane.
 
 ### Search Architecture
 All flight data comes from the letsfg.co server-side engine. The SDK/CLI authenticates
-via a 90-day Bearer token obtained through the payment-token enrolment flow and calls the
-cloud search API. No local browsers or scrapers are involved.
+with the card-backed Bearer token from the connect flow and calls the cloud search API.
+No local browsers or scrapers are involved.
 
 Auth flow (one-time):
 ```
-POST /api/agent-access/request  → 402 { setup_url, setup_session_id, charged: false }
-# a human adds a card at setup_url, OR mint a single-use tok_ headlessly
-POST /api/agent-access/verify   { setup_session_id }  → { token, expires_at, charged: false }
+Add https://letsfg.co/developers/api/mcp as an MCP server → approve
+  → consent opens https://letsfg.co/connect → card saved (0.00, nothing charged)
+  → card-backed token (carried by the MCP; Authorization: Bearer over raw HTTP)
+POST /api/agent-access/request → 402 { add_card_url: "https://letsfg.co/connect", how: [...] }
 ```
 
 ### Open-Source Ranking Engine
@@ -207,11 +223,12 @@ npm publish
 ### PFS (Bearer token, free)
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/agent-access/request` | Start enrolment → 402 `{ setup_url, setup_session_id }` |
-| `POST` | `/api/agent-access/verify` | Present card → `{ token, expires_at }` (90-day Bearer) |
+| `POST` | `/api/agent-access/request` | Always 402 → `{ add_card_url: "https://letsfg.co/connect", how }`; the token comes from the MCP connect flow |
+| `POST` | `/api/agent-access/verify` | MPP wallet lane only (`Authorization: Payment`); 410 for a Stripe credential |
 | `POST` | `/api/search` | Start search → `{ search_id }` (Authorization: Bearer token) |
 | `GET`  | `/api/results/<search_id>` | Poll results (send the Bearer token) |
-| `POST` | `/api/agent-book` | Book an offer → booked, or a direct booking link. No LetsFG fee |
+| `POST` | `/api/agent-book` | Book an offer → `{ booking_ref }`; fare held on the card, LetsFG agent buys the ticket |
+| `POST` | `/api/agent-book/status` | Poll `{ booking_ref }` → `booking_in_progress` / `completed` (PNR) / `failed` / `needs_attention` |
 
 ### Developer API (prepaid credits)
 Base: `https://letsfg.co/developers/api/v1`

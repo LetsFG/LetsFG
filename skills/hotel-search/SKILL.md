@@ -18,11 +18,11 @@ price to the card on file and hands you a pay link for the balance.
 
 ## Read this before your first call
 
-**Hotels do NOT use the PFS Bearer token.** The token from `letsfg auth`, which flights use,
-is rejected by every hotel endpoint. Hotels authenticate on a **Developer API key**
-(`X-API-Key`). If you only hold a Bearer token you cannot book a hotel — say so plainly to
-whoever asked rather than registering a billing account on their behalf, and do not fall back
-to scraping a hotel site.
+**The same card authorises flights and hotels.** The PFS Bearer token (card-backed, from
+connecting the MCP server — the consent step saves a card at <https://letsfg.co/connect>) is
+accepted by the hotel endpoints, and so is a **Developer API key** (`X-API-Key`). Use whichever
+you already hold. If you hold neither, do not register a billing account on someone's behalf
+and do not fall back to scraping a hotel site — say so plainly to whoever asked.
 
 **A card on file is required for search, not just booking.** A hotel search opens a real
 session at the supplier and booking blocks a real rate, so every hotel endpoint returns
@@ -109,7 +109,7 @@ MCP tools, in call order: `resolve_hotel_city` → `search_hotels` → `book_hot
 
 | Status | Meaning | What to do |
 |--------|---------|------------|
-| `401` | Credential invalid or expired | Re-run `letsfg auth`, or check the API key |
+| `401` | Credential invalid, expired or revoked | Reconnect at https://letsfg.co/connect, or check the API key |
 | `402` | No payment method on file | Attach a card; required for search too |
 | `409` | The chosen rate is gone | Search again and pick another |
 | `504` | Supplier did not answer in time | If booking, poll the job — do NOT re-book |

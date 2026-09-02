@@ -9,10 +9,10 @@
 
 | | **CLI / SDK** (PFS Bearer token) | **Developer API** |
 |---|---|---|
-| **Search cost** | Free (one-time `letsfg auth`, nothing charged) | Prepaid credits |
-| **Booking** | `POST /api/agent-book` — confirmed order or a booking link, no LetsFG fee | Direct airline URL (unlock required first, 1% fee min $3) |
+| **Search cost** | Free (card-backed token from [letsfg.co/connect](https://letsfg.co/connect), nothing charged) | Prepaid credits |
+| **Booking** | `POST /api/agent-book` — fare held on your card, a LetsFG agent buys the ticket, captured only on a real PNR. Every offer. | Direct airline URL (unlock required first, 1% fee min $3) |
 | **Speed** | 8–10 s to first results; longer on a split | 2–5 s (discover) · 8–10 s to first results (full) |
-| **Setup** | `pip install letsfg && letsfg auth` | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Setup** | `pip install letsfg`, then connect at [letsfg.co/developers/api/mcp](https://letsfg.co/developers/api/mcp) | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Want direct airline URLs without any per-booking fee?** Use the [Developer API](https://letsfg.co/developers) — prepaid credits, results in seconds, no per-booking fee.
 
@@ -22,28 +22,41 @@
 pip install letsfg
 ```
 
-Authenticate once by putting a payment method on file (zero-amount, nothing charged), then search is free and unlimited:
+Connect a card once at [letsfg.co/connect](https://letsfg.co/connect) (nothing
+charged — see Authentication), then search is free and booking runs on that card:
 
 ```bash
-letsfg auth           # one-time card-on-file setup → 90-day Bearer token (nothing charged)
+export LETSFG_BEARER_TOKEN=eyJ...     # the card-backed token from the connect flow
 letsfg search LHR BCN 2026-06-15
 ```
 
-**Search and booking are both free.** `letsfg auth` (zero-amount card setup) is
-all you need — no unlock step, no LetsFG fee on the CLI/SDK path. The 1% unlock
-fee (min $3) only exists on the separate, paid Developer API.
+**Search is free and booking costs the ticket price.** There is no unlock step
+and no LetsFG fee on the CLI/SDK path. The 1% unlock fee (min $3) only exists
+on the separate, paid Developer API.
 
 ## Authentication
 
-```bash
-letsfg auth   # zero-amount Stripe card setup — nothing charged, saves a 90-day
-              # Bearer token to ~/.letsfg/config.json
-```
+Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and
+approve the connection — in Claude, ChatGPT, Cursor, Windsurf, or Claude Code
+(`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`).
+The consent step opens [letsfg.co/connect](https://letsfg.co/connect), where you
+add a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup.
+Nothing is charged, no Revolut account is needed, and the card details go to
+Revolut, never to LetsFG. The token you get back is card-backed: it searches
+and it books. One card = one account; quotas are per card (10 searches per
+10 min, 30 per hour, 100 per day — polling never counts).
+
+The SDK reads the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`.
+
+> `letsfg auth` still runs the Stripe card setup that was retired on
+> 2026-09-02 and cannot get a token today; every token issued that way was
+> revoked (401 `TOKEN_REVOKED`). A connect-flow login for the CLI and SDKs is
+> coming — until then, connect through the MCP.
 
 ```python
 from letsfg import LetsFG
 
-# Reads the Bearer token letsfg auth saved (or LETSFG_BEARER_TOKEN env var)
+# Reads LETSFG_BEARER_TOKEN (or ~/.letsfg/config.json)
 bt = LetsFG()
 ```
 
@@ -82,7 +95,7 @@ try:
     bt = LetsFG()
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except BearerTokenError:
-    print("Token expired or missing — run `letsfg auth` again")
+    print("Token missing or revoked — reconnect at https://letsfg.co/connect through the MCP")
 ```
 
 ## Quick Start (Python)
@@ -90,13 +103,14 @@ except BearerTokenError:
 ```python
 from letsfg import LetsFG
 
-bt = LetsFG()  # reads the Bearer token from `letsfg auth`
+bt = LetsFG()  # reads LETSFG_BEARER_TOKEN
 
 # Search flights — FREE
 flights = bt.search("GDN", "BER", "2026-03-03")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 
-# Book — free, ticket price only, no LetsFG fee. No unlock step.
+# Book — ticket price only, no LetsFG fee, no unlock step. Starts the booking:
+# the fare is HELD on your card and a LetsFG agent buys the ticket (4-11 min).
 result = bt.book(
     offer_id=flights.cheapest.id,
     passengers=[{
@@ -104,15 +118,59 @@ result = bt.book(
         "family_name": "Doe",
         "born_on": "1990-01-15",
         "gender": "m",
+        "nationality": "GB",
+        "phone_number": "+447700900123",
+        "phone_country": "GB",
+        "address_line1": "1 Analytical Way",
+        "address_city": "London",
+        "address_postal": "N1 9GU",
+        "address_country": "GB",
     }],
     contact_email="john@example.com",
     search_id=flights.search_id,
 )
-if result["booked"]:
-    print(f"Order: {result['order_id']}")
-else:
-    print(f"Booking link (nothing charged): {result['booking_url']}")
+booking_ref = result["booking_ref"]
+
+# Poll until it lands (every 20-30 s): completed | failed | needs_attention
+import time, requests
+from letsfg.connectors.auth import get_bearer_token
+while True:
+    status = requests.post(
+        "https://letsfg.co/api/agent-book/status",
+        json={"booking_ref": booking_ref},
+        headers={"Authorization": f"Bearer {get_bearer_token()}"},
+    ).json()
+    if status["state"] != "booking_in_progress":
+        break
+    time.sleep(25)
+print(status)  # {"state": "completed", "pnr": "ABC123", "charged_amount": 93, "currency": "EUR"}
 ```
+
+### How booking works
+
+`book()` posts to `POST /api/agent-book` and does exactly what the website
+checkout does: the fare plus LetsFG's markup is **held** on the connected card
+(not taken), a LetsFG booking agent buys the ticket from the seller, and the
+hold is captured only once a real airline PNR exists. If the booking fails the
+hold is released and nothing is charged. Every offer can be booked this way —
+no unlock step, no booking-link fallback, no separate LetsFG fee.
+
+The call returns within seconds with a `booking_ref`; the booking itself takes
+4–11 minutes. Poll `POST /api/agent-book/status` with `{"booking_ref": ...}`
+every 20–30 s (the SDK has no helper for this yet):
+
+| `state` | Meaning |
+|---|---|
+| `booking_in_progress` | the agent is at the seller's checkout — keep waiting |
+| `completed` | booked — `pnr`, `charged_amount`, `currency` are in the answer |
+| `failed` | not booked — the hold was released, nothing charged; see `failure_reason` |
+| `needs_attention` | a human at LetsFG is checking it — do **not** book again |
+
+One traveller per call, with the details an airline checkout asks for: name,
+date of birth, gender, nationality, email, phone with its country, residence
+address (passport optional). A missing detail returns `missing_details` with
+`missing_fields` and charges nothing. Never start a second booking for the
+same trip while one is in progress — that would place a second hold.
 
 ## Multi-Passenger Search
 
@@ -208,7 +266,7 @@ Full semantics: [docs/api-search.md](https://github.com/LetsFG/LetsFG/blob/main/
 from letsfg import LetsFG, LetsFGError
 from letsfg.connectors.auth import BearerTokenError
 
-bt = LetsFG()  # reads the Bearer token from `letsfg auth`
+bt = LetsFG()  # reads LETSFG_BEARER_TOKEN (or ~/.letsfg/config.json)
 
 # Handle invalid locations
 try:
@@ -219,16 +277,20 @@ except LetsFGError as e:
         locations = bt.resolve_location("London")
         flights = bt.search(locations[0]["iata_code"], "JFK", "2026-04-15")
 
-# Handle booking (free PFS path — no unlock step)
+# Handle booking (PFS path — no unlock step)
 try:
     result = bt.book(
         offer_id=flights.cheapest.id, passengers=[...],
         contact_email="...", search_id=flights.search_id,
     )
-    if not result["booked"]:
-        print(f"Booking link (nothing charged): {result['booking_url']}")
+    if result.get("error") == "missing_details":
+        print(f"Ask the traveller for: {result['missing_fields']}")  # nothing charged
+    elif result.get("error") == "payment_method_required":
+        print(f"No card connected — {result['add_card_url']}")
+    else:
+        print(f"Started: {result['booking_ref']} — poll /api/agent-book/status")
 except BearerTokenError:
-    print("Token expired — run `letsfg auth` again")
+    print("Token missing or revoked — reconnect at https://letsfg.co/connect")
 ```
 
 Developer API path adds `unlock()` before `book()`, and its own error modes:
@@ -251,7 +313,7 @@ except LetsFGError as e:
 | Exception | HTTP Code | Cause |
 |-----------|-----------|-------|
 | `AuthenticationError` | 401 | Missing or invalid API key (Developer API) |
-| `BearerTokenError` | 401 | Missing or expired Bearer token — run `letsfg auth` again (PFS) |
+| `BearerTokenError` | 401 | Missing, expired or revoked Bearer token — reconnect through the MCP (PFS) |
 | `PaymentRequiredError` | 402 | No payment method (call `setup_payment()`, Developer API) |
 | `OfferExpiredError` | 410 | Offer no longer available (Developer API) |
 | `LetsFGError` | any | Base class for all API errors |
@@ -295,8 +357,10 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Search Wide, Book Once
 
-Searching is **free and unlimited**. On PFS, booking goes through `POST
-/api/agent-book` — ticket price only, no LetsFG fee. Compare before booking:
+Searching is free (10 per 10 min, 30 per hour, 100 per day per card). On
+PFS, booking goes through `POST /api/agent-book` — the fare is held on your
+card and captured only on a real PNR, ticket price only, no LetsFG fee.
+Compare before booking:
 
 ```python
 # Search multiple dates (free) — compare before booking
@@ -322,8 +386,8 @@ On the Developer API, the same idea applies before `unlock()` (1% fee, min $3)
 ## Quick Start (CLI)
 
 ```bash
-# Auth (one-time — saves Bearer token to ~/.letsfg/config.json)
-letsfg auth
+# Token: connect once through the MCP (see Authentication), then
+export LETSFG_BEARER_TOKEN=eyJ...
 
 # Search (1 adult, one-way, economy — defaults)
 letsfg search GDN BER 2026-03-03 --sort price
@@ -337,9 +401,10 @@ letsfg search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
 # Machine-readable output (for agents) — includes search_id, needed for book
 letsfg search LON BCN 2026-04-01 --json
 
-# Book — free, ticket price only, no LetsFG fee. No unlock step.
+# Book — ticket price only, no LetsFG fee, no unlock step. Holds the fare on
+# your card and starts the LetsFG booking agent; prints the booking_ref to poll.
 letsfg book off_xxx --search-id srch_xxx \
-  --passenger '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m"}' \
+  --passenger '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","nationality":"GB","phone_number":"+447700900123","phone_country":"GB","address_line1":"1 Analytical Way","address_city":"London","address_postal":"N1 9GU","address_country":"GB"}' \
   --email john@example.com
 
 # Resolve location
@@ -364,10 +429,10 @@ letsfg locations "Berlin"
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `auth` | One-time card-on-file setup → 90-day Bearer token. Nothing charged | FREE |
+| `auth` | **Retired 2026-09-02** (Stripe card setup) — cannot issue a token today. Connect through the MCP instead; a connect-flow login is coming | — |
 | `search` | Search flights between any two airports, prints `search_id` | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
-| `book` | Book an offer from your search (`--search-id` required) | Ticket price only, no LetsFG fee |
+| `book` | Start a booking for an offer from your search (`--search-id` required). Fare held on your card, captured on a real PNR; poll `/api/agent-book/status` | Ticket price only, no LetsFG fee |
 | `me` | Show agent profile and usage stats | FREE |
 | `unlock` | **[Developer API only]** Unlock offer (confirms price, reveals booking URL). Requires `--api-key`. Legacy | — |
 | `register` | **[Developer API only]** Register new Developer API key | FREE |
@@ -379,14 +444,14 @@ Every command supports `--json` for machine-readable output.
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_BEARER_TOKEN` | PFS Bearer token (from `letsfg auth`). Takes priority over `~/.letsfg/config.json`. |
+| `LETSFG_BEARER_TOKEN` | PFS Bearer token (card-backed, from the connect flow). Takes priority over `~/.letsfg/config.json`. |
 | `LETSFG_API_KEY` | Developer API key (prepaid credits path) |
 | `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co`) |
 
 ## How It Works
 
 1. **Search** — Free. The server-side engine queries hundreds of airlines and returns real-time offers.
-2. **Book** — Call `POST /api/agent-book` with your Bearer token. It returns either a confirmed order or a direct booking link for that exact offer. Ticket price only, no LetsFG fee, no unlock step.
+2. **Book** — Call `POST /api/agent-book` with your Bearer token. The fare plus LetsFG's markup is held on your connected card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists (4–11 minutes; poll `POST /api/agent-book/status`). A failed booking releases the hold. Ticket price only, no LetsFG fee, no unlock step.
 
 The Developer API is a separate, paid product: search consumes prepaid credits, and booking a chosen offer requires an `unlock` call (1% fee, min $3) before `book`, which returns a direct airline booking URL.
 

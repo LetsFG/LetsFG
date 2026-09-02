@@ -23,7 +23,7 @@ revocable by you. See [Privileges and data](#privileges-and-data).
 | Dependency | Why | Notes |
 |---|---|---|
 | Omarchy Quattro shell | Host for the plugin | Uses `Quickshell`, `Quickshell.Io`, `qs.Commons`, `qs.Ui` |
-| A LetsFG token | Authenticates your searches | Created by `letsfg auth`, below |
+| A LetsFG token | Authenticates your searches | Read from `~/.letsfg/config.json`, below |
 | Network access to `letsfg.co` | Search | HTTPS only |
 
 No other runtime dependencies. The plugin spawns no processes, bundles no
@@ -41,27 +41,25 @@ Then add **LetsFG Flights** to a bar section in the Omarchy bar settings.
 
 ### Connect
 
-**In the panel.** Open it and press **Add a card to continue**. Stripe's hosted
-page opens in your browser; add a card there — it is a zero-amount setup, so
-**nothing is charged** — then come back and press **I have added my card**. You
-get a 90-day token and search is free and unlimited.
+**How a token is issued now.** Since 2026-09-02 LetsFG issues card-backed
+tokens through one flow: connect the hosted MCP
+(`https://letsfg.co/developers/api/mcp`) and approve it; the consent step
+opens letsfg.co/connect, where a card is saved in a 0.00 Revolut setup —
+nothing is charged. The Stripe enrolment that the panel's **Add a card to
+continue** button and `letsfg auth` drive was retired that day, and the
+tokens it issued were revoked, so neither issues a token at the moment. Both
+are being moved to the connect flow.
 
-Card details are only ever entered on Stripe's own page. The plugin never asks
-for them, never sees them, and only ever opens a URL whose host it has checked
-is `checkout.stripe.com`.
-
-**Or with the CLI**, if you prefer, and the panel will pick that token up:
-
-```bash
-pip install letsfg
-letsfg auth
-```
-
-The plugin watches that file and re-reads it when the panel opens, so you can
-run `letsfg auth` in a terminal and it is picked up without restarting the
+**What the panel reads.** The plugin takes its token from
+`~/.letsfg/config.json` (`{"pfs_auth": {"token", "expires_at"}}`) or its own
+per-shell state file, whichever holds one. It re-reads the file when the
+panel opens, so a token that lands there is picked up without restarting the
 shell. When the token is missing or expired the panel says so and Search does
 nothing — no request is made. The panel also warns you in the week before the
 token expires.
+
+The panel never asks for card details, never sees them, and only ever opens
+a setup URL whose host it has checked; the plugin itself has no card fields.
 
 ## Remove
 
@@ -187,8 +185,8 @@ exactly what this one does.
 
 **What it reads**
 
-- `~/.letsfg/config.json` — read-only, for your token. Written by `letsfg auth`;
-  this plugin never writes it.
+- `~/.letsfg/config.json` — read-only, for your token (the CLI's file); this
+  plugin never writes it.
 - Its own entry in `shell.json`, for the optional defaults above — read-only.
 
 **What it writes**
@@ -199,14 +197,14 @@ Two files, both inside Quickshell's own per-shell state directory
 - **Your access token**, and only when you sign in from the panel.
   It goes to Quickshell's own per-shell state directory
   (`~/.local/state/quickshell/by-shell/<id>/letsfg-auth.json`), in the same
-  `{"pfs_auth": {"token", "expires_at"}}` shape `letsfg auth` uses.
+  `{"pfs_auth": {"token", "expires_at"}}` shape the CLI uses.
 
   Not `~/.letsfg/config.json`: `FileView` writes atomically by renaming into
   the target directory, so that path fails outright when `~/.letsfg` does not
   exist — which is exactly the case for anyone who has never run the CLI.
   Creating it would mean spawning `mkdir`, and this plugin spawns no
-  processes. The CLI's file is still **preferred on read**, so if you have run
-  `letsfg auth` that token keeps winning and the two never disagree.
+  processes. The CLI's file is still **preferred on read**, so a token in
+  `~/.letsfg/config.json` keeps winning and the two never disagree.
 - **An anonymous installation id** — `letsfg-install.json`, written once, on
   first run. 24 random lowercase characters and nothing else. What it is for and
   where it goes is under [What it sends](#privileges-and-data) below; delete the
@@ -298,10 +296,11 @@ Two files, both inside Quickshell's own per-shell state directory
 
 - Bundle a shared or embedded API key. Every install authenticates as its own
   user, so a misbehaving install can only spend its own quota.
-- **Ask for card details.** Signing in opens Stripe's hosted page in your
-  browser. The plugin has no card fields, and refuses to open a setup link
-  whose host is not `checkout.stripe.com` — an open redirect there would be a
-  phishing vector for exactly the data this flow must never touch.
+- **Ask for card details.** Cards are only ever entered on the payment
+  provider's own page in your browser (today: Revolut, at letsfg.co/connect).
+  The plugin has no card fields, and refuses to open a setup link whose host it
+  has not checked — an open redirect there would be a phishing vector for
+  exactly the data this flow must never touch.
 - Send your token, your search terms, or any identifier anywhere except
   `letsfg.co` — including the installation id above, which goes to that one host
   and nowhere else. The logo CDN receives an image request and nothing else.

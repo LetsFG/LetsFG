@@ -20,7 +20,7 @@
       "environmentVariables": [
         {
           "name": "LETSFG_BEARER_TOKEN",
-          "description": "Free token from `letsfg auth` (zero-amount card setup, nothing charged, 90-day token). Reaches both flights and hotels — the same card authorises both products.",
+          "description": "Card-backed token from the connect flow: add https://letsfg.co/developers/api/mcp as a remote MCP and approve it; the consent step saves a card at letsfg.co/connect in a 0.00 Revolut setup (nothing charged). Reaches both flights and hotels, and can book.",
           "isRequired": false,
           "format": "string",
           "isSecret": true

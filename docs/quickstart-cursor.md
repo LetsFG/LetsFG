@@ -8,81 +8,50 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
-Choose between the paid remote MCP endpoint and the free local MCP server.
+Connect the remote MCP server once and Cursor's agent can search and book flights, and search and book hotels. Nothing to install.
 
----
+## Option A: Remote MCP with the connect flow — **recommended**
 
-## Option A: Remote paid MCP — *not the default for agents*
+### 1. Add to Cursor MCP config
 
-> **Most agents should use Option B below.** This option is the *paid* Developer
-> API: it creates a prepaid billing account and blocks search until you fund it.
-> Option B needs no billing account, charges nothing, and supports booking.
-
-Use this when you want managed search through the public developer API at `letsfg.co/developers/api/mcp`.
-
-### 1. Get an API key
-
-```bash
-curl -s -X POST https://letsfg.co/developers/api/v1/agents/register \
-  -H "Content-Type: application/json" \
-  -d '{"agent_name": "cursor", "email": "you@example.com"}'
-```
-
-Public REST docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
-
-### 2. Finish paid API onboarding
-
-Remote search stays blocked until the account has a Stripe payment method and funded prepaid balance.
-
-- Browserless/API-only path: [Onboarding and Billing](api-onboarding.md)
-- Hosted browser path: [letsfg.co/en/developers](https://letsfg.co/en/developers)
-
-### 3. Add to Cursor MCP config
-
-Create `.cursor/mcp.json` in your project root (or global config):
+Create `.cursor/mcp.json` in your project root (or the global config):
 
 ```json
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp",
-      "headers": {
-        "X-API-Key": "letsfg_your_key_here"
-      }
+      "url": "https://letsfg.co/developers/api/mcp"
     }
   }
 }
 ```
 
-### 4. Reload Cursor
+### 2. Approve the connection
+
+Cursor prompts you to authenticate the server. The consent step opens <https://letsfg.co/connect>, where you add a card or pay 0.00 with Revolut Pay / Google Pay. Any card works, no Revolut account is needed, and the card details go to Revolut — they never touch LetsFG.
+
+Nothing is charged to connect. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms. The token Cursor receives is card-backed and is carried on every tool call.
+
+### 3. Reload Cursor
 
 Press `Ctrl+Shift+P` → `Developer: Reload Window`. LetsFG tools appear in the MCP panel.
 
-### 5. Search
+### 4. Search
 
 > Find me flights from Berlin to Lisbon on April 10
 
+Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
+
 ---
 
-## Option B: Local MCP server with payment-token auth — **recommended**
+## Option B: Local MCP server (`npx letsfg-mcp`)
 
-Use this when you want free search inside Cursor without a paid API account.
-
-### 1. Install and authenticate
-
-```bash
-pip install letsfg
-letsfg auth
-```
-
-`letsfg auth` puts a card on file (zero-amount, nothing charged) and saves a 90-day Bearer token.
-
-### 2. Add to `.cursor/mcp.json`
-
-Create `.cursor/mcp.json` in your project root:
+Use this only if you cannot use a remote server. It needs a card-backed token in its environment — the one issued through the connect flow above (`letsfg auth`, the old Stripe setup, was retired on 2026-09-02; a connect-flow login for the CLI is coming).
 
 ```json
 {
@@ -91,7 +60,7 @@ Create `.cursor/mcp.json` in your project root:
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_BEARER_TOKEN": "your_bearer_token_here"
+        "LETSFG_BEARER_TOKEN": "your_card_backed_token"
       }
     }
   }
@@ -100,15 +69,13 @@ Create `.cursor/mcp.json` in your project root:
 
 > **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-### 3. Reload Cursor
+Reload the window. The local server sends every request to the letsfg.co server-side engine with your token — no local browsers.
 
-`Ctrl+Shift+P` → `Developer: Reload Window`
+---
 
-### 4. Search — that's it
+## Option C: Paid Developer API — *not for agents*
 
-> Find cheap flights from London to NYC next month.
-
-The local MCP server sends search requests to the letsfg.co server-side engine using your Bearer token. No local browsers needed.
+The same remote URL also accepts a Developer API key in an `X-API-Key` header, from the separate, prepaid product at [letsfg.co/developers](https://letsfg.co/developers). It creates a billing account and blocks search until you fund it. See [Onboarding and Billing](api-onboarding.md) if you are building a commercial integration.
 
 ---
 
@@ -116,23 +83,26 @@ The local MCP server sends search requests to the letsfg.co server-side engine u
 
 Cursor's Agent mode can chain LetsFG tools automatically:
 
-> "I need to fly from San Francisco to Tokyo next month. Find the cheapest option, show me the details, and walk me through booking."
+> "I need to fly from San Francisco to Tokyo next month. Find the cheapest option, show me the details, and book it for me."
 
 The agent will:
 1. `resolve_location("San Francisco")` → SFO
-2. `search_flights("SFO", "TYO", "2026-05-01")`
+2. `search_flights("SFO", "TYO", "2026-05-01")`, then `get_flight_results` for the late-landing split tickets
 3. Present options with prices
-4. `unlock_flight_offer` when you confirm
-5. `book_flight` with your details
+4. Ask for the traveller's real details (name as on the passport, date of birth, gender, nationality, email, phone, address)
+5. `book_flight` — the fare plus LetsFG's markup is held on your card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real airline PNR. If it fails, the hold is released and nothing is charged
+6. `get_flight_booking` every 20–30 s until `completed` with the PNR (a booking takes 4–11 minutes)
 
 ## Troubleshooting
 
-**"Connect a payment method and fund your prepaid API balance before searching"** -> your remote paid API account is not ready yet. Finish [Onboarding and Billing](api-onboarding.md) or use the hosted developers page.
+**"payment_method_required" with an `add_card_url`** → the connection has no card yet. Open <https://letsfg.co/connect> from the consent step and add one; nothing is charged.
+
+**"TOKEN_REVOKED"** → a token from the retired Stripe setup. Remove and re-add the server so the consent step saves the card again.
+
+**"Connect a payment method and fund your prepaid API balance before searching"** → you are on the paid Developer API key (Option C), not the connect flow. Remove the `X-API-Key` header, or fund the account.
 
 **Tools not appearing** → Check `.cursor/mcp.json` is valid JSON. Reload window.
 
-**"API key required"** → Verify `X-API-Key` header (remote) or `LETSFG_API_KEY` env (local)
-
-**"Cannot start Python"** -> install the prerequisites first: `pip install letsfg` and `letsfg auth`
+**"Cannot start Python"** -> the local server needs Node (`npx`); the remote MCP URL needs nothing installed
 
 **Windows: `spawn npx ENOENT`** → Use full path: `"C:\\Program Files\\nodejs\\npx.cmd"`

@@ -1,11 +1,11 @@
 # LetsFG API Reference
 
-> **MPP (updated 2026-07-30):** the MPP (Machine Payments Protocol) `402`
-> challenge is **live**, as a card-free *enrolment* lane for agents holding a
-> Tempo wallet. It costs **$0.01 once**, as verification only — MPP has no
-> zero-amount intent, so a card-free rail has to settle something. Search and
-> booking stay free. Earlier revisions of this page described an MPP charge at
-> *unlock* time; that never shipped. See <https://letsfg.co/for-agents>.
+> **MPP:** a card-free *enrolment* lane for agents holding a Tempo wallet is
+> offered only when the `402` from `POST /api/agent-access/request` carries an
+> `mpp` object. It costs **$0.01 once**, as verification only. Search stays free
+> and booking costs the price on the offer. Earlier revisions of this page
+> described an MPP charge at *unlock* time; that never shipped. See
+> <https://letsfg.co/for-agents>.
 
 > ### ⚠️ Agents: do not create a Developer API account
 >
@@ -15,8 +15,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
+> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> See <https://letsfg.co/for-agents>.
 
 Full endpoint details for the LetsFG flight search and booking API.
 
@@ -64,11 +66,13 @@ POST /api/v1/agents/setup-payment
 
 ```json
 {
-  "token": "tok_visa"
+  "token": "<card token>"
 }
 ```
 
-Required before first booking. Card stays on file.
+Required before the first Developer API booking. Card stays on file. Agents on
+the PFS lane do not use this — their card is saved at <https://letsfg.co/connect>
+when they connect the MCP server.
 
 ### Agent Profile
 
@@ -183,7 +187,7 @@ POST /api/v1/bookings/unlock
 ```
 
 **Errors:**
-- 402 — Payment required: no card on file (attach via setup-payment, or pay via MPP crypto on the challenge)
+- 402 — Payment required: no card on file (attach via setup-payment)
 - 410 — Offer expired (search again)
 
 ### Book Flight
@@ -229,6 +233,41 @@ POST /api/v1/bookings/book
 - 409 — Fare changed (re-unlock) or already booked (idempotency)
 - 410 — 30-minute window expired (search + unlock again)
 
+## PFS lane (agents) — search, book, poll on letsfg.co
+
+The endpoints above are the paid Developer API. Agents use the PFS lane on
+`https://letsfg.co` with a card-backed Bearer token (see `mcp-setup.md`):
+
+```
+POST /api/search              {"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}  → {"search_id":"ws_...","status":"searching"}
+GET  /api/results/{search_id}  poll every 10 s → {"status":"completed","offers":[...]}
+POST /api/agent-book          {"search_id","offer_id","contact_email","passenger":{...}}
+POST /api/agent-book/status   {"booking_ref":"eyJ..."}   poll every 20–30 s
+```
+
+`POST /api/agent-book` holds the fare plus LetsFG's markup on the connected card
+(not taken), dispatches a LetsFG booking agent, and returns within seconds:
+
+```json
+{"ok": true, "booked": false, "state": "booking_in_progress",
+ "booking_id": "agt_1788...", "booking_ref": "eyJ...",
+ "held": {"amount": 93, "currency": "EUR", "card": "visa ending 5709"}, "charged": 0}
+```
+
+`passenger` (one per call): given_name, family_name, born_on, gender (m/f),
+nationality (ISO-2), phone_number + phone_country, address_line1, address_city,
+address_postal, address_country; passport_number / passport_country /
+passport_expiry optional. Missing anything →
+`{"error":"missing_details","missing_fields":[...],"charged":0}`. No card →
+`payment_method_required`, card refused → `payment_declined`, both with
+`add_card_url: https://letsfg.co/connect` and `charged: 0`.
+
+Status walks `booking_in_progress` → `completed` (`pnr`, `charged_amount`,
+`currency`) | `failed` (`failure_reason`; hold released, nothing charged) |
+`needs_attention` (a human at LetsFG is checking it — do NOT book again). The
+booking takes 4–11 minutes; only `completed` with a PNR means booked. Never
+start a second booking for the same trip while one is in progress.
+
 ## Error Codes
 
 | Error Code | Category | HTTP | Description |
@@ -238,7 +277,7 @@ POST /api/v1/bookings/book
 | `INVALID_IATA` | validation | 422 | Bad airport/city code — use resolve_location |
 | `INVALID_DATE` | validation | 422 | Date in wrong format or in the past |
 | `OFFER_EXPIRED` | business | 410 | Offer no longer available — search again |
-| `PAYMENT_REQUIRED` | business | 402 | No card on file — attach via setup-payment, or pay via MPP crypto |
+| `PAYMENT_REQUIRED` | business | 402 | No card on file — Developer API: attach via setup-payment; PFS: `add_card_url` → https://letsfg.co/connect |
 | `FARE_CHANGED` | business | 409 | Price changed — re-unlock |
 | `ALREADY_BOOKED` | business | 409 | Duplicate (idempotency_key matched) |
 

@@ -11,14 +11,16 @@ hide:
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 <section class="docs-hero">
   <div class="docs-hero-inner">
     <p class="docs-kicker">Official LetsFG documentation</p>
-    <h1>Search hundreds of airlines server-side at letsfg.co. Free with a Bearer token. Move to the prepaid Developer API for direct booking URLs and volume access.</h1>
-    <p class="docs-lead">LetsFG has two paths. If you installed the SDK, run <code>letsfg auth</code> once to get a free 90-day Bearer token and start searching. If you want account-managed access, direct airline booking URLs, or billing controls, use the developer surface on letsfg.co, attach Stripe, top up balance, and then search with your developer key.</p>
+    <h1>Search hundreds of airlines server-side at letsfg.co — and book. Free with a card-backed token. Move to the prepaid Developer API for direct booking URLs and volume access.</h1>
+    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/developers/api/mcp</code> once — the consent step saves a card at <code>letsfg.co/connect</code>, nothing is charged — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. If you want account-managed access, direct airline booking URLs, or billing controls, use the developer surface on letsfg.co, attach a payment method, top up balance, and then search with your developer key.</p>
     <div class="docs-command"><span class="docs-command-prompt">$</span> pip install letsfg</div>
     <div class="docs-action-row">
       <a href="getting-started/" class="docs-button docs-button--primary">Get started</a>
@@ -29,7 +31,7 @@ hide:
     <div class="docs-chip-row">
       <span class="docs-chip">Server-side search engine at letsfg.co</span>
       <span class="docs-chip">Canonical API at letsfg.co/developers/api</span>
-      <span class="docs-chip">Free Bearer token or prepaid credits</span>
+      <span class="docs-chip">Free card-backed token or prepaid credits</span>
       <span class="docs-chip">CLI, SDK, and MCP</span>
     </div>
   </div>
@@ -39,13 +41,13 @@ hide:
 
 LetsFG has two access paths — pick the one that matches your setup:
 
-| Path | How | Speed | Search cost | Booking URL |
-|------|-----|-------|-------------|-------------|
-| **CLI / SDK** (`letsfg auth`) | Server-side search + booking; one-time zero-amount card setup → 90-day Bearer token | 8–10 s to first results; longer to `completed`, longer again on a split | Free | No LetsFG fee |
+| Path | How | Speed | Search cost | Booking |
+|------|-----|-------|-------------|---------|
+| **MCP / SDK** (connect at [letsfg.co/connect](https://letsfg.co/connect)) | Server-side search + booking; one-time 0.00 card setup during the MCP consent → card-backed token | 8–10 s to first results; longer to `completed`, longer again on a split | Free | Fare held on the card, captured only against a real PNR; no separate LetsFG fee |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers with prepaid credits | 2–5 s (discover) · 8–10 s to first results (full search) | Prepaid credits | Direct airline booking URLs, no per-booking fee |
 
 **When to choose each:**
-- Use **CLI / SDK** if you want free search and booking — run `letsfg auth` once for a 90-day Bearer token ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `letsfg book` calls `POST /api/agent-book` directly — no unlock step, no LetsFG fee, just the ticket price.
+- Use **MCP / SDK** if you want free search and booking — add `https://letsfg.co/developers/api/mcp` to your assistant and approve it once ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `book_flight` / `POST /api/agent-book` holds the fare on the connected card and a LetsFG booking agent buys the ticket — no unlock step, no LetsFG fee on top of the price you saw.
 - Use the **Developer API** if you're building a product or need high volume without per-booking fees. Prepaid credits, results in seconds, direct airline URLs every time.
 
 ---
@@ -54,15 +56,15 @@ LetsFG has two access paths — pick the one that matches your setup:
 
 <div class="docs-mode-grid">
   <article class="docs-mode-card">
-    <p class="docs-card-kicker">CLI / SDK mode</p>
-    <h2>Search free after a one-time auth step</h2>
-    <p>Use this path after installing the SDK. Run <code>letsfg auth</code> once to put a card on file (nothing is charged) and get a 90-day Bearer token. All search runs server-side at letsfg.co — no local browsers required.</p>
+    <p class="docs-card-kicker">MCP / SDK mode</p>
+    <h2>Search and book free after a one-time connect</h2>
+    <p>Add the MCP server at <code>letsfg.co/developers/api/mcp</code> and approve it. The consent step opens <code>letsfg.co/connect</code>, where a card is saved in a 0.00 setup (nothing is charged). All search runs server-side at letsfg.co — no local browsers required.</p>
     <ul class="docs-check-list">
-      <li><code>letsfg search</code> and <code>bt.search()</code> work with the Bearer token</li>
-      <li>Search is free and unlimited for the 90-day token lifetime</li>
+      <li><code>search_flights</code>, <code>book_flight</code> and <code>get_flight_booking</code> over the MCP; <code>bt.search()</code> / <code>bt.book()</code> with the same token in <code>LETSFG_BEARER_TOKEN</code></li>
+      <li>Search is free: 10 per 10 min, 30 per hour, 100 per day per card</li>
       <li>Best for prototyping, agents, and general flight search</li>
     </ul>
-    <a href="getting-started/#option-a-free-search-with-bearer-token" class="docs-text-link">Go to setup</a>
+    <a href="getting-started/#option-a-free-search-and-booking-with-a-card-backed-token" class="docs-text-link">Go to setup</a>
   </article>
 
   <article class="docs-mode-card">
@@ -104,7 +106,7 @@ The canonical public surfaces are:
 
 ## Hotels
 
-Hotels are live: real bookable inventory, free-cancellation and pay-later rates only, 5% charged at booking as a non-refundable reservation fee and the balance paid straight to the supplier through a pay link. They need a card on file for every call, search included — and either credential reaches them: the free token from `letsfg auth` or a Developer API key. Start at [Hotels](hotels.md).
+Hotels are live: real bookable inventory, free-cancellation and pay-later rates only, 5% charged at booking as a non-refundable reservation fee and the balance paid straight to the supplier through a pay link. They need a card on file for every call, search included — and either credential reaches them: the card-backed token from the connect step or a Developer API key. Start at [Hotels](hotels.md).
 
 ## Start from the right page
 

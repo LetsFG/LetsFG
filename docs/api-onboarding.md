@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 <div class="docs-callout">
   <strong>Two valid paths:</strong> use the browserless API-only flow when you already have a Stripe-generated <code>payment_method_id</code> or <code>token</code>, or use hosted checkout when a browser is available and you want LetsFG to handle the Stripe UI.

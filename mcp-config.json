@@ -1,5 +1,5 @@
 {
-  "_comment": "One credential reaches BOTH flights and hotels: the free token from `letsfg auth` (LETSFG_BEARER_TOKEN) or a Developer API key (LETSFG_API_KEY). Hotels additionally need a card on file, which `letsfg auth` already provides. If both vars are set the Bearer token is used.",
+  "_comment": "One credential reaches BOTH flights and hotels: the card-backed token from the connect flow (LETSFG_BEARER_TOKEN) or a Developer API key (LETSFG_API_KEY). Connect through the hosted MCP at https://letsfg.co/developers/api/mcp: the consent step opens letsfg.co/connect, where a card is saved in a 0.00 Revolut setup (nothing charged). The token you get is card-backed and can book. Hotels use the same card. If both vars are set the Bearer token is used.",
   "mcpServers": {
     "letsfg": {
       "command": "npx",
@@ -8,7 +8,7 @@
         "letsfg-mcp"
       ],
       "env": {
-        "LETSFG_BEARER_TOKEN": "YOUR_FREE_TOKEN_HERE (run `letsfg auth`) — or use LETSFG_API_KEY"
+        "LETSFG_BEARER_TOKEN": "YOUR_CARD_BACKED_TOKEN_HERE (from the connect flow) — or use LETSFG_API_KEY"
       }
     }
   }

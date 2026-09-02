@@ -8,8 +8,10 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
 Guidelines for building autonomous AI agents that search, evaluate, and book flights. Works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent framework.
 
@@ -17,7 +19,7 @@ Guidelines for building autonomous AI agents that search, evaluate, and book fli
 
 ## Search
 
-All search runs server-side at letsfg.co. Authenticate once with `letsfg auth` (a zero-amount card setup (nothing charged), 90-day Bearer token) or use a prepaid Developer API key.
+All search runs server-side at letsfg.co. Connect once through the hosted MCP (the consent step saves a card at <https://letsfg.co/connect>; nothing is charged) and every call carries a card-backed token — or use a prepaid Developer API key.
 
 ```python
 # PFS search — free Bearer token, server-side, 8-10 s to first results
@@ -30,7 +32,7 @@ bt = LetsFG(api_key="letsfg_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
-**When to use PFS (Bearer token):** This is the agent path — search and booking. Auth is a zero-amount card setup; nothing is charged. 8–10 s to first results per search. Run `letsfg auth` once.
+**When to use PFS (card-backed token):** This is the agent path — search and booking. Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp`; approving it opens <https://letsfg.co/connect>, where the person saves a card in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged until a booking is made. 8–10 s to first results per search. The SDK and CLI read the same token from `LETSFG_BEARER_TOKEN`.
 
 **When to use Developer API:** Managed cloud search, billing controls, volume usage, and direct airline URLs with no per-booking fee. Register at [letsfg.co/developers](https://letsfg.co/developers). It is also the **only** way to reach hotels.
 
@@ -55,7 +57,8 @@ non-refundable reservation fee; the balance goes straight to the supplier throug
 ```
 User request → Agent parses intent → Resolve locations → Search (local free or public prepaid)
     → Filter & rank offers → Present to user → Book
-        (PFS: book directly, free, no unlock step — Developer API: unlock, then book)
+        (PFS: book directly — fare held on the card, captured only against a real PNR;
+         Developer API: unlock, then book)
 ```
 
 ## Agent Best Practices
@@ -66,7 +69,7 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 
 3. **Book promptly.** On PFS, offers expire ~15 minutes after search — book while it's still fresh, or search again. On the Developer API, you have 30 minutes after unlocking to book before you need a fresh unlock.
 
-4. **Handle price changes gracefully.** Search prices are real-time snapshots. On PFS, `book()` itself surfaces the outcome directly — a confirmed order or a booking link, never a silent mismatch. On the Developer API, the unlock step confirms the actual current price with the airline; inform the user if it differs significantly from the search price before proceeding to book.
+4. **Handle price changes gracefully.** Search prices are real-time snapshots. On PFS the fare plus LetsFG's markup is only *held* on the card; the hold is captured once a real PNR exists and released if the booking fails, so a moved price never turns into a surprise charge — `get_flight_booking` reports `failed` with the reason. On the Developer API, the unlock step confirms the actual current price with the airline; inform the user if it differs significantly from the search price before proceeding to book.
 
 5. **Map passenger IDs correctly.** Search returns `passenger_ids` (e.g., `["pas_0", "pas_1"]`). When booking with multiple passengers, each passenger dict must include the correct `id` from this list. The first adult gets `pas_0`, second gets `pas_1`, etc.
 
@@ -83,9 +86,10 @@ User request → Agent parses intent → Resolve locations → Search (local fre
 ```python
 from letsfg import LetsFG, LetsFGError
 
-# Retry on expired offers. bt.book() dispatches to the free PFS path
-# (POST /api/agent-book) if a Bearer token is set, otherwise falls back to
-# the Developer API (unlock required first) — same call either way.
+# Retry on expired offers. bt.book() dispatches to the PFS path
+# (POST /api/agent-book, starts the booking and returns a booking_ref) if a
+# Bearer token is set, otherwise falls back to the Developer API (unlock
+# required first) — same call either way.
 def resilient_book(bt, origin, dest, date, passenger, email, max_retries=2):
     for attempt in range(max_retries + 1):
         flights = bt.search(origin, dest, date)
@@ -106,10 +110,12 @@ def resilient_book(bt, origin, dest, date, passenger, email, max_retries=2):
                 continue
             raise
 
-# On the PFS path, result is a dict: either {"ok": True, "booked": True,
-# "order_id": ...} or {"ok": False, "booked": False, "booking_url": ...} — the
-# latter is a normal outcome (nothing charged), not an error. Don't retry the
-# same offer; hand the user the booking_url.
+# On the PFS path, result is the STARTED booking: {"booking_ref": "...",
+# "state": "booking_in_progress"}. The ticket takes 4-11 minutes. Poll
+# POST /api/agent-book/status {"booking_ref": ...} every 20-30 s until state is
+# "completed" (pnr + charged_amount), "failed" (hold released, nothing charged)
+# or "needs_attention" (a human at LetsFG is on it - do NOT book again).
+# Never start a second booking for the same trip while one is in progress.
 
 # Compare prices across dates intelligently
 def find_cheapest_date(bt, origin, dest, dates):
@@ -139,70 +145,78 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 > **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are limited per card on file to **10 per 10 minutes, 30 per hour and 100 per day** (raised from 3 / 10 / 25 on 2026-09-02, see [#208](https://github.com/LetsFG/LetsFG/issues/208)). Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.
 
-### Programmatic access requires a Bearer token
+### Programmatic access requires a card-backed token
 
-The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must hold a **90-day Bearer token**, obtained by putting a payment method on file.
+The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must hold a **card-backed Bearer token**.
 
-**Nothing is charged for this.** It is a zero-amount Stripe setup: the card is validated and vaulted, with no charge and no authorization hold. Having a card on file is what lets your agent go all the way to booking. This replaced the Twitter/X challenge on 2026-07-29.
+**Nothing is charged to get one.** The card is saved in a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay, no Revolut account needed — and the details go to Revolut, never to LetsFG. Having a card on file is what lets your agent go all the way to booking, and it keeps automated abuse off the search engine. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms.
+
+**The one way in — connect at letsfg.co/connect:**
+
+1. Add LetsFG as an MCP server: `https://letsfg.co/developers/api/mcp` (Claude, ChatGPT, Cursor, Windsurf, Claude Code — anything that speaks remote MCP with OAuth).
+2. Approve the connection. The consent step opens <https://letsfg.co/connect>, where the person adds a card or pays 0.00 with Revolut Pay / Google Pay.
+3. The OAuth token you receive is card-backed. Over the MCP it is carried for you. Over raw HTTP send the same token on every request as `Authorization: Bearer <token>`.
+
+`POST https://letsfg.co/api/agent-access/request` still answers `402` with these steps as JSON (`add_card_url`, `how`), so an agent that starts from the endpoint lands in the same place.
+
+> **Retired 2026-09-02:** the Stripe enrolment lanes (`setup_url`, `setup_intent_id`, `payment_method_id`, `card_token`) and every token they issued. Such a token now answers `401 TOKEN_REVOKED`; `POST /api/agent-access/verify` answers `410` for a Stripe credential. Connect the card again at <https://letsfg.co/connect>. The CLI's `letsfg auth` and the SDKs' `payment_auth()` implemented that lane; a connect-flow login for them is coming — until then the token comes from the MCP connection.
+
+**One card = one account.** A payment method identifies exactly one account; connecting a card that is already in use lands on the existing account. Quotas and rate limits are bucketed per card, not per token.
 
 Once authenticated, use `POST /api/search` (natural language or structured) instead of `GET /en?q=...`.
 
 ```bash
-# 1. Ask how to enrol (no auth required)
-curl -X POST https://letsfg.co/api/agent-access/request
-# → 402 {"setup_url":"https://checkout.stripe.com/c/pay/cs_...",
-#        "setup_session_id":"cs_...","charged":false}
-
-# 2a. A human opens setup_url and adds a card, then:
-curl -X POST https://letsfg.co/api/agent-access/verify \
-  -H "Content-Type: application/json" \
-  -d '{"setup_session_id":"cs_..."}'
-
-# 2b. OR fully headless — mint a single-use card token against the LetsFG
-#     publishable key, then:
-curl -X POST https://letsfg.co/api/agent-access/verify \
-  -H "Content-Type: application/json" \
-  -d '{"card_token":"tok_..."}'
-# → {"token":"eyJ...","payer":"card:abc123","expires_at":"...","charged":false}
-
-# 3. Search with Bearer token (NL query)
+# 1. Search with the token (NL query)
 curl -X POST https://letsfg.co/api/search \
   -H "Authorization: Bearer eyJ..." \
   -H "Content-Type: application/json" \
   -d '{"query":"London to Barcelona June 15 2026"}'
 # → {"search_id":"ws_abc123","status":"searching","parsed":{...}}
 
-# 4. Poll for results
+# 2. Poll for results
 curl https://letsfg.co/api/results/ws_abc123 \
   -H "Authorization: Bearer eyJ..."
 ```
 
-`payment_method_id` (pm_...) is accepted ONLY for a card already enrolled through this flow — a bare pm_ id is not proof that you control the card. For a first headless enrolment use `card_token` (tok_...), which you mint against the LetsFG publishable key.
-
-Token is valid for 90 days; one active token per card. Renew by running `letsfg auth` again.
 Full walkthrough: https://letsfg.co/for-agents
 
 ### Booking
 
+Booking works exactly like the website checkout, on the card connected to the account: the fare plus LetsFG's markup is **held** on the card (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails, the hold is released and nothing is charged. This works for every offer a search returns, not only a subset. There is no unlock step and no separate LetsFG fee — the markup is inside the price you saw.
+
 ```bash
+# Step 1 — start the booking (returns within seconds)
 curl -X POST https://letsfg.co/api/agent-book \
   -H "Authorization: Bearer eyJ..." \
   -H "Content-Type: application/json" \
   -d '{"search_id":"ws_abc123","offer_id":"ws_off_...",
        "contact_email":"traveller@example.com",
        "passenger":{"given_name":"Ada","family_name":"Lovelace",
-                    "born_on":"1990-04-01","gender":"f","phone_number":"+15551234567"}}'
+                    "born_on":"1990-04-01","gender":"f","nationality":"GB",
+                    "phone_number":"+15551234567","phone_country":"US",
+                    "address_line1":"1 Analytical Way","address_city":"London",
+                    "address_postal":"N1 9GU","address_country":"GB"}}'
+# → {"booking_ref":"eyJ...","state":"booking_in_progress"}
+
+# Step 2 — poll until it lands (every 20-30 s; a booking takes 4-11 minutes)
+curl -X POST https://letsfg.co/api/agent-book/status \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"booking_ref":"eyJ..."}'
+# → {"state":"completed","pnr":"ABC123","charged_amount":93,"currency":"EUR"}
 ```
 
-Two outcomes, both with `"charged": 0`:
+States: `booking_in_progress` (the agent is at the seller's checkout — keep waiting) → `completed` (booked; PNR and captured amount in the answer) | `failed` (not booked; hold released, nothing charged; `failure_reason` says why) | `needs_attention` (a human at LetsFG is checking it — do **not** book again; the traveller will be emailed). `updated_at_ms` says when it last moved. Only `completed` with a PNR means booked. Never start a second booking for the same trip while one is in progress — that would place a second hold.
 
-- `{"booked": true, "order_id": "..."}` — booked.
-- `{"booked": false, "booking_url": "..."}` — the booking genuinely did not
-  complete and nothing was charged. **This is a normal outcome, not a transient
-  error.** Retrying will not book it. Hand the user `booking_url`; it goes to
-  that exact offer.
+Other answers, all with `"charged": 0`:
 
-One passenger per call.
+- `{"error":"missing_details","missing_fields":["born_on","address_city"]}` — ask the person and call again.
+- `{"error":"payment_method_required","add_card_url":"https://letsfg.co/connect"}` — no card connected yet.
+- `{"error":"payment_declined","add_card_url":"https://letsfg.co/connect"}` — the card refused the hold.
+
+Use the traveller's **real** details — the seller's checkout asks for every one of them and the e-ticket goes to `contact_email`. Required: name as on the passport, date of birth, gender, nationality, phone with its country, residence address; passport number/country/expiry are optional but help with sellers that ask. One passenger per call; a group trip is one call per person. Offers expire ~15 minutes after the search — if one is gone, search again.
+
+Over the MCP these two steps are the tools `book_flight` and `get_flight_booking`.
 
 Handle rate limits and timeouts in production:
 

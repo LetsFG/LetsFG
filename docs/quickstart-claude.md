@@ -8,43 +8,52 @@
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
-> To search and book flights, run `letsfg auth` — a zero-amount card setup
-> (nothing charged), then search and book. See <https://letsfg.co/for-agents>.
+> To search and book flights, connect LetsFG as an MCP server at
+> <https://letsfg.co/developers/api/mcp>. The consent step opens
+> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> See <https://letsfg.co/for-agents>.
 
-Choose between the paid remote MCP endpoint and the free local MCP server.
+Connect the remote MCP server once and Claude can search and book flights, and search and book hotels. Nothing to install.
+
+## Option A: Remote MCP with the connect flow — **recommended**
+
+### 1. Add the connector
+
+**claude.ai / Claude Desktop:** `Settings → Connectors → Add custom connector`, name it `LetsFG`, URL:
+
+```
+https://letsfg.co/developers/api/mcp
+```
+
+**Claude Code:**
+
+```bash
+claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
+```
+
+### 2. Approve the connection
+
+Click **Connect**. The consent step opens <https://letsfg.co/connect>, where you add a card or pay 0.00 with Revolut Pay / Google Pay. Any card works, no Revolut account is needed, and the card details go to Revolut — they never touch LetsFG.
+
+Nothing is charged to connect. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms. The token Claude receives is card-backed; it is carried on every tool call for you.
+
+### 3. Search
+
+> Find me the cheapest flight from London to Barcelona next Friday
+
+Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
+
+### 4. Book
+
+> Book the 06:25 Ryanair one for Ada Lovelace
+
+Claude asks for the traveller's real details (name as on the passport, date of birth, gender, nationality, email, phone, address), then calls `book_flight`. The fare plus LetsFG's markup is **held** on your card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If it fails, the hold is released and nothing is charged. A booking takes 4–11 minutes; Claude polls `get_flight_booking` until it reports `completed` with the PNR.
 
 ---
 
-## Option A: Remote paid MCP — *not the default for agents*
+## Option B: Local MCP server (`npx letsfg-mcp`)
 
-> **Most agents should use Option B below.** This option is the *paid* Developer
-> API: it creates a prepaid billing account and blocks search until you fund it.
-> Option B needs no billing account, charges nothing, and supports booking.
-
-Use this when you want managed search through the public developer API at `letsfg.co/developers/api/mcp`.
-
-### 1. Get an API key
-
-Open any terminal:
-
-```bash
-curl -s -X POST https://letsfg.co/developers/api/v1/agents/register \
-  -H "Content-Type: application/json" \
-  -d '{"agent_name": "claude-desktop", "email": "you@example.com"}'
-```
-
-Copy the `api_key` from the response (starts with `letsfg_`).
-
-Public REST docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs)
-
-### 2. Finish paid API onboarding
-
-Remote search stays blocked until the account has a Stripe payment method and funded prepaid balance.
-
-- Browserless/API-only path: [Onboarding and Billing](api-onboarding.md)
-- Hosted browser path: [letsfg.co/en/developers](https://letsfg.co/en/developers)
-
-### 3. Add to Claude Desktop config
+Use this only if your client cannot connect to a remote MCP server. It needs a card-backed token in its environment — the one issued through the connect flow above (`letsfg auth`, the old Stripe setup, was retired on 2026-09-02; a connect-flow login for the CLI is coming).
 
 Open `Settings → Developer → Edit Config` or edit the file directly:
 
@@ -55,52 +64,10 @@ Open `Settings → Developer → Edit Config` or edit the file directly:
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp",
-      "headers": {
-        "X-API-Key": "letsfg_your_key_here"
-      }
-    }
-  }
-}
-```
-
-### 4. Restart Claude Desktop
-
-Close and reopen Claude. You'll see LetsFG tools in the tool list.
-
-### 5. Search
-
-> Find me the cheapest flight from London to Barcelona next Friday
-
-Remote MCP uses the paid public account you just configured.
-
----
-
-## Option B: Local MCP server with payment-token auth — **recommended**
-
-Use this when you want free search from Claude Desktop without a paid API account.
-
-### 1. Install and authenticate
-
-```bash
-pip install letsfg
-letsfg auth
-```
-
-`letsfg auth` puts a card on file (zero-amount, nothing charged) and saves a 90-day Bearer token.
-
-### 2. Add to Claude Desktop config
-
-Open `Settings → Developer → Edit Config`:
-
-```json
-{
-  "mcpServers": {
-    "letsfg": {
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_BEARER_TOKEN": "your_bearer_token_here"
+        "LETSFG_BEARER_TOKEN": "your_card_backed_token"
       }
     }
   }
@@ -109,13 +76,13 @@ Open `Settings → Developer → Edit Config`:
 
 > **Windows `ENOENT` fix:** Replace `"npx"` with `"C:\\Program Files\\nodejs\\npx.cmd"`.
 
-### 3. Restart Claude Desktop
+Restart Claude Desktop. The local server sends every request to the letsfg.co server-side engine with your token — no local browsers.
 
-### 4. Search — that's it
+---
 
-> Find flights from London to Barcelona next Friday
+## Option C: Paid Developer API — *not for agents*
 
-The local MCP server sends search requests to the letsfg.co server-side engine using your Bearer token. No local browsers needed.
+The same remote URL also accepts a Developer API key (`X-API-Key` header) from the separate, prepaid product at [letsfg.co/developers](https://letsfg.co/developers). It creates a billing account and blocks search until you fund it. See [Onboarding and Billing](api-onboarding.md) if you are building a commercial integration.
 
 ---
 
@@ -123,20 +90,20 @@ The local MCP server sends search requests to the letsfg.co server-side engine u
 
 | Say this | What happens |
 |----------|-------------|
-| "Find flights from London to Barcelona next Friday" | `search_flights` → returns offers with prices |
+| "Find flights from London to Barcelona next Friday" | `search_flights` → offers with prices; `get_flight_results` collects the late-landing split tickets |
 | "What's the cheapest way to get from NYC to Tokyo?" | `resolve_location` → `search_flights` |
-| "Book the Ryanair one for John Doe" | `unlock_flight_offer` → `book_flight` |
-| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Needs a card on file, for search as well as booking — `letsfg auth` already provides one. |
-| "Am I verified?" | `get_agent_profile` → shows star status |
+| "Book the Ryanair one for Ada Lovelace" | `book_flight` (hold on the card, agent buys the ticket) → `get_flight_booking` until `completed` with a PNR |
+| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Needs a card on file, for search as well as booking — the connect step already saved one. |
+| "Am I connected?" | `get_agent_profile` → payment status and usage |
 
 ## Troubleshooting
 
-**"Connect a payment method and fund your prepaid API balance before searching"** -> your remote paid API account is not ready yet. Finish [Onboarding and Billing](api-onboarding.md) or use the hosted developers page.
+**"payment_method_required" with an `add_card_url`** → the connection has no card yet. Open <https://letsfg.co/connect> from the consent step and add one; nothing is charged.
 
-**"API key required"** → Check your config has the `X-API-Key` header (remote) or `LETSFG_API_KEY` env (local)
+**"TOKEN_REVOKED"** → a token from the retired Stripe setup. Disconnect and reconnect the connector; the consent step saves the card again.
 
-**"Cannot start Python"** -> install the prerequisites first: `pip install letsfg` and `letsfg auth`
+**"Connect a payment method and fund your prepaid API balance before searching"** → you are on the paid Developer API key (Option C), not the connect flow. Remove the `X-API-Key` header, or fund the account.
+
+**"Cannot start Python"** -> the local server needs Node (`npx`); the remote MCP URL needs nothing installed
 
 **No tools showing** → Restart Claude Desktop. Check the MCP icon in the bottom-left.
-
-**Windows: `spawn npx ENOENT`** → Use full path: `"C:\\Program Files\\nodejs\\npx.cmd"`
