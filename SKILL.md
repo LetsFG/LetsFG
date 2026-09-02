@@ -373,7 +373,8 @@ LETSFG_BEARER_TOKEN=eyJ...  letsfg-mcp   # card-backed token from the connect fl
 
 The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 `book_flight` dispatches automatically based on which one is set. Its
-`authenticate` tool still runs the retired Stripe setup and cannot mint a token.
+`authenticate` tool returns the current connect instructions (`add_card_url`,
+`how`); run `letsfg auth` to mint a token from the terminal.
 
 ## MCP Tools
 

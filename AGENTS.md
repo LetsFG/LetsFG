@@ -240,7 +240,8 @@ pip install letsfg
 This gives you the `letsfg` CLI command. It reads the card-backed PFS token from
 `LETSFG_BEARER_TOKEN` (or `~/.letsfg/config.json`). Get the token by connecting
 through the hosted MCP — see [PFS auth](#pfs-auth--connect-a-card-at-letsfgcoconnect-cli--sdk--direct-api)
-below; `letsfg auth` still runs the retired Stripe setup and cannot mint one.
+below. `letsfg auth` runs that same connect flow from the terminal and stores
+the token for you.
 
 ```bash
 export LETSFG_BEARER_TOKEN=eyJ...   # card-backed token from the connect flow
@@ -362,8 +363,9 @@ npx letsfg-mcp
 }
 ```
 
-The local server's `authenticate` tool still runs the retired Stripe setup and
-cannot mint a token; connect through Option A. Developer API users running the
+The local server's `authenticate` tool returns the current connect instructions
+(`add_card_url`, `how`) rather than minting a token; run `letsfg auth`, or
+connect through Option A or Option B. Developer API users running the
 local server can set `LETSFG_API_KEY` instead of `LETSFG_BEARER_TOKEN` —
 `book_flight` dispatches automatically based on which one is present.
 
@@ -371,7 +373,7 @@ local server can set `LETSFG_API_KEY` instead of `LETSFG_BEARER_TOKEN` —
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `letsfg auth` | **Retired flow** — runs the old Stripe card setup and cannot mint a token. Connect through the hosted MCP and set `LETSFG_BEARER_TOKEN` instead | — |
+| `letsfg auth` | Connect a card at letsfg.co/connect and store the token — self-registers, PKCE + loopback redirect. `--no-browser` prints the URL | Free |
 | `letsfg search <origin> <dest> <date>` | Search flights, prints `search_id` | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
 | `letsfg book <offer_id> --search-id <id>` | Start a booking: holds the fare on the connected card, prints a `booking_ref` to poll | Price shown on the offer |

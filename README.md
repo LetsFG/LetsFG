@@ -142,7 +142,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | **Setup** | Add `https://letsfg.co/developers/api/mcp` as an MCP server, approve, add a card | Same token, sent as `Authorization: Bearer` — see below | [letsfg.co/developers](https://letsfg.co/developers) |
 | **Runs where** | Our servers (ranking local in the SDK) | Our servers | Our servers |
 
-- **MCP / CLI / SDK (Path 1):** add `https://letsfg.co/developers/api/mcp` as an MCP server in Claude, ChatGPT, Cursor or Windsurf and approve the connection. The consent step opens **letsfg.co/connect**, where the person adds a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup: nothing is charged, no Revolut account is needed, and card details go to Revolut, never to LetsFG. The token you get back is card-backed: it searches for free and it can book. The Python and JS SDKs read that token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json` and apply the open-source ranking algorithm locally. (A connect-flow login for the CLI is coming; `letsfg auth` still points at the retired Stripe enrolment and does not issue a token.)
+- **MCP / CLI / SDK (Path 1):** add `https://letsfg.co/developers/api/mcp` as an MCP server in Claude, ChatGPT, Cursor or Windsurf and approve the connection. The consent step opens **letsfg.co/connect**, where the person adds a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup: nothing is charged, no Revolut account is needed, and card details go to Revolut, never to LetsFG. The token you get back is card-backed: it searches for free and it can book. The Python and JS SDKs read that token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json` and apply the open-source ranking algorithm locally. (`letsfg auth` runs this same connect flow from the terminal: it registers itself as an OAuth client, opens the card screen in a browser for a person to approve, and stores the token.)
 
 - **PFS — Programmatic Flight Search (Path 2):** For scripts and agents that call the API directly. letsfg.co is human-only by default (Cloudflare Turnstile + bot protection), so the card-backed token from the connect flow is the only programmatic way in. Send it on every request:
   1. Search: `POST https://letsfg.co/api/search` with `Authorization: Bearer <token>` → `{ search_id }`
@@ -224,7 +224,7 @@ letsfg search LHR BCN 2026-06-15
 letsfg search LHR JFK 2026-06-15 --cabin C   # cabin class: M economy, W premium, C business, F first
 ```
 
-The SDKs read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. A connect-flow login for the CLI is coming; until then `letsfg auth` still points at the retired Stripe enrolment and does not issue a token.
+The SDKs read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. `letsfg auth` performs that connect flow itself: it registers as an OAuth client, opens https://letsfg.co/connect for a person to approve, and writes the token to `~/.letsfg/config.json`. Add `--no-browser` to print the URL instead of opening one.
 
 ### 🔌 PFS — Programmatic Flight Search (free, server-side)
 
@@ -617,7 +617,7 @@ affiliated with, sponsored by, or endorsed by Omarchy or 37signals.
 
 | Command | Description |
 |---------|-------------|
-| `letsfg auth` | Being moved to the connect flow (letsfg.co/connect). Currently points at the retired Stripe enrolment and does not issue a token; set `LETSFG_BEARER_TOKEN` instead |
+| `letsfg auth` | Connect a card at letsfg.co/connect and store the token (self-registers, PKCE + loopback redirect, opens a browser). `--no-browser` prints the URL |
 | `letsfg search <origin> <dest> <date>` | Search flights (free with a card-backed token) |
 | `letsfg register` | **[Developer API only]** Register an account for the paid, prepaid-credit product — not part of the agent flow |
 | `letsfg setup-payment` | **[Developer API only]** Attach a payment method (required for `unlock`) — not part of the agent flow |
