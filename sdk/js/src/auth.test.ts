@@ -55,79 +55,67 @@ describe('getBearerToken / saveToken', () => {
   });
 });
 
-describe('requestEnrolment', () => {
-  it('returns the body on a 402 response', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => ({
-      status: 402,
-      json: async () => ({ setup_url: 'https://checkout.stripe.com/fake', setup_session_id: 'cs_fake' }),
-    } as Response)) as typeof fetch;
-
-    try {
-      const { requestEnrolment } = await import('./auth.js');
-      const data = await requestEnrolment();
-      assert.equal(data.setup_session_id, 'cs_fake');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it('throws BearerTokenError on an unexpected status', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => ({
-      status: 500,
-      json: async () => ({ error: 'server error' }),
-    } as Response)) as typeof fetch;
-
-    try {
-      const { requestEnrolment, BearerTokenError } = await import('./auth.js');
-      await assert.rejects(() => requestEnrolment(), BearerTokenError);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+describe('the retired Stripe lanes', () => {
+  it('verifyPaymentMethod refuses instead of calling a dead endpoint', async () => {
+    // It used to POST /api/agent-access/verify, which now answers 410 for a
+    // Stripe credential. An old caller deserves the reason, not a raw 410.
+    const { verifyPaymentMethod, BearerTokenError } = await import('./auth.js');
+    await assert.rejects(
+      () => verifyPaymentMethod({ cardToken: 'tok_test' }),
+      (e: unknown) => {
+        assert.ok(e instanceof BearerTokenError);
+        assert.match((e as Error).message, /retired/i);
+        assert.match((e as Error).message, /letsfg auth/);
+        return true;
+      },
+    );
   });
 });
 
-describe('verifyPaymentMethod', () => {
-  it('saves and returns the token on success', async () => {
+describe('refreshAccessToken', () => {
+  it('refreshes and stores the ROTATED refresh token', async () => {
+    const { saveToken, refreshAccessToken, getBearerToken } = await import('./auth.js');
+    saveToken('old-access', Date.now() - 1000, { refresh_token: 'r1', client_id: 'lfg_client_x' });
+
     const originalFetch = globalThis.fetch;
-    let capturedBody: Record<string, unknown> | undefined;
-    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
-      capturedBody = JSON.parse(init!.body as string);
+    let tokenBody = '';
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).includes('.well-known')) {
+        return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
+      }
+      tokenBody = String(init?.body ?? '');
       return {
         status: 200,
-        json: async () => ({ token: 'verified-token', expires_at: '2026-10-27T00:00:00Z' }),
+        json: async () => ({ access_token: 'new-access', refresh_token: 'r2', expires_in: 3600 }),
       } as Response;
     }) as typeof fetch;
 
     try {
-      const { verifyPaymentMethod, getBearerToken } = await import('./auth.js');
-      const token = await verifyPaymentMethod({ cardToken: 'tok_test' });
-      assert.equal(token, 'verified-token');
-      assert.equal(capturedBody?.card_token, 'tok_test');
-      assert.equal(getBearerToken(), 'verified-token');
+      const token = await refreshAccessToken();
+      assert.equal(token, 'new-access');
+      // spec encoding, not JSON
+      assert.match(tokenBody, /grant_type=refresh_token/);
+      assert.match(tokenBody, /refresh_token=r1/);
+      assert.equal(getBearerToken(), 'new-access');
+      // the rotated token must replace the used one, or the next refresh 400s
+      const { refreshAccessToken: again } = await import('./auth.js');
+      globalThis.fetch = (async (url: string, init?: RequestInit) => {
+        if (String(url).includes('.well-known')) {
+          return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
+        }
+        tokenBody = String(init?.body ?? '');
+        return { status: 200, json: async () => ({ access_token: 'a3', expires_in: 3600 }) } as Response;
+      }) as typeof fetch;
+      await again();
+      assert.match(tokenBody, /refresh_token=r2/, 'must send the rotated token, not the original');
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 
-  it('throws BearerTokenError when no credential option is given', async () => {
-    const { verifyPaymentMethod, BearerTokenError } = await import('./auth.js');
-    await assert.rejects(() => verifyPaymentMethod({}), BearerTokenError);
-  });
-
-  it('throws BearerTokenError when the response has no token', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => ({
-      status: 200,
-      json: async () => ({}),
-    } as Response)) as typeof fetch;
-
-    try {
-      const { verifyPaymentMethod, BearerTokenError } = await import('./auth.js');
-      await assert.rejects(() => verifyPaymentMethod({ setupSessionId: 'cs_fake' }), BearerTokenError);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+  it('tells you to run letsfg auth when there is nothing to refresh with', async () => {
+    const { saveToken, refreshAccessToken, BearerTokenError } = await import('./auth.js');
+    saveToken('t', Date.now() + 60_000); // no refresh_token / client_id
+    await assert.rejects(() => refreshAccessToken(), BearerTokenError);
   });
 });

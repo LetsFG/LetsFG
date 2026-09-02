@@ -257,7 +257,7 @@ const GUIDE_TEXT =
   '2. **book_flight** — Books the offer. If we cannot complete it, you get a direct booking link for that exact offer instead. Nothing is charged by LetsFG either way.\n' +
   '\n' +
   '## Authentication\n' +
-  'Run `letsfg auth`, or call the **authenticate** tool. It puts a payment method on file through a zero-amount Stripe setup — no charge, no authorization hold — and returns a 90-day token. Set LETSFG_BEARER_TOKEN.\n' +
+  'Run `letsfg auth`, or call the **authenticate** tool. It connects a card at https://letsfg.co/connect — a 0.00 Revolut setup, nothing charged. A person approves once in a browser; there is no endpoint that mints a token from card details. You pay the fare only when you book, and it is held, not taken, until the airline confirms.\n' +
   '\n' +
   '## DO NOT create a Developer API account\n' +
   'Do NOT call /developers/api/v1/agents/register or /developers/api/v1/agents/setup-payment, and do NOT run `letsfg register` or `letsfg setup-payment`. Those belong to a SEPARATE paid, prepaid-balance product for high-volume commercial integrations, and they create a billing account you almost certainly do not want. Older versions of these docs pointed there by default; that was wrong. Use the payment-token auth above.\n' +
@@ -522,21 +522,21 @@ const TOOLS = [
   {
     name: 'authenticate',
     description:
-      'Get a LetsFG token by putting a payment method on file. Nothing is charged — ' +
-      'a zero-amount Stripe setup, no charge and no authorization hold. Call once.\n\n' +
-      'Call with no arguments to start: returns a setup_url for the user to add a card, plus a ' +
-      'setup_session_id. Call again with that setup_session_id once they are done to receive the token. ' +
-      'For a fully headless enrolment, mint a single-use card token against the LetsFG publishable ' +
-      'key and pass card_token instead, skipping the browser entirely. payment_method_id is accepted ' +
-      'ONLY for a card already enrolled through this flow — a bare pm_ id is not proof of card control.\n\n' +
+      'Explain how to connect a card so this server can search and book. Nothing is charged to ' +
+      'connect — a 0.00 Revolut setup that saves the card so a booking can be charged later.\n\n' +
+      'Call with no arguments. It returns the current instructions and add_card_url ' +
+      '(https://letsfg.co/connect). A PERSON must approve once in a browser — there is no endpoint ' +
+      'that mints a token from card details, so do not ask the user for card numbers and do not ' +
+      'try to automate this step.\n\n' +
+      'Two ways in: (a) add LetsFG as a connector in an assistant that supports remote MCP servers ' +
+      'and approve it, or (b) any OAuth-capable client can register itself — see ' +
+      'https://letsfg.co/for-agents, section "Option B". Both land on the same card screen.\n\n' +
+      'RETIRED 2026-09-02: the Stripe lanes (setup_url, setup_session_id, payment_method_id, ' +
+      'card_token) and every token they issued. Passing them now fails.\n\n' +
       'This does NOT create a Developer API billing account. Do not use setup_payment for this.',
     inputSchema: {
       type: 'object',
-      properties: {
-        setup_session_id: { type: 'string', description: 'cs_... from a previous authenticate call, after the card was added' },
-        payment_method_id: { type: 'string', description: 'Stripe pm_... for a card ALREADY enrolled through this flow (re-issue only)' },
-        card_token: { type: 'string', description: 'Single-use Stripe tok_... minted against the LetsFG publishable key — the headless path' },
-      },
+      properties: {},
     },
   },
   {
@@ -806,22 +806,23 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
 
     case 'authenticate': {
+      // The Stripe lanes are gone; /api/agent-access/verify answers 410 for those
+      // credentials. Say so here rather than forwarding a dead call, so an agent
+      // built against the old schema gets a reason instead of a bare 410.
       if (args.setup_session_id || args.payment_method_id || args.card_token) {
-        const body: Record<string, unknown> = {};
-        if (args.setup_session_id) body.setup_session_id = args.setup_session_id;
-        if (args.payment_method_id) body.payment_method_id = args.payment_method_id;
-        if (args.card_token) body.card_token = args.card_token;
-        const result = await apiRequest('POST', '/api/agent-access/verify', body) as Record<string, unknown>;
-        if (!result.error && result.token) {
-          return JSON.stringify({
-            ...result,
-            next: 'Set LETSFG_BEARER_TOKEN to this token and restart the MCP server.',
-          }, null, 2);
-        }
-        return JSON.stringify(result, null, 2);
+        return JSON.stringify({
+          error: 'retired',
+          detail:
+            'setup_session_id / payment_method_id / card_token were part of the Stripe enrolment, ' +
+            'retired 2026-09-02, and every token they issued was revoked. There is no endpoint that ' +
+            'mints a token from card details.',
+          add_card_url: `${BASE_URL}/connect`,
+          next: 'Call authenticate with no arguments for the current instructions.',
+          docs: `${BASE_URL}/for-agents`,
+        }, null, 2);
       }
       // apiRequest treats the 402 as an error envelope; call directly so the
-      // agent sees setup_url, which is the whole point of the response.
+      // agent sees add_card_url and `how`, which is the point of the response.
       const resp = await fetch(`${BASE_URL}/api/agent-access/request`, {
         method: 'POST',
         headers: letsfgHeaders({ json: true, auth: false }),

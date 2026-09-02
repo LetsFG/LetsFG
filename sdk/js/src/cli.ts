@@ -288,18 +288,20 @@ async function cmdLocations(args: string[]) {
 }
 
 async function cmdAuth(args: string[]) {
-  const cardToken = getFlag(args, '--card-token');
-  const paymentMethodId = getFlag(args, '--payment-method');
-  const noBrowser = hasFlag(args, '--no-browser');
-
-  if (cardToken || paymentMethodId) {
-    const { verifyPaymentMethod } = await import('./auth.js');
-    await verifyPaymentMethod({ cardToken: cardToken || undefined, paymentMethodId: paymentMethodId || undefined });
-    console.log('\n  ✓ Authenticated. Nothing was charged.');
-  } else {
-    await paymentAuth(!noBrowser);
+  // --card-token / --payment-method went with the Stripe lanes. There is no
+  // headless card path any more: a person adds the card once at
+  // letsfg.co/connect, and this command holds the refresh token afterwards.
+  for (const dead of ['--card-token', '--payment-method']) {
+    if (getFlag(args, dead)) {
+      console.error(
+        `\n  ${dead} was part of the Stripe enrolment, retired 2026-09-02.\n` +
+        '  Run plain `letsfg auth` instead - it opens letsfg.co/connect to add a card.\n'
+      );
+      process.exit(1);
+    }
   }
-  console.log('\n  You\'re all set. Run: letsfg search WAW BCN 2026-07-15\n');
+  await paymentAuth(!hasFlag(args, '--no-browser'));
+  console.log('\n  You are all set. Run: letsfg search WAW BCN 2026-07-15\n');
 }
 
 async function cmdRegister(args: string[]) {
@@ -385,11 +387,12 @@ const HELP = `
 LetsFG — Agent-native flight search & booking.
 
 Search hundreds of airlines via the LetsFG cloud engine.
-Authenticate once with letsfg auth — a zero-amount card setup, nothing is
-charged — then search and book.
+Authenticate once with letsfg auth — it opens letsfg.co/connect so you can add
+a card. Nothing is charged; you pay the fare only when you book, and it is held,
+not taken, until the airline confirms.
 
 Commands:
-  auth                             Put a card on file -> 90-day token. Nothing charged
+  auth                             Connect a card at letsfg.co/connect. Nothing charged
   search <origin> <dest> <date>    Search for flights (free), prints search_id
   locations <query>                Resolve city name to IATA codes
   book <offer_id> --search-id ...  Book a flight. No LetsFG fee, no unlock step
@@ -405,9 +408,7 @@ Options:
   --json, -j          Output raw JSON
   --api-key, -k       Developer API key (or set LETSFG_API_KEY) — switches book/search to the paid path
   --base-url          API URL (default: https://letsfg.co)
-  --card-token        (auth only) Stripe tok_... you already hold, for a headless auth
-  --payment-method    (auth only) Stripe pm_... you already hold, for a headless auth
-  --no-browser        (auth only) Don't try to auto-open the card setup page
+  --no-browser        (auth only) Print the connect URL instead of opening a browser
 
 Examples:
   letsfg auth
