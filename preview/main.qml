@@ -169,29 +169,60 @@ Window {
   // First-run check: with no token, does pressing Search actually do nothing?
   // Reports the observable state rather than trusting the guard by eye.
   // Drives the in-panel sign-in and reports the state machine. Note this
-  // really does open Stripe in a browser -- that is the flow.
+  // really does open letsfg.co/connect in a browser -- that is the flow.
   function reportAuth(): void {
     if (!panelLoader.item) return
     var p = panelLoader.item
     console.log("[auth] before: stage=\"" + p.authStage + "\" ready=" + p.tokenStatus.ready)
-    p.beginAuth()
+    p.beginConnect()
     console.log("[auth] after click: stage=\"" + p.authStage + "\"")
   }
 
   function reportAuthState(): void {
     if (!panelLoader.item) return
     var p = panelLoader.item
-    console.log("[auth] settled: stage=\"" + p.authStage + "\" session="
-                + (p.authSessionId.length > 0 ? p.authSessionId.slice(0, 12) + "..." : "(none)")
+    console.log("[auth] settled: stage=\"" + p.authStage + "\" client="
+                + (p.authClientId.length > 0 ? p.authClientId.slice(0, 16) + "..." : "(none)")
                 + " error=\"" + p.authError + "\"")
   }
 
-  // Round-trip check: write a token the way a real verification would, so the
+  // Round-trip check: write a token the way a real connect would, so the
   // next launch can prove it is remembered.
   function debugSaveToken(): void {
     if (!panelLoader.item) return
-    panelLoader.item.saveToken("letsfg_roundtrip_test_token", Math.floor(Date.now() / 1000) + 80 * 86400)
-    console.log("[persist] saved; ready=" + panelLoader.item.tokenStatus.ready)
+    var p = panelLoader.item
+    p.tokenStatus = p.session.adoptTokens({
+      ok: true, token: "letsfg_roundtrip_test_token", refreshToken: "",
+      expiresAt: Math.floor(Date.now() / 1000) + 80 * 86400
+    }, "", "own")
+    p.persistSession()
+    console.log("[persist] saved; ready=" + p.tokenStatus.ready)
+  }
+
+  // Write-back check: a renewal of a token that came from the CLI's file must
+  // land in the CLI's file, other keys intact. Adopts as if the token endpoint
+  // had just answered, then persists; run.py prints the file afterwards.
+  function debugWriteBack(): void {
+    if (!panelLoader.item) return
+    var p = panelLoader.item
+    p.tokenStatus = p.session.adoptTokens({
+      ok: true, token: "lfg_at_renewed_preview_token", refreshToken: "lfg_rt_rotated_preview_token",
+      expiresAt: Math.floor(Date.now() / 1000) + 3600
+    }, "lfg_client_preview_0000", "cli")
+    p.persistSession()
+    console.log("[writeback] persisted to source=" + p.tokenStatus.source + " ready=" + p.tokenStatus.ready
+                + " error=\"" + p.authError + "\"")
+  }
+
+  // Renewal check: with an expired token and refresh material in the state
+  // file, does the panel try the token endpoint, and what does it conclude?
+  function reportRefresh(): void {
+    if (!panelLoader.item) return
+    var p = panelLoader.item
+    console.log("[refresh] state=" + p.tokenStatus.state + " ready=" + p.tokenStatus.ready
+                + " canRefresh=" + p.tokenStatus.canRefresh + " source=" + p.tokenStatus.source
+                + " refreshing=" + p.refreshing + " failedAt=" + p.refreshFailedAtMs
+                + " status=\"" + p.statusText + "\" error=\"" + p.authError + "\"")
   }
 
   function reportPersisted(): void {

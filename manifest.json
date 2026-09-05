@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.letsfg.flights",
   "name": "LetsFG Flights",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "LetsFG",
   "license": "MIT",
   "description": "Search hundreds of airlines from the bar. Uses your own LetsFG token; no keys are bundled.",

@@ -127,9 +127,22 @@ var MAX_POLLS = Math.ceil(POLL_TIMEOUT_MS / POLL_INTERVAL_MS)
 var MIN_SEARCH_INTERVAL_MS = 5000
 var BREAKER_TRIP_AFTER = 3
 
-// The token file the official CLI writes (`letsfg auth`). Same 1h skew buffer
-// the Python SDK applies, so the panel and the CLI agree on "expired".
-var TOKEN_EXPIRY_BUFFER_SEC = 3600
+// The token file the official CLI writes (`letsfg auth`). Connect-flow access
+// tokens live 3600 s, so the buffer has to be a small fraction of that: it
+// used to be 3600 s itself -- sized for the retired 90-day Stripe tokens --
+// which made every freshly minted token read as expired (issue #211). Two
+// minutes is enough to finish a search that is already in flight.
+var TOKEN_EXPIRY_BUFFER_SEC = 120
+// Renew this long before expiry. Deliberately EARLIER than the Python SDK's
+// 5-minute skew: the panel and the CLI share one rotating refresh token, and
+// whichever renews first writes the new one back for the other. Renewing
+// ahead of the CLI means the CLI finds a fresh token in the file and does not
+// race the panel for the same rotation, which would revoke the whole grant.
+var TOKEN_REFRESH_SKEW_SEC = 600
+// After a failed renewal, do not try again for this long. The shell is one
+// long-running process; a token endpoint that is down must not be hammered
+// every time the panel is opened or Search is pressed.
+var REFRESH_RETRY_MS = 60000
 
 // ---- Palette -----------------------------------------------------------
 //
@@ -476,91 +489,307 @@ function resultsUrl(searchId) {
 // ---- Sign-in ---------------------------------------------------------------
 //
 // The whole point: getting a token should not require installing a Python CLI
-// first. Same flow `letsfg auth` runs, driven from the panel:
+// first. This is the same flow `letsfg auth` runs, driven from the panel --
+// OAuth 2.1 authorization code with PKCE (S256), against the server letsfg.co
+// advertises in its RFC 8414 metadata:
 //
-//   1. POST /api/agent-access/request  -> 402 { setup_url, setup_session_id }
-//   2. the person opens setup_url, adds a card (zero-amount Stripe setup,
-//      nothing is charged)
-//   3. POST /api/agent-access/verify   -> { token, expires_at }
+//   1. POST /developers/api/oauth/register  (RFC 7591, no credential needed)
+//        -> { client_id }
+//   2. open https://letsfg.co/connect?client_id=...&code_challenge=...
+//        a PERSON saves a card there (a 0.00 Revolut setup; nothing is charged)
+//   3. the browser is sent to the registered redirect_uri carrying ?code=
+//   4. POST /developers/api/oauth/token  code + code_verifier
+//        -> { access_token, refresh_token, expires_in }
 //
-// Step 2 is a browser, deliberately. A desktop plugin must never ask for card
-// details itself, and Stripe's hosted page is the only correct place for them.
-function agentRequestUrl() { return apiUrl("/api/agent-access/request") }
-function agentVerifyUrl() { return apiUrl("/api/agent-access/verify") }
+// Step 3 is where a bar widget differs from a CLI. `letsfg auth` binds a
+// loopback HTTP listener and the redirect lands on it. Quickshell has no TCP
+// listener (its sockets are local-domain only) and this plugin spawns no
+// processes, so nothing on this machine can catch the redirect. The
+// registered redirect_uri is therefore a loopback URL on which nothing
+// listens: the browser shows "can't connect", with the code sitting in its
+// address bar, and the person pastes that address into the panel. Ugly but
+// honest, and safe: the code is single-use, dies in 90 s, and is bound by
+// PKCE to a verifier that never leaves this process -- a code pasted by
+// anyone else, or read off the address bar by anyone else, buys nothing.
+//
+// The card is entered on letsfg.co in a real browser, deliberately. A desktop
+// plugin must never ask for card details itself. The /connect URL is built
+// here from the pinned origin -- nothing that came off the network chooses
+// which page opens, only the client_id rides along as a query value.
+//
+// The Stripe enrolment this replaced (/api/agent-access/request + /verify)
+// was retired on 2026-09-02 and every token it issued was revoked, so until
+// this change the only path the panel offered led nowhere.
+var CONNECT_REDIRECT_URI = "http://127.0.0.1:17531/letsfg-omarchy"
+var CONNECT_CLIENT_NAME = "LetsFG Flights (Omarchy)"
 
-// The 402 IS the success case here -- it means "here is where to add a card",
-// not "something went wrong".
-function parseAgentRequest(text) {
-  var out = { ok: false, setupUrl: "", sessionId: "", lifetimeDays: 0, error: "" }
-  var parsed = parseJsonBody(text)
-  if (!parsed.ok) { out.error = parsed.error; return out }
-  var v = parsed.value
+function oauthRegisterUrl() { return apiUrl("/developers/api/oauth/register") }
+function oauthTokenUrl() { return apiUrl("/developers/api/oauth/token") }
 
-  // Only a Stripe checkout URL is ever opened. This link comes off the network
-  // and goes straight to the browser, so the host is checked, not just the
-  // scheme -- an open redirect here would be a phishing vector for card
-  // details, which is the worst possible thing to get wrong.
-  var url = safeHttpsUrl(v.setup_url)
-  if (url.indexOf("https://checkout.stripe.com/") !== 0) {
-    out.error = "letsfg.co returned an unexpected setup link; not opening it."
-    return out
+// ---- SHA-256, in JavaScript. QML's JavaScript has no crypto object and Qt
+// exposes only Qt.md5, but PKCE S256 is mandatory on this server (and rightly
+// so: an unlistened loopback redirect is exactly the case PKCE exists for).
+// FIPS 180-4, checked against the published vectors in test/model-test.js.
+var SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]
+
+function sha256Bytes(input) {
+  var bytes = []
+  for (var c = 0; c < input.length; c++) bytes.push(input[c] & 0xff)
+  var bitLen = bytes.length * 8
+  bytes.push(0x80)
+  while (bytes.length % 64 !== 56) bytes.push(0)
+  // 64-bit big-endian length. Inputs here are a few dozen bytes; the high
+  // word is kept exact anyway rather than assumed zero.
+  var hi = Math.floor(bitLen / 4294967296), lo = bitLen >>> 0
+  bytes.push((hi >>> 24) & 0xff, (hi >>> 16) & 0xff, (hi >>> 8) & 0xff, hi & 0xff)
+  bytes.push((lo >>> 24) & 0xff, (lo >>> 16) & 0xff, (lo >>> 8) & 0xff, lo & 0xff)
+
+  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+  var W = new Array(64)
+  function rotr(x, n) { return (x >>> n) | (x << (32 - n)) }
+
+  for (var off = 0; off < bytes.length; off += 64) {
+    for (var t = 0; t < 16; t++) {
+      var j = off + t * 4
+      W[t] = ((bytes[j] << 24) | (bytes[j + 1] << 16) | (bytes[j + 2] << 8) | bytes[j + 3]) >>> 0
+    }
+    for (t = 16; t < 64; t++) {
+      var s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3)
+      var s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10)
+      W[t] = (W[t - 16] + s0 + W[t - 7] + s1) >>> 0
+    }
+    var a = H[0], b = H[1], cc = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7]
+    for (t = 0; t < 64; t++) {
+      var S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
+      var ch = (e & f) ^ (~e & g)
+      var temp1 = (h + S1 + ch + SHA256_K[t] + W[t]) >>> 0
+      var S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
+      var maj = (a & b) ^ (a & cc) ^ (b & cc)
+      var temp2 = (S0 + maj) >>> 0
+      h = g; g = f; f = e; e = (d + temp1) >>> 0
+      d = cc; cc = b; b = a; a = (temp1 + temp2) >>> 0
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + cc) >>> 0; H[3] = (H[3] + d) >>> 0
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0
   }
-  var sid = safeText(v.setup_session_id, 200)
-  if (!/^cs_[A-Za-z0-9_]{6,190}$/.test(sid)) {
-    out.error = "letsfg.co did not return a usable setup session."
-    return out
-  }
-
-  out.ok = true
-  out.setupUrl = url
-  out.sessionId = sid
-  var days = Number(v.token_lifetime_days)
-  out.lifetimeDays = (isFinite(days) && days > 0 && days < 3650) ? Math.round(days) : 90
+  var out = []
+  for (var i = 0; i < 8; i++) out.push((H[i] >>> 24) & 0xff, (H[i] >>> 16) & 0xff, (H[i] >>> 8) & 0xff, H[i] & 0xff)
   return out
 }
 
-function parseAgentVerify(text, nowSec) {
-  var out = { ok: false, token: "", expiresAt: 0, error: "" }
+function sha256Hex(text) {
+  var bytes = []
+  for (var i = 0; i < text.length; i++) bytes.push(text.charCodeAt(i) & 0xff)
+  var digest = sha256Bytes(bytes)
+  var hex = ""
+  for (var k = 0; k < digest.length; k++) hex += (digest[k] < 16 ? "0" : "") + digest[k].toString(16)
+  return hex
+}
+
+// RFC 4648 §5 without padding -- the only encoding PKCE accepts.
+var B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+function base64UrlBytes(bytes) {
+  var out = ""
+  for (var i = 0; i < bytes.length; i += 3) {
+    var b0 = bytes[i], b1 = i + 1 < bytes.length ? bytes[i + 1] : 0, b2 = i + 2 < bytes.length ? bytes[i + 2] : 0
+    var n = (b0 << 16) | (b1 << 8) | b2
+    out += B64URL.charAt((n >>> 18) & 63) + B64URL.charAt((n >>> 12) & 63)
+    if (i + 1 < bytes.length) out += B64URL.charAt((n >>> 6) & 63)
+    if (i + 2 < bytes.length) out += B64URL.charAt(n & 63)
+  }
+  return out
+}
+
+// A PKCE verifier is 43-128 characters from the unreserved set (RFC 7636
+// §4.1); this one is 64. Math.random is the only entropy source QML offers.
+// It is not a CSPRNG, and that is acceptable HERE and nowhere else: the
+// verifier's job is to stop a party who obtained the code (read off the
+// address bar, or sniffing the unlistened loopback) from redeeming it, and
+// the code itself is single-use and dies in 90 s. Nothing long-lived is
+// derived from this value.
+function randomUnreserved(length) {
+  var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+  var out = ""
+  for (var i = 0; i < length; i++) out += chars.charAt(Math.floor(Math.random() * chars.length))
+  return out
+}
+
+function pkceChallenge(verifier) {
+  var bytes = []
+  for (var i = 0; i < verifier.length; i++) bytes.push(verifier.charCodeAt(i) & 0xff)
+  return base64UrlBytes(sha256Bytes(bytes))
+}
+
+function newPkce() {
+  var verifier = randomUnreserved(64)
+  return { verifier: verifier, challenge: pkceChallenge(verifier), state: randomUnreserved(24) }
+}
+
+function buildRegisterBody() {
+  return JSON.stringify({
+    client_name: CONNECT_CLIENT_NAME,
+    redirect_uris: [CONNECT_REDIRECT_URI],
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none"
+  })
+}
+
+// The client id is the one thing from this response that is used again: it
+// goes into the /connect URL and the token exchange. It is opaque, so the
+// only check is that it is a single clean token -- never whitespace, never a
+// URL component that could rewrite the page it is embedded in.
+function parseRegisterResponse(text) {
+  var out = { ok: false, clientId: "", error: "" }
+  var parsed = parseJsonBody(text)
+  if (!parsed.ok) { out.error = parsed.error; return out }
+  var id = safeText(parsed.value.client_id, 200)
+  if (!/^[A-Za-z0-9_\-]{8,200}$/.test(id)) {
+    out.error = safeText(parsed.value.detail || parsed.value.error || "", 200)
+    if (out.error.length === 0) out.error = "letsfg.co did not return a usable client id."
+    return out
+  }
+  out.ok = true
+  out.clientId = id
+  return out
+}
+
+// Built from the pinned origin and values this process minted, plus the
+// client id -- which has already passed the shape check above and is URL-
+// encoded regardless. No URL from the network is ever opened.
+function connectUrl(clientId, challenge, state) {
+  return API_ORIGIN + "/connect"
+    + "?response_type=code"
+    + "&client_id=" + encodeURIComponent(clientId)
+    + "&redirect_uri=" + encodeURIComponent(CONNECT_REDIRECT_URI)
+    + "&code_challenge=" + encodeURIComponent(challenge)
+    + "&code_challenge_method=S256"
+    + "&state=" + encodeURIComponent(state)
+  // No `scope`: the server grants its full set when none is named, and a
+  // name it does not know ("flights") is silently dropped to an empty grant.
+}
+
+// What the person pastes back. Accepts the whole address the browser landed
+// on, just its query string, or a bare code. A state that IS present must
+// match the one we sent -- a pasted address from someone else's connect
+// attempt is refused here rather than at the (PKCE) exchange, so the message
+// can say what happened.
+function parseConnectReturn(text, expectedState) {
+  var out = { ok: false, code: "", error: "" }
+  var s = safeText(text, 4096).replace(/\s+/g, "")
+  if (s.length === 0) { out.error = "Paste the address your browser landed on after approving."; return out }
+
+  var query = s
+  var q = s.indexOf("?")
+  if (q >= 0) query = s.slice(q + 1)
+  var hash = query.indexOf("#")
+  if (hash >= 0) query = query.slice(0, hash)
+
+  var params = {}
+  var pairs = query.split("&")
+  for (var i = 0; i < pairs.length; i++) {
+    var eq = pairs[i].indexOf("=")
+    if (eq <= 0) continue
+    var k = pairs[i].slice(0, eq), v = pairs[i].slice(eq + 1)
+    try { params[decodeURIComponent(k)] = decodeURIComponent(v) } catch (e) { /* skip a malformed pair */ }
+  }
+
+  if (typeof params.error === "string" && params.error.length > 0) {
+    out.error = params.error === "access_denied"
+      ? "The connection was declined in the browser. Press Connect to try again."
+      : "letsfg.co reported: " + safeText(params.error, 80)
+    return out
+  }
+
+  var code = typeof params.code === "string" ? params.code : ""
+  // No "code=" anywhere: treat the whole paste as a bare code.
+  if (code.length === 0 && q < 0 && s.indexOf("=") < 0) code = s
+  if (!/^[A-Za-z0-9_\-.]{8,512}$/.test(code)) {
+    out.error = "That does not look like the address letsfg.co sent you to. It starts with " + CONNECT_REDIRECT_URI
+    return out
+  }
+  if (typeof params.state === "string" && params.state.length > 0 && params.state !== String(expectedState || "")) {
+    out.error = "That address belongs to a different connect attempt. Press Reopen and approve again."
+    return out
+  }
+  out.ok = true
+  out.code = code
+  return out
+}
+
+function formEncode(fields) {
+  var parts = []
+  for (var k in fields) {
+    if (!Object.prototype.hasOwnProperty.call(fields, k)) continue
+    parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(String(fields[k])))
+  }
+  return parts.join("&")
+}
+
+function buildCodeExchangeBody(code, clientId, verifier) {
+  return formEncode({
+    grant_type: "authorization_code", code: code, client_id: clientId,
+    redirect_uri: CONNECT_REDIRECT_URI, code_verifier: verifier
+  })
+}
+
+// The token endpoint's answer, for both the code exchange and a refresh.
+// { access_token, refresh_token, expires_in, token_type }. `expires_in` is
+// seconds from now (RFC 6749 §5.1); the server says 3600.
+function parseTokenResponse(text, nowSec) {
+  var out = { ok: false, token: "", refreshToken: "", expiresAt: 0, error: "" }
   var parsed = parseJsonBody(text)
   if (!parsed.ok) { out.error = parsed.error; return out }
   var v = parsed.value
 
-  var token = safeText(v.token, 4096)
-  // Same shape check the config parser applies: a token is an HTTP header
-  // value, so anything outside printable ASCII could inject a header line.
+  var token = safeText(v.access_token, 4096)
+  // A token is an HTTP header value; anything outside printable ASCII could
+  // inject a header line.
   if (!/^[!-~]{8,4096}$/.test(token)) {
-    out.error = safeText(v.error || v.message || "", 200)
-    if (out.error.length === 0) out.error = "Verification did not return a token yet."
+    out.error = safeText(v.error_description || v.detail || v.error || v.message || "", 200)
+    if (out.error.length === 0) out.error = "letsfg.co did not return a token."
     return out
   }
+  var refresh = safeText(v.refresh_token, 4096)
+  if (!/^[!-~]{8,4096}$/.test(refresh)) refresh = ""
 
-  var exp = Number(v.expires_at)
-  if (!isFinite(exp) || exp <= 0) exp = (Number(nowSec) || 0) + 90 * 86400
-  // Some lanes report expiry in milliseconds; normalise so the panel and the
-  // CLI agree on when a token dies.
-  if (exp > 1e11) exp = exp / 1000
-
+  var now = Number(nowSec) || 0
+  var ttl = Number(v.expires_in)
+  if (!isFinite(ttl) || ttl <= 0 || ttl > 86400 * 366) ttl = 55 * 60   // the SDK's fallback
   out.ok = true
   out.token = token
-  out.expiresAt = exp
+  out.refreshToken = refresh
+  out.expiresAt = now + Math.floor(ttl)
   return out
-}
-
-// The exact file `letsfg auth` writes, so a token obtained here is readable by
-// the CLI and vice versa.
-function buildTokenConfig(token, expiresAt) {
-  return JSON.stringify({ pfs_auth: { token: String(token), expires_at: Number(expiresAt) } })
 }
 
 // ---- Token -----------------------------------------------------------------
 
 // Parse ~/.letsfg/config.json as written by `letsfg auth`:
-//   { "pfs_auth": { "token": "...", "expires_at": <unix seconds> }, ... }
+//   { "pfs_auth": { "token": "...", "expires_at": <unix seconds>,
+//                   "refresh_token": "...", "client_id": "..." }, ... }
 //
-// Returns a redacted status plus the token. Callers hand the token straight to
-// createSession and drop it; nothing else keeps it.
+// Returns a redacted status plus the credentials. Callers hand them straight
+// to createSession and drop them; nothing else keeps them.
+//
+// `refresh_token` + `client_id` are what the Python SDK's ensure_bearer_token
+// renews with; they have been in this file since the connect flow shipped and
+// the panel simply did not read them. With both present an expired token is
+// not a dead end -- `canRefresh` says so and the panel renews silently.
 function parseTokenConfig(jsonText, nowSec) {
-  var result = { state: "missing", token: "", expiresAt: 0, expiresInDays: 0 }
+  var result = {
+    state: "missing", token: "", expiresAt: 0, expiresInDays: 0,
+    refreshToken: "", clientId: "", canRefresh: false, refreshDue: false
+  }
   if (typeof jsonText !== "string" || jsonText.length === 0) return result
   if (jsonText.length > MAX_RESPONSE_CHARS) { result.state = "malformed"; return result }
 
@@ -579,42 +808,125 @@ function parseTokenConfig(jsonText, nowSec) {
 
   var expiresAt = Number(auth.expires_at)
   if (!isFinite(expiresAt) || expiresAt <= 0) expiresAt = 0
+  // Some writers report expiry in milliseconds.
+  if (expiresAt > 1e11) expiresAt = expiresAt / 1000
+
+  if (typeof auth.refresh_token === "string" && /^[\x21-\x7e]{8,4096}$/.test(auth.refresh_token)
+      && typeof auth.client_id === "string" && /^[A-Za-z0-9_\-]{8,200}$/.test(auth.client_id)) {
+    result.refreshToken = auth.refresh_token
+    result.clientId = auth.client_id
+    result.canRefresh = true
+  }
 
   result.token = auth.token
   result.expiresAt = expiresAt
+  result.state = "ok"
   if (expiresAt > 0) {
     var now = Number(nowSec) || 0
     result.expiresInDays = Math.floor((expiresAt - now) / 86400)
-    // Same 1h buffer the Python SDK uses, so "expired" means the same thing
-    // in the panel as it does in the CLI.
-    if (now >= expiresAt - TOKEN_EXPIRY_BUFFER_SEC) { result.state = "expired"; return result }
+    if (now >= expiresAt - TOKEN_EXPIRY_BUFFER_SEC) result.state = "expired"
+    result.refreshDue = result.canRefresh && now >= expiresAt - TOKEN_REFRESH_SKEW_SEC
   }
-  result.state = "ok"
   return result
 }
 
-// The token holder. The value is captured in this closure and there is no
-// getter -- callers can apply it to a request or ask about it, and that is
-// the whole surface. See invariant 2.
+// The file on disk, updated in place. Everything else in the config -- the
+// CLI keeps other keys beside pfs_auth -- is carried through untouched, and
+// so are any pfs_auth fields this plugin does not know about. Both files the
+// panel writes go through this, so what lands on disk is always the exact
+// shape `letsfg auth` writes and reads.
+function mergeTokenConfig(existingText, auth) {
+  var cfg = {}
+  if (typeof existingText === "string" && existingText.length > 0 && existingText.length <= MAX_RESPONSE_CHARS) {
+    try { cfg = JSON.parse(existingText) } catch (e) { cfg = {} }
+    if (!cfg || typeof cfg !== "object" || Object.prototype.toString.call(cfg) === "[object Array]") cfg = {}
+  }
+  var pfs = (cfg.pfs_auth && typeof cfg.pfs_auth === "object") ? cfg.pfs_auth : {}
+  var next = {}
+  for (var k in pfs) if (Object.prototype.hasOwnProperty.call(pfs, k)) next[k] = pfs[k]
+  next.token = String(auth.token)
+  next.expires_at = Number(auth.expiresAt) || 0
+  if (auth.refreshToken) next.refresh_token = String(auth.refreshToken)
+  else delete next.refresh_token
+  if (auth.clientId) next.client_id = String(auth.clientId)
+  cfg.pfs_auth = next
+  return JSON.stringify(cfg, null, 2)
+}
+
+// The token holder. The values are captured in this closure and there is no
+// getter -- callers can apply the token to a request, ask the session to send
+// its own refresh, or ask about it, and that is the whole surface. See
+// invariant 2. The refresh token is the longer-lived secret of the two (30
+// days against 1 hour), so it gets the same treatment.
 function createSession() {
   var token = ""
+  var refreshToken = ""
+  var clientId = ""
+  var expiresAt = 0
   var state = "missing"
   var expiresInDays = 0
+  // "cli" for ~/.letsfg/config.json, "own" for the panel's state file. A
+  // renewal rotates the refresh token, and the rotated one has to go back to
+  // the file it came from or the other reader is left holding a spent one.
+  var source = ""
+
+  function status() {
+    return {
+      state: state,
+      ready: token.length > 0 && state === "ok",
+      canRefresh: refreshToken.length > 0 && clientId.length > 0,
+      expiresInDays: expiresInDays,
+      source: source
+    }
+  }
 
   return {
     // Load from the parsed config. Returns the redacted status.
-    adopt: function (parsed) {
+    adopt: function (parsed, from) {
+      var usable = parsed && (parsed.state === "ok" || parsed.state === "expired")
       token = (parsed && parsed.state === "ok") ? String(parsed.token) : ""
+      refreshToken = (usable && parsed.canRefresh) ? String(parsed.refreshToken) : ""
+      clientId = (usable && parsed.canRefresh) ? String(parsed.clientId) : ""
+      expiresAt = usable ? (Number(parsed.expiresAt) || 0) : 0
       state = parsed ? String(parsed.state) : "missing"
       expiresInDays = parsed ? Number(parsed.expiresInDays) || 0 : 0
-      return this.status()
+      source = usable ? String(from || "") : ""
+      return status()
     },
-    forget: function () { token = ""; state = "missing"; expiresInDays = 0 },
+    // Fresh credentials straight from the token endpoint (a code exchange or
+    // a refresh). The client id is kept unless a new one is given, because a
+    // refresh response does not repeat it.
+    adoptTokens: function (parsed, newClientId, from) {
+      if (!parsed || !parsed.ok) return status()
+      token = String(parsed.token)
+      expiresAt = Number(parsed.expiresAt) || 0
+      // A refresh that rotates hands back a new refresh token; one that does
+      // not (some servers) leaves the old one valid.
+      if (parsed.refreshToken) refreshToken = String(parsed.refreshToken)
+      if (newClientId) clientId = String(newClientId)
+      if (from) source = String(from)
+      state = "ok"
+      expiresInDays = expiresAt > 0 ? Math.floor((expiresAt - Date.now() / 1000) / 86400) : 0
+      return status()
+    },
+    forget: function () {
+      token = ""; refreshToken = ""; clientId = ""; expiresAt = 0
+      state = "missing"; expiresInDays = 0; source = ""
+    },
+    // The access token is dead (the server said so) but the refresh material
+    // may still be good: drop the one, keep the other, and let the panel try
+    // a renewal before it asks the person to connect again.
+    expire: function () { token = ""; state = "expired"; expiresInDays = 0 },
     ready: function () { return token.length > 0 && state === "ok" },
-    // Redacted on purpose: length, never content.
-    status: function () {
-      return { state: state, ready: token.length > 0 && state === "ok", expiresInDays: expiresInDays }
+    canRefresh: function () { return refreshToken.length > 0 && clientId.length > 0 },
+    refreshDue: function (nowSec) {
+      if (refreshToken.length === 0 || clientId.length === 0) return false
+      if (state !== "ok") return true
+      if (expiresAt <= 0) return false
+      return (Number(nowSec) || 0) >= expiresAt - TOKEN_REFRESH_SKEW_SEC
     },
+    // Redacted on purpose: state and timing, never content.
+    status: status,
     // The only way the token reaches a request. Refuses any URL that is not
     // on the pinned origin, so a caller cannot aim an authenticated request
     // somewhere else even by mistake.
@@ -624,6 +936,28 @@ function createSession() {
         throw new Error("refusing to send credentials off-origin")
       xhr.setRequestHeader("Authorization", "Bearer " + token)
       return true
+    },
+    // The only way the refresh token reaches a request: the session opens and
+    // sends the request itself, to the token endpoint on the pinned origin and
+    // nowhere else. `headers` is for the caller's own labels (client name,
+    // Accept); the credential never passes through the caller.
+    sendRefresh: function (xhr, headers) {
+      if (refreshToken.length === 0 || clientId.length === 0) throw new Error("nothing to refresh with")
+      var url = oauthTokenUrl()
+      xhr.open("POST", url)
+      xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
+      for (var k in headers) if (Object.prototype.hasOwnProperty.call(headers, k)) xhr.setRequestHeader(k, headers[k])
+      xhr.send(formEncode({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId }))
+      return true
+    },
+    // What to write to disk: the existing file's contents with the current
+    // credentials merged in. The caller hands the text straight to the
+    // FileView and does not keep it.
+    serialise: function (existingText) {
+      if (!token) throw new Error("no token")
+      return mergeTokenConfig(existingText, {
+        token: token, expiresAt: expiresAt, refreshToken: refreshToken, clientId: clientId
+      })
     }
   }
 }
@@ -770,9 +1104,9 @@ function describeHttpError(status, bodyText) {
   // A revoked or expired token is not a generic error: the only way out is
   // to verify again, so the message says that and the panel routes there.
   if (status === 401 || status === 403)
-    return "Your verification is no longer valid. Verify identity again — Stripe charges $0."
+    return "Your session is no longer valid. Connect again — nothing is charged."
   if (status === 402)
-    return "Payment method needed. Run `letsfg auth` to put a card on file (nothing is charged)."
+    return "A card is needed before searching. Press Connect — nothing is charged."
   if (status === 429)
     return "Rate limited by letsfg.co. " + (detail || "Wait a moment and try again.")
   if (status === 0)
@@ -2293,10 +2627,16 @@ function module_exports_shim() {
     retryAfterFromBody: retryAfterFromBody,
     safeText: safeText, safeHttpsUrl: safeHttpsUrl, offerBookingUrl: offerBookingUrl, redact: redact,
     apiUrl: apiUrl, searchUrl: searchUrl, resultsUrl: resultsUrl, offerUrl: offerUrl,
-    parseTokenConfig: parseTokenConfig, createSession: createSession,
-    agentRequestUrl: agentRequestUrl, agentVerifyUrl: agentVerifyUrl,
-    parseAgentRequest: parseAgentRequest, parseAgentVerify: parseAgentVerify,
-    buildTokenConfig: buildTokenConfig,
+    TOKEN_EXPIRY_BUFFER_SEC: TOKEN_EXPIRY_BUFFER_SEC, TOKEN_REFRESH_SKEW_SEC: TOKEN_REFRESH_SKEW_SEC,
+    REFRESH_RETRY_MS: REFRESH_RETRY_MS,
+    parseTokenConfig: parseTokenConfig, createSession: createSession, mergeTokenConfig: mergeTokenConfig,
+    CONNECT_REDIRECT_URI: CONNECT_REDIRECT_URI, CONNECT_CLIENT_NAME: CONNECT_CLIENT_NAME,
+    oauthRegisterUrl: oauthRegisterUrl, oauthTokenUrl: oauthTokenUrl,
+    sha256Hex: sha256Hex, pkceChallenge: pkceChallenge, newPkce: newPkce,
+    buildRegisterBody: buildRegisterBody, parseRegisterResponse: parseRegisterResponse,
+    connectUrl: connectUrl, parseConnectReturn: parseConnectReturn,
+    buildCodeExchangeBody: buildCodeExchangeBody, parseTokenResponse: parseTokenResponse,
+    formEncode: formEncode,
     normalizeIata: normalizeIata, isValidIata: isValidIata, isValidDate: isValidDate,
     isValidCabin: isValidCabin, buildSearchBody: buildSearchBody,
     parseJsonBody: parseJsonBody, describeHttpError: describeHttpError,

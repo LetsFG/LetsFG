@@ -574,9 +574,10 @@ omarchy plugin add https://github.com/LetsFG/LetsFG.git --enable
 ```
 
 Then add **LetsFG Flights** to a bar section in the Omarchy bar settings. The
-panel reads your LetsFG token from `~/.letsfg/config.json`; the in-panel
-**Add a card** button used the retired Stripe enrolment and is being moved to
-the connect flow. See [OMARCHY-PLUGIN.md](OMARCHY-PLUGIN.md).
+panel reads your LetsFG token from `~/.letsfg/config.json` (what `letsfg auth`
+writes) and renews it itself, or connects a card from the panel via
+letsfg.co/connect — nothing is charged. See
+[OMARCHY-PLUGIN.md](OMARCHY-PLUGIN.md).
 
 **Remove**
 

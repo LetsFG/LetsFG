@@ -58,100 +58,199 @@ Panel {
 
   // ---- Sign-in.
   //
-  // "" | "requesting" | "awaiting" | "verifying". `awaiting` means the Stripe
-  // page is open in a browser and we are waiting for the person to come back.
+  // "" | "registering" | "awaiting" | "exchanging". `awaiting` means
+  // letsfg.co/connect is open in a browser and we are waiting for the person
+  // to paste back the address it sends them to. See Model.js "Sign-in" for
+  // why a paste and not a loopback listener.
   property string authStage: ""
   property string authError: ""
-  property string authSessionId: ""
+  property string authClientId: ""
+  // PKCE material for the attempt in progress. The verifier is not a
+  // credential: it is useless without the single-use code it is bound to,
+  // and it is cleared the moment the exchange finishes either way.
+  property string authVerifier: ""
+  property string authChallenge: ""
+  property string authState: ""
+  property string authPaste: ""
 
-  function beginAuth() {
-    if (root.authStage === "requesting" || root.authStage === "verifying") return
+  function beginConnect() {
+    if (root.authStage === "registering" || root.authStage === "exchanging") return
     root.authError = ""
-    root.authStage = "requesting"
+    root.authStage = "registering"
+
+    var pk = Model.newPkce()
+    root.authVerifier = pk.verifier
+    root.authChallenge = pk.challenge
+    root.authState = pk.state
+    root.authPaste = ""
 
     var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
     xhr.onDone = function () {
       if (xhr.oversized) { root.authStage = ""; root.authError = oversizedMessage(); return }
-      // A 402 is the SUCCESS case here: it carries the setup link. Treating it
-      // as an error would break the only path that works.
-      if (xhr.status !== 200 && xhr.status !== 402) {
+      if (xhr.status !== 200 && xhr.status !== 201) {
         root.authStage = ""
         root.authError = Model.describeHttpError(xhr.status, xhr.responseText)
         return
       }
-      var r = Model.parseAgentRequest(xhr.responseText)
+      var r = Model.parseRegisterResponse(xhr.responseText)
       if (!r.ok) { root.authStage = ""; root.authError = r.error; return }
 
-      root.authSessionId = r.sessionId
+      root.authClientId = r.clientId
       root.authStage = "awaiting"
-      // Card details are entered on Stripe's hosted page in a real browser.
-      // A desktop plugin must never collect them itself.
-      Qt.openUrlExternally(r.setupUrl)
+      // The card is entered on letsfg.co in a real browser. A desktop plugin
+      // must never collect it itself. The URL is built from the pinned
+      // origin -- nothing off the network chooses the page.
+      Qt.openUrlExternally(Model.connectUrl(r.clientId, pk.challenge, pk.state))
     }
     try {
-      var url = Model.agentRequestUrl()
+      var url = Model.oauthRegisterUrl()
       xhr.open("POST", url)
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.setRequestHeader("Accept", "application/json")
-      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.0.0")
-      xhr.send("{}")
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
+      xhr.send(Model.buildRegisterBody())
     } catch (e) {
       root.authStage = ""
       root.authError = "Could not reach letsfg.co."
     }
   }
 
-  function finishAuth() {
-    if (root.authSessionId.length === 0) { root.authError = "Start the setup first."; return }
-    if (root.authStage === "verifying") return
+  // Same attempt, same PKCE pair: the browser tab was closed or never opened.
+  function reopenConnect() {
+    if (root.authClientId.length === 0 || root.authChallenge.length === 0) { beginConnect(); return }
     root.authError = ""
-    root.authStage = "verifying"
+    Qt.openUrlExternally(Model.connectUrl(root.authClientId, root.authChallenge, root.authState))
+  }
+
+  function finishConnect() {
+    if (root.authStage === "exchanging") return
+    if (root.authClientId.length === 0 || root.authVerifier.length === 0) {
+      root.authError = "Press Connect first."
+      return
+    }
+    var r = Model.parseConnectReturn(root.authPaste, root.authState)
+    if (!r.ok) { root.authError = r.error; return }
+    root.authError = ""
+    root.authStage = "exchanging"
 
     var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
     xhr.onDone = function () {
-      if (xhr.oversized) { root.authStage = ""; root.authError = oversizedMessage(); return }
-      var v = Model.parseAgentVerify(xhr.responseText, Math.floor(Date.now() / 1000))
-      if (!v.ok) {
-        // Back to `awaiting`, not cleared: the card may simply not be added
-        // yet, and the person should be able to press it again.
+      if (xhr.oversized) { root.authStage = "awaiting"; root.authError = oversizedMessage(); return }
+      var t = Model.parseTokenResponse(xhr.responseText, Math.floor(Date.now() / 1000))
+      if (!t.ok) {
+        // Back to `awaiting`, not cleared: a mis-paste should be fixable
+        // without opening the browser again. A code that was already used or
+        // has timed out (90 s) needs a fresh approval, and the message says so.
         root.authStage = "awaiting"
-        root.authError = (xhr.status === 200 || xhr.status === 402)
-          ? (v.error + " If you have just added the card, give it a moment and try again.")
-          : Model.describeHttpError(xhr.status, xhr.responseText)
+        root.authError = xhr.status === 400
+          ? "letsfg.co refused that code: it may have expired (they last 90 seconds) or been used already. Press Reopen and approve again."
+          : (xhr.status === 200 ? t.error : Model.describeHttpError(xhr.status, xhr.responseText))
         return
       }
-      saveToken(v.token, v.expiresAt)
+      root.tokenStatus = root.session.adoptTokens(t, root.authClientId, "own")
+      root.authStage = ""
+      root.authPaste = ""
+      root.authVerifier = ""
+      root.authChallenge = ""
+      root.authState = ""
+      root.authError = ""
+      root.errorText = ""
+      root.statusText = ""
+      persistSession()
     }
     try {
-      var url = Model.agentVerifyUrl()
+      var url = Model.oauthTokenUrl()
       xhr.open("POST", url)
-      xhr.setRequestHeader("Content-Type", "application/json")
+      xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
       xhr.setRequestHeader("Accept", "application/json")
-      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.0.0")
-      xhr.send(JSON.stringify({ setup_session_id: root.authSessionId }))
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
+      xhr.send(Model.buildCodeExchangeBody(r.code, root.authClientId, root.authVerifier))
     } catch (e) {
       root.authStage = "awaiting"
       root.authError = "Could not reach letsfg.co."
     }
   }
 
-  // Adopt the token immediately, then persist it. Adopting first means the
-  // panel is usable even if the write fails -- the session is in memory, and
-  // only the "still signed in tomorrow" part depends on the file.
-  function saveToken(token, expiresAt) {
-    root.tokenStatus = root.session.adopt({
-      state: "ok", token: token,
-      expiresInDays: Math.floor((expiresAt - Date.now() / 1000) / 86400)
-    })
-    root.authStage = ""
-    root.authSessionId = ""
-    root.errorText = ""
-    root.statusText = ""
-
+  // Write the session back to the file it came from. Adoption already
+  // happened in memory, so the panel is usable even if this fails -- only
+  // the "still signed in tomorrow" part depends on the file.
+  //
+  // A token from ~/.letsfg/config.json goes BACK to ~/.letsfg/config.json.
+  // That is not optional: a renewal rotates the refresh token, and the CLI
+  // would otherwise be left holding the spent one -- its next refresh would
+  // fail, and a reused refresh token revokes the whole grant for both of us.
+  // The file exists (we read it), so its directory exists and the atomic
+  // rename works; the "never writes it" rule was about a directory the CLI
+  // had not created yet.
+  function persistSession() {
+    var src = root.session.status().source
     try {
-      tokenStore.setText(Model.buildTokenConfig(token, expiresAt))
+      if (src === "cli") {
+        var existing = ""
+        try { existing = tokenFile.text() } catch (e) { existing = "" }
+        tokenFile.setText(root.session.serialise(existing))
+      } else {
+        var own = ""
+        try { own = tokenStore.text() } catch (e) { own = "" }
+        tokenStore.setText(root.session.serialise(own))
+      }
     } catch (e) {
-      root.authError = "Signed in, but the token could not be saved — you may need to do this again next time."
+      root.authError = "Connected, but the token could not be saved — you may need to do this again next time."
+    }
+  }
+
+  // ---- Renewal.
+  //
+  // Connect-flow access tokens live an hour; the refresh token beside them
+  // lives 30 days and rotates on every use. Renewal happens only when it is
+  // due -- when the token file is read (shell start, panel open, the CLI
+  // rewriting it) or on a Search press that finds the token short -- and
+  // never on a timer; the shell reloads plugins on file change, and a
+  // refresh loop is the one thing a bar widget must not grow. Nothing in
+  // here starts a search (tools/check-search-invariant.py).
+  property bool refreshing: false
+  property double refreshFailedAtMs: 0
+
+  function refreshSession() {
+    if (root.refreshing) return
+    if (!root.session.canRefresh()) return
+    if (Date.now() - root.refreshFailedAtMs < Model.REFRESH_RETRY_MS) return
+    root.refreshing = true
+    if (!root.tokenStatus.ready && root.errorText.length === 0) root.statusText = "Renewing your session…"
+
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      root.refreshing = false
+      if (xhr.oversized) { root.refreshFailedAtMs = Date.now(); return }
+      var t = Model.parseTokenResponse(xhr.responseText, Math.floor(Date.now() / 1000))
+      if (t.ok) {
+        root.tokenStatus = root.session.adoptTokens(t, "", root.session.status().source)
+        if (root.statusText === "Renewing your session…") root.statusText = ""
+        persistSession()
+        return
+      }
+      root.refreshFailedAtMs = Date.now()
+      if (xhr.status === 400 || xhr.status === 401) {
+        // The refresh token itself was refused: spent by another process,
+        // past its 30 days, or revoked. There is nothing left to renew with,
+        // so the only honest state is "connect again". If the CLI renewed a
+        // moment ago, its file is watched and the new token arrives on its own.
+        root.session.forget()
+        root.tokenStatus = root.session.status()
+        root.statusText = "Your session could not be renewed. Connect again — nothing is charged."
+        return
+      }
+      if (!root.tokenStatus.ready)
+        root.statusText = "Could not reach letsfg.co to renew your session. " + Model.describeHttpError(xhr.status, xhr.responseText)
+    }
+    try {
+      root.session.sendRefresh(xhr, {
+        "Accept": "application/json",
+        "X-LetsFG-Client": "omarchy-plugin-letsfg/1.1.0"
+      })
+    } catch (e) {
+      root.refreshing = false
+      root.refreshFailedAtMs = Date.now()
     }
   }
 
@@ -273,7 +372,7 @@ Panel {
       xhr.open("POST", url)
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.setRequestHeader("Accept", "application/json")
-      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.0.0")
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
       root.session.applyTo(xhr, url)
       xhr.send(JSON.stringify({ text: q }))
     } catch (e) { /* no suggestions */ }
@@ -291,7 +390,10 @@ Panel {
   // reachable from a click or a keypress and nothing else.
   function beginHotelSearch() {
     root.hotelError = ""
-    if (!root.session.ready()) { root.hotelError = tokenHint(root.tokenStatus.state); return }
+    if (!root.session.ready()) {
+      if (root.session.canRefresh()) { refreshSession(); root.hotelError = "Renewing your session — press Search again in a moment."; return }
+      root.hotelError = tokenHint(root.tokenStatus.state); return
+    }
 
     var check = Model.throttleCheck(root.hotelGate, Date.now())
     if (!check.allowed) { root.hotelError = check.reason; return }
@@ -342,7 +444,7 @@ Panel {
       xhr.open("POST", url)
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.setRequestHeader("Accept", "application/json")
-      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.0.0")
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
       root.session.applyTo(xhr, url)
       xhr.send(JSON.stringify(built.body))
     } catch (e) {
@@ -503,20 +605,24 @@ Panel {
     var now = Math.floor(Date.now() / 1000)
     // The CLI's file wins when it holds a usable token: if someone has run
     // `letsfg auth`, that is the token they expect to be using.
+    // "Usable" now includes expired-but-renewable: a token past its hour with
+    // a refresh token beside it is minutes from working, not dead.
     var text = ""
     try { text = tokenFile.text() } catch (e) { text = "" }
     var parsed = Model.parseTokenConfig(text, now)
-    if (parsed.state !== "ok") {
+    var source = "cli"
+    if (parsed.state !== "ok" && !parsed.canRefresh) {
       var own = ""
       try { own = tokenStore.text() } catch (e) { own = "" }
       var mine = Model.parseTokenConfig(own, now)
-      if (mine.state === "ok") parsed = mine
+      if (mine.state === "ok" || mine.canRefresh || parsed.state === "missing") { parsed = mine; source = "own" }
     }
-    root.tokenStatus = root.session.adopt(parsed)
-    // The parsed token is dropped here: session holds it in a closure and this
-    // local goes out of scope. Nothing else in this file ever sees the value.
+    root.tokenStatus = root.session.adopt(parsed, source)
+    // The parsed credentials are dropped here: session holds them in a closure
+    // and this local goes out of scope. Nothing else in this file sees them.
     if (!root.tokenStatus.ready && root.errorText.length === 0)
       root.statusText = tokenHint(root.tokenStatus.state)
+    if (root.session.refreshDue(now)) refreshSession()
   }
 
   // Points at the button that is right there, not at a CLI the person may not
@@ -526,9 +632,9 @@ Panel {
   // old copy said "run `letsfg auth`", which is both the wrong instruction now
   // and no help at all to someone who has never seen a terminal.
   function tokenHint(state) {
-    if (state === "expired") return "Your verification expired. Verify identity again — Stripe charges €0."
-    if (state === "malformed") return "Your saved verification could not be read. Verify identity again."
-    return "Verify identity with a payment method to start searching — Stripe charges €0."
+    if (state === "expired") return "Your session expired. Connect again — nothing is charged."
+    if (state === "malformed") return "Your saved session could not be read. Connect again."
+    return "Connect a card to start searching — nothing is charged."
   }
 
   // ---- Search ----------------------------------------------------------
@@ -562,6 +668,14 @@ Panel {
     root.errorText = ""
 
     if (!root.session.ready()) {
+      // Expired with a refresh token in hand: renew now, and ask for the
+      // press again rather than searching on the renewal's completion --
+      // a search may only ever start from a click or a key.
+      if (root.session.canRefresh()) {
+        refreshSession()
+        root.errorText = "Renewing your session — press Search again in a moment."
+        return
+      }
       root.errorText = tokenHint(root.tokenStatus.state)
       return
     }
@@ -639,14 +753,25 @@ Panel {
   // showing a connected pill. Drop it and put verification back on screen.
   function handleAuthFailure(status, body) {
     if (!Model.isAuthFailure(status, body)) return false
-    root.session.forget()
-    root.tokenStatus = root.session.status()
     root.hasSearched = false
     root.hotelHasSearched = false
     root.offers = []; root.rawOffers = []
     root.hotels = []
     root.authStage = ""
-    root.authSessionId = ""
+    root.authPaste = ""
+    // The access token is dead, but a refresh token may not be: try a
+    // renewal before asking the person to connect again. If the renewal is
+    // refused too, refreshSession() drops the session and says so.
+    if (root.session.canRefresh()) {
+      root.session.expire()
+      root.tokenStatus = root.session.status()
+      root.authError = ""
+      root.errorText = ""
+      refreshSession()
+      return true
+    }
+    root.session.forget()
+    root.tokenStatus = root.session.status()
     root.authError = Model.describeHttpError(status, body)
     return true
   }
@@ -733,7 +858,7 @@ Panel {
       xhr.open("POST", url)
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.setRequestHeader("Accept", "application/json")
-      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.0.0")
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
       // Anonymous install id, so the dashboard can count PEOPLE and not just
       // searches. Sent only here: this is the request that creates the search
       // session the analytics pipeline keys on.
@@ -870,7 +995,7 @@ Panel {
     try {
       xhr.open("GET", url)
       xhr.setRequestHeader("Accept", "application/json")
-      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.0.0")
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
       // Carried on the poll too, not just the POST: the results are the
       // token holder's own, and the token is what buckets rate limiting.
       root.session.applyTo(xhr, url)
@@ -1062,14 +1187,28 @@ Panel {
     atomicWrites: true
     onLoaded: root.refreshTokenStatus()
     onSaveFailed: root.authError =
-      "Signed in, but the token could not be saved — you may need to do this again next time."
+      "Connected, but the token could not be saved — you may need to do this again next time."
   }
 
   FileView {
     id: tokenFile
-    // Read-only. The plugin never writes this file; `letsfg auth` owns it.
+    // `letsfg auth` owns this file. The plugin reads it, and writes it in
+    // exactly one case: renewing a token that came from it, because the
+    // rotated refresh token has to go back or the CLI is left with a spent
+    // one (see persistSession). It never creates the file.
     path: Quickshell.env("HOME") + "/.letsfg/config.json"
     preload: true
+    atomicWrites: true
+    // The renewal worked and is in memory; only the CLI's copy is stale. Keep
+    // the panel alive from its own file and say what the CLI will need.
+    onSaveFailed: {
+      try {
+        var own = ""
+        try { own = tokenStore.text() } catch (e) { own = "" }
+        tokenStore.setText(root.session.serialise(own))
+      } catch (e) { /* the in-memory session still works for this shell run */ }
+      root.authError = "Session renewed, but ~/.letsfg/config.json could not be updated — run `letsfg auth` again before using the CLI."
+    }
     // Running `letsfg auth` in a terminal rewrites this file; watching it means
     // the panel picks the new token up without being reopened.
     watchChanges: true
@@ -1732,7 +1871,7 @@ Panel {
                   root.dismissAll()
                   root.tab = "flights"
                   root.hasSearched = false
-                  root.beginAuth()
+                  root.beginConnect()
                 }
               }
 
@@ -1742,7 +1881,7 @@ Panel {
                 text: root.tokenStatus.ready
                   ? (root.rateInfo.remaining >= 0
                      ? (root.rateInfo.remaining + " left") : "connected")
-                  : "verify \u2014 free"
+                  : (root.refreshing ? "renewing\u2026" : "connect \u2014 free")
                 color: root.tokenStatus.ready ? root.inkMuted : root.brandOrange
                 font.family: root.brandFont
                 font.pixelSize: Style.font.bodySmall - 1
@@ -2751,8 +2890,9 @@ Panel {
           }
 
           // Sign-in, in the panel. No CLI and no terminal: the card is entered
-          // on Stripe's hosted page in a real browser -- the only correct place
-          // for card details -- and the token comes back here.
+          // on letsfg.co/connect in a real browser -- the only correct place
+          // for card details -- and the code comes back here by paste (see
+          // Model.js "Sign-in" for why a paste and not a loopback listener).
           Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: !root.tokenStatus.ready
@@ -2771,8 +2911,9 @@ Panel {
 
               Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: root.tokenStatus.state === "expired"
-                  ? "Verify identity again" : "Verify identity with payment method"
+                text: root.refreshing
+                  ? "Renewing your session"
+                  : (root.tokenStatus.state === "expired" ? "Connect again" : "Connect a card")
                 color: root.inkPrimary
                 font.family: root.brandFont
                 font.pixelSize: Style.font.body + 3
@@ -2784,9 +2925,11 @@ Panel {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: root.authStage === "awaiting"
-                  ? "Verify in your browser, then come back."
-                  : "Charges nothing, $0 just to verify your identity."
+                text: root.refreshing
+                  ? "One moment."
+                  : (root.authStage === "awaiting" || root.authStage === "exchanging")
+                    ? "Approve in your browser. It will then land on a page that cannot load — that is expected. Copy that page's address and paste it below."
+                    : "Nothing is charged now. You approve every booking."
                 color: root.inkMuted
                 font.family: root.brandFont
                 font.pixelSize: Style.font.bodySmall
@@ -2797,7 +2940,7 @@ Panel {
               // Step one.
               Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: root.authStage !== "awaiting" && root.authStage !== "verifying"
+                visible: !root.refreshing && root.authStage !== "awaiting" && root.authStage !== "exchanging"
                 width: Style.space(238)
                 height: Style.space(42)
                 radius: height / 2
@@ -2810,12 +2953,12 @@ Panel {
                   spacing: Style.space(8)
                   LfgSpinner {
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: root.authStage === "requesting"
-                    running: root.authStage === "requesting"
+                    visible: root.authStage === "registering"
+                    running: root.authStage === "registering"
                   }
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.authStage === "requesting" ? "Opening Stripe\u2026" : "Verify identity"
+                    text: root.authStage === "registering" ? "Opening letsfg.co…" : "Connect at letsfg.co"
                     color: "#ffffff"
                     font.family: root.brandFont
                     font.pixelSize: Style.font.bodySmall
@@ -2828,14 +2971,43 @@ Panel {
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
-                  onClicked: root.beginAuth()
+                  onClicked: root.beginConnect()
                 }
               }
 
-              // Step two.
+              // Step two: the address the browser landed on.
+              Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: root.authStage === "awaiting" || root.authStage === "exchanging"
+                width: parent.width
+                height: Style.space(42)
+                radius: Style.space(12)
+                color: root.cardBg
+                border.width: 1
+                border.color: pasteField.activeFocus ? root.brandOrange : root.hairline
+
+                TextField {
+                  id: pasteField
+                  anchors.fill: parent
+                  anchors.leftMargin: Style.space(14)
+                  anchors.rightMargin: Style.space(14)
+                  text: root.authPaste
+                  placeholderText: "http://127.0.0.1:17531/letsfg-omarchy?code=…"
+                  placeholderTextColor: root.inkFaint
+                  foreground: root.inkPrimary
+                  accent: root.brandOrange
+                  font.family: root.brandFont
+                  font.pixelSize: Style.font.bodySmall
+                  background: null
+                  enabled: root.authStage === "awaiting"
+                  onTextChanged: root.authPaste = text
+                  onAccepted: root.finishConnect()
+                }
+              }
+
               Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: root.authStage === "awaiting" || root.authStage === "verifying"
+                visible: root.authStage === "awaiting" || root.authStage === "exchanging"
                 spacing: Style.space(9)
 
                 Rectangle {
@@ -2851,12 +3023,12 @@ Panel {
                     spacing: Style.space(8)
                     LfgSpinner {
                       anchors.verticalCenter: parent.verticalCenter
-                      visible: root.authStage === "verifying"
-                      running: root.authStage === "verifying"
+                      visible: root.authStage === "exchanging"
+                      running: root.authStage === "exchanging"
                     }
                     Text {
                       anchors.verticalCenter: parent.verticalCenter
-                      text: root.authStage === "verifying" ? "Checking\u2026" : "I have verified"
+                      text: root.authStage === "exchanging" ? "Connecting…" : "Finish"
                       color: "#ffffff"
                       font.family: root.brandFont
                       font.pixelSize: Style.font.bodySmall
@@ -2869,7 +3041,7 @@ Panel {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.finishAuth()
+                    onClicked: root.finishConnect()
                   }
                 }
 
@@ -2883,7 +3055,7 @@ Panel {
 
                   Text {
                     anchors.centerIn: parent
-                    text: "Reopen Stripe"
+                    text: "Reopen letsfg.co"
                     color: root.inkMuted
                     font.family: root.brandFont
                     font.pixelSize: Style.font.bodySmall
@@ -2896,7 +3068,7 @@ Panel {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.beginAuth()
+                    onClicked: root.reopenConnect()
                   }
                 }
               }
@@ -2916,7 +3088,6 @@ Panel {
 
             }
           }
-
           // Once connected, a search error has nowhere else to go.
           Text {
             anchors.horizontalCenter: parent.horizontalCenter

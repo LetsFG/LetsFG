@@ -170,6 +170,10 @@ def main():
                     help="report whether a previously saved token was remembered")
     ap.add_argument("--auth-check", action="store_true",
                     help="drive the in-panel sign-in (opens Stripe in a browser)")
+    ap.add_argument("--writeback-check", action="store_true",
+                    help="adopt a renewed token as if it came from ~/.letsfg/config.json, persist, print the file")
+    ap.add_argument("--refresh-check", action="store_true",
+                    help="report the token renewal state at 0.5 s and 7 s (needs refresh material in the state file)")
     ap.add_argument("--no-token-check", action="store_true",
                     help="press Search with no token and report what happened")
     ap.add_argument("--open-menu", metavar="NAME",
@@ -245,6 +249,19 @@ def main():
 
     if args.no_token_check:
         QTimer.singleShot(2500, lambda: QMetaObject.invokeMethod(window, "reportNoToken"))
+    if args.writeback_check:
+        QTimer.singleShot(2500, lambda: QMetaObject.invokeMethod(window, "debugWriteBack"))
+
+        def show_cli_file():
+            cfg = os.path.join(SANDBOX_HOME, ".letsfg", "config.json")
+            try:
+                print("[writeback] " + cfg + " -> " + open(cfg, encoding="utf-8").read().replace("\n", " "))
+            except OSError as e:
+                print("[writeback] could not read " + cfg + ": " + str(e))
+        QTimer.singleShot(4000, show_cli_file)
+    if args.refresh_check:
+        QTimer.singleShot(500, lambda: QMetaObject.invokeMethod(window, "reportRefresh"))
+        QTimer.singleShot(7000, lambda: QMetaObject.invokeMethod(window, "reportRefresh"))
 
     if args.fixture or args.search:
         QTimer.singleShot(int((args.delay - 0.4) * 1000),

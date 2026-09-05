@@ -41,25 +41,49 @@ Then add **LetsFG Flights** to a bar section in the Omarchy bar settings.
 
 ### Connect
 
-**How a token is issued now.** Since 2026-09-02 LetsFG issues card-backed
-tokens through one flow: connect the hosted MCP
-(`https://letsfg.co/developers/api/mcp`) and approve it; the consent step
-opens letsfg.co/connect, where a card is saved in a 0.00 Revolut setup —
-nothing is charged. The Stripe enrolment that the panel's **Add a card to
-continue** button and `letsfg auth` drive was retired that day, and the
-tokens it issued were revoked, so neither issues a token at the moment. Both
-are being moved to the connect flow.
+**How a token is issued.** Since 2026-09-02 LetsFG issues card-backed tokens
+through one flow: an OAuth 2.1 + PKCE grant whose consent step is
+letsfg.co/connect, where a card is saved in a 0.00 Revolut setup — nothing
+is charged. `letsfg auth` drives it from a terminal, and the panel's
+**Connect at letsfg.co** button drives the same flow from the bar. (The
+Stripe enrolment both used to drive was retired that day and its tokens
+revoked.)
+
+**Connecting from the panel.** Press **Connect at letsfg.co**. The panel
+registers itself as an OAuth client, opens letsfg.co/connect in your
+browser, and you approve there. The browser is then sent to
+`http://127.0.0.1:17531/letsfg-omarchy?code=…` — a page that cannot load,
+because nothing on your machine listens there — and you copy that address
+from the address bar into the panel and press **Finish**. That paste step is
+the one difference from `letsfg auth`: the CLI catches the redirect on a
+loopback listener, and a Quickshell plugin cannot bind a TCP port without
+spawning a process, which this plugin does not do. It is safe as well as
+ugly: the code is single-use, dies in 90 seconds, and is bound by PKCE to a
+verifier that never leaves the panel, so the address is worthless to anyone
+else.
 
 **What the panel reads.** The plugin takes its token from
-`~/.letsfg/config.json` (`{"pfs_auth": {"token", "expires_at"}}`) or its own
-per-shell state file, whichever holds one. It re-reads the file when the
-panel opens, so a token that lands there is picked up without restarting the
-shell. When the token is missing or expired the panel says so and Search does
-nothing — no request is made. The panel also warns you in the week before the
-token expires.
+`~/.letsfg/config.json` (`{"pfs_auth": {"token", "expires_at",
+"refresh_token", "client_id"}}`, exactly what `letsfg auth` writes) or its own
+per-shell state file, whichever holds one. It re-reads the file when the panel
+opens and watches it for changes, so a token that lands there is picked up
+without restarting the shell. When the token is missing or expired the panel
+says so and Search does nothing — no request is made.
 
-The panel never asks for card details, never sees them, and only ever opens
-a setup URL whose host it has checked; the plugin itself has no card fields.
+**Renewal.** Access tokens last an hour; the refresh token beside them lasts
+30 days and rotates on every use. When the access token is within ten
+minutes of expiry the panel renews it silently at the token endpoint — when
+the token file is read (shell start, panel open, or the CLI rewriting it), or
+on a Search press that finds it short — and writes the rotated
+refresh token back to the file it came from, so the CLI is never left holding
+a spent one. Renewal is never on a timer (see [Why there is no
+auto-refresh](#why-there-is-no-auto-refresh)), and a refused renewal is not
+retried for a minute. Only when the refresh token itself is refused — spent,
+past its 30 days, or revoked — does the panel ask you to connect again.
+
+The panel never asks for card details and never sees them: the only page it
+opens is letsfg.co/connect, built from a fixed origin, never from a response.
+The plugin itself has no card fields.
 
 ## Remove
 
@@ -140,7 +164,10 @@ deliberately **no `search` method** — see below.
 
 The plugin never searches on its own. There is no background poll, no price
 watch, no refresh timer, and no IPC method that starts a search. A search
-begins only when you click **Search** or press Enter in a field.
+begins only when you click **Search** or press Enter in a field. (Token
+renewal is the one thing the panel does unprompted, and it is not a search:
+one request to the token endpoint, only when the token is short, never on a
+timer, and it never starts a search when it completes — you press Search.)
 
 That is a deliberate constraint, for three reasons that all point the same way:
 
@@ -185,19 +212,21 @@ exactly what this one does.
 
 **What it reads**
 
-- `~/.letsfg/config.json` — read-only, for your token (the CLI's file); this
-  plugin never writes it.
+- `~/.letsfg/config.json` — for your token (the CLI's file). Read on open and
+  watched for changes. Written in exactly one case, below.
 - Its own entry in `shell.json`, for the optional defaults above — read-only.
 
 **What it writes**
 
-Two files, both inside Quickshell's own per-shell state directory
-(`~/.local/state/quickshell/by-shell/<id>/`), and nothing anywhere else.
+Two files inside Quickshell's own per-shell state directory
+(`~/.local/state/quickshell/by-shell/<id>/`), plus the CLI's own token file in
+one specific case, and nothing anywhere else.
 
-- **Your access token**, and only when you sign in from the panel.
-  It goes to Quickshell's own per-shell state directory
+- **Your credentials**, when you connect from the panel. They go to
+  Quickshell's own per-shell state directory
   (`~/.local/state/quickshell/by-shell/<id>/letsfg-auth.json`), in the same
-  `{"pfs_auth": {"token", "expires_at"}}` shape the CLI uses.
+  `{"pfs_auth": {"token", "expires_at", "refresh_token", "client_id"}}` shape
+  the CLI uses.
 
   Not `~/.letsfg/config.json`: `FileView` writes atomically by renaming into
   the target directory, so that path fails outright when `~/.letsfg` does not
@@ -205,6 +234,13 @@ Two files, both inside Quickshell's own per-shell state directory
   Creating it would mean spawning `mkdir`, and this plugin spawns no
   processes. The CLI's file is still **preferred on read**, so a token in
   `~/.letsfg/config.json` keeps winning and the two never disagree.
+- **`~/.letsfg/config.json`, only to renew a token that came from it.** A
+  renewal rotates the refresh token, and the rotated one has to go back into
+  the file the CLI reads — otherwise the CLI's next refresh would present a
+  spent token, which revokes the whole grant for both of you. The write
+  replaces the `pfs_auth` fields and leaves every other key in the file
+  untouched; the file already exists (the panel read it), so the atomic
+  rename works. The plugin never creates this file.
 - **An anonymous installation id** — `letsfg-install.json`, written once, on
   first run. 24 random lowercase characters and nothing else. What it is for and
   where it goes is under [What it sends](#privileges-and-data) below; delete the
@@ -298,9 +334,9 @@ Two files, both inside Quickshell's own per-shell state directory
   user, so a misbehaving install can only spend its own quota.
 - **Ask for card details.** Cards are only ever entered on the payment
   provider's own page in your browser (today: Revolut, at letsfg.co/connect).
-  The plugin has no card fields, and refuses to open a setup link whose host it
-  has not checked — an open redirect there would be a phishing vector for
-  exactly the data this flow must never touch.
+  The plugin has no card fields, and the connect page it opens is built from
+  a fixed origin rather than taken from a response — an open redirect there
+  would be a phishing vector for exactly the data this flow must never touch.
 - Send your token, your search terms, or any identifier anywhere except
   `letsfg.co` — including the installation id above, which goes to that one host
   and nowhere else. The logo CDN receives an image request and nothing else.
@@ -386,7 +422,9 @@ review.
 
 **Verified.** The logic in `Model.js` — input validation, URL allowlisting,
 token parsing and confinement, response parsing, the poll state machine, offer
-shaping, throttling — is covered by 445 assertions that run without Qt:
+shaping, throttling, the connect flow's PKCE (a from-scratch SHA-256 checked
+against the FIPS and RFC 7636 vectors), token renewal and the file write-back
+— is covered by 514 assertions that run without Qt:
 
 ```bash
 node test/model-test.js
