@@ -45,7 +45,7 @@ from letsfg.models import (
 )
 from letsfg.models.flights import PublicFlightOffer, to_public_offer
 
-__version__ = "2026.5.99"
+__version__ = "2026.5.100"
 __all__ = [
     "LetsFG",
     "LetsFGError",

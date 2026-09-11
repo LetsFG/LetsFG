@@ -49,7 +49,11 @@ app = typer.Typer(
     ),
     no_args_is_help=True,
 )
-console = Console() if HAS_RICH else None
+# A pipe or file has no width, and rich then folds the table into 80 columns -
+# `LTN→…` for a route, `FR-R…` for an airline - which is what every agent
+# capturing this CLI would read. Give a redirected stream room; a console keeps
+# its real width.
+console = Console(width=None if sys.stdout.isatty() else 160) if HAS_RICH else None
 
 
 def _get_client(api_key: str | None = None, base_url: str | None = None) -> LetsFG:
@@ -271,14 +275,65 @@ def _offer_price(offer: dict) -> float:
 
 
 def _offer_duration_seconds(offer: dict) -> int:
-    """Extract comparable offer duration; missing/invalid values sort last."""
-    raw = offer.get("duration_seconds")
-    if raw is None:
-        raw = (offer.get("outbound") or {}).get("total_duration_seconds")
+    """Comparable trip duration (outbound + inbound); missing values sort last."""
+    total = 0
+    for leg in (offer, offer.get("inbound")):
+        if not leg:
+            continue
+        try:
+            total += int(leg.get("duration_minutes") or 0) * 60
+        except (TypeError, ValueError):
+            pass
+    return total or int(1e18)
+
+
+def _leg_airlines(leg: dict) -> str:
+    """Airline column for one leg: 'W6-Wizz Air', or 'W6-Wizz Air + FR-Ryanair'
+    when the segments are flown by different carriers."""
+    if not leg:
+        return "-"
+    seen: list[tuple[str, str]] = []
+    for s in leg.get("segments") or []:
+        key = (str(s.get("airline_code") or ""), str(s.get("airline") or ""))
+        if any(key[0] or key[1]) and key not in seen:
+            seen.append(key)
+    if not seen:
+        seen = [(str(leg.get("airline_code") or ""), str(leg.get("airline") or ""))]
+    parts = [_fmt_airline(code or name, [name]) for code, name in seen if code or name]
+    return " + ".join(parts) or "-"
+
+
+def _leg_route(leg: dict) -> str:
+    """'WAW→BGY→BCN' from the segments, or 'WAW→BCN' from the leg itself."""
+    if not leg:
+        return "-"
+    segs = leg.get("segments") or []
+    codes = [segs[0].get("origin", "")] + [s.get("destination", "") for s in segs] if segs \
+        else [leg.get("origin", ""), leg.get("destination", "")]
+    route = "→".join(c for c in codes if c)
+    return route or "-"
+
+
+def _leg_duration(leg: dict) -> str:
+    if not leg:
+        return "-"
     try:
-        return int(raw) if raw is not None else int(1e18)
+        minutes = int(leg.get("duration_minutes") or 0)
     except (TypeError, ValueError):
-        return int(1e18)
+        return "-"
+    if not minutes:
+        return "-"
+    h, m = divmod(minutes, 60)
+    return f"{h}h {m:02d}m"
+
+
+def _leg_stops(leg: dict) -> str:
+    if not leg:
+        return "-"
+    stops = leg.get("stops")
+    if stops is None:
+        stops = max(len(leg.get("segments") or []) - 1, 0)
+    return str(stops)
 
 
 def _final_sort_offers(offers: list[dict], sort: str) -> None:
@@ -295,13 +350,10 @@ def _format_leg_time(leg: dict, pos: str = "dep", include_day_offset: bool = Fal
         return "-"
 
     segs = leg.get("segments") or []
-    if not segs:
-        return "-"
-
     if pos == "dep":
-        dt_str = segs[0].get("departure", "")
+        dt_str = leg.get("departure_time") or (segs[0].get("departure_time", "") if segs else "")
     else:
-        dt_str = segs[-1].get("arrival", "")
+        dt_str = leg.get("arrival_time") or (segs[-1].get("arrival_time", "") if segs else "")
 
     if not dt_str:
         return "-"
@@ -314,7 +366,7 @@ def _format_leg_time(leg: dict, pos: str = "dep", include_day_offset: bool = Fal
     if pos != "arr" or not include_day_offset:
         return time_part
 
-    dep_str = segs[0].get("departure", "")
+    dep_str = leg.get("departure_time") or (segs[0].get("departure_time", "") if segs else "")
     if not dep_str or "T" not in dep_str or "T" not in dt_str:
         return time_part
 
@@ -423,27 +475,8 @@ def search(
     if search_id:
         print(f"  search_id: {search_id}  (needed for `letsfg book`, offers expire ~15 min after search)")
 
-    def _route_str(leg):
-        if not leg:
-            return "-"
-        route = leg.get("route_str", "")
-        if not route:
-            segs = leg.get("segments", [])
-            if segs:
-                codes = [segs[0].get("origin", "")]
-                for s in segs:
-                    codes.append(s.get("destination", ""))
-                route = "→".join(c for c in codes if c)
-        return route or "-"
-
-    def _dur_str(leg):
-        if not leg:
-            return "-"
-        dur_s = leg.get("total_duration_seconds")
-        if dur_s:
-            h, m = divmod(dur_s // 60, 60)
-            return f"{h}h {m:02d}m"
-        return "-"
+    _route_str = _leg_route
+    _dur_str = _leg_duration
 
     def _time_str(leg, pos="dep"):
         return _format_leg_time(leg, pos=pos, include_day_offset=(pos == "arr"))
@@ -466,10 +499,10 @@ def search(
             table.add_column("Dur", justify="right")
 
         for i, o in enumerate(offers, 1):
-            ob = o.get("outbound", {})
+            ob = o            # the outbound leg IS the offer
             ib = o.get("inbound")
-            airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
-            stops = str(ob.get("stopovers", 0))
+            airlines = _leg_airlines(ob)
+            stops = _leg_stops(ob)
             raw_price = o.get("price", 0)
             raw_currency = (o.get("currency", currency) or currency).upper()
             price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
@@ -490,6 +523,7 @@ def search(
             id_str = f"  [{offer_id}]" if offer_id else ""
             unlock = o.get("unlock_url", "")
             pt = o.get("payment_token", "")
+            airlines = _leg_airlines(o)
             print(f"  {i:3d}. {cur} {price:.2f} {airlines}{id_str}")
             if unlock:
                 print(f"       Unlock: {unlock}")
@@ -500,8 +534,8 @@ def search(
             raw_price = o.get("price", 0)
             raw_currency = (o.get("currency", currency) or currency).upper()
             price, cur = _convert_display_price(raw_price, raw_currency, target_currency, eur_rates)
-            airlines = _fmt_airline(o.get("owner_airline", ""), o.get("airlines", []))
-            ob = o.get("outbound", {})
+            airlines = _leg_airlines(o)
+            ob = o
             ib = o.get("inbound")
             dep = _time_str(ob, "dep")
             arr = _time_str(ob, "arr")
@@ -578,7 +612,12 @@ def unlock(
 def book(
     offer_id: str = typer.Argument(..., help="Offer ID from `letsfg search`"),
     search_id: Optional[str] = typer.Option(None, "--search-id", help="search_id from `letsfg search` (required unless --api-key is set, i.e. the paid Developer API flow)"),
-    passenger: list[str] = typer.Option(..., "--passenger", "-p", help='JSON passenger object: \'{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","phone_number":"+15551234567"}\''),
+    passenger: list[str] = typer.Option(..., "--passenger", "-p", help=(
+        "JSON traveller object. The airline's checkout needs: given_name, family_name, born_on "
+        "(YYYY-MM-DD), gender (m/f), nationality (ISO 2), phone_number + phone_country, "
+        "address_line1, address_city, address_postal, address_country; passport is optional. "
+        "Anything missing comes back as missing_fields and nothing is charged."
+    )),
     email: str = typer.Option(..., "--email", "-e", help="Contact email"),
     phone: str = typer.Option("", "--phone", help="Contact phone (used if not already in the passenger JSON)"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
@@ -628,13 +667,7 @@ def book(
             _json_out(result)
             return
 
-        if result.get("booked"):
-            print(f"\n  ✓ Booking confirmed!")
-            print(f"    Order ID: {result.get('order_id')}")
-            print(f"    Charged: {result.get('charged', 0)} {result.get('currency', '')}\n")
-        else:
-            print(f"\n  Could not complete a confirmed booking. Nothing was charged.")
-            print(f"    Booking link: {result.get('booking_url', '(none)')}\n")
+        _print_book_result(result)
         return
 
     bt = _get_client(api_key, base_url)
@@ -680,6 +713,98 @@ def book(
         _err(f"Booking failed: {result.details}")
 
 
+def _print_book_result(result: dict) -> None:
+    """Human output for POST /api/agent-book.
+
+    The route answers one of: `{booking_ref}` (the fare is held and a booking
+    agent is buying the ticket - poll it), `missing_details` + `missing_fields`
+    (nothing charged), `payment_method_required` + `add_card_url` (nothing
+    charged), or another `error` with a `message`. The previous output printed
+    "Could not complete a confirmed booking ... Booking link: (none)" for every
+    one of the last three, hiding the field list and the add-card link that
+    told the person what to do next.
+    """
+    ref = result.get("booking_ref")
+    if ref:
+        print("\n  Booking started. The fare is held on the connected card - it is captured")
+        print("  only once the airline confirms with a PNR (usually 4-11 minutes).")
+        print(f"    booking_ref: {ref}")
+        print(f"    Check on it:  letsfg booking {ref}   (add --wait to poll until it settles)\n")
+        return
+    err = str(result.get("error") or "")
+    msg = str(result.get("message") or "")
+    if err == "missing_details":
+        fields = result.get("missing_fields") or []
+        print("\n  Not booked yet - the traveller's details are incomplete. Nothing was charged.")
+        print(f"    Missing: {', '.join(str(f) for f in fields) or '(unspecified)'}")
+        print("    Add them to the --passenger JSON and run the same command again.\n")
+        return
+    if err in ("payment_method_required", "payment_declined"):
+        print("\n  Not booked - this account has no usable payment method. Nothing was charged.")
+        if msg:
+            print(f"    {msg}")
+        url = result.get("add_card_url")
+        if url:
+            print(f"    Add a card here, then run the same command again: {url}")
+        print()
+        return
+    print("\n  Not booked. Nothing was charged.")
+    if err:
+        print(f"    error: {err}")
+    if msg:
+        print(f"    {msg}")
+    print()
+
+
+@app.command()
+def booking(
+    booking_ref: str = typer.Argument(..., help="booking_ref returned by `letsfg book`"),
+    wait: bool = typer.Option(False, "--wait", "-w", help="Poll every 20 s until the booking completes or fails (up to 20 min)"),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+):
+    """Check a booking started by `letsfg book`. Free; requires `letsfg auth`."""
+    import time
+    from letsfg.local import booking_status
+    from letsfg.connectors.auth import BearerTokenError
+
+    terminal = {"completed", "failed", "needs_attention"}
+    deadline = time.time() + 20 * 60
+    result: dict = {}
+    while True:
+        try:
+            result = asyncio.run(booking_status(booking_ref))
+        except BearerTokenError as e:
+            _err(str(e))
+        except Exception as e:
+            _err(f"Could not read the booking status: {e}")
+        state = str(result.get("state") or "")
+        if not wait or state in terminal or time.time() > deadline:
+            break
+        if not output_json:
+            print(f"  {state or 'no record yet'} ... polling again in 20 s", flush=True)
+        time.sleep(20)
+
+    if output_json:
+        _json_out(result)
+        return
+    if result.get("error"):
+        _err(f"{result.get('error')}: {result.get('message') or ''}".strip())
+    state = str(result.get("state") or "")
+    if state == "completed":
+        print(f"\n  ✓ Booked. PNR: {result.get('pnr')}")
+        print(f"    Charged: {result.get('charged_amount')} {result.get('currency') or ''}\n")
+    elif state == "failed":
+        print("\n  Booking failed - the hold was released, nothing was charged.")
+        print(f"    Reason: {result.get('failure_reason') or result.get('decline_reason') or '(none given)'}\n")
+    elif state == "needs_attention":
+        print("\n  A person at LetsFG is checking this booking. Do not book it again.")
+        print(f"    Reason: {result.get('failure_reason') or '(none given)'}\n")
+    elif state:
+        print(f"\n  {state} - still in progress. Check again in 20-30 s (or use --wait).\n")
+    else:
+        print(f"\n  No booking record yet. {result.get('message') or 'Check again in 20-30 s.'}\n")
+
+
 # ── Locations ─────────────────────────────────────────────────────────────
 
 @app.command()
@@ -689,7 +814,17 @@ def locations(
     api_key: Optional[str] = typer.Option(None, "--api-key", "-k", envvar="LETSFG_API_KEY"),
     base_url: Optional[str] = typer.Option(None, "--base-url", envvar="LETSFG_BASE_URL"),
 ):
-    """Resolve city/airport name to IATA codes."""
+    """Resolve city/airport name to IATA codes (Developer API key required; search itself takes IATA codes)."""
+    from letsfg.client import _saved_api_key
+
+    if not (api_key or os.environ.get("LETSFG_API_KEY") or _saved_api_key()):
+        # Without a key the Developer API answers 401, which used to be swallowed
+        # into "No locations found for 'London'" - as if London did not exist.
+        _err(
+            "`letsfg locations` uses the paid Developer API and needs an API key "
+            "(--api-key or LETSFG_API_KEY).\n"
+            "  `letsfg search` needs no key: give it IATA codes directly, e.g. LON, LHR, NYC, BCN."
+        )
     bt = _get_client(api_key, base_url)
     try:
         result = _resolve_locations_with_local_fallback(bt, query)
@@ -945,7 +1080,22 @@ def me(
 
 
 
+def _utf8_streams() -> None:
+    """Redirected stdout/stderr on Windows use the locale code page (cp1252),
+    which cannot encode the arrows in the results table, so
+    `letsfg search ... > out.txt` -- and every agent capturing this CLI through
+    a pipe -- died with UnicodeEncodeError after the search had already run. A
+    console is UTF-8 already; a pipe or file is switched to it here."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if not stream.isatty():
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
+    _utf8_streams()
     app()
 
 
