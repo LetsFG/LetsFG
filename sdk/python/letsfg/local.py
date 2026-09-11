@@ -138,18 +138,22 @@ async def search_local(
         "adults": adults,
         "children": children,
         "currency": currency,
-        "limit": limit,
     }
     if return_date:
         payload["return_date"] = return_date
+    # Key names are the website route's (website/app/api/search/route.ts reads
+    # `max_stops`, `cabin`, `sort_by`). This used to send `max_stopovers`,
+    # `cabin_class` and `sort`, none of which the route reads, so `--direct`,
+    # `--cabin` and `--sort` were accepted by the CLI and silently ignored by
+    # the server -- a "direct only" search came back with every connection.
     if cabin_class:
-        payload["cabin_class"] = cabin_class
+        payload["cabin"] = cabin_class
     if infants:
         payload["infants"] = infants
     if max_stopovers is not None:
-        payload["max_stopovers"] = max_stopovers
+        payload["max_stops"] = max_stopovers
     if sort:
-        payload["sort"] = sort
+        payload["sort_by"] = sort
 
     req = Request(
         f"{_BASE_URL}/api/search",
@@ -269,6 +273,35 @@ async def book_offer(
             return json.loads(raw)
         except Exception:
             return {"ok": False, "booked": False, "error": raw[:400]}
+
+
+async def booking_status(booking_ref: str) -> dict:
+    """
+    One poll of POST /api/agent-book/status for a booking started by book_offer().
+
+    Returns the server's record: `state` (booking_in_progress / completed /
+    failed / needs_attention, '' while no record exists yet), `pnr`,
+    `charged_amount` (the CAPTURED amount - null until capture), `currency`,
+    `failure_reason`, `decline_reason`, `updated_at_ms`.
+    """
+    token = ensure_bearer_token()
+    req = Request(
+        f"{_BASE_URL}/api/agent-book/status",
+        data=json.dumps({"booking_ref": booking_ref}).encode(),
+        headers=_headers(token),
+        method="POST",
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 401:
+            raise _unauthorized(e) from None
+        raw = e.read().decode(errors="replace")
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {"error": raw[:400]}
 
 
 async def _resolve_location_local(query: str) -> list[dict]:
