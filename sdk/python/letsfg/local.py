@@ -21,7 +21,7 @@ import os
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from letsfg.connectors.auth import get_bearer_token, BearerTokenError
+from letsfg.connectors.auth import ensure_bearer_token, BearerTokenError
 
 _BASE_URL = os.environ.get("LETSFG_BASE_URL", "https://letsfg.co")
 # Poll fast and poll FIRST. The old loop slept 10s before its opening poll,
@@ -121,10 +121,15 @@ async def search_local(
     """
     Search flights via the LetsFG cloud API.
 
-    Requires a Bearer token — run `letsfg auth` once. Free and unlimited.
+    Requires a Bearer token — run `letsfg auth` once; it refreshes itself after that.
     Returns { offers: [...], total_results: N, search_id: "..." }.
     """
-    token = get_bearer_token()
+    # ensure_, not get_: the access token lasts an hour and the refresh token
+    # is stored right next to it. get_bearer_token() is synchronous and cannot
+    # refresh, so `letsfg search` an hour after `letsfg auth` told the person
+    # the token had expired and to run `letsfg auth` again (LetsFG/LetsFG#212
+    # went through the consent three times for less).
+    token = ensure_bearer_token()
 
     payload: dict = {
         "origin": origin,
@@ -231,7 +236,12 @@ async def book_offer(
     Retrying will not book it — hand the user `booking_url`, which goes straight
     to that exact offer. Nothing is charged in either case.
     """
-    token = get_bearer_token()
+    # ensure_, not get_: the access token lasts an hour and the refresh token
+    # is stored right next to it. get_bearer_token() is synchronous and cannot
+    # refresh, so `letsfg search` an hour after `letsfg auth` told the person
+    # the token had expired and to run `letsfg auth` again (LetsFG/LetsFG#212
+    # went through the consent three times for less).
+    token = ensure_bearer_token()
 
     payload: dict = {
         "search_id": search_id,
