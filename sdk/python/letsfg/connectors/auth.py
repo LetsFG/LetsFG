@@ -59,7 +59,14 @@ _REFRESH_SKEW = 5 * 60
 # Must match client.py: Cloudflare blocks the urllib default UA with error 1010.
 _USER_AGENT = "LetsFG-Python-SDK/1.0.3"
 _CLIENT_NAME = "letsfg-python"
-_SCOPE = "flights"
+# The scopes the server advertises in `scopes_supported` (RFC 8414 discovery):
+# flights:search, flights:book, hotels:search, hotels:book, profile:read. The
+# CLI searches and books flights, nothing else. This used to be the bare word
+# "flights" (LetsFG/LetsFG#212): the server silently drops any scope it does
+# not know, so the consent succeeded and the grant carried NO scope at all --
+# every hosted-connector tool then refused it with "does not include
+# 'flights:search'". Keep every entry here one the server advertises.
+_SCOPE = "flights:search flights:book profile:read"
 
 
 class BearerTokenError(Exception):
@@ -242,7 +249,7 @@ _DONE_HTML = (
     b"<!doctype html><meta charset=utf-8>"
     b"<title>LetsFG connected</title>"
     b"<body style=\"font:16px system-ui;padding:3rem;text-align:center\">"
-    b"<h2>Card connected.</h2>"
+    b"<h2>Connected.</h2>"
     b"<p>You can close this tab and go back to the terminal.</p>"
 )
 _FAIL_HTML = (
@@ -392,10 +399,10 @@ def connect_auth(open_browser: bool = True) -> str:
             "scope": _SCOPE,
         })
 
-        print("\n  LetsFG needs a card connected before it can search or book.")
-        print("  Nothing is charged now - you pay the fare only when you book,")
-        print("  and it is held, not taken, until the airline confirms.\n")
-        print("  Open this and add a card (or pay 0.00 with Revolut Pay):\n")
+        print("\n  LetsFG needs you to approve this CLI once at letsfg.co/connect.")
+        print("  Nothing is charged now - a card is asked for at your first booking,")
+        print("  and the fare is held, not taken, until the airline confirms.\n")
+        print("  Open this and approve:\n")
         print(f"     {auth_url}\n")
         if open_browser:
             try:
@@ -431,7 +438,21 @@ def connect_auth(open_browser: bool = True) -> str:
             refresh_token=data.get("refresh_token"),
             client_id=str(client_id),
         )
-        print("done. Card connected - the token refreshes itself from now on.")
+        print("done. Connected - the token refreshes itself from now on.")
+        # RFC 6749 s3.3: when the granted scope differs from the requested one the
+        # server says so in `scope`. A grant that lost `flights:search` still
+        # searches through letsfg.co/api (that lane reads the card/account, not
+        # the scope) but every hosted-connector tool will refuse it -- say so
+        # here, once, instead of letting the next command fail on it.
+        granted = str(data.get("scope") or "").split() if "scope" in data else None
+        if granted is not None and "flights:search" not in granted:
+            print(
+                "\n  Warning: the grant came back without 'flights:search' "
+                f"(server granted: {' '.join(granted) or 'nothing'}).\n"
+                "  Searching via letsfg.co still works; the hosted connector at\n"
+                "  letsfg.co/developers/api/mcp will refuse this token. Run `letsfg auth`\n"
+                "  again and, if it repeats, report it at github.com/LetsFG/LetsFG/issues."
+            )
         return str(data["access_token"])
     finally:
         server.close()
