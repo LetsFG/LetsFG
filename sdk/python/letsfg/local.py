@@ -65,6 +65,32 @@ _WAIT_FOR_SPLIT = os.environ.get("LETSFG_WAIT_FOR_SPLIT", "").strip() != "0"
 _USER_AGENT = "LetsFG-Python-SDK/1.0.3"
 
 
+def _unauthorized(e: HTTPError) -> BearerTokenError:
+    """The message for a 401, carrying the server's own reason.
+
+    letsfg.co answers 401 with `{"error": "Unauthorized", "code": "NO_SESSION"}`
+    both when a token is expired or revoked AND when it was refused for another
+    reason -- for a week every OAuth token minted by a card-less `letsfg auth`
+    was refused that way (LetsFG/LetsFG#212), and this function's predecessor
+    called all of it "expired or revoked", which sent people back through the
+    consent flow three times for a bug on our side. Carry the code, so a report
+    can quote it and so a reconnect that does not help reads as what it is.
+    """
+    code = ""
+    try:
+        body = json.loads(e.read().decode(errors="replace"))
+        code = str(body.get("code") or body.get("error") or "").strip()
+    except Exception:
+        pass
+    detail = f" (server said: {code})" if code else ""
+    return BearerTokenError(
+        f"letsfg.co refused the Bearer token with HTTP 401{detail}.\n"
+        "  Run `letsfg auth` to reconnect. If a fresh connect is refused the same\n"
+        "  way, the token is being rejected server-side, not expired - please\n"
+        "  report it with the code above at github.com/LetsFG/LetsFG/issues."
+    )
+
+
 def _headers(token: str, *, json_body: bool = True) -> dict[str, str]:
     headers = {
         "Authorization": f"Bearer {token}",
@@ -131,9 +157,7 @@ async def search_local(
             result = json.loads(resp.read())
     except HTTPError as e:
         if e.code == 401:
-            raise BearerTokenError(
-                "Bearer token expired or revoked. Run `letsfg auth` to re-authenticate."
-            )
+            raise _unauthorized(e) from None
         raise
 
     search_id = result.get("search_id") or result.get("id")
@@ -229,9 +253,7 @@ async def book_offer(
             return json.loads(resp.read())
     except HTTPError as e:
         if e.code == 401:
-            raise BearerTokenError(
-                "Bearer token expired or revoked. Run `letsfg auth` to re-authenticate."
-            )
+            raise _unauthorized(e) from None
         raw = e.read().decode(errors="replace")
         try:
             return json.loads(raw)
