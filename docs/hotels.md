@@ -75,6 +75,11 @@ prices in PLN; the response says so in `supplier_currency`, and every offer
 carries the `fx_rate` it was converted at, so the number you show a guest is
 the number they are charged.
 
+`price` is the supplier's cost plus 6.4% — our margin and the payment processing
+fee — for Revolut Pay or a card issued in the EEA; an account whose connected
+card was issued elsewhere is quoted at 8.3%. The response says which in
+`markup_rate`. Nothing is added at booking.
+
 Each offer carries `price` (what the guest pays, in `currency`), `refundable`,
 `free_cancellation_until`, `cancellation_policy` and `expected_cost` (the
 supplier's own figure, in the supplier's currency). There is no wholesale figure
