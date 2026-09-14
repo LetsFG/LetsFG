@@ -435,8 +435,8 @@ Panel {
       patchHotelGate({ consecutiveFailures: 0, breakerOpen: false })
       root.hotels = Model.summarizeHotels(parsed.value, nights, 20)
       root.hotelStatus = root.hotels.length > 0
-        ? (root.hotels.length + " stays, free cancellation only")
-        : "No free-cancellation rooms for those dates."
+        ? (root.hotels.length + " stays")
+        : "No rooms for those dates."
     }
 
     try {
@@ -3270,8 +3270,9 @@ Panel {
         // ---- Hotels ----------------------------------------------------
         //
         // Same Bearer token as flights -- /developers/api/v1/hotels/* accepts
-        // it, exactly as sdk/mcp sends it. Only free-cancellation, pay-later
-        // rates come back, which is why the list is shorter than a metasearch.
+        // it, exactly as sdk/mcp sends it. Every rate type comes back, refundable
+        // and non-refundable; the price is held at booking and captured once the
+        // hotel confirms, so nothing is ever due later (retired 2026-09-11).
         Item {
           width: parent.width
           height: shell.height - y
@@ -3324,7 +3325,7 @@ Panel {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               topPadding: Style.space(30)
-              text: "Free-cancellation, pay-later stays \u2014 on the same free token as flights."
+              text: "Refundable and non-refundable stays \u2014 on the same free token as flights."
               color: root.inkMuted
               font.family: root.brandFont
               font.pixelSize: Style.font.bodySmall
@@ -3530,8 +3531,12 @@ Panel {
                           }
                           Text {
                             anchors.right: parent.right
-                            visible: stayCard.modelData.dueNow.length > 0
-                            text: stayCard.modelData.dueNow + " now"
+                            // The whole price is held at booking, so what belongs beside it is the
+                            // cancellation term - never an amount "due now" (retired 2026-09-11).
+                            visible: text.length > 0
+                            text: stayCard.modelData.refundable
+                              ? (stayCard.modelData.freeUntil.length > 0 ? "Free until " + stayCard.modelData.freeUntil : "")
+                              : "Non-refundable"
                             color: root.inkFaint
                             font.family: root.brandFont
                             font.pixelSize: Style.font.bodySmall - 2

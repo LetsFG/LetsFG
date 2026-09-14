@@ -2085,9 +2085,11 @@ function nightsBetween(checkIn, checkOut) {
   return (n > 0 && n < 400) ? n : 0
 }
 
-// Only free-cancellation, pay-later rates come back, so every card shown can
-// actually be booked on those terms. `price` is what the guest pays in total;
-// `reservation_fee_now` is the slice taken at booking.
+// Every rate type comes back, refundable and non-refundable. `price` is the
+// total the guest pays; since 2026-09-11 it is held in full at booking and
+// captured once the hotel confirms, so nothing is due later and a card carries
+// no "now" slice. `expected_cost` is the supplier's own figure, there only to be
+// sent back to /hotels/book - it never reaches a card.
 function summarizeHotels(result, nights, maxHotels) {
   var cap = (isFinite(maxHotels) && maxHotels > 0) ? maxHotels : 20
   var rows = (result && Array.isArray(result.hotels)) ? result.hotels : []
@@ -2116,6 +2118,8 @@ function summarizeHotels(result, nights, maxHotels) {
     var reviews = Number(h.review_count)
     var total = Number(best.price)
     var perNight = (nights > 0) ? (total / nights) : 0
+    // Refundable only when the API says so: a policy string is not a promise of a refund.
+    var refundable = best.refundable === true
 
     out.push({
       name: safeText(h.name, 70),
@@ -2127,11 +2131,12 @@ function summarizeHotels(result, nights, maxHotels) {
       image: image,
       room: safeText(best.room, 60),
       board: safeText(best.board, 40),
-      freeCancellation: safeText(best.cancellation_policy, 40).toLowerCase().indexOf("free") === 0,
+      freeCancellation: refundable,
+      refundable: refundable,
+      freeUntil: (refundable && isValidDate(best.free_cancellation_until)) ? safeText(best.free_cancellation_until, 10) : "",
       price: money(total, best.currency),
       priceValue: total,
-      perNight: perNight > 0 ? money(perNight, best.currency) : "",
-      dueNow: money(best.reservation_fee_now, best.currency)
+      perNight: perNight > 0 ? money(perNight, best.currency) : ""
     })
   }
 

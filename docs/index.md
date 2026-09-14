@@ -91,7 +91,7 @@ LetsFG has two access paths — pick the one that matches your setup:
   <span class="docs-step-arrow">/</span>
   <span class="docs-step">2. Connect a Revolut method</span>
   <span class="docs-step-arrow">/</span>
-  <span class="docs-step">3. Top up balance</span>
+  <span class="docs-step">3. Top up (only past the free allowance)</span>
   <span class="docs-step-arrow">/</span>
   <span class="docs-step">4. Search</span>
   <span class="docs-step-arrow">/</span>

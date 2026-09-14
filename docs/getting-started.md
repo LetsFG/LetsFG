@@ -141,7 +141,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/top-up \
   -d '{"amount_cents": 2500}'
 ```
 
-Search is not enabled until balance exists. Top-up is the step that activates public flight search for that key.
+Balance is not needed to start: a connected method opens search, and the free look-to-book allowance covers it until it runs out.
 
 ### 4. Run the first public search
 
@@ -196,7 +196,6 @@ The profile response shows whether payment is ready, whether API access is enabl
 | `401 API key is required` | Search was attempted without `X-API-Key` | Register first and send the returned key |
 | `402 payment_method_required` | No Revolut method connected | `POST /agents/connect-payment`, open the `connect_url` |
 | `402 search_allowance_exhausted` | The look-to-book allowance is used up | Book a flight (resets it) or `POST /agents/top-up` to buy a block |
-| `403 Fund your prepaid API balance before using flight search` | The key exists but public search is not activated on the account | Check `agents/me`, then `POST /agents/top-up` |
 | `410` on `setup-payment` / `hosted-checkout` | Retired with Stripe on 2026-09-08 | Call `POST /agents/connect-payment` and open the `connect_url` |
 
 ## Search flags

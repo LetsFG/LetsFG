@@ -169,7 +169,7 @@ def main():
     ap.add_argument("--persist-check", action="store_true",
                     help="report whether a previously saved token was remembered")
     ap.add_argument("--auth-check", action="store_true",
-                    help="drive the in-panel sign-in (opens Stripe in a browser)")
+                    help="drive the in-panel sign-in (opens letsfg.co/connect in a browser)")
     ap.add_argument("--writeback-check", action="store_true",
                     help="adopt a renewed token as if it came from ~/.letsfg/config.json, persist, print the file")
     ap.add_argument("--refresh-check", action="store_true",

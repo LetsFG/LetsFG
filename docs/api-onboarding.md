@@ -186,5 +186,4 @@ integration is told what to do rather than getting a bare 404:
 | `401 API key is required` | Missing or invalid key | Register first or rotate to a fresh key |
 | `402 payment_method_required` | No Revolut method connected | `POST /agents/connect-payment`, open the link |
 | `402 search_allowance_exhausted` | Used the free allowance since your last booking | Book a flight (resets it) or top up to buy a block |
-| `403 Fund your prepaid API balance before using flight search` | Account exists but paid search is not activated yet | Check `agents/me`, then top up |
 | `410` on `setup-payment` / `hosted-checkout` / `billing-portal` | Stripe lane, retired | Use `POST /agents/connect-payment` |
