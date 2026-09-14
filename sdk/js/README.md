@@ -182,6 +182,12 @@ MIT
 
 Your agent can book hotels as well as flights. Same card-backed token or API key, same connected payment method.
 
+> **Update your SDK before booking hotels.** Hotel booking needs **letsfg 2026.5.101** or later (Python),
+> **letsfg 2026.5.74** or later (JavaScript/TypeScript) or **letsfg-mcp 2026.5.77** or later. Earlier releases send
+> the reservation-fee fields retired on 2026-09-11 (`expected_balance`, no `expected_cost`), and the API refuses
+> every hotel booking they make. Update with `pip install -U letsfg`, `npm install letsfg@latest` or
+> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/developers/api/mcp` needs no update.
+
 ```python
 from letsfg import LetsFG
 lfg = LetsFG()

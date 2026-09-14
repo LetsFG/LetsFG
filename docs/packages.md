@@ -27,6 +27,14 @@ Every package below covers **flights and hotels**, on **one credential**: the ca
 | **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed; **the way to connect** (OAuth consent saves the card) | Nothing up front — connect and approve |
 | **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install | Free token or Developer API key |
 
+!!! warning "Update your SDK before booking hotels"
+    Hotel booking needs **letsfg 2026.5.101** or later (Python), **letsfg 2026.5.74** or later
+    (JavaScript/TypeScript) and **letsfg-mcp 2026.5.77** or later. Earlier releases send the
+    reservation-fee fields retired on 2026-09-11 (`expected_balance`, no `expected_cost`), and the API
+    refuses every hotel booking they make. Update with `pip install -U letsfg`,
+    `npm install letsfg@latest` or `npx -y letsfg-mcp@latest`. The hosted MCP at
+    <https://letsfg.co/developers/api/mcp> needs no update.
+
 ## Python SDK
 
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)

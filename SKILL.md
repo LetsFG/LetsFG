@@ -153,6 +153,9 @@ Start a hotel booking. Returns a job, NOT a booking.
 - **CRITICAL:** send `expected_price`, `expected_cost`, `currency` and `fx_rate` back exactly as the
   chosen offer returned them, or the booking is refused as `price_mismatch` — a guest is never
   charged a price they did not agree to. There is no `expected_balance`.
+- **Local packages:** hotel booking needs `letsfg-mcp` 2026.5.77+, `letsfg` 2026.5.101+ (Python) or
+  `letsfg` 2026.5.74+ (npm). Earlier releases send the retired `expected_balance` contract and every
+  hotel booking they make is refused. The hosted MCP needs no update.
 - **CRITICAL:** never call this again while its job is running — poll the job. A retry with the same
   `idempotency_key` returns the existing job instead of booking twice.
 - **Note:** guest names, phone and e-mail are checked before anything is held (`400 invalid_details`).
@@ -281,7 +284,7 @@ step 4 while its job is running — poll it.
 ## CLI Usage
 
 ```bash
-pip install letsfg
+pip install -U letsfg   # 2026.5.101 or later books hotels
 
 export LETSFG_BEARER_TOKEN=eyJ...   # card-backed token from the connect flow (see Authentication)
 
@@ -369,7 +372,7 @@ Developer API accounts can use the same URL with
 **Local (stdio) — needs a token you already hold:**
 
 ```bash
-npm install -g letsfg-mcp
+npm install -g letsfg-mcp@latest   # 2026.5.77 or later books hotels
 LETSFG_BEARER_TOKEN=eyJ...  letsfg-mcp   # card-backed token from the connect flow
 ```
 

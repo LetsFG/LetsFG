@@ -244,7 +244,7 @@ booked = bt.book(flights.cheapest.id, passengers=[...], contact_email="you@examp
 
 ### Install (Python — recommended for agents)
 ```bash
-pip install letsfg
+pip install -U letsfg   # 2026.5.101 or later books hotels
 ```
 
 This gives you the `letsfg` CLI command. It reads the card-backed PFS token from
@@ -311,7 +311,7 @@ instead — use it only if you have a Developer API key (`api_key="letsfg_..."`)
 
 ### JavaScript/TypeScript SDK + CLI
 ```bash
-npm install -g letsfg
+npm install -g letsfg@latest   # 2026.5.74 or later books hotels
 ```
 
 ```typescript
