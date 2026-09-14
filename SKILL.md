@@ -156,6 +156,9 @@ Start a hotel booking. Returns a job, NOT a booking.
 - **CRITICAL:** never call this again while its job is running — poll the job. A retry with the same
   `idempotency_key` returns the existing job instead of booking twice.
 - **Note:** guest names, phone and e-mail are checked before anything is held (`400 invalid_details`).
+- **CRITICAL:** `guests` needs a name for every person in the room, children included: adults first,
+  then children in `child_ages` order. Fewer names than the searched party fails the booking before
+  anything reaches the hotel, and the hold is released.
 
 ### get_hotel_booking
 Collect the result of a booking started with `book_hotel`.

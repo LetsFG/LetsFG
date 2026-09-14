@@ -155,7 +155,7 @@ claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
 |------|-------------|------|
 | `resolve_hotel_city` | Resolve a place name to the supplier city id `search_hotels` needs. Call this first | API key |
 | `search_hotels` | Search real, bookable rates, every rate type. Each offer says `refundable` / `free_cancellation_until`. Needs a card on file — a search opens a real supplier session. Takes up to a few minutes | API key + card |
-| `book_hotel` | Book one rate. The **full price is held** on the connected Revolut method and captured only once the hotel confirms; a failed booking releases the hold. Returns a `booking_job_id`, not a booking | API key + card |
+| `book_hotel` | Book one rate. The **full price is held** on the connected Revolut method and captured only once the hotel confirms; a failed booking releases the hold. `guests` needs one name per person in the room, children included (adults first). Returns a `booking_job_id`, not a booking | API key + card |
 | `get_hotel_booking` | Poll the booking job until `succeeded`, `failed` or `attention` (a person is confirming it; the hold is kept — do not book again). **Never call `book_hotel` again while a job is running** | API key |
 | `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` — refunded in full | API key |
 

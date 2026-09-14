@@ -103,6 +103,24 @@ a price they did not agree to.
 Guest names, phone and e-mail are checked before anything is held; a problem
 answers `400 invalid_details` naming the fields.
 
+**One name per guest.** `guests` lists every person in the room, children
+included: adults first, then children in `child_ages` order (`Mr`/`Ms` is fine
+for a child). The hotel needs a name for each one, so a booking with fewer names
+than the party it was searched for fails before anything is submitted, and the
+hold is released. The party itself travels with the offer's `session_id`.
+
+```json
+// search: 2 adults + a 7-year-old
+{"city_id": 148614, "city_name": "Warsaw, Poland", "check_in": "2026-11-10",
+ "check_out": "2026-11-12", "adults": 2, "children": 1, "child_ages": [7]}
+
+// book: three names, the child last
+"adults": 2,
+"guests": [{"title": "Mr", "first_name": "Jan",   "last_name": "Kowalski"},
+           {"title": "Ms", "first_name": "Anna",  "last_name": "Kowalska"},
+           {"title": "Ms", "first_name": "Zofia", "last_name": "Kowalska"}]
+```
+
 Hotel search is look-to-book: 1,000 searches are free after every hotel booking,
 then blocks of 1,000 for $5.00 from prepaid balance.
 
@@ -129,7 +147,8 @@ booking = lfg.book_hotel_and_wait(
     fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
-    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
+    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"},     # one entry per guest:
+            {"title": "Ms", "first_name": "Anna", "last_name": "Kowalska"}],   # adults=2 -> two names
     email="guest@example.com", phone="512345678",
 )
 if booking["status"] == "succeeded":

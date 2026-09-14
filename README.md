@@ -495,7 +495,8 @@ booking = lfg.book_hotel_and_wait(
     fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
-    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
+    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"},     # one entry per guest:
+            {"title": "Ms", "first_name": "Anna", "last_name": "Kowalska"}],   # adults=2 -> two names
     email="guest@example.com", phone="512345678",
 )
 print(booking["status"], booking.get("confirmation"), booking.get("total_price"), booking.get("currency"))
@@ -534,6 +535,10 @@ own ladder ships in the booking's `terms`, so you can always see the cost first.
 - **Copy the offer back verbatim.** Send `expected_price`, `expected_cost`,
   `currency` and `fx_rate` exactly as the offer returned them; anything else is
   refused as `price_mismatch` before anything is held.
+- **Name every guest.** `guests` needs one entry per person in the room,
+  children included: adults first, then children in `child_ages` order. Fewer
+  names than the searched party fails the booking before anything reaches the
+  hotel, and the hold is released.
 - **Do not re-book while a job is running.** Poll it. A retry with the same
   `idempotency_key` returns the existing job instead of booking twice.
 - **The guest hears from us either way.** The guest's e-mail gets the

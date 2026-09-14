@@ -82,7 +82,8 @@ booking = lfg.book_hotel_and_wait(
     fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
-    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
+    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"},     # one entry per guest:
+            {"title": "Ms", "first_name": "Anna", "last_name": "Kowalska"}],   # adults=2 -> two names
     email="guest@example.com", phone="512345678",
 )
 if booking["status"] == "succeeded":
@@ -116,10 +117,13 @@ MCP tools, in call order: `resolve_hotel_city` → `search_hotels` → `book_hot
    chosen offer. The booking is refused (`400 price_mismatch`) if they don't match or the
    supplier's price has moved, so a guest is never charged a price they did not agree to.
    There is no `expected_balance`.
-4. **Use the guest's real email.** The confirmation goes there, and so does a message if the
+4. **Name every guest.** `guests` needs one entry per person in the room, children included:
+   adults first, then children in `child_ages` order (`Mr`/`Ms` is fine for a child). Fewer names
+   than the searched party fails the booking before anything reaches the hotel; the hold is released.
+5. **Use the guest's real email.** The confirmation goes there, and so does a message if the
    booking fails or needs checking. Names, phone and e-mail are validated before anything is held.
-5. **Tell the guest whether the rate is refundable** before you book.
-6. **A cancellation timeout is not a failure.** It drives a browser at the supplier and takes
+6. **Tell the guest whether the rate is refundable** before you book.
+7. **A cancellation timeout is not a failure.** It drives a browser at the supplier and takes
    over a minute. Re-check before retrying.
 
 ## Error handling

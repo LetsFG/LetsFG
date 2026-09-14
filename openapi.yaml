@@ -1094,6 +1094,10 @@ paths:
                 adults: { type: integer, default: 2 }
                 guests:
                   type: array
+                  description: >-
+                    One entry per guest in the room, children included: adults first, then
+                    children in the search's child_ages order. Fewer names than the searched party
+                    fails the booking before anything is submitted, and the hold is released.
                   items:
                     type: object
                     required: [title, first_name, last_name]
