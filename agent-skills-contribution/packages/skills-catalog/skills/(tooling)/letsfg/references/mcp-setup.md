@@ -147,7 +147,7 @@ export LETSFG_API_KEY=trav_your_api_key
 |------|-------------|
 | `search_flights` | Search hundreds of airlines for flights |
 | `resolve_location` | Convert city names to IATA codes |
-| `unlock_flight_offer` | Confirm live price and reserve for 30 min. **[Developer API only]** — on a Bearer token call `book_flight` directly |
+| `unlock_flight_offer` | **RETIRED 2026-09-08** — answers `410 Gone`; call `book_flight` directly |
 | `book_flight` | Book with passenger details |
 
 **Hotels** — need a card on file (a search opens a real supplier session). Either credential works.
@@ -155,17 +155,17 @@ export LETSFG_API_KEY=trav_your_api_key
 | Tool | Description |
 |------|-------------|
 | `resolve_hotel_city` | Resolve a place name to the supplier city id. Call this first |
-| `search_hotels` | Search bookable, free-cancellation pay-later rates. Needs a card on file — a search opens a real supplier session |
-| `book_hotel` | Book one rate. Charges 5% of the price as a non-refundable reservation fee; the balance goes to the supplier via the returned pay link. Returns a `booking_job_id` |
-| `get_hotel_booking` | Poll the job until `succeeded` or `failed`. Never retry `book_hotel` blindly — it books the room twice |
-| `cancel_hotel_booking` | Release a reservation |
+| `search_hotels` | Search bookable rates, refundable and non-refundable. Each offer says `refundable` / `free_cancellation_until`. Needs a card on file — a search opens a real supplier session |
+| `book_hotel` | Book one rate. The full price is held on the connected card and captured only once the hotel confirms; a failed booking releases the hold. Returns a `booking_job_id` |
+| `get_hotel_booking` | Poll the job until `succeeded`, `failed` or `attention` (a person is confirming it; the hold is kept — do not book again). Never re-book while a job is running |
+| `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` — refunded in full |
 
 **Account and setup**
 
 | Tool | Description |
 |------|-------------|
 | `authenticate` | Returns the current connect instructions (`add_card_url`, `how`) — a person adds a card at letsfg.co/connect, nothing charged |
-| `setup_payment` | **RETIRED 2026-09-08 with Stripe** — answers `410 Gone`. Connect a Revolut method with `POST /agents/connect-payment` instead |
+| `connect_payment` | **[Developer API only]** Mint a one-time link to connect a payment method (nothing charged). `setup_payment` was retired with Stripe on 2026-09-08 |
 | `get_agent_profile` | Account info and usage stats |
 | `load_resources` | Load the in-server usage guide |
 

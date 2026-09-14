@@ -10,8 +10,8 @@
 > ### ⚠️ Agents: do not create a Developer API account
 >
 > Do **NOT** call `/developers/api/v1/agents/register` or
-> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
-> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> `/developers/api/v1/agents/connect-payment`, and do **NOT** run
+> `letsfg register` or `letsfg connect-payment`. Those belong to a separate,
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
@@ -58,21 +58,26 @@ No auth required.
 }
 ```
 
-### Setup Payment
+### Connect Payment
 
 ```
-POST /api/v1/agents/setup-payment
+POST /api/v1/agents/connect-payment
 ```
 
 ```json
 {
-  "token": "<card token>"
+  "status": "connect_required",
+  "connect_url": "https://letsfg.co/connect?dev=sess_abc123",
+  "expires_in_seconds": 3600
 }
 ```
 
-Required before the first Developer API booking. Card stays on file. Agents on
-the PFS lane do not use this — their card is saved at <https://letsfg.co/connect>
-when they connect the MCP server.
+Open `connect_url` in a browser once and save a card or Revolut Pay. **Nothing is charged to
+connect.** A connected method is what opens search, and it is what bookings and top-ups are
+charged to. Agents on the PFS lane do not use this — their card is saved at
+<https://letsfg.co/connect> when they connect the MCP server.
+
+> `POST /api/v1/agents/setup-payment` was retired on 2026-09-08 with Stripe and answers `410 Gone`.
 
 ### Agent Profile
 
@@ -163,75 +168,57 @@ POST /api/v1/flights/search
 }
 ```
 
-### Unlock Offer
-
-```
-POST /api/v1/bookings/unlock
-```
-
-```json
-{
-  "offer_id": "off_xxx"
-}
-```
-
-**Response:**
-
-```json
-{
-  "offer_id": "off_xxx",
-  "confirmed_price": 189.50,
-  "confirmed_currency": "EUR",
-  "offer_expires_at": "2026-04-15T15:30:00Z"
-}
-```
-
-**Errors:**
-- 402 — Payment required: no card on file (attach via setup-payment)
-- 410 — Offer expired (search again)
-
 ### Book Flight
 
 ```
-POST /api/v1/bookings/book
+POST /api/v1/flights/book
 ```
 
 ```json
 {
-  "offer_id": "off_xxx",
-  "passengers": [
-    {
-      "id": "pas_0",
-      "given_name": "John",
-      "family_name": "Doe",
-      "born_on": "1990-01-15",
-      "gender": "m",
-      "title": "mr",
-      "email": "john@example.com",
-      "phone_number": "+1234567890"
-    }
-  ],
-  "contact_email": "john@example.com",
-  "idempotency_key": "unique-key-123"
+  "search_id": "srch_abc123",
+  "offer_id": "off_def456",
+  "idempotency_key": "your-own-unique-key",
+  "contact_email": "traveller@example.com",
+  "passengers": [{
+    "given_name": "Adam",
+    "family_name": "Kowalski",
+    "born_on": "1990-04-11",
+    "gender": "m",
+    "email": "traveller@example.com",
+    "phone_number": "+48501234567",
+    "phone_country": "PL",
+    "nationality": "PL",
+    "passenger_type": "adult"
+  }]
 }
 ```
 
-**Response:**
+Answers `202` in seconds with a `booking_id`; the booking itself takes 4-11 minutes.
 
-```json
-{
-  "booking_reference": "ABC123",
-  "status": "confirmed",
-  "flight_price": 189.50,
-  "currency": "EUR"
-}
+The connected Revolut method is **held, not charged**. A LetsFG booking agent buys the ticket and
+the hold is captured **only against a real airline PNR**; a failed booking releases it. The offer
+price already includes LetsFG's margin, so there is no booking fee and no transaction fee.
+
+A missing detail answers `400 missing_fields` naming exactly what an airline checkout still needs,
+before anything is charged. Always send an `idempotency_key`: a retry with the same key returns the
+existing booking instead of opening a second hold.
+
+### Poll a Booking
+
+```
+GET /api/v1/flights/bookings/{booking_id}
 ```
 
-**Errors:**
-- 402 — Payment declined
-- 403 — Offer not unlocked first
-- 409 — Fare changed (re-unlock) or already booked (idempotency)
-- 410 — 30-minute window expired (search + unlock again)
+Poll until `terminal` is true: `completed` (with `pnr` and `charged_amount`), `failed` (hold
+released, nothing charged) or `needs_attention` (a human at LetsFG is on it — do not book again).
+While `booking_in_progress`, `question` may carry a seat map, a paid extra or a fare increase;
+answer it with `POST /api/v1/flights/bookings/{booking_id}/answer`.
+
+### Retired
+
+`POST /api/v1/bookings/unlock` and `POST /api/v1/bookings/book` were retired on 2026-09-08 and
+answer `410 Gone` naming their replacement. There is no unlock step on either lane any more.
 
 ## PFS lane (agents) — search, book, poll on letsfg.co
 
@@ -277,8 +264,8 @@ start a second booking for the same trip while one is in progress.
 | `INVALID_IATA` | validation | 422 | Bad airport/city code — use resolve_location |
 | `INVALID_DATE` | validation | 422 | Date in wrong format or in the past |
 | `OFFER_EXPIRED` | business | 410 | Offer no longer available — search again |
-| `PAYMENT_REQUIRED` | business | 402 | No card on file — Developer API: attach via setup-payment; PFS: `add_card_url` → https://letsfg.co/connect |
-| `FARE_CHANGED` | business | 409 | Price changed — re-unlock |
+| `PAYMENT_REQUIRED` | business | 402 | No card on file — Developer API: `POST /agents/connect-payment`, open the link; PFS: `add_card_url` → https://letsfg.co/connect |
+| `FARE_CHANGED` | business | 409 | The fare moved at checkout — answer the `price_change` question |
 | `ALREADY_BOOKED` | business | 409 | Duplicate (idempotency_key matched) |
 
 ## Discovery

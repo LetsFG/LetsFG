@@ -171,9 +171,8 @@ class TravelAssistant:
     async def book(self, search_id: str, offer_id: str, passengers: list[dict]):
         """Book an offer over the Developer API. There is NO unlock step since 2026-09-08.
 
-        Written against the REST endpoints directly rather than the SDK: the SDK's book() still
-        routes its Developer-API path through the retired unlock lane, and it has no polling or
-        question helpers yet.
+        Written against the REST endpoints directly so every step is visible: the start, the
+        poll and the question. The SDK wraps the same calls in book() and book_and_wait().
 
         The fare is HELD on the connected Revolut method, never taken up front, and captured only
         once a real airline PNR exists - so a fare that moved cannot become a charge for a ticket
@@ -406,11 +405,11 @@ Once configured, the AI agent gets access to these tools:
 |------|-------------|
 | `search_flights` | Search flights across all sources |
 | `resolve_location` | Convert city/airport names to IATA codes |
-| `unlock_flight_offer` | **[Developer API only]** Lock in a live price for an offer. Not needed on a card-backed token |
+| `unlock_flight_offer` | **RETIRED 2026-09-08** — answers `410 Gone`; call `book_flight` directly |
 | `book_flight` | Start the booking: fare held on the connected card, a LetsFG agent buys the ticket, hold captured only against a real PNR. Returns `booking_ref` |
 | `get_flight_booking` | Poll a booking every 20–30 s until `completed` / `failed` / `needs_attention` (4–11 min) |
 | `get_agent_profile` | Check agent capabilities and limits |
-| `setup_payment` | **[Developer API only]** Attach a payment method to the paid account |
+| `connect_payment` | **[Developer API only]** Mint a one-time link to connect a payment method to the paid account (nothing charged) |
 
 ### Agent Best Practices
 
@@ -425,14 +424,14 @@ Agent flow:
 5. If user wants to book (card-backed token):
    book_flight(search_id, offer_id, passengers, contact_email)  → booking_ref in seconds
    get_flight_booking(booking_ref) every 20-30 s            → completed + PNR (4-11 min)
-   (Developer API key: unlock_flight_offer first, then book_flight)
+   (Developer API key: the same book_flight call — there is no unlock step)
 ```
 
 **Key patterns for AI agents:**
 
 - **Always resolve locations first** — don't assume IATA codes from city names
 - **Search with `limit`** — agents don't need 500 results, 5-20 is enough for a conversation
-- **No unlock on the card-backed lane** — `book_flight` holds the fare on the card and captures it only against a real PNR, so a moved price is a `failed` booking with nothing charged, never a surprise. On a Developer API key, `unlock` confirms the live price first
+- **No unlock on the card-backed lane** — `book_flight` holds the fare on the card and captures it only against a real PNR, so a moved price is a `failed` booking with nothing charged, never a surprise. The Developer API works the same way, and a fare that moves at checkout comes back as a `price_change` question
 - **Handle partial failures gracefully** — some sources may timeout; the search still returns results from working sources
 
 ---
@@ -455,7 +454,7 @@ try:
 except AuthenticationError:
     print("Check your LETSFG_API_KEY")
 except PaymentRequiredError:
-    print("Subscription required for this route/volume")
+    print("Connect a payment method, or the free search allowance is used up")
 except ValidationError as e:
     print(f"Bad request: {e}")
 except LetsFGError as e:
@@ -495,7 +494,7 @@ try {
 
 ### Resilient Booking Flow
 
-The full search → unlock → book pipeline with proper error handling:
+The full search → book pipeline with proper error handling:
 
 ```python
 import asyncio
@@ -504,7 +503,7 @@ from letsfg import LetsFG, OfferExpiredError, LetsFGError
 bt = LetsFG()
 
 async def resilient_book(origin, dest, date, passengers, max_search_retries=2):
-    """Search → unlock → book with full error recovery."""
+    """Search → book with full error recovery."""
 
     # Step 1: Search (retryable)
     for attempt in range(max_search_retries):

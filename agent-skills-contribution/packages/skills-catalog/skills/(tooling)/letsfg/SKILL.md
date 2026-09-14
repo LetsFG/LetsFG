@@ -18,7 +18,7 @@ metadata:
 Agent-native flight search and booking. Hundreds of airlines plus the major booking sites,
 Compares airlines and the major booking sites in one pass, with per-flight reliability history.
 
-**Three-step flow:** Search (free) → Unlock (free) → Book (ticket price only)
+**Two-step flow:** Search (free) → Book (the price on the offer — held, and captured only against a real PNR)
 
 ## Why Use This
 
@@ -162,17 +162,12 @@ booking = bt.book_and_wait(
 print(booking)
 ```
 
-```bash
-letsfg unlock off_xxx
-```
-
-**Note:** Confirmed price may differ from search price (airline prices change in real-time). Inform the user if price changed significantly.
-
-### 4. Book (Ticket Price Only)
+### 4. Book (the price on the offer)
 
 ```python
 booking = bt.book(
-    offer_id=unlocked.offer_id,
+    offer_id=flights.cheapest.id,
+    search_id=flights.search_id,
     passengers=[{
         "id": flights.passenger_ids[0],
         "given_name": "John",
@@ -185,7 +180,7 @@ booking = bt.book(
     contact_email="john@example.com",
     idempotency_key="unique-booking-key-123"
 )
-print(f"Booked! PNR: {booking.booking_reference}")
+print(booking)   # the started booking — poll it until completed | failed | needs_attention
 ```
 
 ## Critical Rules
@@ -198,7 +193,7 @@ print(f"Booked! PNR: {booking.booking_reference}")
 
 ## Best Practices
 
-### Search Wide, Unlock Narrow
+### Search Wide, Book Once
 
 ```python
 # Compare multiple dates (all FREE)
@@ -277,8 +272,8 @@ except PaymentRequiredError:
 |-----------|------|---------------|------------|
 | `search` | Free | Yes | Yes |
 | `resolve_location` | Free | Yes | Yes |
-| `unlock` | Free | No — may charge fee | No |
-| `book` | Ticket price | Only with `idempotency_key` | With key: yes |
+| `unlock` | **RETIRED 2026-09-08** — answers `410 Gone` | — | — |
+| `book` | The price on the offer — held, captured only on a real PNR | Only with `idempotency_key` | With key: yes |
 
 ## Reference Files
 

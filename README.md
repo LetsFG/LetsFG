@@ -109,7 +109,7 @@ Same hotel, same room type, same 2-night stay, same free-cancellation policy —
 
 > **$207 cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type. Prices quoted in PLN at booking, converted to USD at that day's rate.
 
-**Why the difference?** LetsFG sells at wholesale cost — no markup for demand, no loyalty-program cross-subsidy. You're not paying for the room upfront: 5% books it now, and the remaining 95% isn't due until the hotel's own cancellation deadline. Cancel before that deadline and you lose nothing but the 5%; the rest was never charged. Only free-cancellation, pay-later rates are sold, so every price shown is one you can actually hold risk-free.
+**Why the difference?** LetsFG sells at the supplier's wholesale cost plus a fixed margin — no markup for demand, no loyalty-program cross-subsidy. At booking the price is held on your card, not taken, and it is charged only once the hotel confirms. The comparison above uses free-cancellation rates on both sides; LetsFG also sells non-refundable rates, and every offer says which it is.
 
 ---
 
@@ -155,7 +155,7 @@ When you're ready to integrate it into your own agent, keep reading.
 - **Developer API (Path 3):** Server-side search and booking at [letsfg.co/developers](https://letsfg.co/developers). Look-to-book search (200 free after every booking, then $0.01), real booking through `POST /flights/book` on a connected Revolut method, full NL query parsing, a `/discover` endpoint that checks 20 destinations in one call (2–5 s), hotels, and a free sandbox at `/sandbox/flights/*`. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
 
 > **Free server-side search:** Use Path 1 or PFS — connect a card once at letsfg.co/connect (nothing charged) and searches run free on our servers. No Playwright, no local install beyond the SDK.<br>
-> **Booking from your own product:** Use the Developer API (Path 3) — look-to-book search, `POST /flights/book`, and no booking or transaction fee. It is also the only path to hotels.
+> **Booking from your own product:** Use the Developer API (Path 3) — look-to-book search, `POST /flights/book`, and no booking or transaction fee. Hotels work on both the card-backed token and a Developer API key.
 
 ---
 
@@ -163,14 +163,14 @@ When you're ready to integrate it into your own agent, keep reading.
 
 | How you use it | Search | Flight booking | Hotel booking | Runs where? |
 |----------------|--------|----------------|----------------|-------------|
-| **MCP Server** | ✅ Free (card connected once at letsfg.co/connect) | Fare + markup held, captured on a real PNR. No separate fee | 5% reservation fee | Our servers |
-| **CLI / Python SDK / npm** | ✅ Free (same token) | Same | 5% non-refundable reservation fee | Our servers |
-| **PFS** (raw API via letsfg.co) | ✅ Free (same token, or $0.01 once via MPP) | Same | 5% reservation fee | Our servers |
-| **Developer API** | 200 free per booking, then $0.01 | Fare + markup held, captured on a real PNR. No booking fee, no transaction fee | 5% reservation fee | Our servers |
+| **MCP Server** | ✅ Free (card connected once at letsfg.co/connect) | Fare + markup held, captured on a real PNR. No separate fee | Price held, captured once the hotel confirms. No reservation fee | Our servers |
+| **CLI / Python SDK / npm** | ✅ Free (same token) | Same | Same | Our servers |
+| **PFS** (raw API via letsfg.co) | ✅ Free (same token, or $0.01 once via MPP) | Same | Price held, captured once the hotel confirms. No reservation fee | Our servers |
+| **Developer API** | 200 free per booking, then $0.01 | Fare + markup held, captured on a real PNR. No booking fee, no transaction fee | Price held, captured once the hotel confirms. No reservation fee | Our servers |
 
 **MCP / CLI / SDK / PFS = free search, real booking, no separate fee.** Connect a card once (a 0.00 Revolut setup, nothing is charged) and searching is free. No credits, no unlock step. Booking works exactly like the website checkout: `book_flight` / `POST /api/agent-book` **holds** the fare plus LetsFG's markup on your card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails the hold is released and nothing is charged. The price you see is the price you pay; the markup is inside it, nothing is added at booking.
 
-**Hotels = 5% now to hold a free-cancellation rate, on every path.** That 5% is what pays for flexibility: it books the room today, but the remaining 95% isn't charged until the hotel's own cancellation deadline, paid straight to the hotel via a `pay_link`. Cancel before that deadline and the only cost is the 5% already paid. See [Hotels](#-hotels--new-and-live) above.
+**Hotels = the price on the offer, held then captured, on every path.** Booking holds the full price on your card, LetsFG books and pays the hotel, and the hold is captured only once the hotel confirms; a failed booking releases it. There is no reservation fee, no deposit and no pay link. Every rate type is sold, and each offer says whether it is refundable and until when. See [Hotels](#-hotels--new-and-live) below.
 
 **Developer API = business use, look-to-book.** [letsfg.co/developers](https://letsfg.co/developers) books flights itself — `POST /flights/book` holds the fare on your connected Revolut method and a LetsFG booking agent buys the ticket, exactly like the other paths. Search is **not** priced per call: you get **200 free searches after every booking you make**, and booking resets the counter. Past that, blocks of 500 for $5.00 ($0.01 each). **No booking fee, no transaction fee** — the margin is inside the price the search returned, so the amount shown is the amount charged. Minimum top-up: $5.
 
@@ -321,7 +321,7 @@ Use the hosted server. It carries your card-backed token for you, and `book_flig
 
 Approve the connection when your client asks; the consent step opens letsfg.co/connect, where a card is added in a 0.00 setup (nothing is charged). Tools: `search_flights`, `get_flight_results`, `book_flight`, `get_flight_booking`, plus the hotel tools.
 
-The stdio package (`npx -y letsfg-mcp`) still works for search if you give it a token in `LETSFG_BEARER_TOKEN`; its own `authenticate` tool points at the retired Stripe enrolment and is being moved to the connect flow.
+The stdio package (`npx -y letsfg-mcp`) works too if you give it a token in `LETSFG_BEARER_TOKEN`; its `authenticate` tool returns the current connect instructions.
 
 <details>
 <summary>Optional: use the Developer API instead (look-to-book search, POST /flights/book, hotels)</summary>
@@ -468,11 +468,11 @@ Full semantics: [docs/api-search.md](docs/api-search.md#starlink-wi-fi).
 
 ## 🏨 Hotels — new, and live
 
-Your agent can now book hotels, not just flights. Same API key, same card on file.
+Your agent can now book hotels, not just flights. Same credential, same card on file.
 
 ```python
 from letsfg import LetsFG
-lfg = LetsFG()
+lfg = LetsFG()  # reads LETSFG_API_KEY — the SDK's hotel methods take a Developer API key
 
 city = lfg.hotel_destinations("Warsaw")[0]
 stays = lfg.search_hotels(
@@ -482,36 +482,38 @@ stays = lfg.search_hotels(
 
 hotel = stays["hotels"][0]
 offer = hotel["offers"][0]
-print(hotel["name"], offer["price"], stays["currency"])
-# Hotel Gromada Warszawa Centrum 669.86 PLN
+print(hotel["name"], offer["price"], offer["currency"],
+      "refundable" if offer["refundable"] else "non-refundable")
 
 booking = lfg.book_hotel_and_wait(
-    session_id=stays["session_id"],
+    session_id=offer["session_id"],
     hotel_code=hotel["hotel_code"],
     combination_id_v2=offer["combination_id_v2"],
     expected_price=offer["price"],
-    expected_balance=offer["balance_to_supplier"],
+    expected_cost=offer["expected_cost"],
+    currency=offer["currency"],
+    fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
     guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
     email="guest@example.com", phone="512345678",
 )
-print(booking["confirmation"], booking["pay_link"])
+print(booking["status"], booking.get("confirmation"), booking.get("total_price"), booking.get("currency"))
 ```
 
 ### How you pay
 
-**5% now, the rest to the hotel later.** At booking we charge 5% of the price
-to your card as a reservation fee. The remaining balance is paid **directly to
-the supplier** through a `pay_link` we return — we never hold it.
+**Held at booking, charged when the hotel confirms.** Booking holds the full
+`price` on your card — it is not taken. LetsFG books the room and pays the
+supplier itself, and the hold is captured only once the hotel has confirmed. If
+the booking fails for any reason (the rate is gone, the price moved, the supplier
+declined) the hold is released and nothing is charged. There is no reservation
+fee, no deposit and no pay link.
 
-`balance_due_by` is the supplier's own auto-cancellation date, not a date we
-invent. Miss it and the room is released.
-
-The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
-else; after it, the hotel's own cancellation ladder applies and can reach 100%.
-That ladder ships in the booking's `terms`, so you can always see the cost before
-you cancel.
+`price` is the all-in total, in the `currency` you searched in (USD by default).
+A refundable booking cancelled before its `free_cancellation_until` is refunded
+in full. The endpoint refuses a cancellation that would cost money; the hotel's
+own ladder ships in the booking's `terms`, so you can always see the cost first.
 
 ### Things worth knowing before you build
 
@@ -521,21 +523,23 @@ you cancel.
   let you reach the point of commitment and discover you cannot pay. The same
   card that authorises flight booking authorises hotels — there is no separate
   hotel signup.
-- **Only free-cancellation, pay-later rates are sold.** Those are the rates where
-  the balance can safely be settled with the supplier after booking, which is
-  what makes 5%-now/rest-later work at all. You will see fewer results than a
-  metasearch shows you. Every one of them can actually be booked.
+- **Every rate type is sold, refundable and non-refundable.** Each offer carries
+  `refundable` and `free_cancellation_until`; show them to the guest before
+  booking a non-refundable rate.
 - **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
   booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
-  `status` is `succeeded` or `failed`, or call `book_hotel_and_wait` and let the
-  SDK do it. This is not ceremony: it is what makes it impossible to charge a
-  card and then lose the confirmation to a timeout.
-- **The fee is charged before the room is committed.** A declined card therefore
-  costs nothing to unwind — no reservation exists and nothing is charged.
-- **Do not retry a booking blindly.** Calling `book_hotel` twice for the same
-  rate books the room twice and charges two reservation fees.
-- `price` is what the guest pays. There is no wholesale figure in the response to
-  quote by mistake.
+  `status` is `succeeded`, `failed` or `attention`, or call `book_hotel_and_wait`.
+  `attention` means a person at LetsFG is confirming the outcome with the
+  supplier: the hold is kept, nothing is charged, and you must not book again.
+- **Copy the offer back verbatim.** Send `expected_price`, `expected_cost`,
+  `currency` and `fx_rate` exactly as the offer returned them; anything else is
+  refused as `price_mismatch` before anything is held.
+- **Do not re-book while a job is running.** Poll it. A retry with the same
+  `idempotency_key` returns the existing job instead of booking twice.
+- **The guest hears from us either way.** The guest's e-mail gets the
+  confirmation, or a message if the booking fails or needs checking.
+- `price` is what the guest pays. `expected_cost` is the supplier's own figure,
+  there only to be sent back — never quote it.
 
 ### JavaScript
 
@@ -550,7 +554,7 @@ const stays = await lfg.searchHotels({
 });
 
 const booking = await lfg.bookHotelAndWait({ /* ...offer + guest details... */ });
-console.log(booking.confirmation, booking.pay_link);
+console.log(booking.status, booking.confirmation, booking.total_price, booking.currency);
 ```
 
 ### MCP
@@ -625,7 +629,7 @@ affiliated with, sponsored by, or endorsed by Omarchy or 37signals.
 | `letsfg auth` | Connect a card at letsfg.co/connect and store the token (self-registers, PKCE + loopback redirect, opens a browser). `--no-browser` prints the URL |
 | `letsfg search <origin> <dest> <date>` | Search flights (free with a card-backed token) |
 | `letsfg register` | **[Developer API only]** Register an account for the paid, prepaid-credit product — not part of the agent flow |
-| `letsfg setup-payment` | **RETIRED 2026-09-08 with Stripe** — the route answers `410 Gone`. Connect a Revolut method with `POST /agents/connect-payment` instead |
+| `letsfg connect-payment` | **[Developer API only]** Print a one-time link to connect a card to the paid account; nothing is charged. `letsfg setup-payment` is kept as an alias — the Stripe route it once called was retired on 2026-09-08 and answers `410 Gone` |
 | `letsfg recover --email <email>` | Recover lost API key via email |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | **RETIRED 2026-09-08** — the route answers `410 Gone`. There is no unlock step on either lane; use `letsfg book` |

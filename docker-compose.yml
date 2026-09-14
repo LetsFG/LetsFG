@@ -8,8 +8,7 @@
 #
 # With API key (create a .env file first):
 #   echo "LETSFG_API_KEY=trav_..." > .env
-#   docker compose run --rm letsfg unlock off_xxx
-#   docker compose run --rm letsfg book off_xxx --passenger '{"id":"pas_0",...}' --email you@example.com
+#   docker compose run --rm letsfg book off_xxx --search-id srch_xxx --passenger '{...}' --email you@example.com
 #   docker compose run --rm letsfg me
 #
 # Build the image:
@@ -21,7 +20,7 @@ services:
       context: .
       dockerfile: Dockerfile.python
     environment:
-      # Optional — only needed for unlock/book. Get one free: letsfg register
+      # Optional — Developer API key (letsfg register), needed to book on that product
       LETSFG_API_KEY: ${LETSFG_API_KEY:-}
       # Max concurrent Chrome instances. Increase for hosts with more RAM.
       LETSFG_MAX_BROWSERS: ${LETSFG_MAX_BROWSERS:-2}

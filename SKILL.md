@@ -1,6 +1,6 @@
 ---
 name: letsfg
-description: "LetsFG — Agent-native flight and hotel search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates — free cancellation and pay-later: hold the room with a small upfront charge, then settle the balance by link up to the hotel's own deadline. letsfg.co"
+description: "LetsFG — Agent-native flight and hotel search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates, refundable and non-refundable: the price is held on the connected card and charged only once the hotel confirms. letsfg.co"
 ---
 
 # SKILL.md — LetsFG Capabilities
@@ -42,7 +42,7 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. H
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
 | **MCP / SDK / CLI** (PFS card-backed token) | **Almost every agent.** Search + booking | 8–10 s to first results | Free auth, free search, booking at the price on the offer |
-| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume, and the only path to hotels | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking via `POST /flights/book`, no booking fee, no transaction fee |
+| **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume (hotels work on either credential) | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking via `POST /flights/book`, no booking fee, no transaction fee |
 
 ## Skills
 
@@ -51,7 +51,7 @@ Search hundreds of airlines AND the major booking sites (Google Flights, Skyscan
 - **Cost:** FREE (unlimited)
 - **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
-- **Note:** On PFS (Bearer token), call `book_flight` directly — no unlock step — then poll `get_flight_booking`. On the Developer API, offers must be unlocked before booking.
+- **Note:** On PFS (Bearer token), call `book_flight` directly — no unlock step — then poll `get_flight_booking`. The Developer API has no unlock step either: book with `POST /flights/book` and poll `GET /flights/bookings/{id}`.
 - **Rate limit (PFS):** 10 searches per 10 min, 30 per hour, 100 per day, per card. Polling results never counts.
 
 ### resolve_hotel_city
@@ -67,13 +67,16 @@ Search real, bookable hotel inventory.
   search opens a real session at the supplier, so it returns HTTP 402 without a card.
 - **Auth:** Either a Developer API key (`X-API-Key`) or the PFS card-backed token from the connect flow. The same card authorises flights and hotels.
 - **Endpoint:** `POST /api/v1/hotels/search`
-- **Input:** city_id, city_name, check_in, check_out, adults, children, child_ages, nationality, limit
-- **Output:** hotels[] each with offers[] carrying `price` (what the guest pays),
-  `reservation_fee_now` (the 5%), `balance_to_supplier`, `balance_due_by`,
-  `free_cancellation_until`, `combination_id_v2`
-- **Note:** Only free-cancellation, pay-later rates are sold, so the result set is smaller than a
-  metasearch and every rate returned can actually be booked. Keep `session_id` and the chosen
-  offer's `combination_id_v2` — booking needs both.
+- **Input:** city_id, city_name, check_in, check_out, adults, children, child_ages, nationality, currency (USD by default), limit
+- **Output:** hotels[] each with offers[] carrying `price` (the all-in total the guest pays, in
+  `currency`), `fx_rate`, `expected_cost`, `refundable`, `free_cancellation_until` (refundable
+  rates only), `cancellation_policy`, `combination_id_v2` and `session_id`
+- **Note:** Every rate type is sold, refundable and non-refundable — show `refundable` and
+  `free_cancellation_until` before booking. Keep the chosen offer's `session_id` and
+  `combination_id_v2`; booking needs both. `price` is the supplier's cost plus 6.4% (8.3% on a
+  card issued outside the EEA; `markup_rate` says which).
+- **Allowance:** 1,000 hotel searches free after every hotel booking, then blocks of 1,000 for
+  $5.00 from prepaid balance.
 
 ### search_transfers
 Search ground transfers — private cars, taxis, shared shuttles, airport express.
@@ -96,16 +99,7 @@ Resolve city names to IATA airport/city codes.
 ### unlock_flight_offer
 **RETIRED 2026-09-08 — the route answers `410 Gone`.**
 - There is no unlock step on either lane. Booking holds the fare and captures only against a real PNR, which is what unlock existed to protect against. Call `/api/agent-book` (PFS) or `POST /flights/book` (Developer API) instead.
-- **Endpoint:** `POST /api/v1/bookings/unlock`
-- **Input:** offer_id from search results (only required parameter)
-- **Output:** confirmed_price, confirmed_currency, booking_url, offer_expires_at
-- **Prerequisite:** A payment method on file (`setup_payment`) on the Developer API account.
-- **HTTP 402:** No card on file. With MPP support, response carries a `WWW-Authenticate: Payment` challenge — pay via Tempo USDC.e and retry. Otherwise add a card via `setup_payment`.
-- **HTTP 410:** Offer expired — airline sold the seats, search again (OfferExpiredError)
-- **Note:** confirmed_price may differ from search price (airline prices change in real-time). After unlock, you have 30 minutes to complete the booking. If the window expires, search again (free) and unlock again.
-- **Python:** `unlocked = bt.unlock(offer_id)` → returns UnlockResult
-- **CLI:** `letsfg unlock off_xxx`
-- **JS/TS:** `const unlocked = await bt.unlock(offerId)`
+- **Endpoint:** `POST /api/v1/bookings/unlock` — answers `410 Gone`, and the SDKs' `unlock()` fails the same way.
 
 ### book_flight
 Book an offer.
@@ -126,12 +120,12 @@ Book an offer.
   - Never call it twice for the same trip while one is in progress — that places a second hold.
   - **CLI:** `letsfg book ws_off_xxx --search-id ws_xxx --passenger '{...}' --email you@example.com`
   - **Python:** `bt.book(offer_id=..., passengers=[{...}], contact_email=..., search_id=...)`
-- **Developer API:** Requires `unlock` first. Creates a real airline reservation with PNR code, and
-  charges the ticket price to the card on the Developer API account before booking.
-  - **Prerequisite:** Payment method must be attached via `setup_payment` first.
-  - **Input:** offer_id, passengers (id, given_name, family_name, born_on, gender, title, email, phone_number), contact_email
-  - **Output:** booking_reference (airline PNR), status, flight_price, currency
-  - **Payment flow:** the card is charged the ticket price → LetsFG books via the airline → you get the PNR. If the airline booking fails, you are automatically refunded.
+- **Developer API:** `POST /api/v1/flights/book`. The same flow with no unlock step: the fare is held
+  on the connected Revolut method, a LetsFG booking agent buys the ticket, and the hold is captured
+  only against a real airline PNR. No booking fee, no transaction fee.
+  - **Prerequisite:** a Revolut method connected with `POST /api/v1/agents/connect-payment` (nothing is charged to connect).
+  - **Input:** search_id, offer_id, passengers (given_name, family_name, born_on, gender, email, phone_number, nationality, ...), contact_email, idempotency_key
+  - **Output:** `202` with `booking_id`, `held`, `charged: 0` and `poll_url`. Poll `GET /api/v1/flights/bookings/{booking_id}` until `terminal`: `completed` (`pnr`, `charged_amount`) | `failed` (hold released, nothing charged) | `needs_attention`.
 - **CRITICAL (both paths):** Use real passenger names (must match passport/ID) and real email (airline sends e-ticket there).
 
 ### get_flight_booking
@@ -145,39 +139,42 @@ Where a booking started by `book_flight` has got to (PFS). `POST /api/agent-book
 
 ### book_hotel
 Start a hotel booking. Returns a job, NOT a booking.
-- **Cost:** 5% of the price charged immediately to the card on file as a NON-REFUNDABLE
-  reservation fee. The balance is paid directly to the supplier through the returned `pay_link`.
+- **Cost:** the offer's `price`. It is **held** on the connected card (not taken), LetsFG books the
+  room and pays the supplier, and the hold is captured only once the hotel confirms. A failed
+  booking releases the hold. No reservation fee, no deposit, no pay link.
 - **Endpoint:** `POST /api/v1/hotels/book`
-- **Input:** session_id, hotel_code, combination_id_v2, expected_price, expected_balance, city_id,
-  city_name, check_in, check_out, adults, guests[{title, first_name, last_name}], email, phone
-- **Output:** booking_job_id, status "in_progress", poll URL
-- **Asynchronous:** a real booking takes minutes — the rate is re-blocked at the supplier, the card
-  charged, the room committed. Poll `get_hotel_booking` until status is `succeeded` or `failed`.
-  This is what makes it impossible to charge a card and then lose the confirmation to a timeout.
-- **CRITICAL:** send `expected_price` and `expected_balance` back exactly as search returned them,
-  or the booking is refused as a price mismatch — a guest is never charged a price they did not
-  agree to.
-- **CRITICAL:** NOT idempotent. Calling this twice for the same rate books the room twice and
-  charges two reservation fees. If a call times out, poll the job; do not re-book.
-- **Note:** the fee is charged BEFORE the room is committed, so a declined card costs nothing —
-  no reservation exists and nothing is charged.
+- **Input:** session_id (the chosen offer's), hotel_code, combination_id_v2, expected_price,
+  expected_cost, currency, fx_rate, city_id, city_name, check_in, check_out, adults,
+  guests[{title, first_name, last_name}], email, phone; optional phone_country_code,
+  special_requests, idempotency_key
+- **Output:** booking_job_id, booking_id, status "in_progress", the amount held, poll URL
+- **Asynchronous:** a real booking takes minutes — the rate is re-blocked at the supplier, the room
+  committed and paid. Poll `get_hotel_booking` until status is `succeeded`, `failed` or `attention`.
+- **CRITICAL:** send `expected_price`, `expected_cost`, `currency` and `fx_rate` back exactly as the
+  chosen offer returned them, or the booking is refused as `price_mismatch` — a guest is never
+  charged a price they did not agree to. There is no `expected_balance`.
+- **CRITICAL:** never call this again while its job is running — poll the job. A retry with the same
+  `idempotency_key` returns the existing job instead of booking twice.
+- **Note:** guest names, phone and e-mail are checked before anything is held (`400 invalid_details`).
 
 ### get_hotel_booking
 Collect the result of a booking started with `book_hotel`.
 - **Cost:** FREE
 - **Endpoint:** `GET /api/v1/hotels/booking/{booking_job_id}`
-- **Output:** status, and on success confirmation, reservation_fee_charged, pay_link, balance_due,
-  balance_due_by, terms (including the full cancellation ladder)
-- **Note:** `balance_due_by` is the supplier's own auto-cancellation date, not advisory. Miss it and
-  the room is released.
+- **Output:** status — `in_progress`, then `succeeded` (confirmation, total_price + currency = what
+  the guest is charged, refundable, free_cancellation_until, terms with the full cancellation
+  ladder) | `failed` (`error`; the hold was released, nothing charged) | `attention` (`error`; a
+  person at LetsFG is confirming the outcome with the supplier, the hold is kept — do NOT book again)
+- **Note:** the guest is e-mailed however the booking ends.
 
 ### cancel_hotel_booking
 Release a hotel reservation.
-- **Cost:** Free until `balance_due_by`; after that the hotel's own ladder applies and can reach
-  100%. The 5% reservation fee is NOT refunded.
+- **Cost:** Free on a refundable rate before `free_cancellation_until` — the charge is refunded in
+  full. A cancellation the hotel would charge for (a non-refundable rate, or past that date) is
+  refused with `409`; the hotel's own ladder is in the booking's `terms`.
 - **Endpoint:** `POST /api/v1/hotels/cancel`
-- **Input:** confirmation
-- **Output:** confirmation, charge
+- **Input:** confirmation (only your own bookings)
+- **Output:** confirmation, charge, refund
 - **Note:** drives a browser at the supplier and takes over a minute. If it times out, do NOT
   assume it failed — re-check before retrying.
 
@@ -187,14 +184,14 @@ Register a new AI agent.
 - **Input:** agent_name, email
 - **Output:** api_key (permanent credential)
 
-### setup_payment
-**Developer API only.** Attach a payment card to a prepaid Developer API account. Agents on the
-PFS lane do not call this — their card is saved at <https://letsfg.co/connect> during the MCP
-connect step.
-- **Cost:** FREE (attaching the card is free; you are charged the ticket price when you book)
-- **Input:** token or payment_method_id or card details
-- **Output:** Payment status confirmation
-- **Note:** Once per Developer API account. The card stays on file for future bookings.
+### connect_payment
+**Developer API only.** `POST /api/v1/agents/connect-payment` returns a one-time `connect_url`; a
+person opens it in a browser and saves a card or Revolut Pay. Agents on the PFS lane do not call
+this — their card is saved at <https://letsfg.co/connect> during the MCP connect step.
+- **Cost:** FREE — nothing is charged to connect
+- **Output:** `connect_url` (valid for one hour)
+- **Note:** `setup_payment` (`POST /agents/setup-payment`) was retired with Stripe on 2026-09-08
+  and answers `410 Gone`.
 
 ### get_agent_profile
 Get current agent's profile, usage stats, and payment status.
@@ -240,7 +237,7 @@ X-API-Key: letsfg_...
 
 Get your key by calling `POST /api/v1/agents/register` with agent_name and email. The key is permanent — save it once.
 
-Before your first unlock, attach a payment method via `POST /api/v1/agents/setup-payment`.
+Then connect a payment method with `POST /api/v1/agents/connect-payment` and open the returned `connect_url` once (nothing is charged).
 
 ## Complete Workflow
 
@@ -255,28 +252,28 @@ Before your first unlock, attach a payment method via `POST /api/v1/agents/setup
 ### Flight Booking — Developer API (5 API calls)
 
 ```
-1. POST /api/v1/agents/register        → Get API key (once)
-2. POST /api/v1/agents/setup-payment   → Attach payment card (once)
-3. POST /api/v1/flights/search         → Search flights (FREE)
-4. POST /api/v1/bookings/unlock        → Unlock offer (legacy, Developer API only) → returns booking_url
-5. POST /api/v1/bookings/book          → Book flight (ticket price charged to the card on the account)
+1. POST /api/v1/agents/register          → Get API key (once)
+2. POST /api/v1/agents/connect-payment   → Open the connect_url once to save a card (nothing charged)
+3. POST /api/v1/flights/search           → Search flights (look-to-book: 200 free after every booking)
+4. POST /api/v1/flights/book             → Hold the fare, dispatch the booking agent → booking_id (202)
+5. GET  /api/v1/flights/bookings/{id}    → Poll until terminal → completed (PNR) | failed (hold released) | needs_attention
 ```
 
 ### Hotel Booking (PFS Bearer token or Developer API key — the same card authorises both)
 
 ```
-1. Card on file                            → PFS: saved at letsfg.co/connect; Developer API: POST /api/v1/agents/setup-payment. Required for SEARCH too
+1. Card on file                            → PFS: saved at letsfg.co/connect; Developer API: POST /api/v1/agents/connect-payment. Required for SEARCH too
 2. POST /api/v1/hotels/destinations        → Place name → city_id
-3. POST /api/v1/hotels/search              → Bookable rates (free, card still required)
-4. POST /api/v1/hotels/book                → Returns booking_job_id — NOT a booking
-5. GET  /api/v1/hotels/booking/{job_id}    → Poll ~20s until succeeded/failed
-                                             → confirmation + pay_link + balance_due_by
-6. POST /api/v1/hotels/cancel              → Optional; free until balance_due_by
+3. POST /api/v1/hotels/search              → Bookable rates (card required; 1,000 free after every hotel booking)
+4. POST /api/v1/hotels/book                → Holds the price; returns booking_job_id — NOT a booking
+5. GET  /api/v1/hotels/booking/{job_id}    → Poll ~20s until succeeded / failed / attention
+                                             → confirmation + total_price + currency
+6. POST /api/v1/hotels/cancel              → Optional; free on a refundable rate before free_cancellation_until
 ```
 
-5% is charged to the card at step 4 as a non-refundable reservation fee; the balance is paid
-directly to the supplier through `pay_link` by `balance_due_by`, which is the supplier's own
-auto-cancellation date. Never repeat step 4 for the same rate — that books the room twice.
+The full price is held on the card at step 4 and captured only once the hotel confirms; a failed
+booking releases the hold. There is no reservation fee, no deposit and no pay link. Never repeat
+step 4 while its job is running — poll it.
 
 ## CLI Usage
 
@@ -303,9 +300,10 @@ letsfg book ws_off_xxx --search-id ws_xxx \
 letsfg search GDN BER 2026-03-03 --json
 ```
 
-Developer API instead? `letsfg register` + `letsfg setup-payment` once, then
-`letsfg search ... --api-key letsfg_...`, `letsfg unlock off_xxx --api-key letsfg_...`,
-`letsfg book off_xxx --api-key letsfg_... --passenger '{"id":"pas_0",...}' --email ...`.
+Developer API instead? `letsfg register` + `letsfg connect-payment` once (open the link it
+prints), then `letsfg search ... --api-key letsfg_...` and
+`letsfg book off_xxx --search-id <search_id> --api-key letsfg_... --passenger '{...}' --email ...`.
+No unlock step.
 
 ## Python SDK Usage
 
@@ -341,8 +339,9 @@ else:
     # until state is completed (pnr) | failed (hold released) | needs_attention
 ```
 
-Developer API instead? `LetsFG(api_key="letsfg_...")`, then `bt.unlock(offer_id)`
-before `bt.book(...)` — returns a `BookingResult` with `booking_reference` (PNR).
+Developer API instead? `LetsFG(api_key="letsfg_...")`, then `bt.book(offer_id, passengers,
+contact_email, search_id=..., idempotency_key=...)` — no unlock step. It starts the booking; poll
+it with `bt.get_booking(booking_id)`, or call `bt.book_and_wait(...)` to block until it settles.
 
 ## MCP Server Setup
 
@@ -382,10 +381,15 @@ The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 |------|-------------|------|
 | `search_flights` | Search hundreds of airlines via server-side engine | FREE |
 | `resolve_location` | City name → IATA code | FREE |
-| `book_flight` | Start a booking. PFS: direct, no unlock step — holds the fare on the connected card, returns `booking_ref`. Developer API: requires `unlock_flight_offer` first | Price shown on the offer, no separate LetsFG fee (PFS) |
+| `book_flight` | Start a booking. PFS: direct, no unlock step — holds the fare on the connected card, returns `booking_ref`. Developer API key: the same call, no unlock step | Price shown on the offer, no separate LetsFG fee (PFS) |
 | `get_flight_booking` | Poll a PFS booking every 20–30 s: `booking_in_progress` → `completed` (PNR) / `failed` (hold released) / `needs_attention` | FREE |
-| `unlock_flight_offer` | **[Developer API only]** Confirm price, reveal booking URL, reserve 30min. Legacy — not part of the agent flow | — |
-| `setup_payment` | **[Developer API only]** Attach payment card. PFS agents connect at letsfg.co/connect instead | FREE |
+| `unlock_flight_offer` | **RETIRED 2026-09-08** — answers `410 Gone`. Call `book_flight` directly | — |
+| `connect_payment` | **[Developer API only]** Mint a one-time link to connect a card to the paid account (nothing charged). PFS agents connect at letsfg.co/connect instead | FREE |
+| `resolve_hotel_city` | Place name → supplier city id for `search_hotels` | FREE (card on file) |
+| `search_hotels` | Bookable hotel rates, refundable and non-refundable | FREE (card on file; 1,000 per hotel booking) |
+| `book_hotel` | Start a hotel booking: the price is held, captured once the hotel confirms. Returns `booking_job_id` | The price on the offer |
+| `get_hotel_booking` | Poll until `succeeded` / `failed` / `attention` | FREE |
+| `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` (refunded in full) | FREE |
 | `get_agent_profile` | View usage stats | FREE |
 
 ## Search Flags Reference
@@ -417,7 +421,7 @@ The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 | Exception | HTTP Code | When |
 |-----------|-----------|------|
 | `AuthenticationError` | 401 | Invalid or missing API key |
-| `PaymentRequiredError` | 402 | No payment method (legacy flow) |
+| `PaymentRequiredError` | 402 | No payment method connected, or the search allowance is used up |
 | `OfferExpiredError` | 410 | Offer no longer available |
 | `LetsFGError` | 422 | Invalid request parameters |
 | `LetsFGError` | 429 | Too many requests (retry with backoff) |
@@ -445,10 +449,10 @@ try:
     bt = LetsFG(api_key="letsfg_...")
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except AuthenticationError:
-    # API key invalid or expired — re-register
+    # API key invalid or expired — re-register, then connect a payment method on the new key
     creds = LetsFG.register("my-agent", "agent@example.com")
     bt = LetsFG(api_key=creds["api_key"])
-    bt.setup_payment(token="...")  # re-attach payment on the new key
+    print("Open once to connect a card:", bt.connect_payment()["connect_url"])  # nothing is charged
 ```
 
 ### Rate Limit and Timeout Handling
@@ -477,7 +481,6 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 |----------|-----------|------------------|
 | Search flights | No hard limit (billing is the natural governor) | 2–5 s (discover) · 8–10 s to first results (full search) |
 | Resolve location | 120 req/min | <1s |
-| Unlock | 20 req/min | 2-5s |
 | Book | 10 req/min | 3-10s |
 | Search hotels | 30 req/min | 3-10s |
 | Register | 5 req/min | <1s |
@@ -486,16 +489,16 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 | Action | Cost |
 |--------|------|
-| Search (flights, hotels, transfers, activities) | **Free** |
+| Search (flights, transfers, activities) | **Free** |
 | Resolve locations | **Free** |
 | Register agent | **Free** |
-| Setup payment | **Free** |
+| Connect a payment method | **Free** — nothing is charged to connect |
 | View profile | **Free** |
 | Book flight (PFS, no unlock needed) | **The price shown on the offer** — held on the connected card, captured only on a real PNR; no separate LetsFG fee |
-| Unlock offer (Developer API only) | Legacy path, not part of the agent flow — use `book_flight` directly |
-| Book flight (Developer API, after unlock) | **The price shown on the offer** |
-| Hotel booking | Room price only |
-| Hotel cancellation | Per cancellation policy |
+| Book flight (Developer API) | **The price shown on the offer** — held, captured only on a real PNR; no booking fee, no transaction fee |
+| Hotel search | Free up to 1,000 searches after every hotel booking, then 1,000 for $5.00 |
+| Hotel booking | **The price shown on the offer** — held on the connected card, captured only once the hotel confirms. No reservation fee |
+| Hotel cancellation | Free on a refundable rate before `free_cancellation_until` (refunded in full); otherwise refused |
 
 ## Key Facts
 

@@ -25,8 +25,8 @@ metadata:
 > ### ⚠️ Agents: do not create a Developer API account
 >
 > Do **NOT** call `/developers/api/v1/agents/register` or
-> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
-> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> `/developers/api/v1/agents/connect-payment`, and do **NOT** run
+> `letsfg register` or `letsfg connect-payment`. Those belong to a separate,
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
@@ -38,7 +38,7 @@ metadata:
 Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines plus the major booking sites,
 Compares airlines and the major booking sites in one pass, with per-flight reliability history.
 
-**Agent flow (PFS):** Search (free) → Book (`POST /api/agent-book`, the price shown on the offer) → Poll (`POST /api/agent-book/status`). Booking works exactly like the website checkout: the fare plus LetsFG's markup is held on the card connected at <https://letsfg.co/connect> (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. A failed booking releases the hold — nothing charged. It takes 4–11 minutes; over the MCP the two steps are `book_flight` and `get_flight_booking`. The unlock step below is **Developer API only** and is not part of the agent flow.
+**Agent flow (PFS):** Search (free) → Book (`POST /api/agent-book`, the price shown on the offer) → Poll (`POST /api/agent-book/status`). Booking works exactly like the website checkout: the fare plus LetsFG's markup is held on the card connected at <https://letsfg.co/connect> (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. A failed booking releases the hold — nothing charged. It takes 4–11 minutes; over the MCP the two steps are `book_flight` and `get_flight_booking`. There is no unlock step on either lane.
 
 ## Why Use This
 
@@ -104,10 +104,10 @@ flights = bt.search("LHR", "JFK", "2026-04-15")
 letsfg register --name my-agent --email agent@example.com
 ```
 
-Then attach a payment method (required before unlock):
+Then connect a payment method (nothing is charged; there is no unlock step):
 
 ```bash
-letsfg setup-payment
+letsfg connect-payment   # prints a link to open in a browser
 ```
 
 ## Workflow
@@ -171,20 +171,16 @@ to confirm a live price before charging; booking now HOLDS the fare and captures
 real airline PNR, so a moved price surfaces as a question to accept or decline rather than a
 surprise charge. Call `book_flight` (PFS) or `POST /flights/book` (Developer API) directly.
 
-```python
-unlocked = bt.unlock(flights.cheapest.id)
-print(f"Confirmed: {unlocked.confirmed_price} {unlocked.confirmed_currency}")
-print(f"Booking URL: {unlocked.booking_url}")
-print(f"Expires: {unlocked.offer_expires_at}")
-```
+### 4. Book (the price shown on the offer)
 
-**Note:** Confirmed price may differ from search price (airline prices change in real-time). Inform the user if the price changed significantly.
-
-### 4. Book (Ticket Price Only)
+The fare is **held** on the connected card, a LetsFG booking agent buys the ticket, and the hold
+is captured only against a real airline PNR; a failed booking releases it. `book()` starts the
+booking (4–11 minutes); `book_and_wait()` blocks until it settles.
 
 ```python
 booking = bt.book(
-    offer_id=unlocked.offer_id,
+    offer_id=flights.cheapest.id,
+    search_id=flights.search_id,          # an offer is bookable only inside its own search
     passengers=[{
         "id": flights.passenger_ids[0],
         "given_name": "John",
@@ -197,7 +193,7 @@ booking = bt.book(
     contact_email="john@example.com",
     idempotency_key="unique-booking-key-123"
 )
-print(f"Booked! PNR: {booking.booking_reference}")
+print(booking)   # the started booking — poll it until completed | failed | needs_attention
 ```
 
 ## Critical Rules
@@ -210,7 +206,7 @@ print(f"Booked! PNR: {booking.booking_reference}")
 
 ## Best Practices
 
-### Search Wide, Unlock Narrow
+### Search Wide, Book Once
 
 ```python
 # Compare multiple dates (all FREE)
@@ -219,13 +215,15 @@ best = None
 for date in dates:
     result = bt.search("LON", "BCN", date)
     if result.offers and (best is None or result.cheapest.price < best[1].price):
-        best = (date, result.cheapest)
+        # keep the search_id too: an offer is bookable only inside the search that produced it
+        best = (date, result.cheapest, result.search_id)
 
-# Only unlock the winner
-unlocked = bt.unlock(best[1].id)
+# Book only the winner — there is no unlock step
+booking = bt.book(best[1].id, passengers=[{...}], contact_email="you@example.com",
+                  search_id=best[2])
 ```
 
-### Filter Before Unlocking
+### Filter Before Booking
 
 ```python
 flights = bt.search("LHR", "JFK", "2026-06-01", limit=50)
@@ -238,7 +236,8 @@ candidates = [
 
 if candidates:
     best = min(candidates, key=lambda o: o.price)
-    unlocked = bt.unlock(best.id)
+    booking = bt.book(best.id, passengers=[{...}], contact_email="you@example.com",
+                      search_id=flights.search_id)
 ```
 
 ### Finding Connections & Multi-Stop Routes
@@ -266,20 +265,21 @@ good_connections = [
 | `RATE_LIMITED` (429) | Transient | Wait and retry |
 | `INVALID_IATA` (422) | Validation | Use `resolve_location()` to fix |
 | `OFFER_EXPIRED` (410) | Business | Search again for fresh offers |
-| `PAYMENT_REQUIRED` (402) | Business | PFS: connect a card at the `add_card_url` (https://letsfg.co/connect). Developer API: `letsfg setup-payment` |
-| `FARE_CHANGED` (409) | Business | Re-unlock to get current price |
+| `PAYMENT_REQUIRED` (402) | Business | PFS: connect a card at the `add_card_url` (https://letsfg.co/connect). Developer API: `letsfg connect-payment` |
+| `FARE_CHANGED` (409) | Business | The fare moved at checkout — answer the `price_change` question to accept or decline it |
 
 ```python
 from letsfg import LetsFG, OfferExpiredError, PaymentRequiredError
 
 try:
-    unlocked = bt.unlock(offer_id)
+    booking = bt.book(offer_id, passengers=[{...}], contact_email="you@example.com",
+                      search_id=search_id)
 except OfferExpiredError:
-    # Airline sold the seats — search again
+    # Airline sold the seats — search again and book from the fresh results
     flights = bt.search(origin, dest, date)
 except PaymentRequiredError:
-    # No card on file — Developer API: letsfg setup-payment; PFS: https://letsfg.co/connect
-    print("Attach a card first")
+    # No card on file — Developer API: letsfg connect-payment; PFS: https://letsfg.co/connect
+    print("Connect a card first")
 ```
 
 ## Search Flags
@@ -302,7 +302,7 @@ except PaymentRequiredError:
 |-----------|------|---------------|------------|
 | `search` | Free | Yes | Yes |
 | `resolve_location` | Free | Yes | Yes |
-| `unlock` | **[Developer API only]** Legacy — not part of the agent flow | No | No |
+| `unlock` | **RETIRED 2026-09-08** — answers `410 Gone` | — | — |
 | `book` | Price shown on the offer | Developer API: only with `idempotency_key`. PFS: **no** — a second call places a second hold; poll `/api/agent-book/status` instead | With key: yes |
 
 ## Reference Files

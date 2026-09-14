@@ -77,7 +77,7 @@ The live public schema currently documents these groups of endpoints:
 - parallel full search for N destinations (`/flights/multi-search` — 1 search per destination)
 - async search with polling (`/flights/search/async` + `/flights/results/{id}`)
 - sandbox equivalents of all flight endpoints (free, fake data, same schema — for integration testing)
-- hotels: city resolution, search, asynchronous booking with polling, and cancellation (`/hotels/destinations`, `/hotels/search`, `/hotels/book`, `/hotels/booking/{job_id}`, `/hotels/cancel`) — see [Hotels](hotels.md). These require a payment method on file for **every** call, search included, and booking charges a 5% non-refundable reservation fee.
+- hotels: city resolution, search, asynchronous booking with polling, and cancellation (`/hotels/destinations`, `/hotels/search`, `/hotels/book`, `/hotels/booking/{job_id}`, `/hotels/cancel`) — see [Hotels](hotels.md). These require a payment method on file for **every** call, search included; booking holds the full price on the connected Revolut method and captures it only once the hotel confirms.
 
 ## Search activation checklist
 

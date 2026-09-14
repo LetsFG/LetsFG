@@ -48,7 +48,7 @@ LetsFG has two access paths — pick the one that matches your setup:
 
 **When to choose each:**
 - Use **MCP / SDK** if you want free search and booking — add `https://letsfg.co/developers/api/mcp` to your assistant and approve it once ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `book_flight` / `POST /api/agent-book` holds the fare on the connected card and a LetsFG booking agent buys the ticket — no unlock step, no booking fee and no transaction fee — our margin is already included in the price you saw, so the amount quoted is the amount charged.
-- Use the **Developer API** if you're building a product, need hotels, or want account-level billing controls. Look-to-book search (200 free after every booking, then $0.01), results in seconds, and `POST /flights/book` with no booking fee and no transaction fee.
+- Use the **Developer API** if you're building a product or want account-level billing controls. Hotels work on either path. Look-to-book search (200 free after every booking, then $0.01), results in seconds, and `POST /flights/book` with no booking fee and no transaction fee.
 
 ---
 
@@ -106,7 +106,7 @@ The canonical public surfaces are:
 
 ## Hotels
 
-Hotels are live: real bookable inventory, free-cancellation and pay-later rates only, 5% charged at booking as a non-refundable reservation fee and the balance paid straight to the supplier through a pay link. They need a card on file for every call, search included — and either credential reaches them: the card-backed token from the connect step or a Developer API key. Start at [Hotels](hotels.md).
+Hotels are live: real bookable inventory, every rate type (refundable and non-refundable), booked exactly like a flight — the price is held on the connected Revolut method and captured only once the hotel confirms. They need a card on file for every call, search included — and either credential reaches them: the card-backed token from the connect step or a Developer API key. Start at [Hotels](hotels.md).
 
 ## Start from the right page
 

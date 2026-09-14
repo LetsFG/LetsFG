@@ -44,12 +44,14 @@ city  = lfg.hotel_destinations("Warsaw")[0]
 stays = lfg.search_hotels(city_id=city["Id"], city_name=city["Name"],
                           check_in="2026-11-10", check_out="2026-11-12", adults=2)
 booking = lfg.book_hotel_and_wait(...)     # async: returns a job, polls to completion
-print(booking["confirmation"], booking["pay_link"])
+print(booking["confirmation"], booking["total_price"], booking["currency"])
 ```
 
-Only free-cancellation, pay-later rates are sold. Booking charges 5% to the card on file as a
-non-refundable reservation fee; the balance goes straight to the supplier through `pay_link` by
-`balance_due_by`. A card is required for hotel **search** as well as booking. Full detail:
+Every rate type is sold, refundable and non-refundable. Booking works exactly like a flight: the
+full price is held on the connected Revolut method, LetsFG pays the supplier, and the hold is
+captured only once the hotel confirms — a failed booking releases it. Each offer carries
+`refundable` and `free_cancellation_until`; show them before booking a non-refundable rate. A
+payment method is required for hotel **search** as well as booking. Full detail:
 [Hotels](hotels.md).
 
 ## Architecture
@@ -88,8 +90,8 @@ from letsfg import LetsFG, LetsFGError
 
 # Retry on expired offers. bt.book() dispatches to the PFS path
 # (POST /api/agent-book, starts the booking and returns a booking_ref) if a
-# Bearer token is set, otherwise falls back to the Developer API (unlock
-# required first) — same call either way.
+# Bearer token is set, otherwise to the Developer API (POST /flights/book,
+# returns a booking_id to poll) — same call either way, no unlock step.
 def resilient_book(bt, origin, dest, date, passenger, email, max_retries=2):
     for attempt in range(max_retries + 1):
         flights = bt.search(origin, dest, date)
@@ -101,7 +103,7 @@ def resilient_book(bt, origin, dest, date, passenger, email, max_retries=2):
                 offer_id=flights.cheapest.id,
                 passengers=[passenger],
                 contact_email=email,
-                search_id=flights.search_id,  # PFS path only; ignored on Developer API
+                search_id=flights.search_id,  # required on both lanes
             )
             return result
         except LetsFGError as e:
@@ -140,7 +142,6 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 | Search (MCP / Bearer token) | **10 per 10 min**, 30 per hour, 100 per day — per card on file | 180s (airline APIs can be slow) |
 | Search (API) | 60 req/min per agent | 30s |
 | Resolve location | 120 req/min per agent | 5s |
-| Unlock | 20 req/min per agent | 15s |
 | Book | 10 req/min per agent | 30s |
 
 > **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are limited per card on file to **10 per 10 minutes, 30 per hour and 100 per day** (raised from 3 / 10 / 25 on 2026-09-02, see [#208](https://github.com/LetsFG/LetsFG/issues/208)). Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.

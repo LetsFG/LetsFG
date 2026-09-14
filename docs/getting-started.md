@@ -14,7 +14,7 @@
 > See <https://letsfg.co/for-agents>.
 
 <div class="docs-callout">
-  <strong>Pick the correct path first.</strong> Use Option A (free Bearer token) if you want search and booking with no billing account. Use Option B (Developer API) if you want managed billing, hotels, or account-level controls.
+  <strong>Pick the correct path first.</strong> Use Option A (free Bearer token) if you want search and booking with no billing account. Use Option B (Developer API) if you want managed billing or account-level controls. Hotels work on either.
 </div>
 
 ## Choose the right mode
@@ -23,7 +23,7 @@
 |------|----------|-------|-------------|---------|
 | MCP / SDK (card-backed token) | Agents, assistants, zero-cost search and booking | Connect the MCP at `letsfg.co/developers/api/mcp`; consent saves a card at `letsfg.co/connect` | Free | `book_flight` / `POST /api/agent-book` — fare held on the card, captured against a real PNR |
 | Public Developer API | Managed cloud search, products, teams, hotels | Register, then connect a Revolut method (nothing charged) | Look-to-book: 200 free after every booking, then $5.00 per 500 | `POST /flights/book` — fare held on the connected method, captured against a real PNR. No booking fee, no transaction fee |
-| Hotels | Booking a room, not a flight | Developer API key + card on file | Free search, card required | 5% at booking, balance via pay link |
+| Hotels | Booking a room, not a flight | Either credential + a connected card | 1,000 searches free after every hotel booking | Price held on the connected method, captured once the hotel confirms |
 
 **Hotels work on the same credential.** They accept either the card-backed PFS token or a
 Developer API key, and need a card on file — which the connect step already saves. See

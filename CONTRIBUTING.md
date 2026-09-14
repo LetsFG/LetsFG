@@ -115,7 +115,7 @@ When editing any agent-facing text (READMEs, SDK docstrings, MCP tool descriptio
 
 1. **Zero price bias** messaging — this is a core differentiator
 2. **Real passenger details** warning — critical for bookings
-3. **Pricing accuracy** — search is free on MCP/CLI/SDK/PFS once a card is connected at letsfg.co/connect (a 0.00 Revolut setup, nothing charged). Flight booking holds the fare plus LetsFG's markup on that card and captures it only against a real PNR; the markup is inside the price shown, nothing is added at booking. Hotels charge a 5% non-refundable reservation fee at booking. The Developer API is a separate prepaid-credits product.
+3. **Pricing accuracy** — search is free on MCP/CLI/SDK/PFS once a card is connected at letsfg.co/connect (a 0.00 Revolut setup, nothing charged). Flight booking holds the fare plus LetsFG's markup on that card and captures it only against a real PNR; the markup is inside the price shown, nothing is added at booking. Hotel booking works the same way: the price is held on the card and captured only once the hotel confirms. The Developer API is a separate prepaid-credits product.
 
 ## Report a Vulnerability
 

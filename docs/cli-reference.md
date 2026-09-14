@@ -40,7 +40,7 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | **RETIRED 2026-09-08.** The server answers `410 Gone`; there is no unlock step on either lane. Book directly — the fare is held, not taken, and captured only against a real PNR |
 | `letsfg book <offer_id>` | Book the flight. No unlock step on either lane. The fare is HELD on the connected card and captured only against a real PNR; the command returns the started booking's reference to poll (4–11 min). PFS polls `POST /api/agent-book/status`; a Developer API key polls `GET /flights/bookings/{booking_id}` |
-| `letsfg setup-payment` | **RETIRED 2026-09-08 with Stripe.** The server answers `410 Gone`. Connect a Revolut method instead: `POST /agents/connect-payment` returns a one-time `connect_url` to open in a browser; nothing is charged to connect |
+| `letsfg connect-payment` | **[Developer API only]** Print a one-time `connect_url` to open in a browser and save a card; nothing is charged to connect. `letsfg setup-payment` is kept as an alias — the Stripe route it once called was retired on 2026-09-08 and answers `410 Gone` |
 | `letsfg me` | View profile & usage stats |
 
 All commands accept `--json` for structured output and `--api-key` to override the environment variable.
@@ -137,17 +137,19 @@ DEST=$(letsfg locations "Barcelona" --json | jq -r '.[0].iata_code')
 # Search
 RESULTS=$(letsfg search "$ORIGIN" "$DEST" 2026-04-01 --adults 2 --json)
 OFFER_ID=$(echo "$RESULTS" | jq -r '.offers[0].id')
+SEARCH_ID=$(echo "$RESULTS" | jq -r '.search_id')
 echo "Best offer: $OFFER_ID"
 
-# Book (on a Bearer token: holds the fare on the connected card, returns booking_ref;
-# poll POST /api/agent-book/status every 20-30 s until completed / failed)
-letsfg book "$OFFER_ID" \
+# Book: holds the fare on the connected card, no unlock step. With this API key it returns a
+# booking_id to poll at GET /flights/bookings/{booking_id}; on a Bearer token, a booking_ref to
+# poll at POST /api/agent-book/status. Either way until completed / failed / needs_attention.
+letsfg book "$OFFER_ID" --search-id "$SEARCH_ID" \
   --passenger '{"id":"pas_0","given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","title":"mr"}' \
   --passenger '{"id":"pas_1","given_name":"Jane","family_name":"Doe","born_on":"1992-03-20","gender":"f","title":"ms"}' \
   --email john.doe@example.com
 ```
 
-Unlock pricing and payment mechanics follow the live public contract in Swagger.
+How the hold, the capture against a real PNR and the poll work: [Booking flights](api-booking.md).
 
 !!! warning "Real Passenger Details Required"
     Airlines send e-tickets to the contact email. Names must match the passenger's passport or government ID. Never use placeholder data.

@@ -44,11 +44,11 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
 | **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search, no booking fee and no transaction fee (our margin is in the price shown) |
-| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume, and the only path to hotels | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking through `POST /flights/book`, no booking fee, no transaction fee |
+| **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking through `POST /flights/book`, no booking fee, no transaction fee |
 
 **Quick decision:**
 - You are an agent that wants to search and book → **use the MCP / SDK / CLI** with a PFS card-backed token (connect through the hosted MCP, described below). This is almost certainly you.
-- You need guaranteed speed for a product, account-level billing controls, or hotels → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers).
+- You need guaranteed speed for a product or account-level billing controls → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers). Hotels work on either credential.
 
 > **Important:** `GET /en?q=...` does not work for automated agents. The website is protected by Cloudflare Turnstile. All agent/script access must use `POST /api/search` with a Bearer token.
 
@@ -103,7 +103,7 @@ The price on the offer is everything you pay; LetsFG's markup is already inside 
 > exists but is unconfigured there, so no MPP challenge is ever issued from it.
 > For PFS auth, MPP is offered only when the `402` from
 > `/api/agent-access/request` carries an `mpp` object — see the auth section
-> below. Do not build against MPP for the unlock endpoint.
+> below. The unlock endpoint itself was retired on 2026-09-08 and answers `410 Gone`.
 
 ## How It Works (2 Steps)
 
@@ -145,7 +145,7 @@ curl https://letsfg.co/api/results/abc123 -H "Authorization: Bearer <your_token>
 POST /api/agent-book               # PFS — Bearer token, no unlock step; starts the booking
 POST /api/agent-book/status        # PFS — poll until completed / failed / needs_attention
 POST /api/v1/flights/book          # Developer API — no unlock step, no fee
-POST /api/v1/bookings/book         # Developer API only
+POST /api/v1/bookings/book         # RETIRED 2026-09-08 — 410 Gone, use /flights/book
 ```
 
 On a PFS Bearer token, `search` → `book` → `poll` is the whole flow. There is no
@@ -221,15 +221,13 @@ Other answers, all with `"charged": 0`: `{"error": "missing_details",
 `{"error": "payment_method_required", "add_card_url": "https://letsfg.co/connect"}`;
 `{"error": "payment_declined", "add_card_url": "https://letsfg.co/connect"}`.
 
-**Developer API alternative (paid, unlock required first):** if you're on the
-prepaid Developer API instead of a PFS Bearer token, `book` requires a prior
-`unlock` (legacy) which confirms the live price and reveals
-the offer for booking:
+**Developer API alternative (paid):** on the prepaid Developer API the flow is the
+same, with no unlock step: `POST /api/v1/flights/book` holds the fare on the
+connected Revolut method and returns a `booking_id`; poll
+`GET /api/v1/flights/bookings/{booking_id}` until `terminal`.
 
 ```bash
-letsfg unlock off_xxx --api-key letsfg_...
-# Output: Confirmed price: EUR 189.50, Fee: $3.00
-letsfg book off_xxx --api-key letsfg_... --passenger '{"id":"pas_xxx",...}' --email you@example.com
+letsfg book off_xxx --search-id <search_id> --api-key letsfg_... --passenger '{...}' --email you@example.com
 ```
 
 ```python
@@ -392,7 +390,7 @@ local server can set `LETSFG_API_KEY` instead of `LETSFG_BEARER_TOKEN` —
 | `letsfg me` | View profile & usage | Free |
 | `letsfg register` | **[Paid Developer API only — most agents should not run this]** Creates a billing account | Free |
 | `letsfg connect-payment` | **[Paid Developer API only — agents connect at letsfg.co/connect instead]** Prints a link; nothing is charged. `letsfg setup-payment` is an alias, kept because the old name is in published docs | Free |
-| `letsfg unlock <offer_id> --api-key <key>` | **[Developer API only]** Confirm price, required before `book` on that path. Legacy | — |
+| `letsfg unlock <offer_id>` | **RETIRED 2026-09-08** — answers `410 Gone`; there is no unlock step on either lane | — |
 | `letsfg recover --email <email>` | Recover lost Developer API key via email | Free |
 
 ## Developer API Authentication (paid, only if you need it)
@@ -554,8 +552,8 @@ The SDK raises specific exceptions for each failure mode. All errors include mac
 | `AUTH_INVALID` | business | 401 | Bearer token / API key missing or invalid |
 | `PAYMENT_REQUIRED` | business | 402 | No card on file. PFS: response includes `add_card_url` (https://letsfg.co/connect) — connect the card there. Developer API: `letsfg connect-payment`, then open the printed link. |
 | `OFFER_NOT_FOUND` | business | 404 | Offer expired (~15 min after search) or unknown `offer_id`/`search_id` — search again |
-| `PAYMENT_DECLINED` | business | 402 | Card refused. PFS: nothing charged, `add_card_url` points at letsfg.co/connect. Developer API: the unlock charge failed — check card details |
-| `FARE_CHANGED` | business | 409 | Price changed since search (Developer API) — re-unlock |
+| `PAYMENT_DECLINED` | business | 402 | Card refused. PFS: nothing charged, `add_card_url` points at letsfg.co/connect. Developer API: the bank refused the hold; read `decline_reason` — nothing was charged |
+| `FARE_CHANGED` | business | 409 | The fare moved at checkout — answer the `price_change` question to accept or decline it |
 
 ### Using Error Codes in Agent Logic
 
@@ -737,7 +735,7 @@ if candidates:
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
 | Auth | FREE | Card saved at letsfg.co/connect (0.00 Revolut setup): no charge, no hold. The MPP lane, when offered, costs $0.01 once as verification. |
 | Book | Price shown on the offer | `POST /api/agent-book` holds the fare, a LetsFG agent buys the ticket, captured only on a real PNR. Poll `/api/agent-book/status`. No separate LetsFG fee. |
-| Unlock | — | **Developer API only, legacy.** Not part of the agent flow — there is no unlock step on a PFS Bearer token. |
+| Unlock | — | **RETIRED 2026-09-08** — answers `410 Gone`. There is no unlock step on any lane. |
 
 ## Rate Limits and Timeouts
 
@@ -749,7 +747,6 @@ The API has generous limits. Search is completely free and unlimited.
 | Search (Dev API discover) | 60 req/min per agent | 2–5 s | Synchronous, up to 20 destinations |
 | Resolve location | 120 req/min per agent | <1 s | |
 | Book (PFS) | 20 req/min per agent | up to 60 s | |
-| Unlock (Dev API) | 20 req/min per agent | 2–5 s | |
 
 **Rate limit handling:**
 

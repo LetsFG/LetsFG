@@ -30,7 +30,7 @@
 | `https://letsfg.co/developers/api/openapi.json` | Machine-readable schema for generators, SDK tooling, and agent discovery |
 | `https://letsfg.co/developers/api/docs` | Interactive Swagger UI |
 | `https://letsfg.co/developers/api/v1` | The actual REST base for requests |
-| `https://letsfg.co/en/developers` | Human onboarding, hosted checkout, and account context |
+| `https://letsfg.co/en/developers` | Human onboarding and account context |
 
 ## What is in the live schema?
 

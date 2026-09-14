@@ -107,7 +107,6 @@ The LetsFG cloud API enforces per-agent rate limits:
 |----------|-----------|------------------|
 | Search | 60 req/min | 2-15s |
 | Resolve location | 120 req/min | < 1s |
-| Unlock | 20 req/min | 2-5s |
 | Book | 10 req/min | 3-10s |
 
 When rate limited (HTTP 429), use exponential backoff:

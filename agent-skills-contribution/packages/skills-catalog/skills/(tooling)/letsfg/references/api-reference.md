@@ -225,7 +225,6 @@ replacement. There is no unlock step on either lane any more.
 |----------|-----------|-----------------|
 | Search | 60 req/min | 2-15s |
 | Resolve location | 120 req/min | <1s |
-| Unlock | 20 req/min | 2-5s |
 | Book | 10 req/min | 3-10s |
 
 ## Error Response Format
@@ -264,6 +263,5 @@ replacement. There is no unlock step on either lane any more.
 | `PAYMENT_REQUIRED` | 402 | business | No payment method |
 | `PAYMENT_DECLINED` | 402 | business | The connected Revolut method declined; `decline_reason` says why. Nothing was charged |
 | `OFFER_EXPIRED` | 410 | business | Seats sold — search again |
-| `OFFER_NOT_UNLOCKED` | 403 | business | Must unlock before booking |
-| `FARE_CHANGED` | 409 | business | Price changed — re-unlock |
+| `FARE_CHANGED` | 409 | business | The fare moved at checkout — answer the `price_change` question |
 | `ALREADY_BOOKED` | 409 | business | Duplicate (idempotency match) |

@@ -40,15 +40,22 @@ rates on the list, and that is the trade.
 
 `POST /hotels/book` returns a `booking_job_id`, **not** a booking. A real booking
 takes minutes: the rate is re-blocked, the room committed, the supplier paid.
-Poll `GET /hotels/booking/{booking_job_id}` every ~20s until `status` is
-`succeeded` or `failed`.
+Poll `GET /hotels/booking/{booking_job_id}` every ~20s until `status` is final:
+
+| `status` | What it means |
+|----------|---------------|
+| `in_progress` | Still booking — keep polling |
+| `succeeded` | Booked and paid. Carries `confirmation`, `total_price` + `currency` (what the guest is charged), `refundable`, `free_cancellation_until` and `terms` |
+| `failed` | Nothing was booked. The hold is released and nothing was charged; `error` says why, written for the guest |
+| `attention` | The outcome could not be confirmed automatically, so a person at LetsFG is checking it with the supplier. The hold is kept and nothing is charged. **Do not book again**, and stop polling |
 
 This is not ceremony. It is what makes it impossible to hold a card and then
 lose the confirmation to a timeout.
 
-!!! danger "Do not retry a booking blindly"
-    Calling `/hotels/book` twice for the same rate books the room twice. If a
-    call times out, poll the job — do not re-book.
+!!! danger "Poll, don't re-book"
+    Never call `/hotels/book` again while its job is running — poll the job. A
+    retry with the same `idempotency_key` returns the existing job
+    (`duplicate: true`) instead of booking twice; a new key is a new booking.
 
 The hold is captured only against a confirmed reservation, so a declined method
 or a failed booking costs the guest nothing.
@@ -81,21 +88,29 @@ card was issued elsewhere is quoted at 8.3%. The response says which in
 `markup_rate`. Nothing is added at booking.
 
 Each offer carries `price` (what the guest pays, in `currency`), `refundable`,
-`free_cancellation_until`, `cancellation_policy` and `expected_cost` (the
-supplier's own figure, in the supplier's currency). There is no wholesale figure
-in the response to quote by mistake — `expected_cost` exists only so it can be
-sent back verbatim.
+`free_cancellation_until`, `cancellation_policy`, `session_id` and
+`expected_cost` (the supplier's own figure, in the supplier's currency).
+`expected_cost` exists only so it can be sent back verbatim — never quote it to
+a guest.
 
 Send `expected_price`, `expected_cost`, `currency` and `fx_rate` back to
-`/hotels/book` exactly as search returned them. The hold is placed in that
-currency; the booking is refused if the supplier's price has moved, so a guest
-is never charged a price they did not agree to.
+`/hotels/book` exactly as the chosen offer returned them, with that offer's
+`session_id`. The hold is placed in that currency. `currency` defaults to PLN on
+this endpoint, so a USD offer sent without it is refused as `price_mismatch` —
+and so is a booking whose supplier price has moved, so a guest is never charged
+a price they did not agree to.
+
+Guest names, phone and e-mail are checked before anything is held; a problem
+answers `400 invalid_details` naming the fields.
+
+Hotel search is look-to-book: 1,000 searches are free after every hotel booking,
+then blocks of 1,000 for $5.00 from prepaid balance.
 
 ## Python
 
 ```python
 from letsfg import LetsFG
-lfg = LetsFG()
+lfg = LetsFG()  # reads LETSFG_API_KEY — the SDK's hotel methods take a Developer API key
 
 city = lfg.hotel_destinations("Warsaw")[0]
 stays = lfg.search_hotels(
@@ -110,23 +125,39 @@ booking = lfg.book_hotel_and_wait(
     combination_id_v2=offer["combination_id_v2"],
     expected_price=offer["price"],
     expected_cost=offer["expected_cost"],
+    currency=offer["currency"],
+    fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
     guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
     email="guest@example.com", phone="512345678",
 )
-print(booking["confirmation"], booking["total_price"], booking["currency"])
+if booking["status"] == "succeeded":
+    print(booking["confirmation"], booking["total_price"], booking["currency"])
 ```
 
 On success the booking carries `confirmation`, `total_price`, `currency`,
 `refundable`, `free_cancellation_until` and `terms` (with the hotel's full
-cancellation ladder).
+cancellation ladder), plus `supplier_paid` / `supplier_currency` — what LetsFG
+paid the supplier, for your records.
+
+## What the guest is told
+
+The guest's `email` hears from LetsFG however the booking ends:
+
+- **succeeded** — a confirmation with the supplier's confirmation code, the
+  cancellation term and the total paid;
+- **failed** — the booking did not go through, the hold has been released and
+  nothing was charged;
+- **attention** — we are confirming it with the supplier, nothing has been
+  charged, and it should not be booked again; the guest is e-mailed the outcome.
 
 ## Cancelling
 
-`POST /hotels/cancel` with the `confirmation`. Only a `refundable` booking, and
-only until its `free_cancellation_until` — the charge is then refunded in full to
-the payment method. After that date, or on a non-refundable rate, the hotel's own
+`POST /hotels/cancel` with the `confirmation` of a booking your account made
+(anything else is `404`). Only a `refundable` booking, and only until its
+`free_cancellation_until` — the charge is then refunded in full to the payment
+method. After that date, or on a non-refundable rate, the hotel's own
 ladder applies and can reach 100%; that ladder ships in the booking's `terms`, so
 you can always see the cost first, and the endpoint refuses rather than
 forfeiting money on the guest's behalf.
@@ -137,4 +168,13 @@ times out, do not assume it failed — re-check before retrying.
 ## MCP tools
 
 `resolve_hotel_city` → `search_hotels` → `book_hotel` → `get_hotel_booking` →
-`cancel_hotel_booking`.
+`cancel_hotel_booking`. `get_hotel_booking` reports the same `succeeded` /
+`failed` / `attention` statuses as the API.
+
+## Bookings made before 2026-09-11
+
+Until 2026-09-11 hotels used a different, now retired process: a 5%
+non-refundable reservation fee at booking, and the balance paid to the supplier
+through a pay link by a deadline. Bookings made then keep their original terms,
+and their pay link is re-issued through the letsfg.co website (My Trips), not the
+API. Nothing booked since then works that way.

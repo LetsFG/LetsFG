@@ -39,7 +39,7 @@ Provides:
 
 - `LetsFG` client class with `search()`, `book()`, `me()`, `resolve_location()`. `unlock()` and `setup_payment()` call routes retired on 2026-09-08 and now answer `410 Gone`
 - Server-side search via letsfg.co — Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, Qatar Airways, LATAM, Finnair, and 190+ more
-- CLI command `letsfg` with all operations (`letsfg auth` implemented the retired Stripe setup and is being migrated to the connect flow; set `LETSFG_BEARER_TOKEN` meanwhile)
+- CLI command `letsfg` with all operations (`letsfg auth` connects a card at letsfg.co/connect and stores the token)
 - Typed response models: `FlightSearchResponse`, `UnlockResponse`, `BookingResponse`, `AgentProfile`
 - Exception classes: `AuthenticationError`, `PaymentRequiredError`, `OfferExpiredError`
 
@@ -154,17 +154,17 @@ claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
 | Tool | Description | Auth |
 |------|-------------|------|
 | `resolve_hotel_city` | Resolve a place name to the supplier city id `search_hotels` needs. Call this first | API key |
-| `search_hotels` | Search real, bookable, free-cancellation pay-later rates. Needs a card on file — a search opens a real supplier session. Takes up to a few minutes | API key + card |
-| `book_hotel` | Book one rate. Charges **5% of the price as a non-refundable reservation fee**; the balance is paid to the supplier via the returned pay link by `balance_due_by`. Returns a `booking_job_id`, not a booking | API key + card |
-| `get_hotel_booking` | Poll the booking job until `succeeded` or `failed`. **Never retry `book_hotel` blindly** — it books the room twice | API key |
-| `cancel_hotel_booking` | Release a reservation | API key |
+| `search_hotels` | Search real, bookable rates, every rate type. Each offer says `refundable` / `free_cancellation_until`. Needs a card on file — a search opens a real supplier session. Takes up to a few minutes | API key + card |
+| `book_hotel` | Book one rate. The **full price is held** on the connected Revolut method and captured only once the hotel confirms; a failed booking releases the hold. Returns a `booking_job_id`, not a booking | API key + card |
+| `get_hotel_booking` | Poll the booking job until `succeeded`, `failed` or `attention` (a person is confirming it; the hold is kept — do not book again). **Never call `book_hotel` again while a job is running** | API key |
+| `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` — refunded in full | API key |
 
 **Account and setup**
 
 | Tool | Description | Auth |
 |------|-------------|------|
-| `authenticate` | **Retired 2026-09-02** (it drove the old Stripe setup). Get the token by connecting the remote MCP instead | none |
-| `setup_payment` | **[Developer API only]** Attach a payment method to the paid prepaid account. Not how agents authenticate | API key |
+| `authenticate` | Returns the current connect instructions and `add_card_url` (letsfg.co/connect). A person approves once in a browser; nothing is charged. The Stripe lanes it used to drive were retired on 2026-09-02 | none |
+| `connect_payment` | **[Developer API only]** Mint a one-time link to connect a payment method to the paid prepaid account (nothing is charged). Not how agents authenticate | API key |
 | `get_agent_profile` | View account info and usage stats | API key |
 | `load_resources` | Load the in-server usage guide | none |
 
@@ -191,9 +191,9 @@ Public REST integrations use the letsfg.co developer API:
 | `/flights/locations/{query}` | GET | Resolve city/airport codes |
 | `/flights/providers` | GET | Inspect provider mix |
 | `/hotels/destinations` | POST | Resolve a place name to a supplier city id |
-| `/hotels/search` | POST | Search bookable, free-cancellation hotel rates |
+| `/hotels/search` | POST | Search bookable hotel rates, every rate type |
 | `/hotels/book` | POST | Start a booking (async — returns a job id) |
-| `/hotels/booking/{job_id}` | GET | Collect the booking result and pay link |
+| `/hotels/booking/{job_id}` | GET | Collect the booking result |
 | `/hotels/cancel` | POST | Release a reservation |
 
 **Base URL:** `https://letsfg.co/developers/api/v1`

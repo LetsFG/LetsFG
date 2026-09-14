@@ -3,8 +3,8 @@
 > ### ⚠️ Agents: do not create a Developer API account
 >
 > Do **NOT** call `/developers/api/v1/agents/register` or
-> `/developers/api/v1/agents/setup-payment`, and do **NOT** run
-> `letsfg register` or `letsfg setup-payment`. Those belong to a separate,
+> `/developers/api/v1/agents/connect-payment`, and do **NOT** run
+> `letsfg register` or `letsfg connect-payment`. Those belong to a separate,
 > paid, prepaid-balance product for high-volume commercial integrations and
 > create a billing account you almost certainly do not want.
 >
@@ -40,8 +40,8 @@ pip install letsfg
 letsfg register --name my-agent --email you@example.com
 # Save the trav_xxx key
 
-# Attach a payment method (required before unlock)
-letsfg setup-payment
+# Connect a payment method (nothing is charged)
+letsfg connect-payment   # prints a link to open in a browser
 ```
 
 Or via cURL:
@@ -188,7 +188,7 @@ export LETSFG_API_KEY=trav_your_api_key
 | `resolve_location` | Convert city names to IATA codes |
 | `book_flight` | Start a booking with one traveller's details. PFS: holds the fare on the connected card, returns a `booking_ref` in seconds |
 | `get_flight_booking` | Poll a PFS booking every 20–30 s (4–11 min): `booking_in_progress` → `completed` (PNR) / `failed` (hold released) / `needs_attention` |
-| `unlock_flight_offer` | **Developer API only** — confirm live price and reserve for 30 min |
+| `unlock_flight_offer` | **RETIRED 2026-09-08** — answers `410 Gone`; call `book_flight` directly |
 
 ## Verification
 
