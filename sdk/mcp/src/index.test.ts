@@ -136,6 +136,15 @@ describe('MCP server — hotel contract guards', () => {
     assert.ok(!code.includes('args.expected_balance'), 'the handler must not forward expected_balance');
   });
 
+  it('book_hotel asks for one name per guest in the room, children included', () => {
+    // Dry probe P2I5OC (2026-09-14): the hotel requires a name for every guest; fewer names than
+    // guests is refused before anything is submitted.
+    const def = tool('book_hotel');
+    assert.match(def, /ONE entry per guest in the room, children included/);
+    assert.match(def, /child_ages order/);
+    assert.match(def, /fewer names than guests/);
+  });
+
   it('get_hotel_booking names attention as a final status', () => {
     const def = tool('get_hotel_booking');
     assert.match(def, /attention/);

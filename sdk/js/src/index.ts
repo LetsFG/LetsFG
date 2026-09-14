@@ -773,10 +773,17 @@ export class LetsFG {
     cityName: string;
     checkIn: string;
     checkOut: string;
+    /**
+     * ONE entry per guest in the room, children included: adults first, then children in the
+     * `childAges` order used to search (the party travels with the offer's session). The hotel
+     * requires a name for every guest; fewer names than guests is refused before anything is
+     * submitted, and the hold is released.
+     */
     guests: Array<{ title: string; first_name: string; last_name: string }>;
     /** The guest's e-mail: the confirmation, or a note that it did not go through, goes here. */
     email: string;
     phone: string;
+    /** Adults in the room, as searched. */
     adults?: number;
     combinationId?: number;
     hotelName?: string;

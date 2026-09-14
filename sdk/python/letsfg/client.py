@@ -943,8 +943,15 @@ class LetsFG:
                 when it is absent, so a USD offer sent without it is refused
                 with ``400 price_mismatch``.
             fx_rate: The offer's ``fx_rate`` (``None`` for a PLN offer).
-            guests: ``[{"title": "Mr", "first_name": ..., "last_name": ...}]``,
-                Latin-script names.
+            guests: ONE entry per guest in the room, children included —
+                adults first, then children in the ``child_ages`` order used to
+                search: ``[{"title": "Mr", "first_name": ..., "last_name": ...}]``,
+                Latin-script names. The hotel requires a name for every guest;
+                fewer names than guests is refused before anything is submitted,
+                and the hold is released. The party itself (``adults``,
+                ``children``, ``child_ages``) travels with the offer's
+                ``session_id`` from :meth:`search_hotels`.
+            adults: Adults in the room, as searched.
             email: The guest's e-mail. The confirmation — or a note that the
                 booking did not go through — goes here. Checked, with the
                 names and the phone, before anything is held; a problem returns

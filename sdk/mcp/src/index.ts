@@ -604,7 +604,8 @@ const TOOLS = [
       '~20s until status is succeeded, failed or attention; all three are final.\n\n' +
       'Copy expected_price (the offer\'s price), expected_cost, currency and fx_rate from the chosen offer ' +
       'exactly. A USD offer sent without its currency is refused (400 price_mismatch). Guest names, phone ' +
-      'and e-mail are checked before anything is held (400 invalid_details). Do NOT call book_hotel again ' +
+      'and e-mail are checked before anything is held (400 invalid_details). guests needs ONE name per guest ' +
+      'in the room, children included — adults first, then children in child_ages order. Do NOT call book_hotel again ' +
       'for a booking whose job is running — poll it; a retry returns the same job (duplicate: true).',
     inputSchema: {
       type: 'object',
@@ -626,10 +627,13 @@ const TOOLS = [
         city_name: { type: 'string' },
         check_in: { type: 'string', description: 'yyyy-MM-dd' },
         check_out: { type: 'string', description: 'yyyy-MM-dd' },
-        adults: { type: 'number' },
+        adults: { type: 'number', description: 'Adults in the room, as searched (default 2)' },
         guests: {
           type: 'array',
-          description: 'One entry per guest: {title, first_name, last_name}',
+          description: 'ONE entry per guest in the room, children included: adults first, then children in the ' +
+            'child_ages order used in search_hotels (the party travels with the offer\'s session). Each is ' +
+            '{title, first_name, last_name}. The hotel requires a name for every guest; fewer names than guests ' +
+            'is refused before anything is submitted, and the hold is released.',
           items: {
             type: 'object',
             required: ['title', 'first_name', 'last_name'],

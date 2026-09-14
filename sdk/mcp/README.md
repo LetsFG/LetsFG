@@ -471,7 +471,9 @@ booking = lfg.book_hotel_and_wait(
     fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
-    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
+    # ONE entry per guest in the room, children included: adults first, then children in child_ages order
+    guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"},
+            {"title": "Mrs", "first_name": "Anna", "last_name": "Kowalska"}],
     email="GUEST_EMAIL", phone="512345678",   # the guest's real e-mail and phone
 )
 if booking["status"] == "succeeded":
@@ -536,6 +538,10 @@ is not metered, only the search call itself.
   without its `currency`, is refused with `400 price_mismatch` before anything is held.
 - **Guest details are checked before anything is held**: Latin-script names, a phone number valid
   for its country code, and an e-mail. A problem returns `400 invalid_details` naming the fields.
+- **One name per guest in the room, children included.** For a family, search with `children` and
+  `child_ages`; the party travels with the offer's session. `guests` then lists every guest — adults
+  first, then children in `child_ages` order. The hotel requires a name for every guest: fewer names
+  than guests is refused before anything is submitted, and the hold is released.
 - **The guest is e-mailed however it ends**: a confirmation with the code and the cancellation
   term, a note that it did not go through and nothing was charged, or a note that it is being
   confirmed with the supplier.
@@ -564,7 +570,9 @@ const booking = await lfg.bookHotelAndWait({
   currency: offer.currency, fxRate: offer.fx_rate,
   cityId: city.Id, cityName: city.Name,
   checkIn: '2026-11-10', checkOut: '2026-11-12',
-  guests: [{ title: 'Mr', first_name: 'Jan', last_name: 'Kowalski' }],
+  // ONE entry per guest in the room, children included: adults first, then children in childAges order
+  guests: [{ title: 'Mr', first_name: 'Jan', last_name: 'Kowalski' },
+    { title: 'Mrs', first_name: 'Anna', last_name: 'Kowalska' }],
   email: 'GUEST_EMAIL', phone: '512345678',
 });
 console.log(booking.status, booking.confirmation, booking.total_price, booking.currency);
