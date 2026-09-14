@@ -113,6 +113,45 @@ describe('MCP server — dead-route guards', () => {
   });
 });
 
+// Hotels, 2026-09-14: book_hotel sent the retired deposit contract (expected_balance, no
+// expected_cost) and every booking got a 422; get_hotel_booking told agents to poll until
+// succeeded or failed, so an `attention` job was polled forever.
+describe('MCP server — hotel contract guards', () => {
+  const src = readFileSync(SERVER_PATH, 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const tool = (name: string) => {
+    const i = code.indexOf(`name: '${name}',`);
+    assert.ok(i >= 0, `${name} tool not found`);
+    return code.slice(i, code.indexOf("\n  {\n    name: '", i + 10));
+  };
+
+  it('book_hotel requires expected_cost and sends the offer contract', () => {
+    const def = tool('book_hotel');
+    assert.match(def, /required: \[[^\]]*'expected_cost'/);
+    assert.ok(!/expected_balance:/.test(def), 'expected_balance is not a book_hotel parameter any more');
+    for (const f of ['expected_cost: args.expected_cost', 'body.currency = args.currency',
+      'body.fx_rate = args.fx_rate', 'body.idempotency_key = args.idempotency_key']) {
+      assert.ok(code.includes(f), `the handler must send ${f}`);
+    }
+    assert.ok(!code.includes('args.expected_balance'), 'the handler must not forward expected_balance');
+  });
+
+  it('get_hotel_booking names attention as a final status', () => {
+    const def = tool('get_hotel_booking');
+    assert.match(def, /attention/);
+    assert.match(def, /total_price/);
+  });
+
+  it('no hotel tool describes the retired deposit process as current', () => {
+    for (const name of ['search_hotels', 'book_hotel', 'get_hotel_booking', 'cancel_hotel_booking']) {
+      const def = tool(name);
+      for (const stale of ['reservation_fee', 'pay_link', 'balance_to_supplier', 'balance_due_by', 'pay-later', 'NON-REFUNDABLE']) {
+        assert.ok(!def.includes(stale), `${name} still says ${stale}`);
+      }
+    }
+  });
+});
+
 describe('MCP server — initialize', () => {
   let proc: ChildProcessWithoutNullStreams;
 

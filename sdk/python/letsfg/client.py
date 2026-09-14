@@ -332,7 +332,8 @@ class LetsFG:
     Pricing:
       - Search: FREE (unlimited, requires Bearer token or API key)
       - Unlock: Developer API only, legacy. Not part of the agent flow.
-      - Book: Ticket price via Stripe. Developer API only.
+      - Book: the price is held on the connected Revolut payment method and captured only
+        once the booking is confirmed; a failed booking releases the hold. Developer API only.
     """
 
     def __init__(
@@ -788,20 +789,25 @@ class LetsFG:
 
     # ── Hotels ────────────────────────────────────────────────────────────────
     #
-    # A card on file is required for EVERY hotel call, search included. That is
-    # deliberate, not a bug: a hotel search opens a real session at the supplier
-    # and booking blocks a real rate, so we will not let a caller reach the point
-    # of commitment only to discover it cannot pay. The same card that authorises
-    # flight booking authorises hotels; there is no separate hotel enrolment.
+    # A connected payment method is required for EVERY hotel call, search included.
+    # That is deliberate, not a bug: a hotel search opens a real session at the
+    # supplier and booking blocks a real rate, so we will not let a caller reach
+    # the point of commitment only to discover it cannot pay. The same method that
+    # authorises flight booking authorises hotels; there is no separate enrolment.
     #
-    # Only free-cancellation, pay-later rates are sold. That is a commercial
-    # choice: those are the rates where the guest's balance can safely be settled
-    # with the supplier after booking, which is what makes 5%-now/rest-later
-    # work at all. It also means the result set is smaller than a metasearch's,
-    # and every row in it can actually be booked.
+    # How a hotel is paid (since 2026-09-11): the full `price` is HELD on the
+    # connected Revolut method, LetsFG books and pays the supplier itself, and the
+    # hold is captured only once the supplier has confirmed. A booking that fails
+    # releases the hold. There is no reservation fee, no deposit and no pay link -
+    # those belonged to the process retired on 2026-09-11. Every rate type is sold,
+    # refundable and non-refundable.
 
     HOTEL_SEARCH_TIMEOUT = 240
     HOTEL_CANCEL_TIMEOUT = 300
+    # Every status after which polling a hotel booking job is pointless. `attention`
+    # is final for the caller too: a person settles it, and booking again would book
+    # twice.
+    HOTEL_BOOKING_FINAL_STATUSES = ("succeeded", "failed", "attention")
 
     def hotel_destinations(self, text: str) -> list[dict]:
         """
@@ -830,6 +836,7 @@ class LetsFG:
         nationality: str = "PL",
         limit: int = 40,
         with_images: bool = True,
+        currency: str = "USD",
     ) -> dict:
         """
         Search real, bookable hotel inventory.
@@ -850,17 +857,23 @@ class LetsFG:
                 genuinely differ by nationality, so this changes prices.
             limit: Maximum hotels to return.
             with_images: Include photo URLs.
+            currency: ISO code every ``price`` is quoted in (USD unless asked;
+                PLN is the supplier's own).
 
         Returns:
-            ``{"session_id", "currency", "count", "hotels": [...], "terms"}``.
-            Each offer carries ``price`` (what the guest pays),
-            ``reservation_fee_now`` (the 5% taken at booking),
-            ``balance_to_supplier``, ``balance_due_by`` and
-            ``free_cancellation_until``. There is no wholesale figure to quote
-            by mistake.
+            ``{"session_id", "currency", "supplier_currency", "markup_rate",
+            "fx_rate", "fx_as_of", "count", "hotels": [...], "terms",
+            "caveats"}``. Each offer carries ``price`` (what the guest pays,
+            in ``currency``), ``currency``, ``fx_rate``, ``expected_cost`` (the
+            supplier's cost, in PLN), ``refundable``,
+            ``free_cancellation_until`` (refundable rates only),
+            ``cancellation_policy`` and its own ``session_id``.
 
-            Keep ``session_id`` and the chosen offer's ``combination_id_v2``:
-            together they identify the exact rate, and booking needs both.
+            ``price`` is the supplier's cost plus ``markup_rate`` (6.4% for
+            Revolut Pay or an EEA-issued card, 8.3% for a card issued outside
+            the EEA); nothing is added at booking. Keep the chosen offer whole:
+            :meth:`book_hotel` needs its ``session_id``, ``combination_id_v2``,
+            ``price``, ``expected_cost``, ``currency`` and ``fx_rate``.
         """
         self._require_api_key()
         body = {
@@ -868,7 +881,7 @@ class LetsFG:
             "check_in": check_in, "check_out": check_out,
             "adults": adults, "children": children,
             "nationality": nationality, "limit": limit,
-            "with_images": with_images,
+            "with_images": with_images, "currency": currency,
         }
         if child_ages:
             body["child_ages"] = child_ages
@@ -880,8 +893,9 @@ class LetsFG:
         session_id: str,
         hotel_code: int,
         combination_id_v2: str,
+        *,
         expected_price: float,
-        expected_balance: float,
+        expected_cost: float,
         city_id: int,
         city_name: str,
         check_in: str,
@@ -889,62 +903,86 @@ class LetsFG:
         guests: list[dict],
         email: str,
         phone: str,
+        currency: str | None = None,
+        fx_rate: float | None = None,
         adults: int = 2,
         combination_id: int | None = None,
         hotel_name: str | None = None,
         phone_country_code: str = "48",
         special_requests: list[str] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
         """
         Start a booking. Returns a job immediately — it does NOT book inline.
 
-        A booking takes minutes: the rate is re-blocked at the supplier, every
-        price and date rail is checked, the 5% reservation fee is charged to
-        your card, and only then is the room committed. No proxy holds a
-        connection that long, so this returns at once and you poll
-        :meth:`hotel_booking` for the outcome. Use
-        :meth:`book_hotel_and_wait` if you would rather block.
+        What happens, in order: the offer's full ``price`` is HELD on the
+        Revolut payment method connected to this account (authorised, not
+        taken); LetsFG books the room with the supplier and pays the supplier
+        itself; the hold is captured only once the supplier has confirmed. If
+        the booking fails for any reason, the hold is released and nothing is
+        charged. There is no reservation fee, no deposit and no pay link.
 
-        Because the fee is taken BEFORE the commit, a declined card costs
-        nothing to unwind: no reservation exists and nothing is charged.
+        A booking takes minutes and no proxy holds a connection that long, so
+        this returns at once and you poll :meth:`hotel_booking` for the
+        outcome. Use :meth:`book_hotel_and_wait` if you would rather block.
+
+        Everything after ``combination_id_v2`` is keyword-only: the offer's
+        numbers must never land in the wrong parameter by position.
 
         Args:
-            session_id: From :meth:`search_hotels`.
+            session_id: The chosen offer's ``session_id``.
             hotel_code: From the chosen hotel.
             combination_id_v2: From the chosen offer. Identifies that exact
                 rate — room name alone is ambiguous, since the same room exists
                 refundable and non-refundable at different prices.
-            expected_price: The offer's ``price``, sent back verbatim. The
-                booking is refused if the supplier has moved beyond tolerance,
+            expected_price: The offer's ``price``, sent back verbatim.
+            expected_cost: The offer's ``expected_cost``, sent back verbatim.
+                The booking is refused if the supplier's live cost is above it,
                 so a guest is never charged a price they did not agree to.
-            expected_balance: The offer's ``balance_to_supplier``, verbatim.
-            guests: ``[{"title": "Mr", "first_name": ..., "last_name": ...}]``.
-            email: The voucher and the pay link go here. A typo loses the
-                booking, so this is validated before anything is charged.
-            phone: Guest contact number.
+            currency: The offer's ``currency``. Copy it: the API assumes PLN
+                when it is absent, so a USD offer sent without it is refused
+                with ``400 price_mismatch``.
+            fx_rate: The offer's ``fx_rate`` (``None`` for a PLN offer).
+            guests: ``[{"title": "Mr", "first_name": ..., "last_name": ...}]``,
+                Latin-script names.
+            email: The guest's e-mail. The confirmation — or a note that the
+                booking did not go through — goes here. Checked, with the
+                names and the phone, before anything is held; a problem returns
+                ``400 invalid_details`` naming the fields.
+            phone: Guest contact number, valid for ``phone_country_code``.
+            idempotency_key: Optional. A retry with the same key returns the
+                booking already under way instead of holding the money twice.
 
         Returns:
-            ``{"booking_job_id", "status": "in_progress", "poll", ...}``.
+            ``{"booking_job_id", "booking_id", "status": "in_progress", "held",
+            "poll", "poll_after_seconds", "note"}`` — or ``"duplicate": True``
+            when this booking is already under way.
 
-            Do NOT call this again for the same rate while a job is running:
-            that books the room twice and charges two reservation fees.
+            Do NOT call this again for a booking whose job is still running:
+            poll it instead.
         """
         self._require_api_key()
         body = {
             "session_id": session_id, "hotel_code": hotel_code,
             "combination_id_v2": combination_id_v2,
             "expected_price": expected_price,
-            "expected_balance": expected_balance,
+            "expected_cost": expected_cost,
             "city_id": city_id, "city_name": city_name,
             "check_in": check_in, "check_out": check_out, "adults": adults,
             "guests": guests, "email": email, "phone": phone,
             "phone_country_code": phone_country_code,
             "special_requests": special_requests or [],
         }
+        if currency:
+            body["currency"] = currency
+        if fx_rate is not None:
+            body["fx_rate"] = fx_rate
         if combination_id is not None:
             body["combination_id"] = combination_id
         if hotel_name:
             body["hotel_name"] = hotel_name
+        if idempotency_key:
+            body["idempotency_key"] = idempotency_key
         return self._post("/api/v1/hotels/book", body, timeout=90)
 
     def hotel_booking(self, booking_job_id: str) -> dict:
@@ -952,11 +990,24 @@ class LetsFG:
         Collect the result of a booking started with :meth:`book_hotel`.
 
         Returns:
-            ``status`` is ``"in_progress"``, ``"succeeded"`` or ``"failed"``.
-            On success: ``confirmation``, ``reservation_fee_charged``,
-            ``pay_link``, ``balance_due``, ``balance_due_by`` and ``terms``
-            (including the full cancellation ladder). On failure: ``error``,
-            written to be shown to whoever asked for the booking.
+            ``status`` is ``"in_progress"``, ``"succeeded"``, ``"failed"`` or
+            ``"attention"``. The last three are final (see
+            :attr:`HOTEL_BOOKING_FINAL_STATUSES`).
+
+            - ``succeeded``: ``confirmation``, ``booking_id``, ``hotel``,
+              ``room``, ``total_price`` + ``currency`` (what the guest is
+              charged), ``supplier_paid`` + ``supplier_currency`` (what the
+              supplier was paid), ``payment_status``, ``refundable``,
+              ``free_cancellation_until``, ``cancellation_ladder`` and
+              ``terms``.
+            - ``failed``: ``error``, written to be shown to the guest. The hold
+              has been released and nothing was charged.
+            - ``attention``: ``error`` (and ``confirmation`` when known). The
+              outcome could not be settled automatically; the hold is kept —
+              nothing is charged — while a person checks with the supplier.
+              Do not book again.
+
+            The guest is e-mailed in every case.
         """
         self._require_api_key()
         return self._get(f"/api/v1/hotels/booking/{quote(booking_job_id, safe='')}",
@@ -966,21 +1017,24 @@ class LetsFG:
         self,
         *,
         poll_interval: int = 20,
-        max_wait: int = 600,
+        max_wait: int = 1800,
         **kwargs: Any,
     ) -> dict:
         """
         :meth:`book_hotel`, then poll until the booking settles.
 
         Convenience only — it is the same two calls. Takes every argument
-        :meth:`book_hotel` does.
+        :meth:`book_hotel` does. Stops at ``succeeded``, ``failed`` or
+        ``attention``; it never re-books.
 
         Args:
             poll_interval: Seconds between polls.
-            max_wait: Give up waiting after this many seconds. Giving up does
+            max_wait: Give up waiting after this many seconds (default 30
+                minutes: a booking usually takes 5-10, and hotel bookings run
+                one at a time, so one may wait behind another). Giving up does
                 NOT cancel anything: the booking may still complete. The result
                 carries the ``booking_job_id`` so you can keep polling, and the
-                confirmation is emailed to the guest regardless.
+                guest is e-mailed the outcome regardless.
 
         Returns:
             The final :meth:`hotel_booking` payload. ``status`` may still be
@@ -996,20 +1050,21 @@ class LetsFG:
             time.sleep(poll_interval)
             waited += poll_interval
             result = self.hotel_booking(job_id)
-            if result.get("status") in ("succeeded", "failed"):
+            if result.get("status") in self.HOTEL_BOOKING_FINAL_STATUSES:
                 return result
         result.setdefault("booking_job_id", job_id)
         return result
 
     def cancel_hotel(self, confirmation: str) -> dict:
         """
-        Release a reservation at the supplier.
+        Release a reservation at the supplier and refund the guest.
 
-        Free until ``balance_due_by``; after that the hotel's own cancellation
-        ladder applies and can reach 100%. The ladder ships in the booking's
-        ``terms``, so you can always see the cost before calling this.
-
-        The 5% reservation fee is NOT refunded.
+        Only this account's own bookings can be cancelled (anything else is
+        404). A zero-charge cancellation — a refundable rate before its
+        ``free_cancellation_until`` — refunds the charge in full, or releases a
+        hold not yet captured. A cancellation that would cost money (a
+        non-refundable rate, or a refundable one past its free window) is
+        refused with 409; the hotel's own ladder is in the booking's ``terms``.
 
         This drives a browser at the supplier and takes over a minute. If it
         times out, do not assume it failed — re-check before retrying.

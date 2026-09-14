@@ -567,13 +567,15 @@ const TOOLS = [
   {
     name: 'search_hotels',
     description:
-      'Search real, bookable hotel inventory. Requires a payment method on file — the SAME card that ' +
+      'Search real, bookable hotel inventory. Requires a connected payment method — the SAME one that ' +
       'authorises flight booking. That applies to search too, not just booking, because a search opens a ' +
       'real session at the supplier.\n\n' +
-      'Only free-cancellation, pay-later rates are returned, so everything you see can actually be booked ' +
-      'on these terms. The result set is smaller than a metasearch and that is deliberate.\n\n' +
-      '`price` is what the guest pays. Keep `session_id` and the chosen offer\'s `combination_id_v2` — ' +
-      'together they identify that exact rate, and book_hotel needs both. Takes up to a few minutes.',
+      'Every rate type is returned, refundable and non-refundable; each offer\'s `refundable` and ' +
+      '`free_cancellation_until` say which.\n\n' +
+      '`price` is what the guest pays, in `currency` (USD unless you pass currency): the supplier\'s cost ' +
+      'plus `markup_rate` (6.4% for Revolut Pay or an EEA card, 8.3% for a card issued outside the EEA). ' +
+      'Nothing is added at booking. Keep the chosen offer whole — book_hotel needs its `session_id`, ' +
+      '`combination_id_v2`, `price`, `expected_cost`, `currency` and `fx_rate`. Takes up to a few minutes.',
     inputSchema: {
       type: 'object',
       required: ['city_id', 'city_name', 'check_in', 'check_out'],
@@ -587,33 +589,38 @@ const TOOLS = [
         child_ages: { type: 'array', items: { type: 'number' }, description: 'Age of each child; the supplier needs these to price' },
         nationality: { type: 'string', description: 'Two-letter guest nationality. Rates and taxes genuinely differ by it.' },
         limit: { type: 'number', description: 'Max hotels to return (default 40)' },
+        currency: { type: 'string', description: 'ISO code every price is quoted in (default USD)' },
       },
     },
   },
   {
     name: 'book_hotel',
     description:
-      'Book one hotel rate. Charges 5% of the price to the card on file immediately as a NON-REFUNDABLE ' +
-      'reservation fee; the balance is paid directly to the supplier through the pay link we return, by ' +
-      'balance_due_by (the supplier\'s own auto-cancellation date).\n\n' +
-      'Returns a booking_job_id, NOT the booking — a booking takes minutes. Poll get_hotel_booking until ' +
-      'status is succeeded or failed.\n\n' +
-      'The fee is charged BEFORE the room is committed, so a declined card costs nothing: no reservation ' +
-      'exists and nothing is charged.\n\n' +
-      'Send expected_price and expected_balance back exactly as search returned them. NOT idempotent — ' +
-      'calling twice for the same rate books the room twice and charges two fees.',
+      'Book one hotel rate. The offer\'s full price is HELD on the connected Revolut payment method ' +
+      '(authorised, not taken); LetsFG books and pays the supplier; the hold is captured only once the ' +
+      'supplier has confirmed. If the booking fails for any reason the hold is released and nothing is ' +
+      'charged. There is no reservation fee, no deposit and no pay link.\n\n' +
+      'Returns a booking_job_id, NOT the booking — a booking takes minutes. Poll get_hotel_booking every ' +
+      '~20s until status is succeeded, failed or attention; all three are final.\n\n' +
+      'Copy expected_price (the offer\'s price), expected_cost, currency and fx_rate from the chosen offer ' +
+      'exactly. A USD offer sent without its currency is refused (400 price_mismatch). Guest names, phone ' +
+      'and e-mail are checked before anything is held (400 invalid_details). Do NOT call book_hotel again ' +
+      'for a booking whose job is running — poll it; a retry returns the same job (duplicate: true).',
     inputSchema: {
       type: 'object',
       required: ['session_id', 'hotel_code', 'combination_id_v2', 'expected_price',
-                 'expected_balance', 'city_id', 'city_name', 'check_in', 'check_out',
+                 'expected_cost', 'city_id', 'city_name', 'check_in', 'check_out',
                  'guests', 'email', 'phone'],
       properties: {
-        session_id: { type: 'string', description: 'From search_hotels' },
+        session_id: { type: 'string', description: "The chosen offer's session_id" },
         hotel_code: { type: 'number', description: 'From the chosen hotel' },
         combination_id_v2: { type: 'string', description: 'From the chosen offer — identifies that exact rate' },
         combination_id: { type: 'number', description: 'From the chosen offer (optional)' },
         expected_price: { type: 'number', description: "The offer's `price`, verbatim" },
-        expected_balance: { type: 'number', description: "The offer's `balance_to_supplier`, verbatim" },
+        expected_cost: { type: 'number', description: "The offer's `expected_cost` (supplier cost, PLN), verbatim" },
+        currency: { type: 'string', description: "The offer's `currency`, verbatim (omitted means PLN)" },
+        fx_rate: { type: 'number', description: "The offer's `fx_rate`, verbatim (omit for a PLN offer)" },
+        idempotency_key: { type: 'string', description: 'Optional. A retry with the same key returns the booking already under way' },
         hotel_name: { type: 'string' },
         city_id: { type: 'number' },
         city_name: { type: 'string' },
@@ -633,7 +640,7 @@ const TOOLS = [
             },
           },
         },
-        email: { type: 'string', description: 'The voucher and pay link go here. A typo loses the booking.' },
+        email: { type: 'string', description: "The guest's e-mail: the confirmation, or a note that it did not go through, goes here." },
         phone: { type: 'string' },
         phone_country_code: { type: 'string', description: "Default '48'" },
         special_requests: { type: 'array', items: { type: 'string' } },
@@ -644,9 +651,14 @@ const TOOLS = [
     name: 'get_hotel_booking',
     description:
       'Collect the result of a booking started with book_hotel. Poll every ~20s.\n\n' +
-      'status is in_progress, succeeded or failed. On success you get confirmation, ' +
-      'reservation_fee_charged, pay_link, balance_due, balance_due_by and the full cancellation ladder. ' +
-      'Read-only and safe to repeat.',
+      'status is in_progress, succeeded, failed or attention; the last three are final — stop polling.\n' +
+      '- succeeded: confirmation, hotel, room, total_price + currency (what the guest is charged), ' +
+      'supplier_paid + supplier_currency, payment_status, refundable, free_cancellation_until, ' +
+      'cancellation_ladder and terms.\n' +
+      '- failed: error, written for the guest. The hold was released; nothing was charged.\n' +
+      '- attention: error (+ confirmation if known). The outcome could not be settled automatically; the ' +
+      'hold is kept (nothing charged) while a person checks with the supplier. Do NOT book again.\n' +
+      'The guest is e-mailed in every case. Read-only and safe to repeat.',
     inputSchema: {
       type: 'object',
       required: ['booking_job_id'],
@@ -658,10 +670,10 @@ const TOOLS = [
   {
     name: 'cancel_hotel_booking',
     description:
-      'Release a hotel reservation. Free until balance_due_by; after that the hotel\'s own ladder applies ' +
-      'and can reach 100%. The ladder is in the booking terms, so check the cost first.\n\n' +
-      'The 5% reservation fee is NOT refunded. Takes over a minute; if it times out do NOT assume it ' +
-      'failed — re-check before retrying.',
+      'Cancel a hotel booking made by this account and refund the guest. A zero-charge cancellation (a ' +
+      'refundable rate before free_cancellation_until) refunds the charge in full; a cancellation that would ' +
+      'cost money is refused (409) — the hotel\'s own ladder is in the booking terms.\n\n' +
+      'Takes over a minute; if it times out do NOT assume it failed — re-check before retrying.',
     inputSchema: {
       type: 'object',
       required: ['confirmation'],
@@ -1007,6 +1019,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         nationality: args.nationality ?? 'PL',
         limit: args.limit ?? 40,
         with_images: false,
+        currency: args.currency ?? 'USD',
       };
       if (Array.isArray(args.child_ages) && args.child_ages.length) {
         body.child_ages = args.child_ages;
@@ -1016,12 +1029,23 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
 
     case 'book_hotel': {
+      if (typeof args.expected_cost !== 'number') {
+        // An agent built against the retired deposit schema sends expected_balance
+        // and no expected_cost. Say what to send instead of forwarding a body the
+        // API can only answer with a 422.
+        return JSON.stringify({
+          error: true,
+          message: 'book_hotel needs expected_cost: copy the chosen offer\'s expected_cost, currency and ' +
+            'fx_rate from search_hotels. expected_balance belonged to the reservation-fee process retired on ' +
+            '2026-09-11 and is not sent. Nothing was booked or held.',
+        }, null, 2);
+      }
       const body: Record<string, unknown> = {
         session_id: args.session_id,
         hotel_code: args.hotel_code,
         combination_id_v2: args.combination_id_v2,
         expected_price: args.expected_price,
-        expected_balance: args.expected_balance,
+        expected_cost: args.expected_cost,
         city_id: args.city_id,
         city_name: args.city_name,
         check_in: args.check_in,
@@ -1033,8 +1057,11 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         phone_country_code: args.phone_country_code ?? '48',
         special_requests: args.special_requests ?? [],
       };
+      if (args.currency) body.currency = args.currency;
+      if (args.fx_rate != null) body.fx_rate = args.fx_rate;
       if (args.combination_id != null) body.combination_id = args.combination_id;
       if (args.hotel_name) body.hotel_name = args.hotel_name;
+      if (args.idempotency_key) body.idempotency_key = args.idempotency_key;
       const result = await apiRequest('POST', '/developers/api/v1/hotels/book', body);
       return JSON.stringify(result, null, 2);
     }

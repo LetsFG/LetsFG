@@ -499,7 +499,7 @@ MIT
 
 ## 🏨 Hotels — new, and live
 
-Your agent can now book hotels, not just flights. Same API key, same card on file.
+Your agent can now book hotels, not just flights. Same API key, same connected payment method.
 
 ```python
 from letsfg import LetsFG
@@ -513,36 +513,50 @@ stays = lfg.search_hotels(
 
 hotel = stays["hotels"][0]
 offer = hotel["offers"][0]
-print(hotel["name"], offer["price"], stays["currency"])
-# Hotel Gromada Warszawa Centrum 669.86 PLN
+print(hotel["name"], offer["price"], offer["currency"], offer["refundable"])
+# prices are in stays["currency"]: USD unless you pass currency=
 
 booking = lfg.book_hotel_and_wait(
-    session_id=stays["session_id"],
+    session_id=offer["session_id"],
     hotel_code=hotel["hotel_code"],
     combination_id_v2=offer["combination_id_v2"],
-    expected_price=offer["price"],
-    expected_balance=offer["balance_to_supplier"],
+    expected_price=offer["price"],          # copy these four from the offer, verbatim
+    expected_cost=offer["expected_cost"],
+    currency=offer["currency"],
+    fx_rate=offer["fx_rate"],
     city_id=city["Id"], city_name=city["Name"],
     check_in="2026-11-10", check_out="2026-11-12",
     guests=[{"title": "Mr", "first_name": "Jan", "last_name": "Kowalski"}],
-    email="guest@example.com", phone="512345678",
+    email="GUEST_EMAIL", phone="512345678",   # the guest's real e-mail and phone
 )
-print(booking["confirmation"], booking["pay_link"])
+if booking["status"] == "succeeded":
+    print(booking["confirmation"], booking["total_price"], booking["currency"])
+elif booking["status"] == "failed":
+    print("Not booked, nothing charged:", booking["error"])
+else:  # "attention": a person is checking it with the supplier, the hold is kept. Do not book again.
+    print(booking["status"], booking.get("error"))
 ```
 
 ### How you pay
 
-**5% now, the rest to the hotel later.** At booking we charge 5% of the price
-to your card as a reservation fee. The remaining balance is paid **directly to
-the supplier** through a `pay_link` we return — we never hold it.
+**The full price is held, and taken only once the hotel confirms.** Booking holds the offer's
+`price` on the Revolut payment method connected to your account — authorised, not charged.
+LetsFG then books the room with the supplier and pays the supplier itself. The hold is captured
+only after the supplier has confirmed the booking; if the booking fails for any reason (the rate
+is gone, the price moved, the supplier declined, a guest detail was rejected), the hold is
+released and nothing is charged.
 
-`balance_due_by` is the supplier's own auto-cancellation date, not a date we
-invent. Miss it and the room is released.
+There is **no reservation fee, no deposit and no pay link**, and the guest owes the hotel nothing
+further. (Those belonged to the process retired on 2026-09-11.)
 
-The 5% is **non-refundable**. Cancelling before `balance_due_by` costs nothing
-else; after it, the hotel's own cancellation ladder applies and can reach 100%.
-That ladder ships in the booking's `terms`, so you can always see the cost before
-you cancel.
+`price` is the supplier's cost plus 6.4% (our margin and payment processing) for Revolut Pay or a
+card issued in the EEA, or 8.3% for a card issued outside the EEA — the search response's
+`markup_rate` says which. Nothing is added at booking. Prices are in the currency you search in:
+USD unless you ask for another.
+
+Cancelling a refundable rate before its `free_cancellation_until` costs nothing and refunds the
+charge in full. A cancellation that would cost money is refused (409); the hotel's own ladder is in
+the booking's `terms`.
 
 ### What search costs
 
@@ -557,27 +571,32 @@ is not metered, only the search call itself.
 
 ### Things worth knowing before you build
 
-- **A card on file is required for every hotel call, including search.** That is
-  unusual and it is deliberate: a hotel search opens a real session at the
-  supplier, and booking blocks a real rate. We would rather refuse up front than
-  let you reach the point of commitment and discover you cannot pay. The same
-  card that authorises flight booking authorises hotels — there is no separate
-  hotel signup.
-- **Only free-cancellation, pay-later rates are sold.** Those are the rates where
-  the balance can safely be settled with the supplier after booking, which is
-  what makes 5%-now/rest-later work at all. You will see fewer results than a
-  metasearch shows you. Every one of them can actually be booked.
-- **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a
-  booking — the real thing takes minutes. Poll `hotel_booking(job_id)` until
-  `status` is `succeeded` or `failed`, or call `book_hotel_and_wait` and let the
-  SDK do it. This is not ceremony: it is what makes it impossible to charge a
-  card and then lose the confirmation to a timeout.
-- **The fee is charged before the room is committed.** A declined card therefore
-  costs nothing to unwind — no reservation exists and nothing is charged.
-- **Do not retry a booking blindly.** Calling `book_hotel` twice for the same
-  rate books the room twice and charges two reservation fees.
-- `price` is what the guest pays. There is no wholesale figure in the response to
-  quote by mistake.
+- **A connected payment method is required for every hotel call, including search.** A hotel
+  search opens a real session at the supplier and booking blocks a real rate, so we refuse up
+  front rather than let you reach the point of commitment and discover you cannot pay. The same
+  method authorises flights and hotels — there is no separate hotel signup.
+- **Every rate type is sold**, refundable and non-refundable. Each offer's `refundable` and
+  `free_cancellation_until` say which one you are buying.
+- **Booking is asynchronous.** `book_hotel` returns a `booking_job_id`, not a booking — the real
+  thing takes minutes. Poll `hotel_booking(job_id)` every ~20 s until `status` is `succeeded`,
+  `failed` or `attention`, or call `book_hotel_and_wait` and let the SDK do it. All three are final:
+  - `succeeded` — `confirmation`, `total_price` + `currency` (what the guest is charged),
+    `supplier_paid` + `supplier_currency`, `refundable`, `free_cancellation_until`,
+    `cancellation_ladder` and `terms`.
+  - `failed` — `error`, written for the guest. The hold has been released; nothing was charged.
+  - `attention` — the outcome could not be settled automatically. The hold is kept (nothing is
+    charged) while a person checks with the supplier. Do not book again.
+- **Copy the offer verbatim.** Send `expected_price` (the offer's `price`), `expected_cost`,
+  `currency` and `fx_rate` exactly as search returned them. A mis-copied price, or a USD offer sent
+  without its `currency`, is refused with `400 price_mismatch` before anything is held.
+- **Guest details are checked before anything is held**: Latin-script names, a phone number valid
+  for its country code, and an e-mail. A problem returns `400 invalid_details` naming the fields.
+- **The guest is e-mailed however it ends**: a confirmation with the code and the cancellation
+  term, a note that it did not go through and nothing was charged, or a note that it is being
+  confirmed with the supplier.
+- **A retry never books twice.** A second `book_hotel` for the same rate and guest returns the job
+  already under way (`duplicate: true`); pass `idempotency_key` to make that explicit. Still, never
+  re-post a booking whose job is running — poll it.
 
 ### JavaScript
 
@@ -591,8 +610,19 @@ const stays = await lfg.searchHotels({
   checkIn: '2026-11-10', checkOut: '2026-11-12', adults: 2,
 });
 
-const booking = await lfg.bookHotelAndWait({ /* ...offer + guest details... */ });
-console.log(booking.confirmation, booking.pay_link);
+const hotel = stays.hotels[0];
+const offer = hotel.offers[0];
+const booking = await lfg.bookHotelAndWait({
+  sessionId: offer.session_id, hotelCode: hotel.hotel_code,
+  combinationIdV2: offer.combination_id_v2,
+  expectedPrice: offer.price, expectedCost: offer.expected_cost,
+  currency: offer.currency, fxRate: offer.fx_rate,
+  cityId: city.Id, cityName: city.Name,
+  checkIn: '2026-11-10', checkOut: '2026-11-12',
+  guests: [{ title: 'Mr', first_name: 'Jan', last_name: 'Kowalski' }],
+  email: 'GUEST_EMAIL', phone: '512345678',
+});
+console.log(booking.status, booking.confirmation, booking.total_price, booking.currency);
 ```
 
 ### MCP

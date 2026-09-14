@@ -11,6 +11,7 @@ import {
   ErrorCategory,
   offerSummary,
   cheapestOffer,
+  HOTEL_BOOKING_FINAL_STATUSES,
   type FlightOffer,
   type FlightSearchResult,
   type SearchOptions,
@@ -284,5 +285,106 @@ describe('cheapestOffer', () => {
   it('handles single offer', () => {
     const result = { offers: [makeOffer(50, 'only')] } as unknown as FlightSearchResult;
     assert.equal(cheapestOffer(result)?.id, 'only');
+  });
+});
+
+// ── Hotels: the live hold-then-capture contract (2026-09-14) ─────────────────
+// Since 2026-09-11 POST /hotels/book reads expected_cost, currency and fx_rate; the retired deposit
+// contract (expectedBalance) got a 422 on every call. And 'attention' is final: polling it only ran
+// the clock out.
+describe('hotels', () => {
+  const OFFER = { session_id: 'sess_offer', combination_id_v2: 'c2hash', price: 183.4, currency: 'USD',
+    fx_rate: 0.2741, expected_cost: 627.03 };
+  const PARAMS = {
+    sessionId: OFFER.session_id, hotelCode: 1234, combinationIdV2: OFFER.combination_id_v2,
+    expectedPrice: OFFER.price, expectedCost: OFFER.expected_cost, currency: OFFER.currency, fxRate: OFFER.fx_rate,
+    cityId: 141297, cityName: 'Warsaw, Poland', checkIn: '2026-11-10', checkOut: '2026-11-12',
+    guests: [{ title: 'Mr', first_name: 'Jan', last_name: 'Kowalski' }],
+    email: 'jan@letsfg.test', phone: '512345678',
+  };
+
+  function mockFetch(responses: Array<Record<string, unknown>>) {
+    const calls: Array<{ url: string; method: string; body: Record<string, unknown> | null }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: String(init?.method), body: init?.body ? JSON.parse(String(init.body)) : null });
+      const data = responses[Math.min(calls.length - 1, responses.length - 1)];
+      return { ok: true, status: 200, json: async () => data } as Response;
+    }) as typeof fetch;
+    return { calls, restore: () => { globalThis.fetch = original; } };
+  }
+
+  it('bookHotel sends the offer contract the API reads, and never expected_balance', async () => {
+    const m = mockFetch([{ booking_job_id: 'hb_1', status: 'in_progress' }]);
+    try {
+      await new LetsFG({ apiKey: 'letsfg_xxxx_valid_looking_key' }).bookHotel({ ...PARAMS, idempotencyKey: 'k1' });
+    } finally { m.restore(); }
+    const body = m.calls[0].body!;
+    assert.match(m.calls[0].url, /\/hotels\/book$/);
+    assert.equal(body.expected_price, 183.4);
+    assert.equal(body.expected_cost, 627.03);
+    assert.equal(body.currency, 'USD');
+    assert.equal(body.fx_rate, 0.2741);
+    assert.equal(body.idempotency_key, 'k1');
+    assert.ok(!('expected_balance' in body));
+  });
+
+  it('a PLN offer sends no fx_rate', async () => {
+    const m = mockFetch([{ booking_job_id: 'hb_1', status: 'in_progress' }]);
+    try {
+      await new LetsFG({ apiKey: 'letsfg_xxxx_valid_looking_key' }).bookHotel({ ...PARAMS, currency: 'PLN', fxRate: null });
+    } finally { m.restore(); }
+    assert.equal(m.calls[0].body!.currency, 'PLN');
+    assert.ok(!('fx_rate' in m.calls[0].body!));
+  });
+
+  it('a caller on the retired contract is told locally and nothing is sent', async () => {
+    const m = mockFetch([{}]);
+    const { expectedCost: _dropped, ...old } = PARAMS;
+    try {
+      await assert.rejects(
+        () => new LetsFG({ apiKey: 'letsfg_xxxx_valid_looking_key' })
+          .bookHotel({ ...old, expectedBalance: 600 } as never),
+        (err: unknown) => {
+          assert.ok(err instanceof LetsFGError);
+          assert.match((err as LetsFGError).message, /expectedCost/);
+          assert.match((err as LetsFGError).message, /retired/);
+          return true;
+        },
+      );
+    } finally { m.restore(); }
+    assert.equal(m.calls.length, 0);
+  });
+
+  it('searchHotels asks for USD unless told otherwise', async () => {
+    const m = mockFetch([{ hotels: [] }, { hotels: [] }]);
+    try {
+      const c = new LetsFG({ apiKey: 'letsfg_xxxx_valid_looking_key' });
+      await c.searchHotels({ cityId: 1, cityName: 'Warsaw', checkIn: '2026-11-10', checkOut: '2026-11-12' });
+      await c.searchHotels({ cityId: 1, cityName: 'Warsaw', checkIn: '2026-11-10', checkOut: '2026-11-12', currency: 'EUR' });
+    } finally { m.restore(); }
+    assert.equal(m.calls[0].body!.currency, 'USD');
+    assert.equal(m.calls[1].body!.currency, 'EUR');
+  });
+
+  it('bookHotelAndWait stops at attention and never polls it again', async () => {
+    const m = mockFetch([
+      { booking_job_id: 'hb_1', status: 'in_progress' },
+      { status: 'in_progress' },
+      { status: 'attention', error: 'We are confirming', confirmation: 'ABC123' },
+      { status: 'succeeded' },
+    ]);
+    let result: Record<string, unknown>;
+    try {
+      result = await new LetsFG({ apiKey: 'letsfg_xxxx_valid_looking_key' })
+        .bookHotelAndWait({ ...PARAMS, pollIntervalMs: 1, maxWaitMs: 1000 });
+    } finally { m.restore(); }
+    assert.equal(result!.status, 'attention');
+    assert.equal(result!.confirmation, 'ABC123');
+    assert.equal(m.calls.length, 3, 'one book + two polls');
+  });
+
+  it('every final status is named once', () => {
+    assert.deepEqual([...HOTEL_BOOKING_FINAL_STATUSES], ['succeeded', 'failed', 'attention']);
   });
 });

@@ -337,6 +337,13 @@ const LATE_MERGE_GRACE_MS = 90_000;
 const WAIT_FOR_SPLIT = (process.env.LETSFG_WAIT_FOR_SPLIT || '').trim() !== '0';
 const NON_TERMINAL = ['pending', 'searching'];
 
+/**
+ * Every hotel booking job status after which polling is pointless. `attention` is
+ * final for the caller too: a person settles it, and booking again would book twice.
+ */
+export const HOTEL_BOOKING_FINAL_STATUSES = ['succeeded', 'failed', 'attention'] as const;
+export type HotelBookingStatus = 'in_progress' | (typeof HOTEL_BOOKING_FINAL_STATUSES)[number];
+
 export class LetsFG {
   private bearerToken: string;
   private apiKey: string;
@@ -650,16 +657,18 @@ export class LetsFG {
 
   // ── Hotels ──────────────────────────────────────────────────────────
   //
-  // A card on file is required for EVERY hotel call, search included. That is
-  // deliberate: a hotel search opens a real session at the supplier and booking
-  // blocks a real rate, so a caller is never allowed to reach the point of
-  // commitment only to discover it cannot pay. The same card that authorises
-  // flight booking authorises hotels — there is no separate hotel enrolment.
+  // A connected payment method is required for EVERY hotel call, search
+  // included. That is deliberate: a hotel search opens a real session at the
+  // supplier and booking blocks a real rate, so a caller is never allowed to
+  // reach the point of commitment only to discover it cannot pay. The same
+  // method that authorises flight booking authorises hotels.
   //
-  // Only free-cancellation, pay-later rates are sold. Those are the rates where
-  // the guest's balance can safely be settled with the supplier after booking,
-  // which is what makes 5%-now/rest-later work. The result set is smaller than
-  // a metasearch's, and every row in it can actually be booked.
+  // How a hotel is paid (since 2026-09-11): the full `price` is HELD on the
+  // connected Revolut method, LetsFG books and pays the supplier itself, and the
+  // hold is captured only once the supplier has confirmed. A booking that fails
+  // releases the hold. There is no reservation fee, no deposit and no pay link —
+  // those belonged to the process retired on 2026-09-11. Every rate type is
+  // sold, refundable and non-refundable.
 
   /**
    * Resolve a place name to the city id that searchHotels() needs.
@@ -679,12 +688,17 @@ export class LetsFG {
    * Slow by nature — the supplier streams a whole city and every rate is priced
    * — so this gets its own generous timeout rather than the client default.
    *
-   * Each offer carries `price` (what the guest pays), `reservation_fee_now`
-   * (the 5% taken at booking), `balance_to_supplier`, `balance_due_by` and
-   * `free_cancellation_until`. There is no wholesale figure to quote by mistake.
+   * The response carries `session_id`, `currency`, `supplier_currency`,
+   * `markup_rate`, `fx_rate`, `fx_as_of`, `count`, `hotels`, `terms` and
+   * `caveats`. Each offer carries `price` (what the guest pays, in `currency`),
+   * `currency`, `fx_rate`, `expected_cost` (the supplier's cost, in PLN),
+   * `refundable`, `free_cancellation_until` (refundable rates only),
+   * `cancellation_policy` and its own `session_id`.
    *
-   * Keep `session_id` and the chosen offer's `combination_id_v2`: together they
-   * identify the exact rate, and booking needs both.
+   * `price` is the supplier's cost plus `markup_rate` (6.4% for Revolut Pay or an
+   * EEA-issued card, 8.3% for a card issued outside the EEA); nothing is added at
+   * booking. Keep the chosen offer whole: bookHotel() needs its `session_id`,
+   * `combination_id_v2`, `price`, `expected_cost`, `currency` and `fx_rate`.
    */
   async searchHotels(params: {
     cityId: number;
@@ -698,6 +712,8 @@ export class LetsFG {
     nationality?: string;
     limit?: number;
     withImages?: boolean;
+    /** ISO code every `price` is quoted in. Default USD; PLN is the supplier's own. */
+    currency?: string;
   }): Promise<Record<string, unknown>> {
     this.requireApiKey();
     const body: Record<string, unknown> = {
@@ -710,6 +726,7 @@ export class LetsFG {
       nationality: params.nationality ?? 'PL',
       limit: params.limit ?? 40,
       with_images: params.withImages ?? true,
+      currency: params.currency ?? 'USD',
     };
     if (params.childAges?.length) body.child_ages = params.childAges;
     return this.post<Record<string, unknown>>('/developers/api/v1/hotels/search', body, 240_000);
@@ -718,34 +735,46 @@ export class LetsFG {
   /**
    * Start a booking. Returns a job immediately — it does NOT book inline.
    *
-   * A booking takes minutes: the rate is re-blocked at the supplier, every
-   * price and date rail is checked, the 5% reservation fee is charged to your
-   * card, and only then is the room committed. No proxy holds a connection that
-   * long, so this returns at once and you poll hotelBooking() for the outcome.
-   * Use bookHotelAndWait() if you would rather block.
+   * What happens, in order: the offer's full `price` is HELD on the Revolut
+   * payment method connected to this account (authorised, not taken); LetsFG
+   * books the room with the supplier and pays the supplier itself; the hold is
+   * captured only once the supplier has confirmed. If the booking fails for any
+   * reason, the hold is released and nothing is charged. There is no
+   * reservation fee, no deposit and no pay link.
    *
-   * Because the fee is taken BEFORE the commit, a declined card costs nothing
-   * to unwind: no reservation exists and nothing is charged.
+   * A booking takes minutes and no proxy holds a connection that long, so this
+   * returns at once and you poll hotelBooking() for the outcome. Use
+   * bookHotelAndWait() if you would rather block.
    *
-   * Send `expectedPrice` and `expectedBalance` back exactly as search returned
-   * them — the booking is refused if the supplier has moved beyond tolerance,
-   * so a guest is never charged a price they did not agree to.
+   * Send `expectedPrice` (the offer's `price`), `expectedCost`, `currency` and
+   * `fxRate` exactly as search returned them. The booking is refused if the
+   * supplier's live cost is above `expectedCost`, and a USD offer sent without
+   * its `currency` is refused with 400 price_mismatch (the API assumes PLN).
+   * Guest names, phone and e-mail are checked before anything is held; a problem
+   * returns 400 invalid_details naming the fields.
    *
-   * Do NOT call this again for the same rate while a job is running: that books
-   * the room twice and charges two reservation fees.
+   * Do NOT call this again for a booking whose job is still running: poll it.
+   * A retry of the same booking returns the job already under way
+   * (`duplicate: true`) rather than holding the money twice.
    */
   async bookHotel(params: {
     sessionId: string;
     hotelCode: number;
     combinationIdV2: string;
+    /** The offer's `price`, verbatim. */
     expectedPrice: number;
-    expectedBalance: number;
+    /** The offer's `expected_cost` (the supplier's cost, PLN), verbatim. */
+    expectedCost: number;
+    /** The offer's `currency`. Copy it — omitted means PLN. */
+    currency?: string;
+    /** The offer's `fx_rate` (null for a PLN offer). */
+    fxRate?: number | null;
     cityId: number;
     cityName: string;
     checkIn: string;
     checkOut: string;
     guests: Array<{ title: string; first_name: string; last_name: string }>;
-    /** The voucher and the pay link go here. A typo loses the booking. */
+    /** The guest's e-mail: the confirmation, or a note that it did not go through, goes here. */
     email: string;
     phone: string;
     adults?: number;
@@ -753,14 +782,29 @@ export class LetsFG {
     hotelName?: string;
     phoneCountryCode?: string;
     specialRequests?: string[];
+    /** Optional. A retry with the same key returns the booking already under way. */
+    idempotencyKey?: string;
   }): Promise<Record<string, unknown>> {
     this.requireApiKey();
+    if (typeof params.expectedCost !== 'number') {
+      // Plain-JS callers written against the retired deposit contract pass
+      // `expectedBalance` and no `expectedCost`. Say so here, before a request is
+      // made, instead of forwarding a body the API can only answer with a 422.
+      throw new LetsFGError(
+        'bookHotel() needs expectedCost: copy the offer\'s expected_cost, currency and fx_rate. ' +
+          ('expectedBalance' in (params as Record<string, unknown>)
+            ? 'expectedBalance belonged to the reservation-fee process retired on 2026-09-11 and is not sent. '
+            : '') +
+          'See https://letsfg.co/developers/api/docs',
+        400,
+      );
+    }
     const body: Record<string, unknown> = {
       session_id: params.sessionId,
       hotel_code: params.hotelCode,
       combination_id_v2: params.combinationIdV2,
       expected_price: params.expectedPrice,
-      expected_balance: params.expectedBalance,
+      expected_cost: params.expectedCost,
       city_id: params.cityId,
       city_name: params.cityName,
       check_in: params.checkIn,
@@ -772,17 +816,31 @@ export class LetsFG {
       phone_country_code: params.phoneCountryCode ?? '48',
       special_requests: params.specialRequests ?? [],
     };
+    if (params.currency) body.currency = params.currency;
+    if (params.fxRate != null) body.fx_rate = params.fxRate;
     if (params.combinationId != null) body.combination_id = params.combinationId;
     if (params.hotelName) body.hotel_name = params.hotelName;
+    if (params.idempotencyKey) body.idempotency_key = params.idempotencyKey;
     return this.post<Record<string, unknown>>('/developers/api/v1/hotels/book', body, 90_000);
   }
 
   /**
    * Collect the result of a booking started with bookHotel().
    *
-   * `status` is 'in_progress', 'succeeded' or 'failed'. On success you get
-   * `confirmation`, `reservation_fee_charged`, `pay_link`, `balance_due`,
-   * `balance_due_by` and `terms` (including the full cancellation ladder).
+   * `status` is 'in_progress', 'succeeded', 'failed' or 'attention'; the last
+   * three are final (HOTEL_BOOKING_FINAL_STATUSES).
+   *
+   * - succeeded: `confirmation`, `booking_id`, `hotel`, `room`, `total_price` +
+   *   `currency` (what the guest is charged), `supplier_paid` +
+   *   `supplier_currency` (what the supplier was paid), `payment_status`,
+   *   `refundable`, `free_cancellation_until`, `cancellation_ladder`, `terms`.
+   * - failed: `error`, written for the guest. The hold has been released and
+   *   nothing was charged.
+   * - attention: `error` (and `confirmation` when known). The outcome could not
+   *   be settled automatically; the hold is kept — nothing is charged — while a
+   *   person checks with the supplier. Do not book again.
+   *
+   * The guest is e-mailed in every case.
    */
   async hotelBooking(bookingJobId: string): Promise<Record<string, unknown>> {
     this.requireApiKey();
@@ -793,15 +851,17 @@ export class LetsFG {
   /**
    * bookHotel(), then poll until the booking settles. Convenience only.
    *
-   * Giving up after `maxWaitMs` does NOT cancel anything — the booking may
-   * still complete. The returned object carries `booking_job_id` so you can
-   * keep polling, and the confirmation is emailed to the guest regardless.
+   * Stops at 'succeeded', 'failed' or 'attention' and never re-books. Giving up
+   * after `maxWaitMs` (default 30 minutes: a booking usually takes 5-10, and
+   * hotel bookings run one at a time) does NOT cancel anything — the booking may
+   * still complete. The returned object carries `booking_job_id` so you can keep
+   * polling, and the guest is e-mailed the outcome regardless.
    */
   async bookHotelAndWait(
     params: Parameters<LetsFG['bookHotel']>[0] & { pollIntervalMs?: number; maxWaitMs?: number },
   ): Promise<Record<string, unknown>> {
     const pollIntervalMs = params.pollIntervalMs ?? 20_000;
-    const maxWaitMs = params.maxWaitMs ?? 600_000;
+    const maxWaitMs = params.maxWaitMs ?? 1_800_000;
     const job = await this.bookHotel(params);
     const jobId = job.booking_job_id as string | undefined;
     if (!jobId) return job;
@@ -812,20 +872,20 @@ export class LetsFG {
       await new Promise((r) => setTimeout(r, pollIntervalMs));
       waited += pollIntervalMs;
       result = await this.hotelBooking(jobId);
-      const st = result.status;
-      if (st === 'succeeded' || st === 'failed') return result;
+      if ((HOTEL_BOOKING_FINAL_STATUSES as readonly unknown[]).includes(result.status)) return result;
     }
     if (result.booking_job_id == null) result.booking_job_id = jobId;
     return result;
   }
 
   /**
-   * Release a reservation at the supplier.
+   * Release a reservation at the supplier and refund the guest.
    *
-   * Free until `balance_due_by`; after that the hotel's own cancellation ladder
-   * applies and can reach 100%. The ladder ships in the booking's `terms`, so
-   * you can see the cost before calling this. The 5% reservation fee is NOT
-   * refunded.
+   * Only this account's own bookings can be cancelled (anything else is 404). A
+   * zero-charge cancellation — a refundable rate before its
+   * `free_cancellation_until` — refunds the charge in full, or releases a hold
+   * not yet captured. A cancellation that would cost money is refused with 409;
+   * the hotel's own ladder is in the booking's `terms`.
    *
    * This drives a browser at the supplier and takes over a minute. If it times
    * out, do not assume it failed — re-check before retrying.
