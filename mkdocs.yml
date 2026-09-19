@@ -1,6 +1,6 @@
 site_name: LetsFG Docs
 site_url: https://letsfg.co/developers/docs
-site_description: Agent-native flight search and booking API. Hundreds of airlines plus the major booking sites, per-flight reliability history, instant booking. No Playwright.
+site_description: Agent-native flight search and booking API. Every airline in the world plus the major booking sites, per-flight reliability history, instant booking. No Playwright.
 site_author: LetsFG
 
 repo_url: https://github.com/LetsFG/LetsFG
@@ -43,6 +43,7 @@ nav:
     - Errors & Limits: api-errors.md
     - OpenAPI & Swagger: openapi.md
   - MCP & IDE Agents:
+    - Remote MCP connector: mcp.md
     - Packages & SDKs: packages.md
     - Claude Desktop: quickstart-claude.md
     - Cursor: quickstart-cursor.md

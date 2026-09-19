@@ -9,22 +9,22 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 LetsFG is available as a Python SDK, JavaScript SDK, MCP server, and remote MCP endpoint. Works with OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible agent.
 
 ## Overview
 
-Every package below covers **flights and hotels**, on **one credential**: the card-backed token you get by connecting the MCP (the consent step saves a card at <https://letsfg.co/connect>, nothing is charged), or a Developer API key. Hotels additionally need a card on file for search as well as booking — which the connect step already provides — see [Hotels](hotels.md).
+Every package below covers **flights and hotels**, on **one credential**: the token you get by connecting the MCP (one tap at <https://letsfg.co/connect>, no card), or a Developer API key. Flights ask for the card at the first booking. Hotels need a card on file for search as well as booking — see [Hotels](hotels.md).
 
 | Package | Install | What it is | API Key Required? |
 |---------|---------|------------|-------------------|
 | **Python SDK + CLI** | `pip install letsfg` | SDK + CLI, server-side search via letsfg.co | Card-backed token in `LETSFG_BEARER_TOKEN` or Developer API key |
 | **JS/TS SDK + CLI** | `npm install -g letsfg` | SDK + `letsfg` CLI command | Free Bearer token or Developer API key |
 | **MCP Server** | `npx letsfg-mcp` | Model Context Protocol for AI agents | Free Bearer token or Developer API key |
-| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed; **the way to connect** (OAuth consent saves the card) | Nothing up front — connect and approve |
+| **Remote MCP** | `https://letsfg.co/developers/api/mcp` | Streamable HTTP — no install needed; **the way to connect** (one-tap OAuth consent, no card) | Nothing up front — connect and approve |
 | **Smithery** | [smithery.ai/servers/letsfg](https://smithery.ai/servers/letsfg) | One-click MCP install | Free token or Developer API key |
 
 !!! warning "Update your SDK before booking hotels"
@@ -46,8 +46,8 @@ pip install letsfg
 Provides:
 
 - `LetsFG` client class with `search()`, `book()`, `me()`, `resolve_location()`. `unlock()` and `setup_payment()` call routes retired on 2026-09-08 and now answer `410 Gone`
-- Server-side search via letsfg.co — Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, Qatar Airways, LATAM, Finnair, and 190+ more
-- CLI command `letsfg` with all operations (`letsfg auth` connects a card at letsfg.co/connect and stores the token)
+- Server-side search via letsfg.co — Ryanair, Wizz Air, EasyJet, Norwegian, AirAsia, IndiGo, Qatar Airways, LATAM, Finnair, and every other airline
+- CLI command `letsfg` with all operations (`letsfg auth` connects at letsfg.co/connect and stores the token)
 - Typed response models: `FlightSearchResponse`, `UnlockResponse`, `BookingResponse`, `AgentProfile`
 - Exception classes: `AuthenticationError`, `PaymentRequiredError`, `OfferExpiredError`
 
@@ -133,7 +133,7 @@ If your client supports remote MCP servers, connect directly without installing 
 https://letsfg.co/developers/api/mcp
 ```
 
-This is the recommended way in. Point your client at the URL and approve the connection: the OAuth consent step opens <https://letsfg.co/connect>, where the person saves a card in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged; the token your client receives is card-backed and can search and book. A Developer API key also works (`X-API-Key` header) for the paid product.
+This is the recommended way in. Point your client at the URL and approve the connection: the OAuth consent step opens <https://letsfg.co/connect>: one tap, no card. The token your client receives searches straight away. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). A Developer API key also works (`X-API-Key` header) for the paid product.
 
 ```bash
 # Claude Code
@@ -182,7 +182,7 @@ claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
 
 | Path | Search mode | Auth | Best for |
 |------|-------------|------|----------|
-| `https://letsfg.co/developers/api/mcp` | Server-side at letsfg.co | Approve the connection; the consent step saves a card (nothing charged) | **Recommended.** No install — flights, hotels and booking over Streamable HTTP in Claude, ChatGPT, Cursor, Windsurf |
+| `https://letsfg.co/developers/api/mcp` | Server-side at letsfg.co | Approve the connection (one tap, no card) | **Recommended.** No install — flights, hotels and booking over Streamable HTTP in Claude, ChatGPT, Cursor, Windsurf |
 | `npx letsfg-mcp` | Server-side at letsfg.co | `LETSFG_BEARER_TOKEN` (card-backed token) or Developer API key | Clients that cannot do remote MCP |
 
 ## API Endpoints

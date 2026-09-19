@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 Connect the remote MCP server once and Claude can search and book flights, and search and book hotels. Nothing to install.
@@ -33,15 +33,15 @@ claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
 
 ### 2. Approve the connection
 
-Click **Connect**. The consent step opens <https://letsfg.co/connect>, where you add a card or pay 0.00 with Revolut Pay / Google Pay. Any card works, no Revolut account is needed, and the card details go to Revolut — they never touch LetsFG.
+Click **Connect**. The consent step opens <https://letsfg.co/connect>: tap **Approve**. No sign-up form and no card.
 
-Nothing is charged to connect. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms. The token Claude receives is card-backed; it is carried on every tool call for you.
+The card is asked for at your first booking: `book_flight` returns a link where you add a card or use Revolut Pay / Google Pay, in a 0.00 setup. Any card works, no Revolut account is needed, and the card details go to Revolut — they never touch LetsFG. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms. The token is carried on every tool call for you.
 
 ### 3. Search
 
 > Find me the cheapest flight from London to Barcelona next Friday
 
-Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
+Search is free: 10 per 10 minutes, 30 per hour, 100 per day per account (per card once one is added).
 
 ### 4. Book
 
@@ -93,14 +93,14 @@ The same remote URL also accepts a Developer API key (`X-API-Key` header) from t
 | "Find flights from London to Barcelona next Friday" | `search_flights` → offers with prices; `get_flight_results` collects the late-landing split tickets |
 | "What's the cheapest way to get from NYC to Tokyo?" | `resolve_location` → `search_flights` |
 | "Book the Ryanair one for Ada Lovelace" | `book_flight` (hold on the card, agent buys the ticket) → `get_flight_booking` until `completed` with a PNR |
-| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Needs a card on file, for search as well as booking — the connect step already saved one. |
+| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Needs a card on file, for search as well as booking. |
 | "Am I connected?" | `get_agent_profile` → payment status and usage |
 
 ## Troubleshooting
 
-**"payment_method_required" with an `add_card_url`** → the connection has no card yet. Open <https://letsfg.co/connect> from the consent step and add one; nothing is charged.
+**"payment_method_required" with an `add_card_url`** → the account has no card yet. Open the `add_card_url` and add one; nothing is charged.
 
-**"TOKEN_REVOKED"** → a token from the retired Stripe setup. Disconnect and reconnect the connector; the consent step saves the card again.
+**"TOKEN_REVOKED"** → a token from the retired Stripe setup. Disconnect and reconnect the connector.
 
 **A `402` on search** → you are on the Developer API key (Option C), not the connect flow. Remove the `X-API-Key` header to use the free lane, or connect a Revolut method with `POST /agents/connect-payment`. If the error is `search_allowance_exhausted`, book a flight (which resets the 200 free searches) or top up to buy a block.
 

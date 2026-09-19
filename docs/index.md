@@ -12,15 +12,15 @@ hide:
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 <section class="docs-hero">
   <div class="docs-hero-inner">
     <p class="docs-kicker">Official LetsFG documentation</p>
-    <h1>Search hundreds of airlines server-side at letsfg.co — and book. Free with a card-backed token. Move to the Developer API for direct booking, hotels and volume access.</h1>
-    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/developers/api/mcp</code> once — the consent step saves a card at <code>letsfg.co/connect</code>, nothing is charged — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. If you want account-managed access, hotels, or billing controls, register on the developer surface at letsfg.co, connect a Revolut method, and search and book with your developer key. Flight search there is look-to-book: 200 searches free after every booking.</p>
+    <h1>Search every airline in the world plus the major booking sites, server-side at letsfg.co — and book. Free to connect, no card needed. Move to the Developer API for direct booking, hotels and volume access.</h1>
+    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/developers/api/mcp</code> once — approving it at <code>letsfg.co/connect</code> takes one tap and needs no card — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. If you want account-managed access, hotels, or billing controls, register on the developer surface at letsfg.co, connect a Revolut method, and search and book with your developer key. Flight search there is look-to-book: 200 searches free after every booking.</p>
     <div class="docs-command"><span class="docs-command-prompt">$</span> pip install letsfg</div>
     <div class="docs-action-row">
       <a href="getting-started/" class="docs-button docs-button--primary">Get started</a>
@@ -43,7 +43,7 @@ LetsFG has two access paths — pick the one that matches your setup:
 
 | Path | How | Speed | Search cost | Booking |
 |------|-----|-------|-------------|---------|
-| **MCP / SDK** (connect at [letsfg.co/connect](https://letsfg.co/connect)) | Server-side search + booking; one-time 0.00 card setup during the MCP consent → card-backed token | 8–10 s to first results; longer to `completed`, longer again on a split | Free | Fare held on the card, captured only against a real PNR; no separate LetsFG fee |
+| **MCP / SDK** (connect at [letsfg.co/connect](https://letsfg.co/connect)) | Server-side search + booking; one-tap MCP consent, no card. The card is added at the first booking (0.00 setup) | 8–10 s to first results; longer to `completed`, longer again on a split | Free | Fare held on the card, captured only against a real PNR; no separate LetsFG fee |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers; connect a Revolut method | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 free per booking, then $0.01 | `POST /flights/book` — fare held on the connected method, captured only against a real PNR. No booking fee, no transaction fee |
 
 **When to choose each:**
@@ -58,7 +58,7 @@ LetsFG has two access paths — pick the one that matches your setup:
   <article class="docs-mode-card">
     <p class="docs-card-kicker">MCP / SDK mode</p>
     <h2>Search and book free after a one-time connect</h2>
-    <p>Add the MCP server at <code>letsfg.co/developers/api/mcp</code> and approve it. The consent step opens <code>letsfg.co/connect</code>, where a card is saved in a 0.00 setup (nothing is charged). All search runs server-side at letsfg.co — no local browsers required.</p>
+    <p>Add the MCP server at <code>letsfg.co/developers/api/mcp</code> and approve it. The consent step opens <code>letsfg.co/connect</code>: one tap, no card. The card is added at the first booking (a 0.00 setup, nothing charged). All search runs server-side at letsfg.co — no local browsers required.</p>
     <ul class="docs-check-list">
       <li><code>search_flights</code>, <code>book_flight</code> and <code>get_flight_booking</code> over the MCP; <code>bt.search()</code> / <code>bt.book()</code> with the same token in <code>LETSFG_BEARER_TOKEN</code></li>
       <li>Search is free: 10 per 10 min, 30 per hour, 100 per day per card</li>

@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 The `letsfg` CLI is available via both Python and JavaScript. Same commands, same interface.
@@ -35,7 +35,7 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 |---------|-------------|
 | `letsfg register` | **[Developer API only]** Create a Developer API account + API key. Most agents want the card-backed token from the connect flow instead |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
-| `letsfg auth` | Connect a card at `letsfg.co/connect` and store the token. Registers itself as an OAuth client (PKCE + loopback redirect), opens a browser for a person to approve, writes `~/.letsfg/config.json`. `--no-browser` prints the URL. The old Stripe setup was retired 2026-09-02 and its tokens revoked |
+| `letsfg auth` | Connect at `letsfg.co/connect` (one tap, no card) and store the token. Registers itself as an OAuth client (PKCE + loopback redirect), opens a browser for a person to approve, writes `~/.letsfg/config.json`. `--no-browser` prints the URL. The old Stripe setup was retired 2026-09-02 and its tokens revoked |
 | `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
 | `letsfg locations <query>` | Resolve city/airport to IATA codes |
 | `letsfg unlock <offer_id>` | **RETIRED 2026-09-08.** The server answers `410 Gone`; there is no unlock step on either lane. Book directly — the fare is held, not taken, and captured only against a real PNR |

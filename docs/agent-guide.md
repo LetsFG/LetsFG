@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 Guidelines for building autonomous AI agents that search, evaluate, and book flights. Works with OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent framework.
@@ -19,7 +19,7 @@ Guidelines for building autonomous AI agents that search, evaluate, and book fli
 
 ## Search
 
-All search runs server-side at letsfg.co. Connect once through the hosted MCP (the consent step saves a card at <https://letsfg.co/connect>; nothing is charged) and every call carries a card-backed token — or use a prepaid Developer API key.
+All search runs server-side at letsfg.co. Connect once through the hosted MCP (approving it at <https://letsfg.co/connect> takes one tap and needs no card) and every call carries your token — or use a prepaid Developer API key.
 
 ```python
 # PFS search — free Bearer token, server-side, 8-10 s to first results
@@ -32,9 +32,9 @@ bt = LetsFG(api_key="letsfg_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
-**When to use PFS (card-backed token):** This is the agent path — search and booking. Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp`; approving it opens <https://letsfg.co/connect>, where the person saves a card in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged until a booking is made. 8–10 s to first results per search. The SDK and CLI read the same token from `LETSFG_BEARER_TOKEN`.
+**When to use PFS (card-backed token):** This is the agent path — search and booking. Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp`; approving it opens <https://letsfg.co/connect>: one tap, no card. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged until a booking is made. 8–10 s to first results per search. The SDK and CLI read the same token from `LETSFG_BEARER_TOKEN`.
 
-**When to use Developer API:** Managed cloud search, billing controls, volume usage, and booking through `POST /flights/book`. Register at [letsfg.co/developers](https://letsfg.co/developers), then connect a Revolut method — nothing is charged to connect. Flight search is look-to-book: 200 searches free after every booking, then blocks of 500 for $5.00. No booking fee and no transaction fee; the margin is inside the price you saw. It is also the **only** way to reach hotels.
+**When to use Developer API:** Managed cloud search, billing controls, volume usage, and booking through `POST /flights/book`. Register at [letsfg.co/developers](https://letsfg.co/developers), then connect a Revolut method — nothing is charged to connect. Flight search is look-to-book: 200 searches free after every booking, then blocks of 500 for $5.00. No booking fee and no transaction fee; the margin is inside the price you saw.
 
 ### Hotels
 
@@ -148,15 +148,15 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 ### Programmatic access requires a card-backed token
 
-The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must hold a **card-backed Bearer token**.
+The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must hold a **Bearer token** from the connect flow.
 
-**Nothing is charged to get one.** The card is saved in a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay, no Revolut account needed — and the details go to Revolut, never to LetsFG. Having a card on file is what lets your agent go all the way to booking, and it keeps automated abuse off the search engine. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms.
+**Nothing is charged to get one, and connecting needs no card.** The card is asked for at the first booking, in a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay, no Revolut account needed — and the details go to Revolut, never to LetsFG. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms.
 
 **The one way in — connect at letsfg.co/connect:**
 
 1. Add LetsFG as an MCP server: `https://letsfg.co/developers/api/mcp` (Claude, ChatGPT, Cursor, Windsurf, Claude Code — anything that speaks remote MCP with OAuth).
-2. Approve the connection. The consent step opens <https://letsfg.co/connect>, where the person adds a card or pays 0.00 with Revolut Pay / Google Pay.
-3. The OAuth token you receive is card-backed. Over the MCP it is carried for you. Over raw HTTP send the same token on every request as `Authorization: Bearer <token>`.
+2. Approve the connection. The consent step opens <https://letsfg.co/connect>: one tap, no card.
+3. Over the MCP the OAuth token is carried for you. Over raw HTTP send the same token on every request as `Authorization: Bearer <token>`.
 
 `POST https://letsfg.co/api/agent-access/request` still answers `402` with these steps as JSON (`add_card_url`, `how`), so an agent that starts from the endpoint lands in the same place.
 
@@ -212,7 +212,7 @@ States: `booking_in_progress` (the agent is at the seller's checkout — keep wa
 Other answers, all with `"charged": 0`:
 
 - `{"error":"missing_details","missing_fields":["born_on","address_city"]}` — ask the person and call again.
-- `{"error":"payment_method_required","add_card_url":"https://letsfg.co/connect"}` — no card connected yet.
+- `{"error":"payment_method_required","add_card_url":"https://letsfg.co/connect?card=…"}` — no card yet: send the person to `add_card_url`, then call again.
 - `{"error":"payment_declined","add_card_url":"https://letsfg.co/connect"}` — the card refused the hold.
 
 Use the traveller's **real** details — the seller's checkout asks for every one of them and the e-ticket goes to `contact_email`. Required: name as on the passport, date of birth, gender, nationality, phone with its country, residence address; passport number/country/expiry are optional but help with sellers that ask. One passenger per call; a group trip is one call per person. Offers expire ~15 minutes after the search — if one is gone, search again.

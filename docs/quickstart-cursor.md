@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 Connect the remote MCP server once and Cursor's agent can search and book flights, and search and book hotels. Nothing to install.
@@ -33,9 +33,9 @@ Create `.cursor/mcp.json` in your project root (or the global config):
 
 ### 2. Approve the connection
 
-Cursor prompts you to authenticate the server. The consent step opens <https://letsfg.co/connect>, where you add a card or pay 0.00 with Revolut Pay / Google Pay. Any card works, no Revolut account is needed, and the card details go to Revolut — they never touch LetsFG.
+Cursor prompts you to authenticate the server. The consent step opens <https://letsfg.co/connect>: tap **Approve**. No sign-up form and no card.
 
-Nothing is charged to connect. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms. The token Cursor receives is card-backed and is carried on every tool call.
+The card is asked for at your first booking: `book_flight` returns a link where you add a card or use Revolut Pay / Google Pay, in a 0.00 setup. Any card works, no Revolut account is needed, and the card details go to Revolut — they never touch LetsFG. You pay the ticket price only when you book, and even then the money is held, not taken, until the airline confirms. The token Cursor receives is carried on every tool call.
 
 ### 3. Reload Cursor
 
@@ -95,9 +95,9 @@ The agent will:
 
 ## Troubleshooting
 
-**"payment_method_required" with an `add_card_url`** → the connection has no card yet. Open <https://letsfg.co/connect> from the consent step and add one; nothing is charged.
+**"payment_method_required" with an `add_card_url`** → the account has no card yet. Open the `add_card_url` and add one; nothing is charged.
 
-**"TOKEN_REVOKED"** → a token from the retired Stripe setup. Remove and re-add the server so the consent step saves the card again.
+**"TOKEN_REVOKED"** → a token from the retired Stripe setup. Remove and re-add the server.
 
 **A `402` on search** → you are on the Developer API key (Option C), not the connect flow. Remove the `X-API-Key` header to use the free lane, or connect a Revolut method with `POST /agents/connect-payment`. If the error is `search_allowance_exhausted`, book a flight (which resets the 200 free searches) or top up to buy a block.
 

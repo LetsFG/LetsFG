@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 <div class="docs-callout">
@@ -21,7 +21,7 @@
 
 | Mode | Best for | Setup | Search cost | Booking |
 |------|----------|-------|-------------|---------|
-| MCP / SDK (card-backed token) | Agents, assistants, zero-cost search and booking | Connect the MCP at `letsfg.co/developers/api/mcp`; consent saves a card at `letsfg.co/connect` | Free | `book_flight` / `POST /api/agent-book` — fare held on the card, captured against a real PNR |
+| MCP / SDK (card-backed token) | Agents, assistants, zero-cost search and booking | Connect the MCP at `letsfg.co/developers/api/mcp` (one tap, no card); the card is added at the first booking | Free | `book_flight` / `POST /api/agent-book` — fare held on the card, captured against a real PNR |
 | Public Developer API | Managed cloud search, products, teams, hotels | Register, then connect a Revolut method (nothing charged) | Look-to-book: 200 free after every booking, then $5.00 per 500 | `POST /flights/book` — fare held on the connected method, captured against a real PNR. No booking fee, no transaction fee |
 | Hotels | Booking a room, not a flight | Either credential + a connected card | 1,000 searches free after every hotel booking | Price held on the connected method, captured once the hotel confirms |
 
@@ -35,11 +35,11 @@ All search runs server-side at letsfg.co. No local browsers or Playwright requir
 
 ### 1. Connect once
 
-Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and approve the connection. The consent step opens <https://letsfg.co/connect>, where you save a card in a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay; no Revolut account needed, and the card details go to Revolut, never to LetsFG. Nothing is charged until you book, and even then the money is held, not taken, until the airline confirms.
+Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and approve the connection. The consent step opens <https://letsfg.co/connect>: one tap, no card. The card is asked for at your first booking, in a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay; no Revolut account needed, and the card details go to Revolut, never to LetsFG. Nothing is charged until you book, and even then the money is held, not taken, until the airline confirms.
 
 That works in claude.ai, Claude Desktop, Claude Code (`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`), ChatGPT, Cursor, Windsurf — anything that speaks remote MCP with OAuth. Over the MCP the token is carried for you. Over raw HTTP send it as `Authorization: Bearer <token>`.
 
-> Prefer the terminal? **`letsfg auth`** (npm or PyPI) runs the same connect flow: it registers itself as an OAuth client, opens the card screen for a person to approve, and writes the token to `~/.letsfg/config.json`. `--no-browser` prints the URL instead. The SDK and CLI otherwise read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. The old Stripe card setup was retired on 2026-09-02 together with every token it issued.
+> Prefer the terminal? **`letsfg auth`** (npm or PyPI) runs the same connect flow: it registers itself as an OAuth client, opens the connect screen for a person to approve, and writes the token to `~/.letsfg/config.json`. `--no-browser` prints the URL instead. The SDK and CLI otherwise read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. The old Stripe card setup was retired on 2026-09-02 together with every token it issued.
 
 ### 2. Search
 

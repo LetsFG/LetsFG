@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 Practical guides for building travel applications with LetsFG in Python and JavaScript/TypeScript.
@@ -298,7 +298,7 @@ LetsFG aggregates from multiple distribution channels, all server-side at letsfg
 |------------|------------|-----------------|
 | **GDS** (Global Distribution System) | Traditional airline inventory systems | Most legacy carriers (BA, Lufthansa, Delta, United) |
 | **NDC** (New Distribution Capability) | Modern direct-connect API standard | Airlines with NDC feeds (Vueling, Condor, Air Canada) |
-| **LCC Direct** | LetsFG's own airline connectors, server-side | Hundreds of airlines (Ryanair, EasyJet, Spirit, Southwest, Qatar, LATAM, and more) |
+| **LCC Direct** | LetsFG's own airline connectors, server-side | Airline sites directly (Ryanair, EasyJet, Spirit, Southwest, Qatar, LATAM, and more) |
 | **Aggregators** | Meta-search APIs | Kiwi.com (covers 800+ airlines) |
 
 A single `search()` call queries **all available sources** and returns merged, deduplicated results. You don't need to specify which source to query.

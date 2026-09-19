@@ -9,8 +9,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. The consent step opens
-> <https://letsfg.co/connect>, where a card is saved (nothing is charged).
+> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
 The standard `POST /flights/search` blocks until results are ready (8–10 s to first results).
@@ -73,7 +73,7 @@ While running:
   "destination": "LAX",
   "offers": [],
   "total_results": 0,
-  "progress": "Searching across hundreds of airlines…"
+  "progress": "Searching…"
 }
 ```
 
