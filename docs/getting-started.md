@@ -66,7 +66,7 @@ Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card. Polling re
 
 ### 3. Book
 
-Booking works exactly like the website checkout, on the connected card. The fare plus LetsFG's markup is **held** (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails, the hold is released and nothing is charged. Every offer a search returns is bookable this way — there is no unlock step and no separate LetsFG fee.
+Booking works exactly like the website checkout, on the connected card. The price shown is **held** (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails, the hold is released and nothing is charged. Every offer a search returns is bookable this way — there is no unlock step and no separate LetsFG fee.
 
 Over the MCP: `book_flight` starts it and returns a `booking_ref` within seconds; poll `get_flight_booking` every 20–30 s. A booking takes 4–11 minutes.
 

@@ -43,7 +43,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search, no booking fee and no transaction fee (our margin is in the price shown) |
+| **CLI / SDK / MCP** (PFS payment token) | **Almost every agent.** Search + booking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search, no booking fee and no transaction fee on top of the price shown |
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking through `POST /flights/book`, no booking fee, no transaction fee |
 
 **Quick decision:**
@@ -66,8 +66,8 @@ $5.00** ($0.01 each) from prepaid balance.
 | Transaction fee | **0%** |
 
 A search that returns no offers never consumes allowance, and neither does one that fails on an
-outage. LetsFG's margin is already inside the price on every offer the search returns, so the
-amount shown is the amount charged — nothing is added at booking.
+outage. The price on every offer the search returns is the amount charged —
+nothing is added at booking.
 
 > The monthly tiers ($0.50 / $0.20 / $0.10 per search) were retired on 2026-09-08, along with
 > Stripe. Payments are Revolut: `POST /agents/connect-payment` returns a one-time link that saves a
@@ -94,7 +94,7 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | **Search** | FREE | Price, times, duration, stops, airline. 10 searches / 10 min, 30 / hour, 100 / day per card. |
 | **Book** | Price shown on the offer | `POST /api/agent-book` — the fare is HELD on the connected card, a LetsFG booking agent buys the ticket, the hold is captured only once a real airline PNR exists. Failed booking = hold released, nothing charged. No separate LetsFG fee. |
 
-The price on the offer is everything you pay; LetsFG's markup is already inside it and nothing separate is charged on this path.
+The price on the offer is everything you pay; nothing separate is charged on this path.
 
 > **Note on MPP / crypto payments.** Earlier versions of this document said the
 > unlock endpoint issues an MPP (Machine Payments Protocol) `402` challenge that
@@ -150,7 +150,7 @@ POST /api/v1/bookings/book         # RETIRED 2026-09-08 — 410 Gone, use /fligh
 
 On a PFS Bearer token, `search` → `book` → `poll` is the whole flow. There is no
 unlock step. Booking works exactly like the website checkout, on the connected
-card: the fare plus LetsFG's markup is **held** on the card (not taken), a LetsFG
+card: the price shown is **held** on the card (not taken), a LetsFG
 booking agent buys the ticket from the seller, and the hold is captured only once
 a real airline PNR exists. If the booking fails the hold is released and nothing
 is charged. It works for every offer in the results, whichever seller it came from.
@@ -271,7 +271,7 @@ letsfg search JFK LHR 2026-05-01 --max-stops 0
 # Resolve city to IATA codes
 letsfg locations "New York"
 
-# Book an offer from your search (no booking fee, no transaction fee — our margin is already in the price you saw)
+# Book an offer from your search (no booking fee, no transaction fee on top of the price you saw)
 letsfg book off_xxx --search-id srch_abc --passenger '{"given_name":"Ada","family_name":"Lovelace","born_on":"1990-04-01","gender":"f"}' --email you@example.com
 ```
 
@@ -657,7 +657,7 @@ def search_and_book(origin_iata, dest_iata, date, passenger, contact_email):
     cheapest = min(result["offers"], key=lambda o: o["price"])
     print(f"Found {result['total_results']} offers, cheapest: {cheapest['price']} {cheapest['currency']}")
 
-    # Step 2: Book (no booking fee, no transaction fee — our margin is already in the price you saw)
+    # Step 2: Book (no booking fee, no transaction fee on top of the price you saw)
     try:
         booked = asyncio.run(book_offer(
             search_id=result["search_id"],
@@ -687,9 +687,8 @@ search_and_book(
 
 Searching is free. Booking goes through `POST /api/agent-book`: the price shown
 on the offer is held on the connected card and captured only once a real PNR
-exists. There is no booking fee and no transaction fee — our margin is already
-included in the price on every offer, so the amount you were shown is the amount
-charged. There is no unlock step on any lane.
+exists. There is no booking fee and no transaction fee on top: the amount you were shown
+is the amount charged. There is no unlock step on any lane.
 
 ### Search Wide, Book Once
 
@@ -975,7 +974,7 @@ class FlightAgent:
             else:
                 best_offer = min(result["offers"], key=lambda o: o["price"])
 
-            # Book (no booking fee, no transaction fee — our margin is already in the price you saw)
+            # Book (no booking fee, no transaction fee on top of the price you saw)
             try:
                 booked = asyncio.run(book_offer(
                     search_id=result["search_id"], offer_id=best_offer["id"],

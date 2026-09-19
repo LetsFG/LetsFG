@@ -131,9 +131,8 @@ block.
 
 ## What you are charged for a flight
 
-**There is no booking fee and no transaction fee.** LetsFG's margin is already
-inside the price on every offer the search returns, so the amount shown is the
-amount charged. Nothing is added at checkout.
+**There is no booking fee and no transaction fee.** The price on every offer the
+search returns is the amount charged. Nothing is added at checkout.
 
 Booking **holds** the fare on the connected method rather than taking it, and the
 hold is captured only once a real airline PNR exists. See

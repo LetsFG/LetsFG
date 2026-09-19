@@ -90,7 +90,7 @@ The agent will:
 2. `search_flights("SFO", "TYO", "2026-05-01")`, then `get_flight_results` for the late-landing split tickets
 3. Present options with prices
 4. Ask for the traveller's real details (name as on the passport, date of birth, gender, nationality, email, phone, address)
-5. `book_flight` — the fare plus LetsFG's markup is held on your card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real airline PNR. If it fails, the hold is released and nothing is charged
+5. `book_flight` — the price shown is held on your card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real airline PNR. If it fails, the hold is released and nothing is charged
 6. `get_flight_booking` every 20–30 s until `completed` with the PNR (a booking takes 4–11 minutes)
 
 ## Troubleshooting

@@ -1,6 +1,6 @@
 # LetsFG — Your AI agent just learned to book flights. (Node.js)
 
-**Server-side search engine. Real prices. One function call.** Search every airline in the world and the major booking sites; the price shown includes LetsFG's fee. Zero dependencies. Built for AI agents.
+**Server-side search engine. Real prices. One function call.** Search every airline in the world and the major booking sites; the price shown is the total you pay. Zero dependencies. Built for AI agents.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![npm](https://img.shields.io/npm/v/letsfg)](https://www.npmjs.com/package/letsfg)
@@ -54,7 +54,7 @@ const flights = await bt.search('GDN', 'BER', '2026-03-03');
 const best = cheapestOffer(flights);
 console.log(offerSummary(best));
 
-// Book — no booking fee, no transaction fee — our margin is already in the price you saw; no unlock step. Starts the booking:
+// Book — no booking fee, no transaction fee on top of the price you saw; no unlock step. Starts the booking:
 // the fare is HELD on your card and a LetsFG agent buys the ticket (4-11 min).
 const result = await bt.book(
   best.id,
@@ -87,7 +87,7 @@ console.log(status); // { state: 'completed', pnr: 'ABC123', charged_amount: 93,
 ### How booking works
 
 `bt.book()` posts to `POST /api/agent-book` and does exactly what the website
-checkout does: the fare plus LetsFG's markup is **held** on the connected card
+checkout does: the price shown is **held** on the connected card
 (not taken), a LetsFG booking agent buys the ticket from the seller, and the
 hold is captured only once a real airline PNR exists. If the booking fails the
 hold is released and nothing is charged. Every offer can be booked this way —
@@ -238,9 +238,7 @@ released and nothing is charged.
 There is **no reservation fee, no deposit and no pay link**, and the guest owes the hotel nothing
 further. (Those belonged to the process retired on 2026-09-11.)
 
-`price` is the supplier's cost plus 6.4% (our margin and payment processing) for Revolut Pay or a
-card issued in the EEA, or 8.3% for a card issued outside the EEA — the search response's
-`markup_rate` says which. Nothing is added at booking. Prices are in the currency you search in:
+`price` is what the guest pays. Nothing is added at booking. Prices are in the currency you search in:
 USD unless you ask for another.
 
 Cancelling a refundable rate before its `free_cancellation_until` costs nothing and refunds the

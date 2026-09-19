@@ -12,7 +12,7 @@ Finding a flight or hotel shouldn't mean checking 47 tabs. Or 3 hours of searchi
 Or having that feeling you could've got a better deal if you'd just waited a little longer.<br>
 
 **So we built something about it.**<br>
-One total price, our fee included. No tracking. No price that goes up because you looked twice.
+One total price. No tracking. No price that goes up because you looked twice.
 
 <br>
 
@@ -34,17 +34,17 @@ One total price, our fee included. No tracking. No price that goes up because yo
 
 ### Join the community. Help others find cheaper flights. Spread the word.<br>⭐ Star the repo. Share with a friend ✈️
 
-<a href="https://twitter.com/intent/tweet?text=Found%20this.%20Real%20flight%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.&url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_𝕏-000000?style=flat-square&logo=x&logoColor=white" alt="Share on X"></a>
+<a href="https://twitter.com/intent/tweet?text=Found%20this.%20Real%20flight%20prices%2C%20one%20total%20price.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.&url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_𝕏-000000?style=flat-square&logo=x&logoColor=white" alt="Share on X"></a>
 &nbsp;
 <a href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_LinkedIn-0A66C2?style=flat-square&logo=linkedin&logoColor=white" alt="Share on LinkedIn"></a>
 &nbsp;
-<a href="https://reddit.com/submit?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&title=LetsFG%20-%20AI%20flight%20search%20for%20agents.%20Real%20prices%2C%20zero%20markup."><img src="https://img.shields.io/badge/Share_on_Reddit-FF4500?style=flat-square&logo=reddit&logoColor=white" alt="Share on Reddit"></a>
+<a href="https://reddit.com/submit?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&title=LetsFG%20-%20AI%20flight%20search%20for%20agents.%20Real%20prices%2C%20one%20total%20price."><img src="https://img.shields.io/badge/Share_on_Reddit-FF4500?style=flat-square&logo=reddit&logoColor=white" alt="Share on Reddit"></a>
 &nbsp;
-<a href="https://wa.me/?text=Check%20this%20out!%20LetsFG%20searches%20hundreds%20of%20airlines%20and%20gives%20you%20the%20real%20price.%20No%20markup.%20https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white" alt="Share on WhatsApp"></a>
+<a href="https://wa.me/?text=Check%20this%20out!%20LetsFG%20searches%20every%20airline%20and%20gives%20you%20one%20total%20price.%20https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Share_on_WhatsApp-25D366?style=flat-square&logo=whatsapp&logoColor=white" alt="Share on WhatsApp"></a>
 &nbsp;
-<a href="https://t.me/share/url?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&text=LetsFG%20-%20AI%20flight%20search%20for%20agents.%20Real%20prices%2C%20zero%20markup."><img src="https://img.shields.io/badge/Share_on_Telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Share on Telegram"></a>
+<a href="https://t.me/share/url?url=https%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG&text=LetsFG%20-%20AI%20flight%20search%20for%20agents.%20Real%20prices%2C%20one%20total%20price."><img src="https://img.shields.io/badge/Share_on_Telegram-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Share on Telegram"></a>
 &nbsp;
-<a href="mailto:?subject=Check%20out%20LetsFG&body=Found%20this.%20Real%20flight%20prices%2C%20zero%20markup.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.%0A%0Ahttps%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Send_via_Email-EA4335?style=flat-square&logo=gmail&logoColor=white" alt="Send via Email"></a>
+<a href="mailto:?subject=Check%20out%20LetsFG&body=Found%20this.%20Real%20flight%20prices%2C%20one%20total%20price.%20Your%20AI%20agent%20can%20search%20%26%20book%20flights%20now.%0A%0Ahttps%3A%2F%2Fgithub.com%2FLetsFG%2FLetsFG"><img src="https://img.shields.io/badge/Send_via_Email-EA4335?style=flat-square&logo=gmail&logoColor=white" alt="Send via Email"></a>
 
 ---
 
@@ -109,7 +109,7 @@ Same hotel, same room type, same 2-night stay, same free-cancellation policy —
 
 > **$207 cheaper across 3 hotels** in a verified comparison (2026-08-05), matching each property's own free-cancellation rate against Booking.com's free-cancellation rate for the identical dates and room type. Prices quoted in PLN at booking, converted to USD at that day's rate.
 
-**Why the difference?** LetsFG sells at the supplier's wholesale cost plus a fixed margin — no markup for demand, no loyalty-program cross-subsidy. At booking the price is held on your card, not taken, and it is charged only once the hotel confirms. The comparison above uses free-cancellation rates on both sides; LetsFG also sells non-refundable rates, and every offer says which it is.
+**Why the difference?** LetsFG's price does not rise with demand or with who is searching, and there is no loyalty-program cross-subsidy. At booking the price is held on your card, not taken, and it is charged only once the hotel confirms. The comparison above uses free-cancellation rates on both sides; LetsFG also sells non-refundable rates, and every offer says which it is.
 
 ---
 
@@ -163,16 +163,16 @@ When you're ready to integrate it into your own agent, keep reading.
 
 | How you use it | Search | Flight booking | Hotel booking | Runs where? |
 |----------------|--------|----------------|----------------|-------------|
-| **MCP Server** | ✅ Free (card connected once at letsfg.co/connect) | Fare + markup held, captured on a real PNR. No separate fee | Price held, captured once the hotel confirms. No reservation fee | Our servers |
+| **MCP Server** | ✅ Free (card connected once at letsfg.co/connect) | Price held, captured on a real PNR. No separate fee | Price held, captured once the hotel confirms. No reservation fee | Our servers |
 | **CLI / Python SDK / npm** | ✅ Free (same token) | Same | Same | Our servers |
 | **PFS** (raw API via letsfg.co) | ✅ Free (same token, or $0.01 once via MPP) | Same | Price held, captured once the hotel confirms. No reservation fee | Our servers |
-| **Developer API** | 200 free per booking, then $0.01 | Fare + markup held, captured on a real PNR. No booking fee, no transaction fee | Price held, captured once the hotel confirms. No reservation fee | Our servers |
+| **Developer API** | 200 free per booking, then $0.01 | Price held, captured on a real PNR. No booking fee, no transaction fee | Price held, captured once the hotel confirms. No reservation fee | Our servers |
 
-**MCP / CLI / SDK / PFS = free search, real booking, no separate fee.** Connect a card once (a 0.00 Revolut setup, nothing is charged) and searching is free. No credits, no unlock step. Booking works exactly like the website checkout: `book_flight` / `POST /api/agent-book` **holds** the fare plus LetsFG's markup on your card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails the hold is released and nothing is charged. The price you see is the price you pay; the markup is inside it, nothing is added at booking.
+**MCP / CLI / SDK / PFS = free search, real booking, no separate fee.** Connect a card once (a 0.00 Revolut setup, nothing is charged) and searching is free. No credits, no unlock step. Booking works exactly like the website checkout: `book_flight` / `POST /api/agent-book` **holds** the price shown on your card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails the hold is released and nothing is charged. The price you see is the price you pay; nothing is added at booking.
 
 **Hotels = the price on the offer, held then captured, on every path.** Booking holds the full price on your card, LetsFG books and pays the hotel, and the hold is captured only once the hotel confirms; a failed booking releases it. There is no reservation fee, no deposit and no pay link. Every rate type is sold, and each offer says whether it is refundable and until when. See [Hotels](#-hotels--new-and-live) below.
 
-**Developer API = business use, look-to-book.** [letsfg.co/developers](https://letsfg.co/developers) books flights itself — `POST /flights/book` holds the fare on your connected Revolut method and a LetsFG booking agent buys the ticket, exactly like the other paths. Search is **not** priced per call: you get **200 free searches after every booking you make**, and booking resets the counter. Past that, blocks of 500 for $5.00 ($0.01 each). **No booking fee, no transaction fee** — the margin is inside the price the search returned, so the amount shown is the amount charged. Minimum top-up: $5.
+**Developer API = business use, look-to-book.** [letsfg.co/developers](https://letsfg.co/developers) books flights itself — `POST /flights/book` holds the fare on your connected Revolut method and a LetsFG booking agent buys the ticket, exactly like the other paths. Search is **not** priced per call: you get **200 free searches after every booking you make**, and booking resets the counter. Past that, blocks of 500 for $5.00 ($0.01 each). **No booking fee, no transaction fee** on top: the amount the search returned is the amount charged. Minimum top-up: $5.
 
 > The monthly per-search tiers ($0.50 / $0.20 / $0.10) were retired on 2026-09-08 along with Stripe. Payments are Revolut: `POST /agents/connect-payment` returns a one-time link that saves a card, and nothing is charged to connect.
 
@@ -191,7 +191,7 @@ When you're ready to integrate it into your own agent, keep reading.
 | Works in AI agents? | No API | **MCP · CLI · PFS (card connected once, free) · Developer API (prepaid)** |
 | Booking | Redirects to OTA checkout | **Real airline PNR, e-ticket to inbox** |
 | Cabin class filter | No | **Economy, premium, business, first** |
-| Cost to you | Hidden markup | **CLI/PFS: free search; no booking fee and no transaction fee. Developer API: 200 free searches after every booking, then $0.01/search; no booking fee, no transaction fee.** |
+| Cost to you | Varies by site | **CLI/PFS: free search; no booking fee and no transaction fee. Developer API: 200 free searches after every booking, then $0.01/search; no booking fee, no transaction fee.** |
 
 ---
 
@@ -286,7 +286,7 @@ Pricing: 200 searches free after every booking, then blocks of 500 for $5.00 ($0
 search_flights  LON → BCN, 2026-04-01, return 2026-04-08
 get_flight_results  (while more offers are still landing)
 book_flight     search_id + offer_id + one traveller's real details + contact_email
-                → booking_ref in seconds; fare + markup HELD on the connected card
+                → booking_ref in seconds; price HELD on the connected card
 get_flight_booking  every 20–30 s → completed (PNR, charged_amount) | failed (hold released) | needs_attention
 ```
 
@@ -661,7 +661,7 @@ Connect the MCP (once, card added at letsfg.co/connect) → card-backed token �
 
 1. **Auth** — add `https://letsfg.co/developers/api/mcp` as an MCP server and approve it. The OAuth consent step opens letsfg.co/connect: one tap, no card. The card is asked for at the first booking, in a 0.00 Revolut setup. Nothing is charged to connect. The SDKs read that token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`.
 2. **Search** — `letsfg search LHR BCN 2026-06-15` calls `POST https://letsfg.co/api/search`, polls until done (8–10 s to first results), and applies the open-source ranking algorithm locally.
-3. **Book** — `POST /api/agent-book` holds the fare plus markup on the card and starts a LetsFG booking agent; `POST /api/agent-book/status` reports `completed` with the PNR (4–11 minutes), or `failed` with the hold released. Nothing extra is added at booking.
+3. **Book** — `POST /api/agent-book` holds the price shown on the card and starts a LetsFG booking agent; `POST /api/agent-book/status` reports `completed` with the PNR (4–11 minutes), or `failed` with the hold released. Nothing extra is added at booking.
 
 ### Polling: `completed` is not the end
 

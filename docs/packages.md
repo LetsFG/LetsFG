@@ -154,7 +154,7 @@ claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
 | `search_flights` | Search via the letsfg.co server-side engine | Bearer or API key |
 | `resolve_location` | Convert city names to IATA codes | API key |
 | `unlock_flight_offer` | **RETIRED 2026-09-08** — the route answers `410 Gone`. There is no unlock step on either lane; call `book_flight` (PFS) or `POST /flights/book` (Developer API) directly | API key |
-| `book_flight` | Start the booking: the fare plus LetsFG's markup is held on the connected card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real PNR. Returns a `booking_ref` in seconds; the booking takes 4–11 min | Bearer or API key |
+| `book_flight` | Start the booking: the price shown is held on the connected card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real PNR. Returns a `booking_ref` in seconds; the booking takes 4–11 min | Bearer or API key |
 | `get_flight_booking` | Poll a started booking every 20–30 s: `booking_in_progress` → `completed` (PNR) / `failed` (hold released) / `needs_attention` (do not book again) | Bearer |
 
 **Hotels** — need a card on file (a search opens a real supplier session). Either credential works.

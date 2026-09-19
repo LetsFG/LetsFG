@@ -73,8 +73,7 @@ Search real, bookable hotel inventory.
   rates only), `cancellation_policy`, `combination_id_v2` and `session_id`
 - **Note:** Every rate type is sold, refundable and non-refundable — show `refundable` and
   `free_cancellation_until` before booking. Keep the chosen offer's `session_id` and
-  `combination_id_v2`; booking needs both. `price` is the supplier's cost plus 6.4% (8.3% on a
-  card issued outside the EEA; `markup_rate` says which).
+  `combination_id_v2`; booking needs both. `price` is what the guest pays.
 - **Allowance:** 1,000 hotel searches free after every hotel booking, then blocks of 1,000 for
   $5.00 from prepaid balance.
 
@@ -105,7 +104,7 @@ Resolve city names to IATA airport/city codes.
 Book an offer.
 - **PFS (Bearer token):** `POST /api/agent-book`. No unlock step — search, then book directly.
   Works for every offer in the results, whichever seller it came from. Exactly what the website
-  checkout does: the fare plus LetsFG's markup is **held** on the connected card (not taken), a
+  checkout does: the price shown is **held** on the connected card (not taken), a
   LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real
   airline PNR exists. If the booking fails the hold is released and nothing is charged.
   - **Input:** `search_id` + `offer_id` exactly as search returned them (offers expire ~15 min),

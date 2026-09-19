@@ -1,6 +1,6 @@
 # LetsFG — Your AI agent just learned to book flights.
 
-**Server-side engine. Real prices. One function call.** Search hundreds of airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs.
+**Server-side engine. Real prices. One function call.** Search every airline in the world and the major booking sites. One total price.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![PyPI](https://img.shields.io/pypi/v/letsfg)](https://pypi.org/project/letsfg/)
@@ -31,9 +31,8 @@ letsfg search LHR BCN 2026-06-15
 ```
 
 **Search is free and the price you saw is the price charged.** There is no unlock
-step, no booking fee and no transaction fee on any path — our margin is already
-included in every offer price. The Developer API works the same way: no booking
-fee and no transaction fee, with the margin already inside the offer price. Its
+step, no booking fee and no transaction fee on any path. The Developer API works
+the same way: no booking fee and no transaction fee on top of the offer price. Its
 unlock step and 1% (min $3) fee were retired on 2026-09-08.
 
 ## Authentication
@@ -127,7 +126,7 @@ bt = LetsFG()  # reads LETSFG_BEARER_TOKEN
 flights = bt.search("GDN", "BER", "2026-03-03")
 print(f"{flights.total_results} offers, cheapest: {flights.cheapest.summary()}")
 
-# Book — no booking fee, no transaction fee — our margin is already in the price you saw; no unlock step. Starts the booking:
+# Book — no booking fee, no transaction fee on top of the price you saw; no unlock step. Starts the booking:
 # the fare is HELD on your card and a LetsFG agent buys the ticket (4-11 min).
 result = bt.book(
     offer_id=flights.cheapest.id,
@@ -167,7 +166,7 @@ print(status)  # {"state": "completed", "pnr": "ABC123", "charged_amount": 93, "
 ### How booking works
 
 `book()` posts to `POST /api/agent-book` and does exactly what the website
-checkout does: the fare plus LetsFG's markup is **held** on the connected card
+checkout does: the price shown is **held** on the connected card
 (not taken), a LetsFG booking agent buys the ticket from the seller, and the
 hold is captured only once a real airline PNR exists. If the booking fails the
 hold is released and nothing is charged. Every offer can be booked this way —
@@ -377,7 +376,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 Searching is free (10 per 10 min, 30 per hour, 100 per day per card). On
 PFS, booking goes through `POST /api/agent-book` — the fare is held on your
-card and captured only on a real PNR. No booking fee, no transaction fee — our margin is already in the price you saw.
+card and captured only on a real PNR. No booking fee, no transaction fee on top of the price you saw.
 Compare before booking:
 
 ```python
@@ -420,7 +419,7 @@ letsfg search JFK LHR 2026-05-01 --adults 3 --cabin C --max-stops 0
 # Machine-readable output (for agents) — includes search_id, needed for book
 letsfg search LON BCN 2026-04-01 --json
 
-# Book — no booking fee, no transaction fee — our margin is already in the price you saw; no unlock step. Holds the fare on
+# Book — no booking fee, no transaction fee on top of the price you saw; no unlock step. Holds the fare on
 # your card and starts the LetsFG booking agent; prints the booking_ref to poll.
 letsfg book off_xxx --search-id srch_xxx \
   --passenger '{"given_name":"John","family_name":"Doe","born_on":"1990-01-15","gender":"m","nationality":"GB","phone_number":"+447700900123","phone_country":"GB","address_line1":"1 Analytical Way","address_city":"London","address_postal":"N1 9GU","address_country":"GB"}' \
@@ -470,13 +469,13 @@ Every command supports `--json` for machine-readable output.
 ## How It Works
 
 1. **Search** — Free. The server-side engine queries hundreds of airlines and returns real-time offers.
-2. **Book** — Call `POST /api/agent-book` with your Bearer token. The fare plus LetsFG's markup is held on your connected card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists (4–11 minutes; poll `POST /api/agent-book/status`). A failed booking releases the hold. Ticket price only, no LetsFG fee, no unlock step.
+2. **Book** — Call `POST /api/agent-book` with your Bearer token. The price shown is held on your connected card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists (4–11 minutes; poll `POST /api/agent-book/status`). A failed booking releases the hold. Ticket price only, no LetsFG fee, no unlock step.
 
 The Developer API is a separate product with the same booking model. Search there is
 **look-to-book**: 200 searches free after every booking you make, then blocks of 500 for $5.00
 ($0.01 each). Booking is `POST /flights/book` — the fare is held on a connected Revolut method and
-captured only against a real PNR, with **no booking fee and no transaction fee**; the margin is
-inside the price the search returned.
+captured only against a real PNR, with **no booking fee and no transaction fee** on top of the
+price the search returned.
 
 > Retired 2026-09-08: the `unlock` step (and its 1% / min $3 fee) no longer exists, and neither do
 > the Stripe onboarding routes. Both answer `410 Gone` naming their replacement. See
@@ -557,9 +556,7 @@ released and nothing is charged.
 There is **no reservation fee, no deposit and no pay link**, and the guest owes the hotel nothing
 further. (Those belonged to the process retired on 2026-09-11.)
 
-`price` is the supplier's cost plus 6.4% (our margin and payment processing) for Revolut Pay or a
-card issued in the EEA, or 8.3% for a card issued outside the EEA — the search response's
-`markup_rate` says which. Nothing is added at booking. Prices are in the currency you search in:
+`price` is what the guest pays. Nothing is added at booking. Prices are in the currency you search in:
 USD unless you ask for another.
 
 Cancelling a refundable rate before its `free_cancellation_until` costs nothing and refunds the

@@ -47,7 +47,7 @@ Search is free: 10 per 10 minutes, 30 per hour, 100 per day per account (per car
 
 > Book the 06:25 Ryanair one for Ada Lovelace
 
-Claude asks for the traveller's real details (name as on the passport, date of birth, gender, nationality, email, phone, address), then calls `book_flight`. The fare plus LetsFG's markup is **held** on your card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If it fails, the hold is released and nothing is charged. A booking takes 4–11 minutes; Claude polls `get_flight_booking` until it reports `completed` with the PNR.
+Claude asks for the traveller's real details (name as on the passport, date of birth, gender, nationality, email, phone, address), then calls `book_flight`. The price shown is **held** on your card, a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If it fails, the hold is released and nothing is charged. A booking takes 4–11 minutes; Claude polls `get_flight_booking` until it reports `completed` with the PNR.
 
 ---
 

@@ -18,7 +18,7 @@ LetsFG is not a scraper wrapper. It's a production-grade **agent-to-airline conn
 - **Real booking** — `book_flight` holds the fare on that card, a LetsFG booking agent buys the ticket, and the hold is captured only once a real airline PNR exists
 - **Virtual interlining** — the combo engine mixes one-way fares across airlines (e.g., Ryanair outbound + Wizz Air return) to find deals no single airline offers
 - **City-wide airport expansion** — search `LON` and it auto-searches LHR, LGW, STN, LTN, SEN, LCY. Works for 25+ major cities worldwide
-- **No tracking** — no cookies, no surge pricing. The same search returns the same prices; the price shown includes LetsFG's fee
+- **No tracking** — no cookies, no surge pricing. The same search returns the same prices; the price shown is the total you pay
 
 **Why agents should use this instead of building their own:**
 - Saves thousands of tokens vs. browser automation or scraping
@@ -207,7 +207,7 @@ To avoid unexpected updates (2026.5.77 or later: earlier versions cannot book ho
 | `get_hotel_booking` | Collect the booking result (`succeeded` / `failed` / `attention`) | FREE | None (read-only) |
 | `cancel_hotel_booking` | Cancel this account's booking and refund the guest | Free on a refundable rate before `free_cancellation_until`; a cancellation that would cost money is refused | Cancels the booking |
 | `resolve_location` | City name → IATA code | FREE | None (read-only) |
-| `book_flight` | Start a real booking: fare held on the connected card, a LetsFG agent buys the ticket, captured on a real PNR | Ticket price (LetsFG's markup is inside the price) | Places a hold, creates the booking |
+| `book_flight` | Start a real booking: fare held on the connected card, a LetsFG agent buys the ticket, captured on a real PNR | The price shown | Places a hold, creates the booking |
 | `get_flight_booking` | Poll a booking started by `book_flight` until `completed` / `failed` / `needs_attention` | FREE | None (read-only) |
 | `unlock_flight_offer` | **RETIRED 2026-09-08** — the tool refuses locally and the route answers `410 Gone` | — | Call `book_flight` directly |
 | `connect_payment` | **Developer API only** — mint a link to connect a payment method to a paid prepaid account. Not how agents connect. Replaced `setup_payment` on 2026-09-08 with the Stripe lane | FREE | Returns `connect_url` |
@@ -223,7 +223,7 @@ connect (once)  →  search_flights  →  book_flight  →  get_flight_booking (
 ```
 
 1. `search_flights("LON", "BCN", "2026-06-15")` — server-side search returns offers from hundreds of airlines in 8–10 s to first results; collect late arrivals with `get_flight_results`
-2. `book_flight(search_id, offer_id, passengers, contact_email)` — exactly what the website checkout does: the fare plus LetsFG's markup is **held** on the connected card (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. Returns a `booking_ref` within seconds. One traveller per call, with the details an airline checkout asks for (name, date of birth, gender, nationality, email, phone with its country, residence address; passport optional). A missing detail returns `missing_fields` and charges nothing.
+2. `book_flight(search_id, offer_id, passengers, contact_email)` — exactly what the website checkout does: the price shown is **held** on the connected card (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. Returns a `booking_ref` within seconds. One traveller per call, with the details an airline checkout asks for (name, date of birth, gender, nationality, email, phone with its country, residence address; passport optional). A missing detail returns `missing_fields` and charges nothing.
 3. `get_flight_booking(booking_ref)` every 20–30 s — `booking_in_progress` → `completed` (PNR, captured amount) | `failed` (hold released, nothing charged) | `needs_attention` (a human at LetsFG is checking; do not book again). A booking legitimately takes 4–11 minutes.
 
 No unlock step, no booking-link fallback, no separate LetsFG fee. Never call
@@ -341,7 +341,7 @@ All search and booking run server-side at letsfg.co. No local browsers or scrape
 - **No card storage** — the card is saved with Revolut at letsfg.co/connect. LetsFG never sees or stores raw card numbers.
 - **API key scoping** — `LETSFG_API_KEY` grants access only to your agent's account. Keys are prefixed `letsfg_` for easy identification and revocation.
 - **PII handling** — passenger names, emails, and DOBs are sent to the airline for booking (required by airlines). LetsFG does not store passenger PII after forwarding to the airline.
-- **No tracking** — no cookies, no session-based pricing, no fingerprinting. Every search returns the same raw airline price.
+- **No tracking** — no cookies, no session-based pricing, no fingerprinting. Every search returns the same price.
 - **Open source** — the SDK and MCP server code is MIT-licensed and auditable at [github.com/LetsFG/LetsFG](https://github.com/LetsFG/LetsFG).
 
 ---
@@ -500,9 +500,7 @@ released and nothing is charged.
 There is **no reservation fee, no deposit and no pay link**, and the guest owes the hotel nothing
 further. (Those belonged to the process retired on 2026-09-11.)
 
-`price` is the supplier's cost plus 6.4% (our margin and payment processing) for Revolut Pay or a
-card issued in the EEA, or 8.3% for a card issued outside the EEA — the search response's
-`markup_rate` says which. Nothing is added at booking. Prices are in the currency you search in:
+`price` is what the guest pays. Nothing is added at booking. Prices are in the currency you search in:
 USD unless you ask for another.
 
 Cancelling a refundable rate before its `free_cancellation_until` costs nothing and refunds the

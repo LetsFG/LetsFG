@@ -112,8 +112,7 @@ LetsFG/
 1. **Search** (free) → `POST /api/search` with Bearer token → `search_id`; poll `GET /api/results/<search_id>` immediately, then every 2 s. `completed` is not the end — keep polling while `split_ticket_pending` or `gf_enrich_pending` is true
 2. **Book** → `POST /api/agent-book` with `search_id`, `offer_id`, `contact_email` and ONE
    traveller's real details (name, date of birth, gender, nationality, phone + country,
-   residence address; passport optional). Exactly what the website checkout does: the fare
-   plus LetsFG's markup is **held** on the connected card, a LetsFG booking agent buys the
+   residence address; passport optional). Exactly what the website checkout does: the price shown is **held** on the connected card, a LetsFG booking agent buys the
    ticket, and the hold is captured only once a real airline PNR exists. Returns
    `{ booking_ref }` within seconds; the booking takes 4–11 minutes.
 3. **Wait** → `POST /api/agent-book/status { booking_ref }` every 20–30 s. `completed`
@@ -150,7 +149,7 @@ Companion modules in `sdk/js/src/`:
 - `trip-purpose.ts` — `TripPurpose` type and normalization helpers
 
 ### Zero Price Bias
-The API returns raw prices with no demand-based inflation, cookie tracking, or surge
+The API returns live prices with no demand-based inflation, cookie tracking, or surge
 pricing. This is a core product principle.
 
 ### Free Search
@@ -214,7 +213,7 @@ npm publish
 ## Conventions
 
 - Keep SDK READMEs in sync with the root README for pricing, flow descriptions, and warnings.
-- All agent-facing text should include the coverage messaging (airlines PLUS the major booking sites), the reliability data, and the passenger details warning. Do NOT assert "zero markup" or "no LetsFG fee" anywhere: neither is true.
+- All agent-facing text should include the coverage messaging (airlines PLUS the major booking sites), the reliability data, and the passenger details warning. Never state or deny a markup or a LetsFG fee anywhere: say "the price shown is the total you pay".
 - Python SDK client (`client.py`) uses stdlib `urllib` for HTTP — zero external dependencies.
 - Python SDK auth uses stdlib `urllib` and `json` only (no playwright or scrapers).
 - JS/TS SDK uses native `fetch`, TypeScript strict mode.

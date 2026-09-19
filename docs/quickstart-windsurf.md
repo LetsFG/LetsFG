@@ -86,7 +86,7 @@ Cascade will:
 2. `resolve_hotel_city("Istanbul")` then `search_hotels(city_id, city_name, "2026-04-10", "2026-04-15")`
    — hotels need a card on file; the connect step already saved one
 3. Present both results together
-4. Ask for the traveller's real details, then `book_flight` — the fare plus LetsFG's markup is held on your card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real airline PNR. If it fails, the hold is released and nothing is charged
+4. Ask for the traveller's real details, then `book_flight` — the price shown is held on your card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real airline PNR. If it fails, the hold is released and nothing is charged
 5. `get_flight_booking` every 20–30 s until `completed` with the PNR (a booking takes 4–11 minutes)
 
 ## Troubleshooting

@@ -34,7 +34,7 @@ result = bt.search("LHR", "JFK", "2026-06-01")
 
 **When to use PFS (card-backed token):** This is the agent path — search and booking. Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp`; approving it opens <https://letsfg.co/connect>: one tap, no card. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged until a booking is made. 8–10 s to first results per search. The SDK and CLI read the same token from `LETSFG_BEARER_TOKEN`.
 
-**When to use Developer API:** Managed cloud search, billing controls, volume usage, and booking through `POST /flights/book`. Register at [letsfg.co/developers](https://letsfg.co/developers), then connect a Revolut method — nothing is charged to connect. Flight search is look-to-book: 200 searches free after every booking, then blocks of 500 for $5.00. No booking fee and no transaction fee; the margin is inside the price you saw.
+**When to use Developer API:** Managed cloud search, billing controls, volume usage, and booking through `POST /flights/book`. Register at [letsfg.co/developers](https://letsfg.co/developers), then connect a Revolut method — nothing is charged to connect. Flight search is look-to-book: 200 searches free after every booking, then blocks of 500 for $5.00. No booking fee and no transaction fee on top of the price you saw.
 
 ### Hotels
 
@@ -183,7 +183,7 @@ Full walkthrough: https://letsfg.co/for-agents
 
 ### Booking
 
-Booking works exactly like the website checkout, on the card connected to the account: the fare plus LetsFG's markup is **held** on the card (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails, the hold is released and nothing is charged. This works for every offer a search returns, not only a subset. There is no unlock step and no separate LetsFG fee — the markup is inside the price you saw.
+Booking works exactly like the website checkout, on the card connected to the account: the price shown is **held** on the card (not taken), a LetsFG booking agent buys the ticket from the seller, and the hold is captured only once a real airline PNR exists. If the booking fails, the hold is released and nothing is charged. This works for every offer a search returns, not only a subset. There is no unlock step, and nothing is added to the price you saw.
 
 ```bash
 # Step 1 — start the booking (returns within seconds)

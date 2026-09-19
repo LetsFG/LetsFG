@@ -22,9 +22,8 @@ That ordering is the whole safety property: a price that moves, a seller that
 fails, a form that rejects a passenger — none of them can turn into a charge for
 a ticket you did not get.
 
-**The price you saw is the price you pay.** LetsFG's margin is already inside
-the offer price returned by search. There is no booking fee and no transaction
-fee.
+**The price you saw is the price you pay.** There is no booking fee and no
+transaction fee on top of the offer price returned by search.
 
 A completed booking also **resets your free search allowance** to a full 200.
 
