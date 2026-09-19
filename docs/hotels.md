@@ -183,8 +183,11 @@ The guest's `email` hears from LetsFG however the booking ends:
 
 `POST /hotels/cancel` with the `confirmation` of a booking your account made
 (anything else is `404`). Only a `refundable` booking, and only until its
-`free_cancellation_until` — the charge is then refunded in full to the payment
-method. After that date, or on a non-refundable rate, the hotel's own
+`free_cancellation_until` — 98% of the charge is then refunded to the payment
+method: a 2% cancellation fee covers payment costs that are not refundable, and
+the response's `refund.amount` and `refund.cancellation_fee` say exactly. If
+nothing had been captured yet, the whole hold is released. After that date, or
+on a non-refundable rate, the hotel's own
 ladder applies and can reach 100%; that ladder ships in the booking's `terms`, so
 you can always see the cost first, and the endpoint refuses rather than
 forfeiting money on the guest's behalf.

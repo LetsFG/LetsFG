@@ -54,7 +54,7 @@ A request without a token gets `401` with `WWW-Authenticate: Bearer resource_met
 | `get_hotel_details` | Full details of one hotel: rooms, rates, cancellation terms, amenities and location. |
 | `book_hotel` | Books a room on the saved card and returns a `booking_job_id`. |
 | `get_hotel_booking` | Status of a hotel booking, with the confirmation once it succeeds. |
-| `cancel_hotel_booking` | Cancels a refundable booking before its free-cancellation deadline, with a full refund. |
+| `cancel_hotel_booking` | Cancels a refundable booking before its free-cancellation deadline; 98% is refunded (2% cancellation fee). |
 
 ### Account and preferences
 
