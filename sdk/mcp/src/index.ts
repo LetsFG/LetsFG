@@ -434,7 +434,7 @@ const TOOLS = [
         adults: { type: 'integer', description: 'Number of adults (default: 1)', default: 1 },
         children: { type: 'integer', description: 'Number of children (2-11)', default: 0 },
         cabin_class: { type: 'string', description: 'M=economy, W=premium, C=business, F=first', enum: ['M', 'W', 'C', 'F'] },
-        currency: { type: 'string', description: 'Currency code (EUR, USD, GBP)', default: 'EUR' },
+        currency: { type: 'string', description: "ISO 4217 code prices are shown in - the traveller's own (EUR, USD, GBP, BRL, PLN, ...)", default: 'EUR' },
         max_results: { type: 'integer', description: 'Max offers to return', default: 10 },
         departure_time_from: { type: 'string', description: "Earliest departure time HH:MM (e.g., '06:00')" },
         departure_time_to: { type: 'string', description: "Latest departure time HH:MM (e.g., '14:00')" },

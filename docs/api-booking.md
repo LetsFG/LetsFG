@@ -197,7 +197,7 @@ branch on.
 |--------|---------|------------|
 | `400` | `missing_fields` | Ask the traveller for the listed fields, call again |
 | `400` | `party_too_large` | Maximum 9 passengers |
-| `400` | `currency_unsupported` | Search again in EUR, USD or GBP and book that offer |
+| `400` | `currency_unsupported` | No exchange rate for the offer's currency right now; search again in USD, EUR or GBP. (BRL, CNY and other currencies cards cannot be charged in are held as the same price in USD, not refused.) |
 | `400` | `offer_not_bookable` | Pick another offer |
 | `402` | `payment_method_required` | `POST /agents/connect-payment`, open the link |
 | `402` | `payment_declined` | Read `decline_reason`; the traveller's bank refused the hold |
