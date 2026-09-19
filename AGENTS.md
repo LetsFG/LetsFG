@@ -107,7 +107,7 @@ The price on the offer is everything you pay; LetsFG's markup is already inside 
 
 ## How It Works (2 Steps)
 
-### 1. Search (FREE, unlimited)
+### 1. Search (free, within limits)
 ```
 POST /api/search                  # PFS — Bearer token
 POST /api/v1/flights/search       # Developer API — X-API-Key
@@ -648,7 +648,7 @@ from letsfg.local import search_local, book_offer
 import asyncio
 
 def search_and_book(origin_iata, dest_iata, date, passenger, contact_email):
-    # Step 1: Search (free, unlimited)
+    # Step 1: Search (free, within limits)
     result = asyncio.run(search_local(origin_iata, dest_iata, date, sort="price"))
     if not result["offers"]:
         print(f"No flights {origin_iata} → {dest_iata} on {date}")
@@ -730,7 +730,7 @@ if candidates:
 
 | Action | Cost | Notes |
 |--------|------|-------|
-| Search | FREE | Unlimited — any route, any date, any number of searches |
+| Search | FREE | 10 per 10 min, 30/hour, 100/day per account (Bearer / MCP) |
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
 | Auth | FREE | Card saved at letsfg.co/connect (0.00 Revolut setup): no charge, no hold. The MPP lane, when offered, costs $0.01 once as verification. |
@@ -739,7 +739,7 @@ if candidates:
 
 ## Rate Limits and Timeouts
 
-The API has generous limits. Search is completely free and unlimited.
+Search is free: 10 per 10 min, 30/hour, 100/day per account.
 
 | Endpoint | Rate Limit | Typical Latency | Notes |
 |----------|-----------|-----------------|-------|
@@ -963,7 +963,7 @@ class FlightAgent:
                          preferences=None, max_retries=2):
         """Full autonomous workflow: search → evaluate → book."""
         for attempt in range(max_retries + 1):
-            # Search (free, unlimited)
+            # Search (free, within limits)
             result = asyncio.run(search_local(origin_iata, dest_iata, date))
             if not result["offers"]:
                 return None

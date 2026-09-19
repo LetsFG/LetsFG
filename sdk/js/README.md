@@ -1,6 +1,6 @@
 # LetsFG — Your AI agent just learned to book flights. (Node.js)
 
-**Server-side search engine. Real prices. One function call.** Search hundreds of airlines at raw airline prices — **$20–$50 cheaper** than Booking.com, Kayak, and other OTAs. Zero dependencies. Built for AI agents.
+**Server-side search engine. Real prices. One function call.** Search every airline in the world and the major booking sites; the price shown includes LetsFG's fee. Zero dependencies. Built for AI agents.
 
 [![GitHub stars](https://img.shields.io/github/stars/LetsFG/LetsFG?style=social)](https://github.com/LetsFG/LetsFG)
 [![npm](https://img.shields.io/npm/v/letsfg)](https://www.npmjs.com/package/letsfg)

@@ -12,7 +12,7 @@ Finding a flight or hotel shouldn't mean checking 47 tabs. Or 3 hours of searchi
 Or having that feeling you could've got a better deal if you'd just waited a little longer.<br>
 
 **So we built something about it.**<br>
-No markup. No tracking. No price that goes up because you looked twice.
+One total price, our fee included. No tracking. No price that goes up because you looked twice.
 
 <br>
 
@@ -91,9 +91,9 @@ We searched 5 routes on Google Flights and LetsFG on the same day (2026-08-05), 
 | London → Singapore (SIN) | Shenzhen Airlines, 1 stop | $395 | **$380** | **$15** |
 | Chicago → Dubai (DXB) | Air Canada + Emirates, 2 stops | $517 | **$461** | **$56** |
 
-> **$133 cheaper across 5 routes** in a verified comparison (2026-08-05). Google Flights inflates on repeat searches; LetsFG returns the same prices however often you run the search, because it reads airlines and the major booking sites directly rather than tracking you.
+> **$133 cheaper across 5 routes** in a verified comparison (2026-08-05). LetsFG returns the same prices however often you run the search, because it doesn't track you.
 
-**Why the difference?** Google Flights only searches its own limited set of airline partners. LetsFG searches **everywhere** — Skyscanner, Kiwi, Kayak, Momondo, plus direct airline websites (Ryanair, United, Southwest, EasyJet, Spirit, Norwegian, AirAsia, and hundreds more). More sources = better prices. No demand-based inflation and no cookie tracking: the same search returns the same prices however often you run it.
+**Why the difference?** LetsFG compares the same flight across many sellers — Skyscanner, Kayak, Momondo, plus airline websites (Ryanair, United, Southwest, EasyJet, Spirit, Norwegian, AirAsia, and more) — and shows the cheapest. No cookie tracking: the same search returns the same prices however often you run it.
 
 ---
 
@@ -184,8 +184,8 @@ When you're ready to integrate it into your own agent, keep reading.
 
 | | Google Flights / Expedia | **LetsFG** |
 |---|---|---|
-| Price | Inflated (tracking, cookies, surge) | **Stable across repeat searches. $133 cheaper across 5 routes, verified 2026-08-05.** |
-| Coverage | Misses budget airlines | **Every airline in the world — OTAs, budget carriers, full-service** |
+| Price | Varies by site and search | **Stable across repeat searches. $133 cheaper across 5 routes, verified 2026-08-05.** |
+| Coverage | One site's sources | **Every airline in the world — OTAs, budget carriers, full-service** |
 | Speed | 30 s+ (page loads, ads, redirects) | **CLI/PFS: 8–10 s to first results · API discover: 2–5 s** |
 | Repeat search raises price? | Yes | **Never** |
 | Works in AI agents? | No API | **MCP · CLI · PFS (card connected once, free) · Developer API (prepaid)** |

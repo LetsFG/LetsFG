@@ -48,7 +48,7 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. E
 
 ### search_flights
 Search every airline in the world AND the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo) in one call. Returns real-time prices plus per-flight reliability history.
-- **Cost:** FREE (unlimited)
+- **Cost:** FREE (10 per 10 min, 30/hour, 100/day)
 - **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
 - **Note:** On PFS (Bearer token), call `book_flight` directly — no unlock step — then poll `get_flight_booking`. The Developer API has no unlock step either: book with `POST /flights/book` and poll `GET /flights/bookings/{id}`.
@@ -85,7 +85,7 @@ Search ground transfers — private cars, taxis, shared shuttles, airport expres
 - **Output:** Transfer options with prices and vehicle types
 
 ### search_activities
-Search activities — tours, museum tickets, day trips via direct APIs and aggregators.
+Search activities — tours, tickets, day trips (limited supplier coverage).
 - **Cost:** FREE
 - **Input:** location, date_from, date_to
 - **Output:** Activity options with prices, descriptions, availability
@@ -395,7 +395,7 @@ The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 | `search_hotels` | Bookable hotel rates, refundable and non-refundable | FREE (card on file; 1,000 per hotel booking) |
 | `book_hotel` | Start a hotel booking: the price is held, captured once the hotel confirms. Returns `booking_job_id` | The price on the offer |
 | `get_hotel_booking` | Poll until `succeeded` / `failed` / `attention` | FREE |
-| `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` (refunded in full) | FREE |
+| `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` (98% refunded, 2% fee) | FREE |
 | `get_agent_profile` | View usage stats | FREE |
 
 ## Search Flags Reference
@@ -504,17 +504,17 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 | Book flight (Developer API) | **The price shown on the offer** — held, captured only on a real PNR; no booking fee, no transaction fee |
 | Hotel search | Free up to 1,000 searches after every hotel booking, then 1,000 for $5.00 |
 | Hotel booking | **The price shown on the offer** — held on the connected card, captured only once the hotel confirms. No reservation fee |
-| Hotel cancellation | Free on a refundable rate before `free_cancellation_until` (refunded in full); otherwise refused |
+| Hotel cancellation | 98% refunded on a refundable rate before `free_cancellation_until` (2% fee); otherwise refused |
 
 ## Key Facts
 
 - Every airline in the world via server-side engine
-- Hotels and activities via direct APIs
-- Zero price bias — no demand inflation, no cookie tracking
+- Hotels via a wholesale hotel partner
+- No cookie tracking — the same search returns the same prices
 - Typically cheaper than booking through a single OTA, because it compares airlines and the major booking sites in one pass
 - Real airline PNR codes and hotel confirmations
 - E-tickets sent directly to passenger email
-- Search is always free and unlimited
+- Search is free (10 per 10 min, 30/hour, 100/day)
 - PFS (Bearer token): book directly, no unlock step — the fare is held on the connected card, a LetsFG booking agent buys the ticket, captured only once a real PNR exists; failed booking = hold released, nothing charged
 - Developer API: `POST /flights/book` — the same hold-then-capture flow, then poll `GET /flights/bookings/{id}`. Search there is look-to-book (200 free after every booking) and there is no booking or transaction fee
 - API designed for machines, not browsers

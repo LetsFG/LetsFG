@@ -1,6 +1,6 @@
 # letsfg-mcp — Your AI agent just learned to book flights.
 
-**Hundreds of airlines. Real prices. One tool call.** The largest open flight-search MCP server. Search is powered server-side at letsfg.co — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Qantas, and 194 more — plus enterprise GDS/NDC providers (Amadeus, Duffel, Sabre) through the LetsFG backend.
+**Every airline in the world. Real prices. One tool call.** Search runs server-side at letsfg.co across airlines and the major booking sites.
 
 **Your agent doesn't need to build a flight integration. Just add this MCP server.**
 
@@ -14,18 +14,16 @@
 
 LetsFG is not a scraper wrapper. It's a production-grade **agent-to-airline connector layer**:
 
-- **Hundreds of airlines** searched server-side at letsfg.co — connect a card once at letsfg.co/connect (nothing charged) and search is free
+- **Every airline in the world** searched server-side at letsfg.co — approve once at letsfg.co/connect (no card) and search is free
 - **Real booking** — `book_flight` holds the fare on that card, a LetsFG booking agent buys the ticket, and the hold is captured only once a real airline PNR exists
-- **Enterprise GDS/NDC feeds** (Amadeus, Duffel, Sabre, Travelport, Kiwi) are included in every search — contract-only data sources made available to everyone through the LetsFG backend
 - **Virtual interlining** — the combo engine mixes one-way fares across airlines (e.g., Ryanair outbound + Wizz Air return) to find deals no single airline offers
 - **City-wide airport expansion** — search `LON` and it auto-searches LHR, LGW, STN, LTN, SEN, LCY. Works for 25+ major cities worldwide
-- **Zero price bias** — no cookie tracking, no demand-based inflation, no surge pricing. Same raw airline price every time
+- **No tracking** — no cookies, no surge pricing. The same search returns the same prices; the price shown includes LetsFG's fee
 
 **Why agents should use this instead of building their own:**
 - Saves thousands of tokens vs. browser automation or scraping
 - Server-side engine scans airlines across Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously
 - Finds deals on carriers your agent wouldn't think to check (Lucky Air, 9 Air, Jazeera Airways, FlySafair...)
-- Enterprise-contracted GDS deals that require contracts worth $50k+/year — available for free on search
 
 ---
 
@@ -319,7 +317,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
 │  letsfg-mcp  (this package, runs on YOUR machine)            │
 │     │                                                        │
 │     └─→ HTTPS to letsfg.co (all search + booking)           │
-│           search, book (hold → agent → PNR), GDS/NDC feeds    │
+│           search, book (hold → agent → PNR)                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 

@@ -26,10 +26,10 @@ When you call `bt.search()`, LetsFG's server-side engine fires **all** relevant 
 ├──────────────────────────────────────────────────────────────────────┤
 │              LetsFG Server-Side MultiProvider Engine                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────────┐  │
-│  │ GDS/NDC APIs  │  │ Fast Connectors│ │  Airline connectors       │  │
-│  │ (Amadeus,     │  │ (Ryanair,     │  │  (EasyJet, Spirit,       │  │
-│  │  Duffel,      │  │  Wizzair,     │  │   Southwest, IndiGo,     │  │
-│  │  Sabre, etc.) │  │  Kiwi.com)    │  │   Delta, American, ...)  │  │
+│  │ Booking sites │  │ Fast Connectors│ │  Airline connectors       │  │
+│  │ (Skyscanner,  │  │ (Ryanair,     │  │  (EasyJet, Spirit,       │  │
+│  │  Kayak,       │  │  Wizzair,     │  │   Southwest, IndiGo,     │  │
+│  │  Momondo, ...)│  │  Kiwi.com)    │  │   Delta, American, ...)  │  │
 │  └──────┬───────┘  └──────┬───────┘  └────────────┬──────────────┘  │
 │         │                  │                        │                 │
 │         └──────────────────┴────────────────────────┘                 │
@@ -47,7 +47,7 @@ When you call `bt.search()`, LetsFG's server-side engine fires **all** relevant 
 
 | Category | How it runs | Speed | Example sources |
 |----------|-------------|-------|-----------------|
-| **Cloud backend** | Single HTTP POST to LetsFG API; server queries all GDS/NDC providers | 2-10s | Amadeus, Duffel, Sabre, Travelport, Kiwi |
+| **Cloud backend** | Single HTTP POST to LetsFG API; server queries airlines and booking sites | 2-10s | Skyscanner, Kayak, Google Flights, airline sites |
 | **Fast connectors** | Direct HTTP API calls (no browser) | 0.5-3s | Ryanair, Wizzair, Kiwi.com |
 | **Airline connectors** | Browser automation or reverse-engineered APIs | 3-30s | EasyJet, Southwest, Spirit, Delta |
 
@@ -65,7 +65,7 @@ If some sources fail (timeouts, bot detection, API errors), the engine continues
 │  Connector C ──→ ✅ 3 offers                              │
 │  Connector D ──→ ❌ Bot detection (logged, skipped)       │
 │  Connector E ──→ ✅ 8 offers                              │
-│  Backend API ──→ ✅ 45 offers (from Amadeus + Duffel)     │
+│  Backend API ──→ ✅ 45 offers (from booking sites)        │
 │                                                            │
 │  Result: 68 offers merged from 4 sources                   │
 │  (2 failures logged but don't affect the response)         │
@@ -302,7 +302,7 @@ Typical search latency by source type (all run server-side):
 |--------|---------|-------|
 | Ryanair API | 0.5–1 s | Direct API call |
 | Kiwi.com API | 1–2 s | GraphQL query |
-| GDS providers | 2–10 s | Server queries Amadeus, Duffel, Sabre in parallel |
+| Booking sites | 2–10 s | Server queries booking sites in parallel |
 | LCC connectors | 3–30 s | Airline-specific integration |
 
 Total search time equals the **maximum** of all active sources (they run in parallel), not the sum. Typical end-to-end: 8–10 s to first results to `completed`.
@@ -318,7 +318,7 @@ result = bt.search("LHR", "BCN", "2026-06-01")
 
 # Which sources contributed
 print(result.source_tiers)
-# {"free": "ryanair_direct, easyjet_direct, vueling_direct", "paid": "duffel, amadeus"}
+# {"free": "ryanair_direct, easyjet_direct, vueling_direct", "paid": "backend"}
 
 # Total offers before and after dedup
 print(f"Total: {result.total_results} offers")
