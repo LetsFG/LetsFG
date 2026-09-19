@@ -149,7 +149,7 @@ you are polling.
 | `state` | Meaning |
 |---------|---------|
 | `authorised` | The hold is placed |
-| `card_issued` | A single-use card was issued for this booking |
+| `card_issued` | The booking has started |
 | `booking_in_progress` | The agent is on the seller's site |
 | `awaiting_settlement` | Bought; settling |
 | `completed` | **Done.** `pnr` and `charged_amount` are set |
