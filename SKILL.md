@@ -1,6 +1,6 @@
 ---
 name: letsfg
-description: "LetsFG — Agent-native flight and hotel search and booking API. Hundreds of airlines plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates, refundable and non-refundable: the price is held on the connected card and charged only once the hotel confirms. letsfg.co"
+description: "LetsFG — Agent-native flight and hotel search and booking API. Every airline in the world plus the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo), with per-flight reliability history and instant booking. Plus real bookable hotel rates, refundable and non-refundable: the price is held on the connected card and charged only once the hotel confirms. letsfg.co"
 ---
 
 # SKILL.md — LetsFG Capabilities
@@ -21,8 +21,8 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. H
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
-> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> `https://letsfg.co/developers/api/mcp` and approve it — the consent at
+> <https://letsfg.co/connect> is one tap and needs no card. Then search and book.
 > See <https://letsfg.co/for-agents>.
 
 > Machine-readable skill manifest for AI agents and documentation indexers.
@@ -47,7 +47,7 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. H
 ## Skills
 
 ### search_flights
-Search hundreds of airlines AND the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo) in one call. Returns real-time prices plus per-flight reliability history.
+Search every airline in the world AND the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo) in one call. Returns real-time prices plus per-flight reliability history.
 - **Cost:** FREE (unlimited)
 - **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
@@ -193,7 +193,8 @@ Register a new AI agent.
 ### connect_payment
 **Developer API only.** `POST /api/v1/agents/connect-payment` returns a one-time `connect_url`; a
 person opens it in a browser and saves a card or Revolut Pay. Agents on the PFS lane do not call
-this — their card is saved at <https://letsfg.co/connect> during the MCP connect step.
+this — connecting at <https://letsfg.co/connect> needs no card, and the card is asked
+for at their first booking.
 - **Cost:** FREE — nothing is charged to connect
 - **Output:** `connect_url` (valid for one hour)
 - **Note:** `setup_payment` (`POST /agents/setup-payment`) was retired with Stripe on 2026-09-08
@@ -206,9 +207,9 @@ Get current agent's profile, usage stats, and payment status.
 
 ## Authentication
 
-**PFS (recommended — almost every agent):** a card-backed Bearer token. Nothing
-is charged to connect: the card is saved in a 0.00 Revolut setup at
-<https://letsfg.co/connect> (any card, or Revolut Pay / Google Pay; no Revolut
+**PFS (recommended — almost every agent):** a Bearer token from the connect flow.
+Connecting needs no card and nothing is charged. The card is asked for at the
+first booking, in a 0.00 Revolut setup at <https://letsfg.co/connect> (any card, or Revolut Pay / Google Pay; no Revolut
 account needed; card details never touch LetsFG). Search, flight booking and
 hotels all work with it.
 
@@ -220,10 +221,9 @@ Get a token — the one way in:
 
 1. Add LetsFG as a remote MCP server: `https://letsfg.co/developers/api/mcp`.
 2. Approve the connection. The OAuth consent step opens
-   <https://letsfg.co/connect>, where the person adds a card or pays 0.00 with
-   Revolut Pay / Google Pay.
-3. The OAuth token you receive is card-backed. Over the MCP it is carried for
-   you; over raw HTTP send it as `Authorization: Bearer <token>`.
+   <https://letsfg.co/connect>: one tap, no card.
+3. Over the MCP the OAuth token is carried for you; over raw HTTP send it as
+   `Authorization: Bearer <token>`.
 
 `POST /api/agent-access/request` answers `402` with these steps as JSON
 (`add_card_url`, `how`). The Stripe enrolment lanes (`setup_url`, `setup_intent`,
@@ -364,8 +364,8 @@ it with `bt.get_booking(booking_id)`, or call `bt.book_and_wait(...)` to block u
 Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`.
 claude.ai / ChatGPT: add a custom connector with that URL. Windsurf uses
 `"serverUrl"` instead of `"url"`. The client runs OAuth; the consent step opens
-<https://letsfg.co/connect> where the person saves a card (0.00, nothing
-charged). The token the client receives is card-backed and can search and book.
+<https://letsfg.co/connect>: one tap, no card. The token the client receives can
+search at once, and the card is asked for at the first booking.
 Developer API accounts can use the same URL with
 `"headers": {"X-API-Key": "letsfg_..."}` instead of OAuth.
 
@@ -385,7 +385,7 @@ The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 
 | Tool | Description | Cost |
 |------|-------------|------|
-| `search_flights` | Search hundreds of airlines via server-side engine | FREE |
+| `search_flights` | Search every airline in the world via server-side engine | FREE |
 | `resolve_location` | City name → IATA code | FREE |
 | `book_flight` | Start a booking. PFS: direct, no unlock step — holds the fare on the connected card, returns `booking_ref`. Developer API key: the same call, no unlock step | Price shown on the offer, no separate LetsFG fee (PFS) |
 | `get_flight_booking` | Poll a PFS booking every 20–30 s: `booking_in_progress` → `completed` (PNR) / `failed` (hold released) / `needs_attention` | FREE |
@@ -508,7 +508,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 
 ## Key Facts
 
-- Hundreds of airlines via server-side engine
+- Every airline in the world via server-side engine
 - Hotels and activities via direct APIs
 - Zero price bias — no demand inflation, no cookie tracking
 - Typically cheaper than booking through a single OTA, because it compares airlines and the major booking sites in one pass

@@ -52,14 +52,14 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **MCP / CLI / SDK** | Hosted MCP at `https://letsfg.co/developers/api/mcp` (card connected at the consent step); `pip install letsfg` wraps PFS with ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
+| **MCP / CLI / SDK** | Hosted MCP at `https://letsfg.co/developers/api/mcp` (one-tap consent, no card; card at the first booking); `pip install letsfg` wraps PFS with ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
 | **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` → poll `/api/agent-book/status` | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
 | **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 8–10 s to first results (full search) | Prepaid credits |
 
 Auth for MCP/CLI/PFS: connect the hosted MCP and approve it. The OAuth consent step opens
-letsfg.co/connect, where a card (or Revolut Pay / Google Pay) is saved in a **0.00 Revolut
-setup** — nothing is charged, no Revolut account needed, card details never touch LetsFG.
-The token is card-backed and can book. Over raw HTTP send it as `Authorization: Bearer`.
+letsfg.co/connect: one tap, no card. The card is asked for at the first booking, in a
+**0.00 Revolut setup** — nothing is charged, no Revolut account needed, card details never
+touch LetsFG. Over raw HTTP send it as `Authorization: Bearer`.
 The Stripe enrolment lanes (setup_url / SetupIntent / tok_ / pm_) and the earlier Twitter/X
 challenge are retired (2026-09-02); every token they issued was revoked. `letsfg auth` now drives that
 same connect flow itself: it registers as an OAuth client (dynamic registration), opens
@@ -132,8 +132,9 @@ No local browsers or scrapers are involved.
 Auth flow (one-time):
 ```
 Add https://letsfg.co/developers/api/mcp as an MCP server → approve
-  → consent opens https://letsfg.co/connect → card saved (0.00, nothing charged)
-  → card-backed token (carried by the MCP; Authorization: Bearer over raw HTTP)
+  → consent opens https://letsfg.co/connect → one tap, no card
+  → token (carried by the MCP; Authorization: Bearer over raw HTTP)
+  → first booking asks for the card (0.00 setup, nothing charged)
 POST /api/agent-access/request → 402 { add_card_url: "https://letsfg.co/connect", how: [...] }
 ```
 

@@ -4,7 +4,7 @@
 > `Panel.qml` and `Model.js` are at the root, which is where Omarchy's
 > `plugin add` looks. Every path below is relative to the repository root.
 
-Search hundreds of airlines from the Omarchy bar. Type two airport codes and a
+Search every airline in the world from the Omarchy bar. Type two airport codes and a
 date, press Search, and click an offer to open it in your browser.
 
 Search runs server-side at [letsfg.co](https://letsfg.co) — the same engine
@@ -43,8 +43,8 @@ Then add **LetsFG Flights** to a bar section in the Omarchy bar settings.
 
 **How a token is issued.** Since 2026-09-02 LetsFG issues card-backed tokens
 through one flow: an OAuth 2.1 + PKCE grant whose consent step is
-letsfg.co/connect, where a card is saved in a 0.00 Revolut setup — nothing
-is charged. `letsfg auth` drives it from a terminal, and the panel's
+letsfg.co/connect: one tap, no card. The card is asked for at the first
+booking, in a 0.00 Revolut setup — nothing is charged to connect. `letsfg auth` drives it from a terminal, and the panel's
 **Connect at letsfg.co** button drives the same flow from the bar. (The
 Stripe enrolment both used to drive was retired that day and its tokens
 revoked.)
@@ -70,16 +70,16 @@ opens and watches it for changes, so a token that lands there is picked up
 without restarting the shell. When the token is missing or expired the panel
 says so and Search does nothing — no request is made.
 
-**Renewal.** Access tokens last an hour; the refresh token beside them lasts
-30 days and rotates on every use. When the access token is within ten
+**Renewal.** Access tokens last an hour; the refresh token beside them does not
+expire and rotates on every use. When the access token is within ten
 minutes of expiry the panel renews it silently at the token endpoint — when
 the token file is read (shell start, panel open, or the CLI rewriting it), or
 on a Search press that finds it short — and writes the rotated
 refresh token back to the file it came from, so the CLI is never left holding
 a spent one. Renewal is never on a timer (see [Why there is no
 auto-refresh](#why-there-is-no-auto-refresh)), and a refused renewal is not
-retried for a minute. Only when the refresh token itself is refused — spent,
-past its 30 days, or revoked — does the panel ask you to connect again.
+retried for a minute. Only when the refresh token itself is refused — spent
+or revoked — does the panel ask you to connect again.
 
 The panel never asks for card details and never sees them: the only page it
 opens is letsfg.co/connect, built from a fixed origin, never from a response.

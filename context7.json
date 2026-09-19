@@ -1,9 +1,9 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
   "projectTitle": "LetsFG — flights and hotels for AI agents",
-  "description": "Search and book flights across hundreds of airlines and booking sites, plus real bookable hotel rates, refundable and non-refundable. Python, JS and MCP.",
+  "description": "Search and book flights across every airline in the world plus the major booking sites, plus real bookable hotel rates, refundable and non-refundable. Python, JS and MCP.",
   "rules": [
-    "One credential covers flights AND hotels: the card-backed PFS Bearer token from the connect flow (hosted MCP at https://letsfg.co/developers/api/mcp, consent opens letsfg.co/connect, 0.00 Revolut setup), or a Developer API key. Hotel endpoints resolve either (require_api_key_or_pfs_token) — the same card authorises both products.",
+    "One credential covers flights AND hotels: the card-backed PFS Bearer token from the connect flow (hosted MCP at https://letsfg.co/developers/api/mcp, consent opens letsfg.co/connect, one tap and no card; the card is asked for at the first booking in a 0.00 Revolut setup), or a Developer API key. Hotel endpoints resolve either (require_api_key_or_pfs_token) — the same card authorises both products.",
     "Hotels require a payment method on file for SEARCH as well as booking — a hotel search opens a real session at the supplier, so it returns 402 without a card. the connect flow already puts one there, so an agent that connected for flights is already set up for hotels.",
     "Hotel booking is asynchronous. POST /hotels/book returns a booking_job_id, not a booking. Poll GET /hotels/booking/{job_id} until status is succeeded, failed or attention. attention means a person at LetsFG is confirming the outcome with the supplier: the hold is kept, nothing is charged, do not book again.",
     "Never re-POST /hotels/book while its job is running — poll the job. A retry with the same idempotency_key returns the existing job (duplicate: true) instead of booking twice.",

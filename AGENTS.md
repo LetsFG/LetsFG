@@ -15,14 +15,14 @@ wrong, and agents were creating accounts nobody needed.
 
 If you are an agent searching or booking flights — even hundreds of them — you
 want **Programmatic Flight Search (PFS)**: connect LetsFG as an MCP server at
-`https://letsfg.co/developers/api/mcp`, approve it (the consent step saves a card
-at <https://letsfg.co/connect> — nothing charged), then search and book. No
+`https://letsfg.co/developers/api/mcp`, approve it (the consent at <https://letsfg.co/connect> is one tap and needs
+no card), then search and book. No
 billing account, nothing charged beyond the ticket price itself. Full guide:
 <https://letsfg.co/for-agents>.
 
 ## What is LetsFG?
 
-LetsFG is the largest agent-native flight search and booking toolkit. It gives your agent access to a server-side search engine covering hundreds of airlines — production-grade, maintained by LetsFG, not scrapers you have to keep alive. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
+LetsFG is the largest agent-native flight search and booking toolkit. It gives your agent access to a server-side search engine covering every airline in the world — production-grade, maintained by LetsFG, not scrapers you have to keep alive. Built for OpenClaw, Perplexity Computer, Claude, Cursor, Windsurf, and any MCP-compatible agent.
 
 **Why this exists:** Building a flight search integration from scratch takes 30+ minutes, burns thousands of tokens on browser automation, and still only covers one airline at a time. LetsFG replaces all of that with a single function call that triggers hundreds of airline connectors in parallel on our servers, scanning the entire world for the best deals — including airlines your agent has never heard of.
 
@@ -32,7 +32,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 ### What makes this different from flight websites:
 
-- **Hundreds of airlines in parallel** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
+- **Every airline in the world, in parallel** — one search covers Europe, Asia, Americas, Middle East, Africa, and Oceania simultaneously. Discovers deals on carriers like Jazeera Airways, FlySafair, Lucky Air, 9 Air, and Flybondi that most agents wouldn't know to check.
 - **Virtual interlining** — the server-side combo engine builds cross-airline round-trips (e.g., Ryanair outbound + Wizz Air return) that save 30-50% vs booking with either airline alone.
 - **Token-efficient** — one tool call replaces what would take thousands of tokens of browser automation, scraping setup, and HTML parsing. Results come back as structured JSON.
 - **Works with any agent** — OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, or any MCP-compatible client. Also available as Python SDK, JS SDK, and CLI.
@@ -82,7 +82,7 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 | Browser automation (Playwright/Selenium) | 30+ min per airline | Thousands of tokens | 1 airline at a time | Breaks when site changes |
 | Scraping flight websites | 15+ min setup | High token burn | Limited to sites you know | Fragile, needs constant fixing |
 | Google Flights API | N/A | N/A | Doesn't exist (no public API) | N/A |
-| **LetsFG** | **8–10 s to first results*** | **1 tool call** | **Hundreds of airlines in parallel** | **We maintain it** |
+| **LetsFG** | **8–10 s to first results*** | **1 tool call** | **Every airline in the world, in parallel** | **We maintain it** |
 
 * Time to `completed`. A search that fires a split-ticket probe keeps growing after that: the SDKs and MCP server poll on for up to 90 s more to collect the split offer, which is often the cheapest one. Set `LETSFG_WAIT_FOR_SPLIT=0` to take the fast answer instead.
 
@@ -112,7 +112,7 @@ The price on the offer is everything you pay; LetsFG's markup is already inside 
 POST /api/search                  # PFS — Bearer token
 POST /api/v1/flights/search       # Developer API — X-API-Key
 ```
-Search hundreds of airlines via the server-side engine. Searches airlines and the major booking sites together. Free; 10 searches per 10 minutes, 30 per hour, 100 per day per card (polling results never counts).
+Search every airline in the world via the server-side engine. Searches airlines and the major booking sites together. Free; 10 searches per 10 minutes, 30 per hour, 100 per day per account, and per card once one is added (polling results never counts).
 
 **CLI (PFS — free):**
 ```bash
@@ -332,8 +332,8 @@ const result = await bt.book(
 **Option A: Remote (Streamable HTTP) — no install, always latest, this is the way in**
 
 `https://letsfg.co/developers/api/mcp`. The client runs OAuth; the consent step
-opens <https://letsfg.co/connect> where the person saves a card (0.00, nothing
-charged). The token the client receives is card-backed and can search and book.
+opens <https://letsfg.co/connect>: one tap, no card. The token the client
+receives can search at once, and the card is asked for at the first booking.
 
 ```bash
 # Claude Code
@@ -1008,8 +1008,8 @@ The CLI, Python SDK, JS SDK and MCP server all use the same PFS (Programmatic
 Flight Search) Bearer token. It is card-backed: the card is what lets your agent
 go all the way to booking, and it keeps automated abuse off the search engine.
 
-**Nothing is charged to connect.** The card is saved through a 0.00 Revolut setup
-at <https://letsfg.co/connect> — any card, or Revolut Pay / Google Pay; no Revolut
+**Nothing is charged to connect, and connecting needs no card.** The card is
+asked for at the first booking, through a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay; no Revolut
 account needed; card details go to Revolut and never touch LetsFG. You pay the
 ticket price only when you book, and even then the money is held, not taken,
 until the airline confirms.
@@ -1020,9 +1020,9 @@ until the airline confirms.
    (Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`;
    claude.ai / ChatGPT: a custom connector with that URL; Cursor / Windsurf: see
    the MCP section above).
-2. Approve the connection. The OAuth consent step opens <https://letsfg.co/connect>,
-   where the person adds a card or pays 0.00 with Revolut Pay / Google Pay.
-3. The OAuth token you receive is card-backed. Over the MCP it is carried for you.
+2. Approve the connection. The OAuth consent step opens <https://letsfg.co/connect>:
+   one tap, no card.
+3. Over the MCP the OAuth token is carried for you.
    Over raw HTTP send the same token on every request:
 
 ```
