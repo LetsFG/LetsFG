@@ -1781,7 +1781,7 @@ function parseTransfers(text) {
 
 // The site writes money with a symbol in front -- "$48", "€97" -- not a
 // trailing code.
-var CURRENCY_SYMBOL = { USD: "$", EUR: "\u20ac", GBP: "\u00a3", PLN: "z\u0142", CHF: "CHF", SEK: "kr", NOK: "kr", DKK: "kr" }
+var CURRENCY_SYMBOL = { USD: "$", EUR: "\u20ac", GBP: "\u00a3", BRL: "R$", PLN: "z\u0142", CHF: "CHF", SEK: "kr", NOK: "kr", DKK: "kr" }
 
 function money(amount, currency) {
   var n = Number(amount)
@@ -1977,7 +1977,8 @@ function warningFor(offer) {
 
 var CURRENCIES = [
   { key: "EUR", label: "EUR  €" }, { key: "USD", label: "USD  $" },
-  { key: "GBP", label: "GBP  £" }, { key: "PLN", label: "PLN  zł" },
+  { key: "GBP", label: "GBP  £" }, { key: "BRL", label: "BRL  R$" },
+  { key: "PLN", label: "PLN  zł" },
   { key: "CHF", label: "CHF" }, { key: "SEK", label: "SEK  kr" },
   { key: "NOK", label: "NOK  kr" }, { key: "DKK", label: "DKK  kr" }
 ]
