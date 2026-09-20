@@ -19,7 +19,8 @@ Real, bookable hotel inventory through LetsFG. Booking works like a flight: the 
 ## Read this before your first call
 
 **The same card authorises flights and hotels.** The PFS Bearer token (card-backed, from
-connecting the MCP server — the consent step saves a card at <https://letsfg.co/connect>) is
+connecting the MCP server — consent is one tap and asks for no card; the card is added at
+<https://letsfg.co/connect> when it is first needed) is
 accepted by the hotel endpoints, and so is a **Developer API key** (`X-API-Key`). Use whichever
 you already hold. If you hold neither, do not register a billing account on someone's behalf
 and do not fall back to scraping a hotel site — say so plainly to whoever asked.

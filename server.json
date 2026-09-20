@@ -20,7 +20,7 @@
       "environmentVariables": [
         {
           "name": "LETSFG_BEARER_TOKEN",
-          "description": "Card-backed token from the connect flow: add https://letsfg.co/developers/api/mcp as a remote MCP and approve it; the consent step saves a card at letsfg.co/connect in a 0.00 Revolut setup (nothing charged). Reaches both flights and hotels, and can book.",
+          "description": "Card-backed token from the connect flow: add https://letsfg.co/developers/api/mcp as a remote MCP and approve it; consent is one tap and asks for no card. The card is asked for at the first booking, in a 0.00 Revolut setup (nothing charged). Reaches both flights and hotels, and can book.",
           "isRequired": false,
           "format": "string",
           "isSecret": true
