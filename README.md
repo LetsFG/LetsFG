@@ -263,7 +263,7 @@ curl -X POST https://letsfg.co/api/agent-book/status \
 
 ### ⚡ Developer API — server-side search, booking and hotels
 
-A **separate product** for high-volume commercial integrations; most agents should not use it. Look-to-book search, results in seconds, and real booking through `POST /flights/book` — plus `/discover` (20 destinations in one call), async polling, NL query parsing, hotels, and a free sandbox.
+A **separate product** for high-volume commercial integrations; most agents should not use it. Look-to-book search, results in seconds, and real booking through `POST /flights/book` — plus `/discover` (20 destinations in one call), async polling, NL query parsing, hotels, and a free sandbox where booking works end to end (same responses, states, questions and timings as production, no money) - [build your booking flow there first](https://letsfg.co/developers/docs/api-sandbox#booking-in-the-sandbox).
 
 ```bash
 # Register, then search with your API key
@@ -277,7 +277,7 @@ curl -X POST https://letsfg.co/developers/api/v1/flights/search \
   -d '{"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}'
 ```
 
-Pricing: 200 searches free after every booking, then blocks of 500 for $5.00 ($0.01 each). No booking fee, no transaction fee. Minimum top-up $5. Test for free in the sandbox first. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
+Pricing: 200 searches free after every booking, then blocks of 500 for $5.00 ($0.01 each). No booking fee, no transaction fee. Minimum top-up $5. Test for free in the sandbox first, booking included. Full docs: [letsfg.co/developers/api/docs](https://letsfg.co/developers/api/docs).
 
 <details>
 <summary><strong>Full search → book flow (MCP / PFS agent path, no unlock step)</strong></summary>
@@ -763,7 +763,7 @@ letsfg.co/developers/api/v1
   ├─ /flights/parse-query   (Gemini NL parsing, free)
   ├─ /flights/book          (holds the fare on the connected method)
   ├─ /flights/bookings/{id} (poll to a real PNR, 4–11 min)
-  └─ /sandbox/flights/*     (fake data, same schema, free)
+  └─ /sandbox/flights/*     (free: search + simulated booking, same schema)
         │
         ▼
 Real airline PNR - the hold is captured only once it exists

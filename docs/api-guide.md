@@ -76,7 +76,8 @@ The live public schema currently documents these groups of endpoints:
 - discovery search — indicative prices for up to 20 destinations in one call (`/flights/discover` — 1 search)
 - parallel full search for N destinations (`/flights/multi-search` — 1 search per destination)
 - async search with polling (`/flights/search/async` + `/flights/results/{id}`)
-- sandbox equivalents of all flight endpoints (free, fake data, same schema — for integration testing)
+- sandbox equivalents of all flight endpoints, **booking included** (free, same schema; a sandbox booking walks production's states, questions and timings with no money — see [Booking in the sandbox](api-sandbox.md#booking-in-the-sandbox))
+- stop a booking (`/flights/bookings/{id}/stop`)
 - hotels: city resolution, search, asynchronous booking with polling, and cancellation (`/hotels/destinations`, `/hotels/search`, `/hotels/book`, `/hotels/booking/{job_id}`, `/hotels/cancel`) — see [Hotels](hotels.md). These require a payment method on file for **every** call, search included; booking holds the full price on the connected Revolut method and captures it only once the hotel confirms.
 
 ## Search activation checklist
@@ -120,7 +121,7 @@ Before you send search traffic, make sure `GET /agents/me` shows:
     <a class="docs-resource-card" href="api-sandbox/">
         <p class="docs-card-kicker">Testing</p>
         <h3>Sandbox environment</h3>
-        <p>Test your integration for free — same schema, realistic fake data, no allowance consumed.</p>
+        <p>Test your integration for free, booking included — same responses, states and timings as production, no money.</p>
     </a>
 
     <a class="docs-resource-card" href="api-polling/">

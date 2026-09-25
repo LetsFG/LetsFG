@@ -350,8 +350,9 @@ All search and booking run server-side at letsfg.co. No local browsers or scrape
 
 Search costs nothing, so develop against real results. `book_flight` places a
 real hold on a real card; there is no test card on the PFS lane. The paid
-Developer API has a keyless sandbox — see
-[docs/api-sandbox.md](https://github.com/LetsFG/LetsFG/blob/main/docs/api-sandbox.md).
+Developer API has a keyless sandbox where booking works end to end with no money
+(same responses, states, questions and timings as production) — see
+[Booking in the sandbox](https://letsfg.co/developers/docs/api-sandbox#booking-in-the-sandbox).
 
 ---
 

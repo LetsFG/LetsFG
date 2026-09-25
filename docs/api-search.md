@@ -376,12 +376,14 @@ if you see them, honour them the same way.
 
 ## Sandbox — zero-cost testing
 
-Test your integration without consuming allowance.
-See [Sandbox Environment](api-sandbox.md) for the full guide.
+Test your integration without consuming allowance — search **and booking**. A
+sandbox booking behaves like a real one (states, questions, failures, 4–11 minute
+timing) with no money and no seller. See [Sandbox Environment](api-sandbox.md)
+and [Booking in the sandbox](api-sandbox.md#booking-in-the-sandbox).
 
 ## Recommended production flow
 
-1. Build and test against the [sandbox](api-sandbox.md) — free, no connectors fired.
+1. Build and test against the [sandbox](api-sandbox.md), booking included — free, no connectors fired, no money.
 2. Resolve city names to IATA codes with `/flights/locations/{query}`.
 3. Confirm `agents/me` shows payment ready, API access enabled, and positive balance.
 4. Send `POST /flights/search` (or `/search/async` for a polling UI).

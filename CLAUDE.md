@@ -250,6 +250,8 @@ Base: `https://letsfg.co/developers/api/v1`
 | `POST` | `/api/v1/flights/book` | Book an offer — holds the connected method, dispatches the agent | No |
 | `GET`  | `/api/v1/flights/bookings/{id}` | Poll a booking to a PNR | No |
 | `POST` | `/api/v1/flights/bookings/{id}/answer` | Answer a seat map / extra / price change | No |
+| `POST` | `/api/v1/flights/bookings/{id}/stop` | Stop a booking (released if it had not paid) | No |
+| `*` | `/api/v1/sandbox/flights/*` | Keyless sandbox: search AND simulated booking (book, poll, answer, stop) with production's responses, states and timings; `sandbox: {scenario, speed}` picks the outcome. Guide: docs/api-sandbox.md | **Free** |
 | `POST` | `/api/v1/bookings/unlock` | **RETIRED 2026-09-08** → `410 Gone`, no unlock step exists | — |
 | `POST` | `/api/v1/bookings/book` | **RETIRED 2026-09-08** → `410 Gone`, use `/flights/book` | — |
 | `GET`  | `/.well-known/ai-plugin.json` | OpenAI Plugin manifest | No |
