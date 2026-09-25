@@ -110,8 +110,17 @@ charged**, naming exactly what is missing:
 ```
 
 So the safe integration is: send what you have, read `missing_fields`, ask the
-traveller for those, call again. Collect passport fields if you can — they are
-asked for, never required.
+traveller for those, call again.
+
+**A passport is required for every traveller**: `passport_number`,
+`passport_country`, `passport_expiry` and `passport_issue`. Some sellers will
+not issue a ticket without one, and which ones do only shows at checkout. A
+missing field on a companion is named as `passenger 2: passport_number`.
+
+A detail that is present but cannot be right is refused as `invalid_fields`
+before anything is charged: a phone number too short to dial, a date that does
+not exist, a passport that expires before the last flight. Each entry names
+the `passenger`, the `field` and a `reason` you can show the traveller as-is.
 
 `passenger_type` is `adult`, `child` or `infant`. The lead passenger's email
 receives the airline confirmation.
@@ -154,7 +163,7 @@ you are polling.
 | `awaiting_settlement` | Bought; settling |
 | `completed` | **Done.** `pnr` and `charged_amount` are set |
 | `failed` | Hold released, nothing charged. See `failure_reason` / `decline_reason` |
-| `needs_attention` | Money moved but the outcome is unclear — a human at LetsFG is on it. **Do not book again.** |
+| `needs_attention` | A human at LetsFG is on it; the hold stays. With `manual_booking: true` the seller could not sell it automatically and a person is booking it by hand. Tell the traveller you are still booking and to watch their e-mail. **Do not book again.** |
 
 `terminal` is true for the last three.
 
@@ -188,6 +197,44 @@ curl -X POST https://letsfg.co/developers/api/v1/flights/bookings/dev_abc123/ans
 at — that guard exists so an answer to an old question can never be applied to a
 new one. Declining an extra still completes the booking, without it.
 
+Show the traveller `question.charge`, and for a price change
+`question.price_change.new_total`. That is what their card will be charged, in
+their currency. `question.extra` is the seller's own figure in the seller's
+currency.
+
+A seat map is open for 5 minutes. A paid extra or a price change is open for
+15 minutes, or 5 when you sent `want_seat: true`. Declining a price change, or
+leaving it unanswered, ends the booking `failed` with the hold released. **Keep
+polling while a question is open**: if nobody polls for 2 minutes, a seat map
+or a paid extra is dropped and the booking continues without it.
+
+## 5. Stop, if the traveller changes their mind
+
+```bash
+curl -X POST https://letsfg.co/developers/api/v1/flights/bookings/dev_abc123/stop \
+  -H "X-API-Key: letsfg_your_api_key"
+```
+
+What a stop can still do depends on how far the booking has got:
+
+| `status` | Meaning |
+|----------|---------|
+| `stopped` | It had not started; nothing was bought and the hold is released |
+| `stopping` | The agent stops at its next step, usually within a minute, and the booking ends `failed` with the hold released — unless it had already pressed pay at the seller |
+| `too_late` | The seller has been paid; the booking goes ahead |
+| `with_a_person` | A person is finishing it by hand; the stop is recorded for them |
+| `already_ended` | Nothing more will happen to it |
+
+Keep polling for the final state.
+
+## Build it in the sandbox first
+
+Every step on this page, including the questions, the failures and stop,
+runs for free at `/v1/sandbox/flights/*`. There is no money and no seller,
+but the responses and timings are production's, and you choose what happens
+(`price_change`, `seller_failed`, `payment_declined`, ...). See
+[Booking in the sandbox](api-sandbox.md#booking-in-the-sandbox).
+
 ## Refusals
 
 Nothing is charged on any refusal. Every one is JSON with an `error` you can
@@ -196,13 +243,15 @@ branch on.
 | Status | `error` | What to do |
 |--------|---------|------------|
 | `400` | `missing_fields` | Ask the traveller for the listed fields, call again |
-| `400` | `party_too_large` | Maximum 9 passengers |
+| `400` | `invalid_fields` | Show each entry's `reason` to the traveller, call again with the corrected details |
+| `422` | (schema) | No passengers, more than 9, or a field of the wrong type |
 | `400` | `currency_unsupported` | No exchange rate for the offer's currency right now; search again in USD, EUR or GBP. (BRL, CNY and other currencies cards cannot be charged in are held as the same price in USD, not refused.) |
 | `400` | `offer_not_bookable` | Pick another offer |
 | `402` | `payment_method_required` | `POST /agents/connect-payment`, open the link |
 | `402` | `payment_declined` | Read `decline_reason`; the traveller's bank refused the hold |
 | `404` | `search_not_found` / `offer_not_found` | The search aged out (6h) — search again |
 | `409` | `package_blocked` | This traveller booked in the last 24h; package-travel rules |
+| `409` | `too_many_attempts` | The payment under this `idempotency_key` was declined 5 times; connect another method and use a new key |
 | `503` | `temporarily_unavailable` | Retry shortly with the same `idempotency_key` |
 
 ## Retired
