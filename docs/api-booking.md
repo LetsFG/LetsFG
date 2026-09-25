@@ -202,8 +202,10 @@ Show the traveller `question.charge`, and for a price change
 their currency. `question.extra` is the seller's own figure in the seller's
 currency.
 
-A seat map is open for 5 minutes. A paid extra or a price change is open for
-15 minutes, or 5 when you sent `want_seat: true`. Declining a price change, or
+Each question closes at its `expires_at_ms`; time out on that, not on a fixed
+number of minutes. A seat map is typically open for 5 minutes, and a paid
+extra or a price change for 15 (5 when you sent `want_seat: true`). The window
+can be shorter near the end of a run. Declining a price change, or
 leaving it unanswered, ends the booking `failed` with the hold released. **Keep
 polling while a question is open**: if nobody polls for 2 minutes, a seat map
 or a paid extra is dropped and the booking continues without it.

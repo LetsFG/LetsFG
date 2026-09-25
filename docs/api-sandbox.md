@@ -148,7 +148,8 @@ through. The sandbox booking lets you run the whole thing for free:
 - **The same checks on travellers.** Missing details, missing passports,
   impossible phone numbers, a passport that expires before the flight: each is
   refused with the same `missing_fields` / `invalid_fields` body production
-  sends. They are production's own checks, not a copy.
+  sends. They run the same code production runs, and a test keeps the two
+  identical.
 - **No money, no seller, no ticket.** The card is a fake Visa ending `4242`.
   Every sandbox response carries `"sandbox": true`.
 
@@ -191,18 +192,18 @@ It answers `202` a few seconds later, just like production:
   "dispatched": true,
   "held": {"amount": 69, "currency": "EUR", "card": {"brand": "visa", "last4": "4242", "type": "card"}},
   "charged": 0,
-  "offer": {"search_id": "sb_WAW_BCN_3f9c1a7e21", "offer_id": "sb_WAW_BCN_0000_cf15b25f",
-            "fare": 65.84, "currency": "EUR", "seats": 1, "fare_total": 65.84},
+  "offer": {"search_id": "sb_WAW_BCN_3f9c1a7e21", "offer_id": "sb_WAW_BCN_0000_cf15b25f", "seats": 1, ...},
   "poll_url": "https://letsfg.co/developers/api/v1/sandbox/flights/bookings/sb_dev_1790359173123a1e5",
   "message": "69 EUR is held (not taken) on the connected visa ending 4242. ...",
   "sandbox": true
 }
 ```
 
-`held.amount` is worked out from the offer you picked, in the way production
-works it out: party size, lap infants, and an offer priced in a currency cards
-cannot be charged in (BRL, CNY, ...) held in USD with a `quoted` block. So what
-you display in the sandbox is what you will display live.
+`held.amount` is the price the search showed for that offer, for the whole
+party. Lap infants do not take a seat. An offer priced in a currency cards
+cannot be charged in (BRL, CNY, ...) is held in USD, with a `quoted` block
+giving the original price. So what you show in the sandbox is what you will
+show live.
 
 The `sandbox` block is optional and only the sandbox reads it. Production
 ignores it, so it does no harm if it is still in your request when you go
@@ -232,8 +233,8 @@ exactly as it does in production.
 | → `booking_in_progress` | 1–3 min (the booking agent starting up) | 5–18 s |
 | Agent at the seller | 2.5–5.5 min | 15–33 s |
 | `awaiting_settlement` | Skipped about half the time; otherwise 1–4 min | 6–24 s |
-| Seat map question open | 5 min | 60 s |
-| Extra / price change question open | 15 min (5 min when `want_seat` is set) | 60 s |
+| Seat map question open | typically 5 min | 60 s |
+| Extra / price change question open | typically 15 min (5 min when `want_seat` is set) | 60 s |
 | End to end, no questions | 3.5–12 min | 20–75 s |
 
 Use `realistic` to check your UI and your timeouts. Use `fast` in CI. The
@@ -264,7 +265,7 @@ the same fields as production:
     "kind": "price_change",
     "round": 1,
     "extra": {"label": "Fare price changed", "count": 1, "unit_price": 5.12, "total": 5.12,
-              "old_total": 65.84, "new_total": 70.96, "currency": "EUR"},
+              "currency": "EUR", ...},
     "seller": "Sandbox Air",
     "charge": {"amount": 5.35, "currency": "EUR"},
     "price_change": {"old_total": 69, "new_total": 74.35, "currency": "EUR"},
@@ -287,6 +288,9 @@ the same fields as production:
   open.
 - Echo the `round`. A wrong round is `409 answer_refused`. Answering when
   nothing is open is `409 no_open_question`.
+- Time a question out on its own `expires_at_ms`, not on a fixed number of
+  minutes. Production sets each window per booking, and it can be shorter
+  near the end of a run.
 - `updated_at_ms` changes only when `state` changes. Use it to detect
   progress.
 - **Keep polling while a question is open.** A booking treats your polls as
@@ -343,6 +347,11 @@ callers who happen to use the same key get separate bookings.
   day's rate.
 - **No account behind the key.** A booking is found by its `booking_id` alone.
   In production, only the key that opened a booking can read it.
+- **Some refusals never happen here.** These depend on your account, the
+  traveller's history or a real seller, so the sandbox cannot produce them.
+  Handle them from the [booking guide](api-booking.md#refusals):
+  `not_your_search`, `cabin_not_proven`, `offer_not_bookable`,
+  `package_blocked`.
 
 ## Typical integration workflow
 
