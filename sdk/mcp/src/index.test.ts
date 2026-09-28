@@ -161,6 +161,35 @@ describe('MCP server — hotel contract guards', () => {
   });
 });
 
+// Round trips, 2026-09-28: the Bearer lane sent `return_from` and `cabin_class` to
+// /api/search, which reads `return_date` and `cabin`, so every round trip ran as a
+// one-way and every cabin as economy. The return leg was then looked up as 'return',
+// which the API never sends -- it labels it 'inbound'.
+describe('MCP server — search_flights contract guards', () => {
+  const src = readFileSync(SERVER_PATH, 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const handler = code.slice(code.indexOf("case 'search_flights':"), code.indexOf("case 'resolve_location':"));
+  const bearer = handler.slice(handler.indexOf('if (BEARER_TOKEN)'), handler.indexOf('} else {'));
+
+  it('the Bearer lane sends the field names /api/search reads', () => {
+    assert.ok(bearer.includes('searchPFS('), 'expected the Bearer branch of search_flights');
+    assert.ok(bearer.includes('params.return_date = args.return_from'), '/api/search reads return_date');
+    assert.ok(bearer.includes('params.cabin = args.cabin_class'), '/api/search reads cabin');
+    assert.ok(!/params\.(return_from|cabin_class)\s*=/.test(bearer),
+      'return_from / cabin_class are silently ignored by /api/search');
+  });
+
+  it("reads the return leg as 'inbound'", () => {
+    assert.ok(handler.includes("l.leg === 'inbound'"), "trip_breakdown labels the return leg 'inbound'");
+    assert.ok(handler.includes('o.inbound'), 'the top-level inbound object carries the return leg too');
+  });
+
+  it('enforces max_results itself', () => {
+    assert.ok(/\.slice\(0, Number\(args\.max_results/.test(handler),
+      '/api/search ignores limit, so the offers must be trimmed client-side');
+  });
+});
+
 describe('MCP server — initialize', () => {
   let proc: ChildProcessWithoutNullStreams;
 

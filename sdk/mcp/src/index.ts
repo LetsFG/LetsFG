@@ -759,15 +759,21 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
         currency: args.currency ?? 'EUR',
         limit: args.max_results ?? 10,
       };
-      if (args.return_from) params.return_from = args.return_from;
-      if (args.cabin_class) params.cabin_class = args.cabin_class;
       if (args.departure_time_from) params.departure_time_from = args.departure_time_from;
       if (args.departure_time_to) params.departure_time_to = args.departure_time_to;
 
       let result: Record<string, unknown>;
       if (BEARER_TOKEN) {
+        // The two lanes name these differently. /api/search is the website's
+        // route and reads `return_date` and `cabin` (as sdk/python/letsfg/local.py
+        // sends them); `return_from` and `cabin_class` are silently dropped there,
+        // so every round trip ran as a one-way and every cabin as economy.
+        if (args.return_from) params.return_date = args.return_from;
+        if (args.cabin_class) params.cabin = args.cabin_class;
         result = await searchPFS(params);
       } else {
+        if (args.return_from) params.return_from = args.return_from;
+        if (args.cabin_class) params.cabin_class = args.cabin_class;
         result = await apiRequest('POST', '/developers/api/v1/flights/search', params) as Record<string, unknown>;
       }
 
@@ -780,14 +786,20 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       // airline dropped on EVERY offer (issue #199). This shape was fixed and
       // shipped in 2026.5.70 but the fix never landed in the repo, so the
       // source still carried the bug; restored here.
-      const offers = (result.offers || []) as Array<Record<string, unknown>>;
+      // /api/search ignores `limit` and returns every offer (cheapest first), so
+      // max_results is enforced here.
+      const allOffers = (result.offers || []) as Array<Record<string, unknown>>;
+      const offers = allOffers.slice(0, Number(args.max_results ?? 10));
       const summary: Record<string, unknown> = {
-        total_offers: offers.length,
+        total_offers: allOffers.length,
         search_id: result.search_id,
         offers: offers.map(o => {
           const segs = (o.segments || []) as Array<Record<string, unknown>>;
           const legs = (o.trip_breakdown || []) as Array<Record<string, unknown>>;
-          const ret = legs.find(l => l.leg === 'return');
+          // The API labels the return leg 'inbound', and also publishes it as a
+          // top-level `inbound` object. Matching only 'return' dropped it.
+          const inb = (o.inbound || null) as Record<string, unknown> | null;
+          const ret = legs.find(l => l.leg === 'inbound' || l.leg === 'return') ?? inb;
           const airlines = [...new Set(
             [o.airline, ...legs.map(l => l.airline), ...segs.map(sg => sg.airline)].filter(Boolean)
           )] as string[];
@@ -836,14 +848,16 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
               stops: o.stops ?? Math.max(0, segs.length - 1),
               duration_minutes: o.duration_minutes ?? null,
             },
-            // Round-trips carry a return leg in trip_breakdown; one-ways don't.
+            // Round-trips carry a return leg; one-ways don't.
             ...(ret ? {
               return: {
-                from: ret.origin ?? null,
-                to: ret.destination ?? null,
-                departure: ret.departure_time ?? null,
-                arrival: ret.arrival_time ?? null,
-                airline: ret.airline ?? null,
+                from: ret.origin ?? inb?.origin ?? null,
+                to: ret.destination ?? inb?.destination ?? null,
+                departure: ret.departure_time ?? inb?.departure_time ?? null,
+                arrival: ret.arrival_time ?? inb?.arrival_time ?? null,
+                stops: inb?.stops ?? null,
+                duration_minutes: ret.duration_minutes ?? inb?.duration_minutes ?? null,
+                airline: ret.airline ?? inb?.airline ?? null,
               },
             } : {}),
           };
