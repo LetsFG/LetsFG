@@ -541,8 +541,11 @@ class LetsFG:
             "sort": sort,
             "max_stopovers": max_stopovers,
         }
+        # The Developer API names the return date `return_from` (docs/api-search.md).
+        # This used to send `return_date`, the website route's name, which the
+        # API drops without a word, so every round trip ran as a one-way.
         if return_date:
-            body["return_date"] = return_date
+            body["return_from"] = return_date
         if cabin_class:
             body["cabin_class"] = cabin_class
         if infants:
