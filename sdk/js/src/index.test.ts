@@ -80,6 +80,72 @@ describe('register()', () => {
   });
 });
 
+// ── search() sends the option names each lane reads ─────────────────────────
+// The Bearer lane (/api/search, the website's route) reads `return_date`,
+// `cabin`, `max_stops`, `sort_by`; the Developer API reads `return_from`,
+// `cabin_class`, `max_stopovers`, `sort`. Each silently drops the other's
+// names, so one shared body left cabin/stops/sort ignored on the Bearer lane
+// and ran every API-key round trip as a one-way. Same cause as the MCP fix in
+// #220; /api/search also ignores `limit`.
+describe('search() option names per lane', () => {
+  const options: SearchOptions = {
+    returnDate: '2027-02-24', cabinClass: 'C', maxStopovers: 0, sort: 'duration', limit: 2,
+  };
+
+  async function capture(client: LetsFG): Promise<{ posts: Array<{ url: string; body: Record<string, unknown> }>; result: FlightSearchResult }> {
+    const originalFetch = globalThis.fetch;
+    const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') posts.push({ url: String(url), body: JSON.parse(String(init.body)) });
+      const payload = String(url).endsWith('/api/search')
+        ? { search_id: 's1' }
+        : { status: 'completed', search_id: 's1', offers: [1, 2, 3, 4, 5].map(n => ({ id: `o${n}`, price: n })) };
+      return { ok: true, status: 200, json: async () => payload } as Response;
+    }) as typeof fetch;
+    try {
+      const result = await client.search('BUD', 'LIS', '2027-02-17', options);
+      return { posts, result };
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  it('Bearer lane: the names /api/search reads, and limit enforced client-side', async () => {
+    const { posts, result } = await capture(new LetsFG({ bearerToken: 'tok', baseUrl: 'http://lfg.test' }));
+    assert.equal(posts.length, 1);
+    assert.ok(posts[0].url.endsWith('/api/search'));
+    const body = posts[0].body;
+    assert.equal(body.return_date, '2027-02-24');
+    assert.equal(body.cabin, 'C');
+    assert.equal(body.max_stops, 0);
+    assert.equal(body.sort_by, 'duration');
+    for (const ignored of ['return_from', 'cabin_class', 'max_stopovers', 'sort']) {
+      assert.ok(!(ignored in body), `${ignored} is silently ignored by /api/search`);
+    }
+    assert.equal(result.offers.length, 2);
+  });
+
+  it('API-key lane: the names the Developer API reads', async () => {
+    const saved = process.env.LETSFG_BEARER_TOKEN;
+    delete process.env.LETSFG_BEARER_TOKEN;
+    try {
+      const { posts } = await capture(new LetsFG({ apiKey: 'letsfg_xxxx', baseUrl: 'http://lfg.test' }));
+      assert.equal(posts.length, 1);
+      assert.ok(posts[0].url.endsWith('/developers/api/v1/flights/search'));
+      const body = posts[0].body;
+      assert.equal(body.return_from, '2027-02-24');
+      assert.equal(body.cabin_class, 'C');
+      assert.equal(body.max_stopovers, 0);
+      assert.equal(body.sort, 'duration');
+      for (const ignored of ['return_date', 'cabin', 'max_stops', 'sort_by']) {
+        assert.ok(!(ignored in body), `${ignored} is not a Developer API field`);
+      }
+    } finally {
+      if (saved !== undefined) process.env.LETSFG_BEARER_TOKEN = saved;
+    }
+  });
+});
+
 // ── Input validation — auth guard ─────────────────────────────────────────
 
 describe('auth guard', () => {

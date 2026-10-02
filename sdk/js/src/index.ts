@@ -411,16 +411,33 @@ export class LetsFG {
       currency: options.currency ?? 'EUR',
       limit: options.limit ?? 50,
     };
-    if (options.returnDate) body.return_date = options.returnDate;
-    if (options.cabinClass) body.cabin_class = options.cabinClass;
-    if (options.maxStopovers != null) body.max_stopovers = options.maxStopovers;
-    if (options.sort) body.sort = options.sort;
     if (options.departureTimeFrom) body.departure_time_from = options.departureTimeFrom;
     if (options.departureTimeTo) body.departure_time_to = options.departureTimeTo;
 
+    // The two lanes name the same options differently, and each silently drops
+    // the other's names. /api/search is the website's route and reads
+    // `return_date`, `cabin`, `max_stops` and `sort_by` (as
+    // sdk/python/letsfg/local.py sends them); the Developer API reads
+    // `return_from`, `cabin_class`, `max_stopovers` and `sort`. One shared body
+    // meant cabin, stops and sort were ignored on the Bearer lane, and a round
+    // trip ran as a one-way on the API-key lane.
     if (this.usingPFS) {
-      return this.searchPFS(body);
+      if (options.returnDate) body.return_date = options.returnDate;
+      if (options.cabinClass) body.cabin = options.cabinClass;
+      if (options.maxStopovers != null) body.max_stops = options.maxStopovers;
+      if (options.sort) body.sort_by = options.sort;
+      const result = await this.searchPFS(body);
+      // /api/search ignores `limit` and returns every offer, so a limit the
+      // caller asked for is enforced here.
+      if (options.limit != null && Array.isArray(result.offers)) {
+        result.offers = result.offers.slice(0, Math.max(0, options.limit));
+      }
+      return result;
     }
+    if (options.returnDate) body.return_from = options.returnDate;
+    if (options.cabinClass) body.cabin_class = options.cabinClass;
+    if (options.maxStopovers != null) body.max_stopovers = options.maxStopovers;
+    if (options.sort) body.sort = options.sort;
     return this.post<FlightSearchResult>('/developers/api/v1/flights/search', body);
   }
 
