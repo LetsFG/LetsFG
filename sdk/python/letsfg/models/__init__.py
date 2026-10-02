@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 
+def _seconds(d: dict, key: str) -> int:
+    """`key` in seconds, or the Bearer lane's `duration_minutes` converted."""
+    if d.get(key):
+        return d[key]
+    return int((d.get("duration_minutes") or 0) * 60)
+
+
 @dataclass
 class FlightSegment:
     """A single flight leg (e.g., GDN → MUC)."""
@@ -24,18 +31,25 @@ class FlightSegment:
 
     @classmethod
     def from_dict(cls, d: dict) -> "FlightSegment":
+        # Two shapes arrive here. The Developer API sends `airline` as the code
+        # with `airline_name`, `flight_no`, `departure`, `duration_seconds`,
+        # `cabin_class`. The Bearer lane (/api/results) sends `airline` as the
+        # NAME with `airline_code`, `flight_number`, `departure_time`,
+        # `duration_minutes`, `cabin`. Reading only the first left every
+        # Bearer-lane segment without a flight number or times.
+        flat = "airline_code" in d
         return cls(
-            airline=d.get("airline", ""),
-            airline_name=d.get("airline_name", ""),
-            flight_no=d.get("flight_no", ""),
+            airline=d.get("airline_code", "") if flat else d.get("airline", ""),
+            airline_name=d.get("airline", "") if flat else d.get("airline_name", ""),
+            flight_no=d.get("flight_no") or d.get("flight_number", ""),
             origin=d.get("origin", ""),
             destination=d.get("destination", ""),
-            origin_city=d.get("origin_city", ""),
-            destination_city=d.get("destination_city", ""),
-            departure=d.get("departure", ""),
-            arrival=d.get("arrival", ""),
-            duration_seconds=d.get("duration_seconds", 0),
-            cabin_class=d.get("cabin_class", "economy"),
+            origin_city=d.get("origin_city") or d.get("origin_name", ""),
+            destination_city=d.get("destination_city") or d.get("destination_name", ""),
+            departure=d.get("departure") or d.get("departure_time", ""),
+            arrival=d.get("arrival") or d.get("arrival_time", ""),
+            duration_seconds=_seconds(d, "duration_seconds"),
+            cabin_class=d.get("cabin_class") or d.get("cabin") or "economy",
             aircraft=d.get("aircraft", ""),
         )
 
@@ -49,10 +63,11 @@ class FlightRoute:
 
     @classmethod
     def from_dict(cls, d: dict) -> "FlightRoute":
+        # The Bearer lane's legs carry `duration_minutes` and `stops`.
         return cls(
-            segments=[FlightSegment.from_dict(s) for s in d.get("segments", [])],
-            total_duration_seconds=d.get("total_duration_seconds", 0),
-            stopovers=d.get("stopovers", 0),
+            segments=[FlightSegment.from_dict(s) for s in d.get("segments") or []],
+            total_duration_seconds=_seconds(d, "total_duration_seconds"),
+            stopovers=d.get("stopovers", d.get("stops") or 0),
         )
 
     @property
@@ -91,15 +106,28 @@ class FlightOffer:
     @classmethod
     def from_dict(cls, d: dict) -> "FlightOffer":
         inbound = FlightRoute.from_dict(d["inbound"]) if d.get("inbound") else None
+        # A Bearer-lane offer is FLAT: the offer itself is the outbound leg
+        # (`segments`, `duration_minutes`, `stops` at the top level) and there
+        # is no `outbound`, `airlines` or `owner_airline`. Reading only the
+        # nested Developer API shape returned an empty outbound route and no
+        # airline on every Bearer-lane offer.
+        outbound = FlightRoute.from_dict(d["outbound"] if d.get("outbound") else d)
+        airlines = d.get("airlines")
+        if airlines is None:
+            legs = [outbound] + ([inbound] if inbound else [])
+            airlines = list(dict.fromkeys(
+                s.airline for leg in legs for s in leg.segments if s.airline))
+            if not airlines and d.get("airline_code"):
+                airlines = [d["airline_code"]]
         return cls(
             id=d.get("id", ""),
             price=d.get("price", 0.0),
             currency=d.get("currency", "EUR"),
             price_formatted=d.get("price_formatted", ""),
-            outbound=FlightRoute.from_dict(d.get("outbound", {})),
+            outbound=outbound,
             inbound=inbound,
-            airlines=d.get("airlines", []),
-            owner_airline=d.get("owner_airline", ""),
+            airlines=airlines,
+            owner_airline=d.get("owner_airline") or d.get("airline_code") or d.get("airline", ""),
             bags_price=d.get("bags_price", {}),
             availability_seats=d.get("availability_seats"),
             conditions=d.get("conditions", {}),

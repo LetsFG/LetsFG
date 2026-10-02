@@ -419,6 +419,11 @@ class LetsFG:
             max_stopovers=max_stopovers,
             sort=sort,
         ))
+        # /api/search ignores `limit` and returns every offer, so it is enforced
+        # here (as the CLI already does). `total_results` keeps the full count.
+        offers = result_dict.get("offers")
+        if isinstance(offers, list) and limit is not None:
+            result_dict = {**result_dict, "offers": offers[:max(0, limit)]}
         return FlightSearchResult.from_dict(result_dict)
 
     def book_local(
