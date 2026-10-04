@@ -9,8 +9,8 @@ repo_name: LetsFG/LetsFG
 theme:
   name: material
   custom_dir: docs/overrides
-  favicon: assets/favicon.png
-  logo: assets/lfg_ban.png
+  favicon: assets/letsfg-favicon.png
+  logo: assets/letsfg-wordmark.png
   palette:
     - scheme: default
   font:
@@ -59,7 +59,7 @@ extra:
   generator: false
 
 extra_css:
-  - assets/extra-20260519b.css
+  - assets/extra-20261004.css
 
 extra_javascript:
   - assets/domain-redirect.js

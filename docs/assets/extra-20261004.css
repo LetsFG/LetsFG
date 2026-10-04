@@ -7,8 +7,8 @@
   --docs-border-strong: rgba(18, 46, 58, 0.18);
   --docs-ink: #18313c;
   --docs-ink-soft: #5f7077;
-  --docs-accent: #d06a43;
-  --docs-accent-strong: #b95733;
+  --docs-accent: #e1437a;
+  --docs-accent-strong: #ba2e5d;
   --docs-ocean: #2c6f80;
   --docs-shadow: 0 24px 70px rgba(27, 56, 69, 0.13);
   --docs-code-bg: #132431;
@@ -37,7 +37,7 @@
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(208, 106, 67, 0.18), transparent 26%),
+    radial-gradient(circle at top left, rgba(225, 67, 122, 0.18), transparent 26%),
     radial-gradient(circle at top right, rgba(44, 111, 128, 0.18), transparent 24%),
     linear-gradient(180deg, #efe6d6 0%, #f7f2e7 22%, #f4eddf 100%);
   overflow-x: hidden;
@@ -320,7 +320,7 @@ body::before {
 }
 
 .md-typeset table:not([class]) th {
-  background: rgba(208, 106, 67, 0.08);
+  background: rgba(225, 67, 122, 0.08);
   color: var(--docs-ink);
   font-weight: 700;
   border-bottom: 1px solid rgba(24, 49, 60, 0.08);
@@ -345,7 +345,7 @@ body::before {
 
 .md-typeset .admonition-title,
 .md-typeset summary {
-  background: rgba(208, 106, 67, 0.07) !important;
+  background: rgba(225, 67, 122, 0.07) !important;
   border-bottom: 1px solid rgba(24, 49, 60, 0.06);
 }
 
@@ -461,7 +461,7 @@ body::before {
 }
 
 .docs-command-prompt {
-  color: #ffd5b6;
+  color: #fbdce6;
 }
 
 .docs-action-row {
@@ -491,12 +491,12 @@ body::before {
 
 .docs-button--primary {
   color: #fff7f0 !important;
-  background: linear-gradient(135deg, #dd865d, #c85b37);
+  background: linear-gradient(135deg, #f45a88, #cb396c);
   box-shadow: 0 18px 32px rgba(200, 91, 55, 0.28);
 }
 
 .docs-button--primary:hover {
-  background: linear-gradient(135deg, #e1936d, #be502f);
+  background: linear-gradient(135deg, #fa668f, #ba2e5d);
 }
 
 .docs-button--ghost {
@@ -592,8 +592,8 @@ body::before {
   margin: 1.4rem 0;
   padding: 1rem 1.15rem;
   border-radius: 1.2rem;
-  border: 1px solid rgba(208, 106, 67, 0.16);
-  background: linear-gradient(135deg, rgba(208, 106, 67, 0.12), rgba(44, 111, 128, 0.08));
+  border: 1px solid rgba(225, 67, 122, 0.16);
+  background: linear-gradient(135deg, rgba(225, 67, 122, 0.12), rgba(44, 111, 128, 0.08));
   color: rgba(24, 49, 60, 0.9);
 }
 
@@ -749,5 +749,33 @@ body::before {
 
   .md-content__inner {
     padding: 1.15rem !important;
+  }
+}
+
+/* BELOW MATERIAL'S DESKTOP WIDTH THE NAVIGATION IS A DRAWER, and three desktop rules above broke it on phones:
+   - `position: relative` kept it in the page flow, so it took 242px of a 390px screen and squeezed the article
+     into a strip one word wide;
+   - `z-index: 1` (on it and on .md-main) put the open drawer underneath the dimming overlay;
+   - the card's `backdrop-filter` made the card the box its absolutely-placed menu is measured against, and the
+     card has no height there, so the menu was 36px tall and showed no links. */
+@media screen and (max-width: 76.234375em) {
+  /* .md-main's own z-index made it a stacking context, trapping the drawer inside it, under the overlay */
+  .md-main {
+    z-index: auto;
+  }
+
+  .md-sidebar--primary {
+    position: fixed;
+    z-index: 6;
+  }
+
+  .md-sidebar--primary .md-sidebar__inner {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
   }
 }
