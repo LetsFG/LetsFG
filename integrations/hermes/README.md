@@ -4,7 +4,7 @@
 
 Search and book real flights and hotels from inside [Hermes Agent](https://hermes-agent.nousresearch.com). Ask for the cheapest way to London next Friday, a round trip with open dates, where you could fly in Europe on a long weekend, or a hotel with breakfast near the old town. Then book it without leaving the chat.
 
-[LetsFG](https://letsfg.co) searches every airline and the major travel sites in one go, and books the flight or room for you on your LetsFG account.
+[LetsFG](https://letsfg.co) searches every airline and the major travel sites in one go, checks every airport in a city, tests split tickets and prices the bags. A flight's details show its on-time record and how to get from the airport into the city. Then it books the flight or room for you on your LetsFG account.
 
 One install ships:
 
@@ -18,12 +18,7 @@ hermes plugins install letsfg          # from the Hermes plugin catalog
 hermes plugins enable letsfg
 ```
 
-Before the catalog listing is live, install straight from GitHub instead:
-
-```bash
-hermes plugins install LetsFG/LetsFG/integrations/hermes --no-enable
-hermes plugins enable letsfg
-```
+Later versions arrive with `hermes plugins update letsfg`.
 
 ### Sign in (once)
 
@@ -37,7 +32,7 @@ Hermes prints a letsfg.co link (and opens it when it can): approve access there.
 
 Hermes then lists the LetsFG tools and asks `Enable all N tools? [Y/n/select]`. `Y` is fine. Three of them (`booking_setup`, `get_flight_search_status`, `get_hotel_search_status`) exist only for LetsFG's in-app cards in clients such as claude.ai and ChatGPT, and the skill tells Hermes to leave them alone; to leave them out entirely, answer `select` and untick them.
 
-Start a new Hermes session afterwards. Tokens are cached under `~/.hermes/mcp-tokens/` and refresh on their own. Your `config.yaml` entry and the plugin's `mcp.json` entry share the name `letsfg`, and the config entry wins; the plugin still supplies the skill. On a headless host, see Hermes' [OAuth over SSH guide](https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh#mcp-servers).
+Start a new Hermes session afterwards, or run `/reload-mcp` in an open one. Tokens are cached under `~/.hermes/mcp-tokens/` and refresh on their own. Your `config.yaml` entry and the plugin's `mcp.json` entry share the name `letsfg`, and the config entry wins; the plugin still supplies the skill. On a headless host, see Hermes' [OAuth over SSH guide](https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh#mcp-servers).
 
 ## Try it
 
@@ -45,6 +40,7 @@ Start a new Hermes session afterwards. Tokens are cached under `~/.hermes/mcp-to
 - "I have a week off in October. Where in Southern Europe can I fly from Berlin for a 4-night trip?"
 - "Round trip Lisbon to New York, any 7 nights in November, cheapest dates."
 - "A hotel in Paris for 12-14 November, two adults, breakfast included, under 400 EUR."
+- "Two rooms in Rome for four adults, 3-6 December, near the Colosseum."
 - "Book option A for me."
 - "Never show me red-eye flights."
 
@@ -53,14 +49,14 @@ Start a new Hermes session afterwards. Tokens are cached under `~/.hermes/mcp-to
 Booking is real. Before anything is held:
 
 - **You choose.** The skill books only the offer you picked, at the price you saw.
-- **You approve by e-mail.** By default LetsFG e-mails you an Approve button before the first hold. You can switch this check off from that e-mail, never from the chat.
+- **You approve by e-mail.** Every booking starts only when you press the Approve button in an e-mail from LetsFG. The button works for 30 minutes. Hermes cannot start or approve a booking from the chat.
 - **Your card stays out of the chat.** Payment details are only ever entered on letsfg.co. A booking that needs a card answers with a link to add one.
 
-Then the price is **held** on your card, not taken. LetsFG buys the ticket from the seller and captures the hold only once the airline has issued a booking reference. If the booking fails, the hold is released. A flight booking takes 4 to 11 minutes, and Hermes relays the progress as it goes. Say "stop" while it runs and it stops, unless the seller has already been paid.
+Then the price is **held** on your card, not taken. LetsFG buys the ticket from the seller and captures the hold only once the airline has issued a booking reference. If the booking fails, the hold is released. A flight booking takes 4 to 11 minutes, and Hermes relays the progress as it goes. Say "stop" while it runs and it stops, unless the seller has already been paid. A paid seat, an added bag or a changed price is approved the same way, from an e-mail.
 
-Hotel bookings work the same way: the price is held and captured once the hotel confirms. A refundable rate can be cancelled from the chat until its free-cancellation date; the answer shows exactly what comes back.
+Hotel bookings work the same way: the price is held and captured once the hotel confirms. A refundable booking can be cancelled until its free-cancellation date: ask in the chat, approve it from the e-mail, and 98% of what you paid comes back (a 2% fee covers payment costs that are not refundable).
 
-The first booking for a new traveller needs the details an airline checkout asks for (name, date of birth, nationality, contact, address, passport). Hermes asks you for them in the chat. They are saved on your LetsFG account, so next time a saved traveller is booked by name.
+The first booking for a new traveller needs the details an airline checkout asks for (name, date of birth, gender, nationality, contact, address, passport). Hermes asks you for them in the chat. They are saved on your LetsFG account, so next time a saved traveller is booked by name.
 
 ## Tools
 
@@ -68,17 +64,17 @@ Hermes exposes each tool as `mcp__letsfg__<tool>`. The server's own tool list is
 
 | Area | Tools | Access |
 |---|---|---|
-| Flights | `search_flights`, `search_flexible_dates`, `get_flight_results`, `present_flight_options`, `get_flight_details`, `resolve_location` | Read |
+| Flights | `search_flights`, `search_flights_flexible_dates`, `get_flight_results`, `present_flight_options`, `get_flight_details`, `find_airports` | Read |
 | Hotels | `search_hotels`, `get_hotel_results`, `present_hotel_options`, `get_hotel_details`, `resolve_hotel_city` | Read |
 | Destinations | `explore_destinations`, `present_destinations` | Read |
 | Flight booking | `book_flight`, `answer_booking_question`, `stop_flight_booking` | **Write** |
 | Flight booking status | `get_flight_booking` | Read |
 | Hotel booking | `book_hotel`, `cancel_hotel_booking` | **Write** |
 | Hotel booking status | `get_hotel_booking` | Read |
-| Account | `get_agent_profile`, `get_preferences` | Read |
+| Account | `get_traveller_profile`, `get_preferences` | Read |
 | Account | `edit_my_details`, `change_payment_method`, `add_preference`, `remove_preference` | **Write** |
 
-Changes to saved traveller details and to the payment method are approved from the account's e-mail, not the chat.
+Bookings, hotel cancellations, and changes to saved traveller details and to the payment method are approved from the account's e-mail, not the chat.
 
 ## Privacy and security
 
