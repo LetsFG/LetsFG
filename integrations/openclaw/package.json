@@ -1,0 +1,23 @@
+{
+  "name": "@letsfg/letsfg",
+  "version": "1.0.0",
+  "description": "Search and book real flights and hotels: every airline and the major travel sites, split tickets and bag prices. A booking starts only when you press Approve in an e-mail from LetsFG.",
+  "license": "MIT",
+  "author": "LetsFG <contact@letsfg.co> (https://letsfg.co)",
+  "homepage": "https://letsfg.co",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LetsFG/LetsFG.git",
+    "directory": "integrations/openclaw"
+  },
+  "bugs": "https://github.com/LetsFG/LetsFG/issues",
+  "keywords": [
+    "openclaw",
+    "letsfg",
+    "flights",
+    "hotels",
+    "travel",
+    "booking",
+    "mcp"
+  ]
+}

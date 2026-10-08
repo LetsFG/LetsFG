@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "letsfg": {
+      "url": "https://letsfg.co/mcp",
+      "description": "Enable this plugin and connect your LetsFG account in OpenClaw.",
+      "auth": "oauth",
+      "oauth": {
+        "scope": "flights:search flights:book hotels:search hotels:book profile:read"
+      },
+      "type": "http"
+    }
+  }
+}
