@@ -270,13 +270,14 @@ async function cmdLocations(args: string[]) {
 
 async function cmdAuth(args: string[]) {
   // --card-token / --payment-method went with the Stripe lanes. There is no
-  // headless card path any more: a person adds the card once at
-  // letsfg.co/connect, and this command holds the refresh token afterwards.
+  // headless card path any more: a person approves once at letsfg.co/connect
+  // (no card; the card is asked for at the first booking), and this command
+  // holds the refresh token afterwards.
   for (const dead of ['--card-token', '--payment-method']) {
     if (getFlag(args, dead)) {
       console.error(
         `\n  ${dead} was part of the Stripe enrolment, retired 2026-09-02.\n` +
-        '  Run plain `letsfg auth` instead - it opens letsfg.co/connect to add a card.\n'
+        '  Run plain `letsfg auth` instead - it opens letsfg.co/connect (one tap, no card).\n'
       );
       process.exit(1);
     }
@@ -376,12 +377,12 @@ const HELP = `
 LetsFG — Agent-native flight search & booking.
 
 Search hundreds of airlines via the LetsFG cloud engine.
-Authenticate once with letsfg auth — it opens letsfg.co/connect so you can add
-a card. Nothing is charged; you pay the fare only when you book, and it is held,
-not taken, until the airline confirms.
+Authenticate once with letsfg auth — it opens letsfg.co/connect: one tap, no
+card. The card is asked for at your first booking; you pay the fare only when
+you book, and it is held, not taken, until the airline confirms.
 
 Commands:
-  auth                             Connect a card at letsfg.co/connect. Nothing charged
+  auth                             Connect at letsfg.co/connect. One tap, no card
   search <origin> <dest> <date>    Search for flights (free), prints search_id
   locations <query>                Resolve city name to IATA codes
   book <offer_id> --search-id ...  Book a flight. No booking or transaction fee, no unlock step

@@ -1,7 +1,7 @@
 """
 LetsFG flight connectors — run server-side at letsfg.co.
 
-Connect a card once at letsfg.co/connect (nothing is charged), then search:
+Connect once at letsfg.co/connect (one tap, no card), then search:
     letsfg auth
     letsfg search WAW BCN 2026-07-15
 """

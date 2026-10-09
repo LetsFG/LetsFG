@@ -83,7 +83,7 @@ LetsFG/
 │   │   │   │   └── flights.py       # Pydantic models (FlightOffer, FlightSegment, etc.)
 │   │   │   └── connectors/
 │   │   │       ├── __init__.py
-│   │   │       └── auth.py          # Payment-token auth flow (zero-amount card setup)
+│   │   │       └── auth.py          # OAuth connect flow (letsfg.co/connect, one tap, no card)
 │   │   ├── pyproject.toml
 │   │   └── README.md
 │   ├── js/                      # JS/TS SDK → npm: letsfg
@@ -134,7 +134,10 @@ Add https://letsfg.co/mcp as an MCP server → approve
   → consent opens https://letsfg.co/connect → one tap, no card
   → token (carried by the MCP; Authorization: Bearer over raw HTTP)
   → first booking asks for the card (0.00 setup, nothing charged)
-POST /api/agent-access/request → 402 { add_card_url: "https://letsfg.co/connect", how: [...] }
+POST /api/agent-access/request → 402 { error: "payment_method_required", message,
+    add_card_url: "https://letsfg.co/connect", how: [...], retired, mpp }
+    (the instructions as JSON: Option A = add the connector, Option B = self-register
+     over OAuth; connecting needs no card, the first booking asks for it)
 ```
 
 ### Open-Source Ranking Engine
@@ -224,7 +227,7 @@ npm publish
 ### PFS (Bearer token, free)
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/agent-access/request` | Always 402 → `{ add_card_url: "https://letsfg.co/connect", how }`; the token comes from the MCP connect flow |
+| `POST` | `/api/agent-access/request` | Always 402 → `{ error: "payment_method_required", message, add_card_url: "https://letsfg.co/connect", how, retired, mpp }`: the connect instructions as JSON. It mints nothing; the token comes from the OAuth connect flow (one tap, no card) |
 | `POST` | `/api/agent-access/verify` | MPP wallet lane only (`Authorization: Payment`); 410 for a Stripe credential |
 | `POST` | `/api/search` | Start search → `{ search_id }` (Authorization: Bearer token) |
 | `GET`  | `/api/results/<search_id>` | Poll results (send the Bearer token) |

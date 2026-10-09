@@ -1,10 +1,10 @@
 """
-Card-backed authentication for LetsFG Programmatic Flight Search (PFS).
+Authentication for LetsFG Programmatic Flight Search (PFS).
 
-PFS needs a card connected before it can search or book. Nothing is charged to
-connect: letsfg.co/connect runs a 0.00 Revolut setup that saves the card so a
-booking can be charged later. You pay the fare only when you book, and it is
-held, not taken, until the airline confirms.
+Connecting is one tap at letsfg.co/connect and needs no card; the token
+searches at once. The card is asked for only at the first booking: the booking
+returns an add_card_url for a 0.00 Revolut setup, nothing charged. You pay the
+fare only when you book, and it is held, not taken, until the airline confirms.
 
 This is a normal OAuth 2.1 + PKCE authorization-code flow. LetsFG advertises
 authorization_endpoint = https://letsfg.co/connect and leaves /oauth/register
@@ -14,7 +14,7 @@ no hosted-connector requirement.
 Flow (one-time, `letsfg auth`):
   1. GET  /developers/api/.well-known/oauth-authorization-server   (discovery)
   2. POST /developers/api/oauth/register   with a loopback redirect_uri
-  3. Open  https://letsfg.co/connect?...   a PERSON adds a card there
+  3. Open  https://letsfg.co/connect?...   a PERSON approves (one tap)
   4. POST /developers/api/oauth/token      code -> access + refresh token
 
 The access token lasts about an hour; the refresh token lasts 30 days and
@@ -70,7 +70,7 @@ _SCOPE = "flights:search flights:book profile:read"
 
 
 class BearerTokenError(Exception):
-    """No valid Bearer token. Run `letsfg auth` to connect a card."""
+    """No valid Bearer token. Run `letsfg auth` to connect (one tap, no card)."""
     pass
 
 
@@ -147,7 +147,7 @@ def get_bearer_token() -> str:
 
     raise BearerTokenError(
         "No valid LetsFG Bearer token.\n"
-        "  Run:  letsfg auth        (connects a card at letsfg.co/connect - nothing is charged)\n"
+        "  Run:  letsfg auth        (one tap at letsfg.co/connect, no card)\n"
         "  Or:   export LETSFG_BEARER_TOKEN=<token>"
     )
 
@@ -358,10 +358,10 @@ def refresh_access_token() -> str:
 
 def connect_auth(open_browser: bool = True) -> str:
     """
-    Interactive auth -- connects a card at letsfg.co/connect and stores a token.
+    Interactive auth -- connects at letsfg.co/connect and stores a token.
 
-    Registers this client, opens the card screen, and waits for the redirect.
-    Nothing is charged. A person must approve in the browser.
+    Registers this client, opens the connect page (one tap, no card), and waits
+    for the redirect. Nothing is charged. A person must approve in the browser.
     """
     meta = _discover()
     verifier, challenge = _pkce()
@@ -449,8 +449,8 @@ def connect_auth(open_browser: bool = True) -> str:
             print(
                 "\n  Warning: the grant came back without 'flights:search' "
                 f"(server granted: {' '.join(granted) or 'nothing'}).\n"
-                "  Searching via letsfg.co still works; the hosted connector at\n"
-                "  letsfg.co/developers/api/mcp will refuse this token. Run `letsfg auth`\n"
+                "  Searching via letsfg.co still works; the hosted connector\n"
+                "  (letsfg.co/mcp) will refuse this token. Run `letsfg auth`\n"
                 "  again and, if it repeats, report it at github.com/LetsFG/LetsFG/issues."
             )
         return str(data["access_token"])
@@ -506,7 +506,7 @@ def verify_payment_method(*_args, **_kwargs) -> str:
         "setup_session_id / payment_method_id / card_token were part of the Stripe\n"
         "enrolment, retired 2026-09-02, and every token they issued was revoked.\n"
         "There is no endpoint that mints a token from card details.\n"
-        "  Run:  letsfg auth        (connects a card at letsfg.co/connect - nothing is charged)"
+        "  Run:  letsfg auth        (one tap at letsfg.co/connect, no card)"
     )
 
 

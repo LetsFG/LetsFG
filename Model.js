@@ -1106,7 +1106,7 @@ function describeHttpError(status, bodyText) {
   if (status === 401 || status === 403)
     return "Your session is no longer valid. Connect again — nothing is charged."
   if (status === 402)
-    return "A card is needed before searching. Press Connect — nothing is charged."
+    return "letsfg.co asked you to connect again. Press Connect — one tap, no card."
   if (status === 429)
     return "Rate limited by letsfg.co. " + (detail || "Wait a moment and try again.")
   if (status === 0)

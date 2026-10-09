@@ -1,6 +1,6 @@
 {
   "name": "letsfg-mcp",
-  "version": "2026.5.78",
+  "version": "2026.5.79",
   "mcpName": "io.github.LetsFG/letsfg",
   "description": "LetsFG MCP Server — flight and hotel search and booking for Claude, Cursor, Windsurf and any MCP agent. Hundreds of airlines, plus bookable hotel rates with pay-later terms, and every rate says whether it is refundable.",
   "main": "dist/index.js",

@@ -383,7 +383,7 @@ class LetsFG:
         """
         Search flights via the LetsFG cloud engine using a Bearer token.
 
-        Requires a Bearer token — run `letsfg auth` once (zero-amount card setup).
+        Requires a Bearer token — run `letsfg auth` once (one tap, no card).
         Polling is handled internally, including the late split-ticket
         merge that lands after the search first reports `completed`.
 

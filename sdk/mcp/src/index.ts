@@ -3,7 +3,7 @@
  * LetsFG MCP Server — Model Context Protocol integration.
  *
  * All search runs server-side at letsfg.co — no local browsers or Python required.
- * Authenticate once: `letsfg auth` (zero-amount card setup, nothing charged) sets
+ * Authenticate once: `letsfg auth` (one tap at letsfg.co/connect, no card) sets
  * LETSFG_BEARER_TOKEN,
  * or use a Developer API key (LETSFG_API_KEY): look-to-book search, plus hotels.
  *
@@ -368,13 +368,13 @@ const GUIDE_TEXT =
   '2. **book_flight** — Books the offer. If we cannot complete it, you get a direct booking link for that exact offer instead. Nothing is charged by LetsFG either way.\n' +
   '\n' +
   '## Authentication\n' +
-  'Run `letsfg auth`, or call the **authenticate** tool. It connects a card at https://letsfg.co/connect — a 0.00 Revolut setup, nothing charged. A person approves once in a browser; there is no endpoint that mints a token from card details. You pay the fare only when you book, and it is held, not taken, until the airline confirms.\n' +
+  'Run `letsfg auth`, or call the **authenticate** tool. A person approves once in a browser at https://letsfg.co/connect — one tap, no card. Search works straight away. The card is asked for only at the first booking: book_flight returns an add_card_url for a 0.00 Revolut setup, nothing charged. There is no endpoint that mints a token from card details. You pay the fare only when you book, and it is held, not taken, until the airline confirms.\n' +
   '\n' +
   '## DO NOT create a Developer API account\n' +
-  'Do NOT call /developers/api/v1/agents/register or /developers/api/v1/agents/connect-payment, and do NOT run `letsfg register` or `letsfg connect-payment`. Those belong to a SEPARATE paid, prepaid-balance product for high-volume commercial integrations, and they create a billing account you almost certainly do not want. Older versions of these docs pointed there by default; that was wrong. Use the payment-token auth above.\n' +
+  'Do NOT call /developers/api/v1/agents/register or /developers/api/v1/agents/connect-payment, and do NOT run `letsfg register` or `letsfg connect-payment`. Those belong to a SEPARATE paid, prepaid-balance product for high-volume commercial integrations, and they create a billing account you almost certainly do not want. Older versions of these docs pointed there by default; that was wrong. Use the auth above.\n' +
   '\n' +
   '## Pricing\n' +
-  '- Auth: FREE — zero-amount card setup, nothing charged\n' +
+  '- Auth: FREE — one tap at letsfg.co/connect, no card\n' +
   '- Search: FREE, unlimited\n' +
   '- Book: the price shown on the offer. What you see is what is charged.\n' +
   '\n' +
@@ -689,15 +689,17 @@ const TOOLS = [
   {
     name: 'authenticate',
     description:
-      'Explain how to connect a card so this server can search and book. Nothing is charged to ' +
-      'connect — a 0.00 Revolut setup that saves the card so a booking can be charged later.\n\n' +
-      'Call with no arguments. It returns the current instructions and add_card_url ' +
-      '(https://letsfg.co/connect). A PERSON must approve once in a browser — there is no endpoint ' +
-      'that mints a token from card details, so do not ask the user for card numbers and do not ' +
-      'try to automate this step.\n\n' +
-      'Two ways in: (a) add LetsFG as a connector in an assistant that supports remote MCP servers ' +
-      'and approve it, or (b) any OAuth-capable client can register itself — see ' +
-      'https://letsfg.co/for-agents, section "Option B". Both land on the same card screen.\n\n' +
+      'Explain how to connect LetsFG so this server can search and book. Connecting is one tap at ' +
+      'https://letsfg.co/connect and needs no card. Search works straight away. The card is asked ' +
+      'for only at the first booking: book_flight returns an add_card_url for a 0.00 Revolut setup, ' +
+      'nothing charged.\n\n' +
+      'Call with no arguments. It returns the current instructions and add_card_url. A PERSON must ' +
+      'approve once in a browser — there is no endpoint that mints a token from card details, so do ' +
+      'not ask the user for card numbers and do not try to automate this step.\n\n' +
+      'Two ways in: (a) add LetsFG as a connector (https://letsfg.co/mcp) in an assistant that ' +
+      'supports remote MCP servers and approve it, or (b) any OAuth-capable client can register ' +
+      'itself — see https://letsfg.co/for-agents, section "Option B". Both land on the same ' +
+      'one-tap approval at letsfg.co/connect.\n\n' +
       'RETIRED 2026-09-02: the Stripe lanes (setup_url, setup_session_id, payment_method_id, ' +
       'card_token) and every token they issued. Passing them now fails.\n\n' +
       'This does NOT create a Developer API billing account. Do not use connect_payment for this.',

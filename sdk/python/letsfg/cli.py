@@ -42,8 +42,8 @@ app = typer.Typer(
     help=(
         "LetsFG — Agent-native flight search & booking.\n\n"
         "Search hundreds of airlines at raw airline prices via the LetsFG cloud.\n"
-        "Authenticate once with `letsfg auth` (zero-amount card setup, nothing\n"
-        "charged), then search and book.\n\n"
+        "Authenticate once with `letsfg auth` (one tap at letsfg.co/connect, no\n"
+        "card), then search. The card is asked for at your first booking.\n\n"
         "Quick start: letsfg auth && letsfg search GDN BCN 2026-06-15\n"
         "Round trip:  letsfg search LON BCN 2026-04-01 --return 2026-04-08"
     ),
@@ -559,10 +559,11 @@ def auth(
         False, "--no-browser", help="Print the connect URL instead of opening a browser"
     ),
 ):
-    """Connect a card at letsfg.co/connect. Nothing is charged.
+    """Connect at letsfg.co/connect. One tap, no card, nothing charged.
 
-    Registers this client (OAuth 2.1 + PKCE, loopback redirect), opens the card
-    screen, and stores the token in ~/.letsfg/config.json. A PERSON approves it
+    Registers this client (OAuth 2.1 + PKCE, loopback redirect), opens the
+    connect page, and stores the token in ~/.letsfg/config.json. The card is
+    asked for at your first booking (a 0.00 Revolut setup). A PERSON approves it
     once in a browser — there is no endpoint that mints a token from card
     details, so never ask a user for a card number.
 

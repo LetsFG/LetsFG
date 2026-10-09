@@ -97,8 +97,9 @@ Panel {
 
       root.authClientId = r.clientId
       root.authStage = "awaiting"
-      // The card is entered on letsfg.co in a real browser. A desktop plugin
-      // must never collect it itself. The URL is built from the pinned
+      // Approval happens on letsfg.co in a real browser (one tap, no card; a
+      // card is asked for only at the first booking, also on letsfg.co). A
+      // desktop plugin must never collect card details itself. The URL is built from the pinned
       // origin -- nothing off the network chooses the page.
       Qt.openUrlExternally(Model.connectUrl(r.clientId, pk.challenge, pk.state))
     }
@@ -634,7 +635,7 @@ Panel {
   function tokenHint(state) {
     if (state === "expired") return "Your session expired. Connect again — nothing is charged."
     if (state === "malformed") return "Your saved session could not be read. Connect again."
-    return "Connect a card to start searching — nothing is charged."
+    return "Connect once at letsfg.co to start searching — one tap, no card."
   }
 
   // ---- Search ----------------------------------------------------------
@@ -2889,9 +2890,9 @@ Panel {
           }
           }
 
-          // Sign-in, in the panel. No CLI and no terminal: the card is entered
-          // on letsfg.co/connect in a real browser -- the only correct place
-          // for card details -- and the code comes back here by paste (see
+          // Sign-in, in the panel. No CLI and no terminal: the person approves
+          // on letsfg.co/connect in a real browser (one tap, no card; any card
+          // is only ever entered on letsfg.co) and the code comes back here by paste (see
           // Model.js "Sign-in" for why a paste and not a loopback listener).
           Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -2913,7 +2914,7 @@ Panel {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.refreshing
                   ? "Renewing your session"
-                  : (root.tokenStatus.state === "expired" ? "Connect again" : "Connect a card")
+                  : (root.tokenStatus.state === "expired" ? "Connect again" : "Connect LetsFG")
                 color: root.inkPrimary
                 font.family: root.brandFont
                 font.pixelSize: Style.font.body + 3

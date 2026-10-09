@@ -1,12 +1,13 @@
 /**
  * Authentication for LetsFG Programmatic Flight Search (PFS).
  *
- * Nothing is charged to connect: it is a 0.00 Revolut setup that saves the card
- * for a merchant-initiated charge, so the agent can BOOK later. You pay the
- * ticket price only when you book, and the money is HELD, not taken, until the
- * airline confirms.
+ * Connecting is one tap at letsfg.co/connect and needs no card; the token
+ * searches at once. The card is asked for only at the first booking (a 0.00
+ * Revolut setup, nothing charged). You pay the ticket price only when you book,
+ * and the money is HELD, not taken, until the airline confirms.
  *
- * This is the SAME card lane the hosted connectors (Claude, ChatGPT, Grok) use.
+ * This is the SAME connect flow the hosted connector (letsfg.co/mcp, added in
+ * Claude, ChatGPT, Grok) uses.
  * A CLI is not a second-class client: the OAuth metadata advertises
  * authorization_endpoint = https://letsfg.co/connect and /oauth/register is open
  * dynamic registration (RFC 7591), so this package registers itself and drives
@@ -15,7 +16,7 @@
  * Flow (one-time, standard OAuth + PKCE):
  *   1. GET  /developers/api/.well-known/oauth-authorization-server   (discovery)
  *   2. POST /developers/api/oauth/register  with a loopback redirect_uri
- *   3. open authorization_endpoint (/connect) -> a person adds a card
+ *   3. open authorization_endpoint (/connect) -> a person approves (one tap)
  *   4. POST /developers/api/oauth/token      code -> access + refresh token
  *
  * RETIRED 2026-09-02: the Stripe lanes (setup_url, setup_intent_id,
@@ -108,7 +109,7 @@ export function getBearerToken(): string {
 
   throw new BearerTokenError(
     'No valid LetsFG Bearer token.\n' +
-    '  Run:  letsfg auth        (connects a card at letsfg.co/connect - nothing is charged)\n' +
+    '  Run:  letsfg auth        (one tap at letsfg.co/connect, no card)\n' +
     '  Or:   export LETSFG_BEARER_TOKEN=<token>'
   );
 }
@@ -268,7 +269,7 @@ function startCallbackServer(expectedState: string): Promise<CallbackServer> {
 
 /**
  * Interactive auth. Registers this CLI as an OAuth client, opens the LetsFG
- * connect page so a person can add a card (nothing charged), and stores the
+ * connect page so a person can approve it (one tap, no card), and stores the
  * resulting access + refresh tokens.
  */
 export async function connectAuth(openBrowserFlag = true): Promise<string> {
@@ -307,10 +308,10 @@ export async function connectAuth(openBrowserFlag = true): Promise<string> {
       `&code_challenge=${challenge}&code_challenge_method=S256` +
       `&state=${encodeURIComponent(state)}&scope=flights`;
 
-    console.log('\n  LetsFG needs a card connected before it can search or book.');
-    console.log('  Nothing is charged now - you pay the fare only when you book,');
-    console.log('  and it is held, not taken, until the airline confirms.\n');
-    console.log('  Open this and add a card (or pay 0.00 with Revolut Pay):\n');
+    console.log('\n  LetsFG needs you to approve this CLI once at letsfg.co/connect.');
+    console.log('  Nothing is charged now - a card is asked for at your first booking,');
+    console.log('  and the fare is held, not taken, until the airline confirms.\n');
+    console.log('  Open this and approve:\n');
     console.log(`     ${authUrl}\n`);
     if (openBrowserFlag) openBrowser(authUrl);
     process.stdout.write('  Waiting for you to finish... ');
@@ -333,7 +334,7 @@ export async function connectAuth(openBrowserFlag = true): Promise<string> {
       refresh_token: typeof data.refresh_token === 'string' ? data.refresh_token : undefined,
       client_id: clientId,
     });
-    console.log('done. Card connected - the token refreshes itself from now on.');
+    console.log('done. Connected - the token refreshes itself from now on.');
     return String(data.access_token);
   } finally {
     close();
@@ -351,6 +352,6 @@ export async function verifyPaymentMethod(_opts?: unknown): Promise<never> {
   throw new BearerTokenError(
     'The Stripe lanes (setup_url / payment_method_id / card_token) were retired on 2026-09-02 ' +
       'and every token they issued was revoked. There is no endpoint that mints a token from ' +
-      'card details. Run:  letsfg auth   (connects a card at ' + BASE_URL + '/connect - nothing is charged)'
+      'card details. Run:  letsfg auth   (one tap at ' + BASE_URL + '/connect, no card)'
   );
 }

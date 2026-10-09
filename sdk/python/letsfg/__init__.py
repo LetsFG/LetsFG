@@ -1,11 +1,12 @@
 """
 LetsFG — Agent-native flight search & booking SDK.
 
-Search hundreds of airlines via the LetsFG cloud engine. Connect a card once at
-letsfg.co/connect -- nothing is charged -- then search instantly.
+Search hundreds of airlines via the LetsFG cloud engine. Connect once at
+letsfg.co/connect -- one tap, no card -- then search instantly. The card is
+asked for at your first booking (a 0.00 Revolut setup, nothing charged).
 
 Quick start (CLI):
-    letsfg auth               # one-time card connect, opens a browser
+    letsfg auth               # one-time connect (one tap, no card), opens a browser
     letsfg search WAW BCN 2026-07-15
 
 Programmatic search (free, requires Bearer token):
@@ -45,7 +46,7 @@ from letsfg.models import (
 )
 from letsfg.models.flights import PublicFlightOffer, to_public_offer
 
-__version__ = "2026.5.103"
+__version__ = "2026.5.104"
 __all__ = [
     "LetsFG",
     "LetsFGError",

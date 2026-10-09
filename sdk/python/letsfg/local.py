@@ -2,9 +2,9 @@
 Cloud-backed flight search and booking for LetsFG.
 
 Connectors run server-side at letsfg.co — same response schema, results
-in seconds. Authenticate once with `letsfg auth`, which connects a card at
-letsfg.co/connect in a 0.00 Revolut setup (nothing is charged) and stores an
-OAuth token. The access token lasts about an hour and refreshes itself from a
+in seconds. Authenticate once with `letsfg auth`, which connects at
+letsfg.co/connect (one tap, no card; the card is asked for at the first
+booking, in a 0.00 Revolut setup) and stores an OAuth token. The access token lasts about an hour and refreshes itself from a
 30-day rotating refresh token.
 
 API flow:
