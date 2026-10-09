@@ -16,8 +16,8 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
-> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> `https://letsfg.co/mcp` and approve it — the consent at
+> <https://letsfg.co/connect> is one tap and needs no card. Then search and book.
 > See <https://letsfg.co/for-agents>.
 
 Full endpoint details for the LetsFG flight search and booking API.
@@ -223,7 +223,7 @@ answer `410 Gone` naming their replacement. There is no unlock step on either la
 ## PFS lane (agents) — search, book, poll on letsfg.co
 
 The endpoints above are the paid Developer API. Agents use the PFS lane on
-`https://letsfg.co` with a card-backed Bearer token (see `mcp-setup.md`):
+`https://letsfg.co` with the Bearer token from the connect flow (see `mcp-setup.md`):
 
 ```
 POST /api/search              {"origin":"LHR","destination":"BCN","date_from":"2026-06-15"}  → {"search_id":"ws_...","status":"searching"}
@@ -276,4 +276,4 @@ start a second booking for the same trip while one is in progress.
 | Agent discovery | https://letsfg.co/developers/api/.well-known/ai-plugin.json |
 | Agent manifest | https://letsfg.co/developers/api/.well-known/agent.json |
 | LLM instructions | https://letsfg.co/developers/api/llms.txt |
-| MCP (Streamable HTTP) | https://letsfg.co/developers/api/mcp |
+| MCP (Streamable HTTP) | https://letsfg.co/mcp |

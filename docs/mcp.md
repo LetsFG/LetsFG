@@ -4,7 +4,7 @@ LetsFG's hosted MCP server searches and books flights and hotels. It searches ev
 
 | | |
 |---|---|
-| **Endpoint** | `https://letsfg.co/developers/api/mcp` |
+| **Endpoint** | `https://letsfg.co/mcp` |
 | **Transport** | Streamable HTTP (JSON-RPC 2.0 over `POST`) |
 | **Auth** | OAuth 2.1, authorization code with PKCE |
 | **Cost to connect** | Nothing. No sign-up form and no card. |
@@ -77,7 +77,7 @@ A request without a token gets `401` with `WWW-Authenticate: Bearer resource_met
 ## Booking and payment
 
 - **Flights:** the card is asked for only at the first booking. `book_flight` returns an `add_card_url` where the traveller adds a card through Revolut, in a 0.00 setup with nothing charged. The same connection then books.
-- **Hotels:** a card is needed before the first hotel search, because a hotel search opens a real session with the supplier.
+- **Hotels:** searching needs no card. `book_hotel` asks for the card the same way `book_flight` does.
 - **Approval:** before any money is held, LetsFG e-mails the traveller an **Approve** button. Nothing is held until they press it.
 - **The money:** the fare is held on the card, not taken. A LetsFG booking agent buys the ticket from the seller, and the hold is captured only once the airline issues a PNR. If the booking fails, the hold is released.
 - **Timing:** bookings run in the background. Poll `get_flight_booking` until it reports `completed` or `failed`.
@@ -85,7 +85,8 @@ A request without a token gets `401` with `WWW-Authenticate: Bearer resource_met
 
 ## Try it
 
-- **claude.ai / Claude Desktop:** Settings → Connectors → Add custom connector, URL `https://letsfg.co/developers/api/mcp`.
-- **Claude Code:** `claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`
+- **claude.ai / Claude Desktop:** Settings → Connectors → Add custom connector, URL `https://letsfg.co/mcp`.
+- **Claude Code:** `claude mcp add --transport http letsfg https://letsfg.co/mcp`
+- **ChatGPT:** add it at chatgpt.com in a browser (the ChatGPT phone app has no way to add one): Plugins → Add → Add custom MCP server, URL `https://letsfg.co/mcp`, authentication OAuth, tick I understand, Create as a plugin. Once added, it works in the ChatGPT phone app too.
 
 See [Claude Desktop](quickstart-claude.md), [Cursor](quickstart-cursor.md) and [Windsurf](quickstart-windsurf.md) for client-specific steps.

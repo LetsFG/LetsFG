@@ -31,8 +31,8 @@ metadata:
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
-> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> `https://letsfg.co/mcp` and approve it — the consent at
+> <https://letsfg.co/connect> is one tap and needs no card. Then search and book.
 > See <https://letsfg.co/for-agents>.
 
 Agent-native flight search and booking via the LetsFG cloud engine. Hundreds of airlines plus the major booking sites,
@@ -58,7 +58,7 @@ Compares airlines and the major booking sites in one pass, with per-flight relia
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp",
+      "url": "https://letsfg.co/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }

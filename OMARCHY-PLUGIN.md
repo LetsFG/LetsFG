@@ -41,7 +41,7 @@ Then add **LetsFG Flights** to a bar section in the Omarchy bar settings.
 
 ### Connect
 
-**How a token is issued.** Since 2026-09-02 LetsFG issues card-backed tokens
+**How a token is issued.** Since 2026-09-02 LetsFG issues tokens
 through one flow: an OAuth 2.1 + PKCE grant whose consent step is
 letsfg.co/connect: one tap, no card. The card is asked for at the first
 booking, in a 0.00 Revolut setup — nothing is charged to connect. `letsfg auth` drives it from a terminal, and the panel's

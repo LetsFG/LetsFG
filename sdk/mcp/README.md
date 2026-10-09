@@ -32,17 +32,17 @@ LetsFG is not a scraper wrapper. It's a production-grade **agent-to-airline conn
 **Recommended — the hosted MCP, no install:**
 
 ```
-https://letsfg.co/developers/api/mcp
+https://letsfg.co/mcp
 ```
 
 Add it as a remote MCP server in Claude, ChatGPT, Cursor or Windsurf (or
-`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`
+`claude mcp add --transport http letsfg https://letsfg.co/mcp`
 in Claude Code) and approve the connection. The consent step opens
-[letsfg.co/connect](https://letsfg.co/connect), where you add a card (any
-card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup. Nothing is
-charged, no Revolut account is needed, and the card details go to Revolut,
-never to LetsFG. The token is card-backed: it searches and it books, and it
-is carried on every tool call for you.
+[letsfg.co/connect](https://letsfg.co/connect): one tap, no card. The card
+is asked for at the first booking (any card, or Revolut Pay / Google Pay), in a
+0.00 Revolut setup. Nothing is charged, no Revolut account is needed, and the
+card details go to Revolut, never to LetsFG. The token searches, books once the
+card is added, and is carried on every tool call for you.
 
 **This package — the stdio server, runs on your machine:**
 
@@ -50,7 +50,7 @@ is carried on every tool call for you.
 npx letsfg-mcp
 ```
 
-It needs that same card-backed token in `LETSFG_BEARER_TOKEN`. To mint one
+It needs that same token in `LETSFG_BEARER_TOKEN`. To mint one
 from the command line, run **`letsfg auth`**: it registers itself as an OAuth
 client, opens letsfg.co/connect for a person to approve, and writes the token to
 `~/.letsfg/config.json` (`--no-browser` prints the URL instead). This server's
@@ -67,15 +67,22 @@ token, since a person has to approve in a browser either way.
 The hosted server is the simplest option everywhere: it does the connect
 flow for you and needs no token in a config file.
 
-### Claude (claude.ai / Claude Desktop / ChatGPT)
+### Claude (claude.ai / Claude Desktop / Claude mobile)
 
-Add a custom connector with the URL `https://letsfg.co/developers/api/mcp`
+Settings > Connectors > Add custom connector, URL `https://letsfg.co/mcp`,
 and approve it. The consent step takes you through letsfg.co/connect.
+
+### ChatGPT
+
+Add it at chatgpt.com in a browser; the ChatGPT phone app has no way to add
+one. Plugins > Add > Add custom MCP server, URL `https://letsfg.co/mcp`,
+authentication OAuth, tick I understand, Create as a plugin, then approve it at
+letsfg.co/connect. Once added, it works in the ChatGPT phone app too.
 
 ### Claude Code
 
 ```bash
-claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
+claude mcp add --transport http letsfg https://letsfg.co/mcp
 ```
 
 ### Cursor
@@ -85,7 +92,7 @@ Add to `.cursor/mcp.json` in your project root:
 ```json
 {
   "mcpServers": {
-    "letsfg": { "url": "https://letsfg.co/developers/api/mcp" }
+    "letsfg": { "url": "https://letsfg.co/mcp" }
   }
 }
 ```
@@ -97,14 +104,14 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 ```json
 {
   "mcpServers": {
-    "letsfg": { "serverUrl": "https://letsfg.co/developers/api/mcp" }
+    "letsfg": { "serverUrl": "https://letsfg.co/mcp" }
   }
 }
 ```
 
 ### The stdio server instead (`npx letsfg-mcp`)
 
-Same shape in any of the files above, with the card-backed token from the
+Same shape in any of the files above, with the token from the
 connect flow in the environment (a paid Developer API key in
 `LETSFG_API_KEY` also works, on that separate product):
 
@@ -140,7 +147,7 @@ mcpServers:
 Connect via remote MCP (no install, does the card connect for you):
 
 ```
-https://letsfg.co/developers/api/mcp
+https://letsfg.co/mcp
 ```
 
 Or run the stdio server with a token in `LETSFG_BEARER_TOKEN`:
@@ -215,7 +222,7 @@ To avoid unexpected updates (2026.5.77 or later: earlier versions cannot book ho
 
 ### Booking Flow
 
-**PFS (card-backed token from letsfg.co/connect):**
+**PFS (token from the connect flow at letsfg.co/connect):**
 
 ```
 connect (once)  →  search_flights  →  book_flight  →  get_flight_booking (poll)
@@ -286,7 +293,7 @@ Full semantics: [docs/api-search.md](https://github.com/LetsFG/LetsFG/blob/main/
 
 ## Get an API Key (Developer API only)
 
-Most agents do not need this: the card-backed token from letsfg.co/connect
+Most agents do not need this: the token from letsfg.co/connect
 already searches and books. An API key belongs to the separate, paid,
 prepaid-balance Developer API. If that is what you want, register at
 [letsfg.co/developers](https://letsfg.co/developers) or via CLI:
@@ -321,7 +328,7 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
 └──────────────────────────────────────────────────────────────┘
 ```
 
-All search and booking run server-side at letsfg.co. No local browsers or scrapers are involved. Connect a card once at letsfg.co/connect (0.00 Revolut setup, nothing charged) and the token is card-backed for search and booking.
+All search and booking run server-side at letsfg.co. No local browsers or scrapers are involved. Connect once at letsfg.co/connect (one tap, no card) and the token searches; the card is asked for at the first booking (0.00 Revolut setup, nothing charged).
 
 ### What data goes where
 
@@ -393,11 +400,11 @@ side, not in your config.
 
 - Check IATA codes are correct — use `resolve_location` first
 - Try a date 2+ weeks in the future (airlines don't sell last-minute on all routes)
-- Connect a card through the hosted MCP if you haven't yet — a valid card-backed token is required for free search (`LETSFG_BEARER_TOKEN` for the stdio server)
+- Connect through the hosted MCP if you haven't yet — a valid token from the connect flow is required for free search (`LETSFG_BEARER_TOKEN` for the stdio server)
 
 ### How do I get free search without a Developer API key?
 
-Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and approve it; the consent step opens letsfg.co/connect, where you add a card in a 0.00 Revolut setup. Nothing is charged and there is no authorization hold. The token you get is card-backed and works for `POST /api/search` and `POST /api/agent-book`. Tokens from the old `letsfg auth` (Stripe) flow were revoked on 2026-09-02 — reconnect.
+Connect LetsFG as an MCP server at `https://letsfg.co/mcp` and approve it; the consent step opens letsfg.co/connect: one tap, no card. The card is asked for at the first booking, in a 0.00 Revolut setup; nothing is charged to connect. The token you get works for `POST /api/search` and, once the card is added, `POST /api/agent-book`. Tokens from the old `letsfg auth` (Stripe) flow were revoked on 2026-09-02 — reconnect.
 
 ### Can my agent actually book, or just search?
 
@@ -449,7 +456,7 @@ Your agent can now book hotels, not just flights. Same API key, same connected p
 > **letsfg 2026.5.74** or later (JavaScript/TypeScript) or **letsfg-mcp 2026.5.77** or later. Earlier releases send
 > the reservation-fee fields retired on 2026-09-11 (`expected_balance`, no `expected_cost`), and the API refuses
 > every hotel booking they make. Update with `pip install -U letsfg`, `npm install letsfg@latest` or
-> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/developers/api/mcp` needs no update.
+> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/mcp` needs no update.
 
 ```python
 from letsfg import LetsFG

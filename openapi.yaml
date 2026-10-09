@@ -8,7 +8,7 @@ info:
     Claude, Cursor, Windsurf) and developers.
 
     Hotels accept either a Developer API key (X-API-Key) or the free PFS token — the same card
-    authorises both. They require a card on file for every call, search included. Booking holds
+    authorises both. Searching needs no card; booking needs one on file. Booking holds
     the full price on the connected card and captures it only once the hotel confirms; a failed
     booking releases the hold. There is no reservation fee, no deposit and no pay link.
 
@@ -35,9 +35,9 @@ info:
     ## Authentication
     Two paths:
 
-    **PFS Bearer token** (free search + booking): one-time card-on-file through
-    <https://letsfg.co/connect>. Nothing is charged — a zero-amount Revolut setup. Obtained by
-    connecting the MCP server at `https://letsfg.co/developers/api/mcp`, or via `letsfg auth`.
+    **PFS Bearer token** (free search + booking): one tap at <https://letsfg.co/connect>, no card.
+    The card is asked for at the first booking — a zero-amount Revolut setup, nothing charged. Obtained by
+    connecting the MCP server at `https://letsfg.co/mcp`, or via `letsfg auth`.
 
     **Developer API key** (look-to-book search, direct booking, hotels):
     ```
@@ -997,8 +997,8 @@ paths:
         Look-to-book: 1,000 searches are free after every hotel booking, then blocks of 1,000 for
         $5.00 from prepaid balance.
 
-        A payment method on file is required for search, not just booking: a search opens a real
-        session at the supplier.
+        Searching needs no payment method on file; booking does (`402` without one). An account
+        with no payment method gets a daily number of hotel searches.
       tags: [Hotels]
       requestBody:
         required: true

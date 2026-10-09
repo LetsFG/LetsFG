@@ -9,7 +9,7 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -22,13 +22,13 @@ Connect the remote MCP server once and Claude can search and book flights, and s
 **claude.ai / Claude Desktop:** `Settings → Connectors → Add custom connector`, name it `LetsFG`, URL:
 
 ```
-https://letsfg.co/developers/api/mcp
+https://letsfg.co/mcp
 ```
 
 **Claude Code:**
 
 ```bash
-claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
+claude mcp add --transport http letsfg https://letsfg.co/mcp
 ```
 
 ### 2. Approve the connection
@@ -53,7 +53,7 @@ Claude asks for the traveller's real details (name as on the passport, date of b
 
 ## Option B: Local MCP server (`npx letsfg-mcp`)
 
-Use this only if your client cannot connect to a remote MCP server. It needs a card-backed token in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same card screen and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
+Use this only if your client cannot connect to a remote MCP server. It needs the token from the connect flow in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same letsfg.co/connect page and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
 
 Open `Settings → Developer → Edit Config` or edit the file directly:
 
@@ -93,7 +93,7 @@ The same remote URL also accepts a Developer API key (`X-API-Key` header) from t
 | "Find flights from London to Barcelona next Friday" | `search_flights` → offers with prices; `get_flight_results` collects the late-landing split tickets |
 | "What's the cheapest way to get from NYC to Tokyo?" | `resolve_location` → `search_flights` |
 | "Book the Ryanair one for Ada Lovelace" | `book_flight` (hold on the card, agent buys the ticket) → `get_flight_booking` until `completed` with a PNR |
-| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Needs a card on file, for search as well as booking. |
+| "Search hotels in Barcelona for Apr 1-5" | `resolve_hotel_city` → `search_hotels` → rooms + prices. Searching needs no card; booking asks for one. |
 | "Am I connected?" | `get_agent_profile` → payment status and usage |
 
 ## Troubleshooting

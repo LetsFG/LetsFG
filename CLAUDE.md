@@ -52,7 +52,7 @@ The flight connectors and backend API run server-side at letsfg.co (private repo
 
 | Mode | What it is | Speed | Cost |
 |------|-----------|-------|------|
-| **MCP / CLI / SDK** | Hosted MCP at `https://letsfg.co/developers/api/mcp` (one-tap consent, no card; card at the first booking); `pip install letsfg` wraps PFS with ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
+| **MCP / CLI / SDK** | Hosted MCP at `https://letsfg.co/mcp` (one-tap consent, no card; card at the first booking); `pip install letsfg` wraps PFS with ranking | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
 | **PFS — Programmatic Flight Search** | Direct Bearer token → `POST /api/search` → poll `/api/results/<id>` → `POST /api/agent-book` → poll `/api/agent-book/status` | 8–10 s to first results; longer to `completed`, longer again on a split | Free auth, free search |
 | **Developer API** | Prepaid credits, no per-booking fee, 2–5 s discover endpoint | 2–5 s (discover) · 8–10 s to first results (full search) | Prepaid credits |
 
@@ -63,7 +63,7 @@ touch LetsFG. Over raw HTTP send it as `Authorization: Bearer`.
 The Stripe enrolment lanes (setup_url / SetupIntent / tok_ / pm_) and the earlier Twitter/X
 challenge are retired (2026-09-02); every token they issued was revoked. `letsfg auth` now drives that
 same connect flow itself: it registers as an OAuth client (dynamic registration), opens
-letsfg.co/connect for the card, and stores the access + refresh tokens in
+letsfg.co/connect for a person to approve, and stores the access + refresh tokens in
 `~/.letsfg/config.json`. The SDKs also read `LETSFG_BEARER_TOKEN`.
 
 ## Repository Structure
@@ -125,12 +125,12 @@ LetsFG/
 
 ### Search Architecture
 All flight data comes from the letsfg.co server-side engine. The SDK/CLI authenticates
-with the card-backed Bearer token from the connect flow and calls the cloud search API.
+with the Bearer token from the connect flow and calls the cloud search API.
 No local browsers or scrapers are involved.
 
 Auth flow (one-time):
 ```
-Add https://letsfg.co/developers/api/mcp as an MCP server → approve
+Add https://letsfg.co/mcp as an MCP server → approve
   → consent opens https://letsfg.co/connect → one tap, no card
   → token (carried by the MCP; Authorization: Bearer over raw HTTP)
   → first booking asks for the card (0.00 setup, nothing charged)
@@ -153,8 +153,8 @@ The API returns live prices with no demand-based inflation, cookie tracking, or 
 pricing. This is a core product principle.
 
 ### Free Search
-Search via PFS is always free and unlimited, as is authentication (zero-amount card
-setup). LetsFG charges no fee on the PFS path at all. The prepaid Developer API is a
+Search via PFS is always free and unlimited, as is authentication (one tap, no card; the
+card comes at the first booking, in a zero-amount setup). LetsFG charges no fee on the PFS path at all. The prepaid Developer API is a
 separate paid product — do not send agents there by default.
 
 ### Real Passenger Details Required

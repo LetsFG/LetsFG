@@ -18,17 +18,17 @@ Real, bookable hotel inventory through LetsFG. Booking works like a flight: the 
 
 ## Read this before your first call
 
-**The same card authorises flights and hotels.** The PFS Bearer token (card-backed, from
+**The same card authorises flights and hotels.** The PFS Bearer token (from
 connecting the MCP server — consent is one tap and asks for no card; the card is added at
 <https://letsfg.co/connect> when it is first needed) is
 accepted by the hotel endpoints, and so is a **Developer API key** (`X-API-Key`). Use whichever
 you already hold. If you hold neither, do not register a billing account on someone's behalf
 and do not fall back to scraping a hotel site — say so plainly to whoever asked.
 
-**A card on file is required for search, not just booking.** A hotel search opens a real
-session at the supplier and booking blocks a real rate, so every hotel endpoint returns
-`402` without a payment method. This is deliberate: better to refuse up front than to let you
-reach the point of commitment and discover you cannot pay.
+**Searching needs no card; booking does.** A hotel search opens a real session at the
+supplier, so an account with no card on file gets a daily number of hotel searches. Booking
+returns `402` without a payment method; over the MCP, `book_hotel` returns a link to add the
+card, as `book_flight` does.
 
 **Every rate type is sold, refundable and non-refundable.** Each offer carries `refundable`
 and, when it is refundable, `free_cancellation_until`. A non-refundable rate cannot be
@@ -134,7 +134,7 @@ MCP tools, in call order: `resolve_hotel_city` → `search_hotels` → `book_hot
 | `400 invalid_details` | A guest name, phone or e-mail was rejected (`invalid_fields` says which). Nothing held | Fix the details and call again |
 | `400 price_mismatch` | Prices not copied verbatim from the offer | Send the offer's `price`, `expected_cost`, `currency` and `fx_rate` |
 | `401` | Credential invalid, expired or revoked | Reconnect at https://letsfg.co/connect, or check the API key |
-| `402` | No payment method connected, or the card declined the hold | Connect a card (required for search too). On a decline nothing was booked |
+| `402` | No payment method connected, or the card declined the hold | Connect a card (needed to book). On a decline nothing was booked |
 | `409` on cancel | The cancellation would cost money (non-refundable, or past `free_cancellation_until`) | Check the booking's `terms` |
 | `504` | Supplier did not answer in time | If booking, poll the job — do NOT re-book |
 | job `failed` | Rate gone, price moved, or the supplier declined | Read `error`; the hold was released. Search again |

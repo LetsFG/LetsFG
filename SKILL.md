@@ -21,7 +21,7 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. E
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> `https://letsfg.co/developers/api/mcp` and approve it — the consent at
+> `https://letsfg.co/mcp` and approve it — the consent at
 > <https://letsfg.co/connect> is one tap and needs no card. Then search and book.
 > See <https://letsfg.co/for-agents>.
 
@@ -33,7 +33,7 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. E
 - **Purpose:** Agent-native flight and hotel search and booking
 - **Compatible agents:** OpenClaw, Perplexity Computer, Claude Desktop, Cursor, Windsurf, and any MCP-compatible client
 - **API Base URL:** `https://letsfg.co/developers/api/v1`
-- **MCP Endpoint:** `https://letsfg.co/developers/api/mcp` (Streamable HTTP)
+- **MCP Endpoint:** `https://letsfg.co/mcp` (Streamable HTTP)
 - **Packages:** PyPI `letsfg` · npm `letsfg` · npm `letsfg-mcp`
 - **License:** MIT
 
@@ -41,7 +41,7 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. E
 
 | Mode | Best for | Speed | Cost |
 |------|----------|-------|------|
-| **MCP / SDK / CLI** (PFS card-backed token) | **Almost every agent.** Search + booking | 8–10 s to first results | Free auth, free search, booking at the price on the offer |
+| **MCP / SDK / CLI** (PFS token) | **Almost every agent.** Search + booking | 8–10 s to first results | Free auth, free search, booking at the price on the offer |
 | **Developer API** (`https://letsfg.co/developers`) | Business / commercial / high-volume (hotels work on either credential) | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking via `POST /flights/book`, no booking fee, no transaction fee |
 
 ## Skills
@@ -52,7 +52,7 @@ Search every airline in the world AND the major booking sites (Google Flights, S
 - **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
 - **Note:** On PFS (Bearer token), call `book_flight` directly — no unlock step — then poll `get_flight_booking`. The Developer API has no unlock step either: book with `POST /flights/book` and poll `GET /flights/bookings/{id}`.
-- **Rate limit (PFS):** 10 searches per 10 min, 30 per hour, 100 per day, per card. Polling results never counts.
+- **Rate limit (PFS):** 10 searches per 10 min, 30 per hour, 100 per day, per account (per card once one is added). Polling results never counts.
 
 ### resolve_hotel_city
 Resolve a place name to the supplier city id that hotel search needs.
@@ -63,9 +63,9 @@ Resolve a place name to the supplier city id that hotel search needs.
 
 ### search_hotels
 Search real, bookable hotel inventory.
-- **Cost:** FREE, but a payment method on file is REQUIRED — for search, not just booking. A hotel
-  search opens a real session at the supplier, so it returns HTTP 402 without a card.
-- **Auth:** Either a Developer API key (`X-API-Key`) or the PFS card-backed token from the connect flow. The same card authorises flights and hotels.
+- **Cost:** FREE. Searching needs no card; an account with no card on file gets a daily number of
+  hotel searches. Booking needs a payment method on file and returns HTTP 402 without one.
+- **Auth:** Either a Developer API key (`X-API-Key`) or the PFS token from the connect flow. The same card authorises flights and hotels.
 - **Endpoint:** `POST /api/v1/hotels/search`
 - **Input:** city_id, city_name, check_in, check_out, adults, children, child_ages, nationality, currency (USD by default), limit
 - **Output:** hotels[] each with offers[] carrying `price` (the all-in total the guest pays, in
@@ -218,7 +218,7 @@ Authorization: Bearer eyJ...
 
 Get a token — the one way in:
 
-1. Add LetsFG as a remote MCP server: `https://letsfg.co/developers/api/mcp`.
+1. Add LetsFG as a remote MCP server: `https://letsfg.co/mcp`.
 2. Approve the connection. The OAuth consent step opens
    <https://letsfg.co/connect>: one tap, no card.
 3. Over the MCP the OAuth token is carried for you; over raw HTTP send it as
@@ -230,7 +230,7 @@ Get a token — the one way in:
 (`401 TOKEN_REVOKED`; `/api/agent-access/verify` answers `410` for a Stripe
 credential) — reconnect at letsfg.co/connect. `letsfg auth` (npm or PyPI) now
 drives that connect flow from the terminal and stores the token; the CLI and
-SDKs otherwise read it from `LETSFG_BEARER_TOKEN`. One card = one account; quotas are per card. Full flow:
+SDKs otherwise read it from `LETSFG_BEARER_TOKEN`. One card = one account; quotas are per account, and per card once one is added. Full flow:
 <https://letsfg.co/for-agents>.
 
 **Developer API (business / high-volume):** every endpoint except `register`
@@ -267,7 +267,7 @@ Then connect a payment method with `POST /api/v1/agents/connect-payment` and ope
 ### Hotel Booking (PFS Bearer token or Developer API key — the same card authorises both)
 
 ```
-1. Card on file                            → PFS: saved at letsfg.co/connect; Developer API: POST /api/v1/agents/connect-payment. Required for SEARCH too
+1. Card on file (to book; search needs none) → PFS: asked for at the first booking; Developer API: POST /api/v1/agents/connect-payment
 2. POST /api/v1/hotels/destinations        → Place name → city_id
 3. POST /api/v1/hotels/search              → Bookable rates (card required; 1,000 free after every hotel booking)
 4. POST /api/v1/hotels/book                → Holds the price; returns booking_job_id — NOT a booking
@@ -285,7 +285,7 @@ step 4 while its job is running — poll it.
 ```bash
 pip install -U letsfg   # 2026.5.101 or later books hotels
 
-export LETSFG_BEARER_TOKEN=eyJ...   # card-backed token from the connect flow (see Authentication)
+export LETSFG_BEARER_TOKEN=eyJ...   # token from the connect flow (see Authentication)
 
 # Search flights — prints search_id, needed for book
 letsfg search LHR JFK 2026-04-15
@@ -315,7 +315,7 @@ No unlock step.
 ```python
 from letsfg import LetsFG
 
-bt = LetsFG()  # reads LETSFG_BEARER_TOKEN — the card-backed token from the connect flow
+bt = LetsFG()  # reads LETSFG_BEARER_TOKEN — the token from the connect flow
 
 # Search
 results = bt.search("LHR", "JFK", "2026-04-15")
@@ -355,13 +355,15 @@ it with `bt.get_booking(booking_id)`, or call `bt.book_and_wait(...)` to block u
 ```json
 {
   "mcpServers": {
-    "letsfg": { "url": "https://letsfg.co/developers/api/mcp" }
+    "letsfg": { "url": "https://letsfg.co/mcp" }
   }
 }
 ```
 
-Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`.
-claude.ai / ChatGPT: add a custom connector with that URL. Windsurf uses
+Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/mcp`.
+Claude (claude.ai, desktop and mobile): Settings > Connectors > Add custom connector, with that URL.
+ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to add one), Plugins > Add >
+Add custom MCP server, that URL, authentication OAuth; once added it works in the phone app too. Windsurf uses
 `"serverUrl"` instead of `"url"`. The client runs OAuth; the consent step opens
 <https://letsfg.co/connect>: one tap, no card. The token the client receives can
 search at once, and the card is asked for at the first booking.
@@ -372,7 +374,7 @@ Developer API accounts can use the same URL with
 
 ```bash
 npm install -g letsfg-mcp@latest   # 2026.5.77 or later books hotels
-LETSFG_BEARER_TOKEN=eyJ...  letsfg-mcp   # card-backed token from the connect flow
+LETSFG_BEARER_TOKEN=eyJ...  letsfg-mcp   # token from the connect flow
 ```
 
 The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
@@ -390,8 +392,8 @@ The local server also accepts `LETSFG_API_KEY` instead, for the Developer API.
 | `get_flight_booking` | Poll a PFS booking every 20–30 s: `booking_in_progress` → `completed` (PNR) / `failed` (hold released) / `needs_attention` | FREE |
 | `unlock_flight_offer` | **RETIRED 2026-09-08** — answers `410 Gone`. Call `book_flight` directly | — |
 | `connect_payment` | **[Developer API only]** Mint a one-time link to connect a card to the paid account (nothing charged). PFS agents connect at letsfg.co/connect instead | FREE |
-| `resolve_hotel_city` | Place name → supplier city id for `search_hotels` | FREE (card on file) |
-| `search_hotels` | Bookable hotel rates, refundable and non-refundable | FREE (card on file; 1,000 per hotel booking) |
+| `resolve_hotel_city` | Place name → supplier city id for `search_hotels` | FREE |
+| `search_hotels` | Bookable hotel rates, refundable and non-refundable | FREE (1,000 per hotel booking) |
 | `book_hotel` | Start a hotel booking: the price is held, captured once the hotel confirms. Returns `booking_job_id` | The price on the offer |
 | `get_hotel_booking` | Poll until `succeeded` / `failed` / `attention` | FREE |
 | `cancel_hotel_booking` | Cancel a refundable booking before `free_cancellation_until` (98% refunded, 2% fee) | FREE |
@@ -439,7 +441,7 @@ from letsfg import LetsFG
 from letsfg.connectors.auth import BearerTokenError
 
 try:
-    bt = LetsFG()  # reads LETSFG_BEARER_TOKEN — the card-backed token from the connect flow
+    bt = LetsFG()  # reads LETSFG_BEARER_TOKEN — the token from the connect flow
     flights = bt.search("LHR", "JFK", "2026-04-15")
 except BearerTokenError:
     print("Token expired, revoked or missing — reconnect at https://letsfg.co/connect")

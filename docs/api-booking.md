@@ -4,7 +4,7 @@
 >
 > This page describes the **Developer API key** path. If you are an AI agent
 > wanting to search and book, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp> instead — booking works the same way
+> <https://letsfg.co/mcp> instead — booking works the same way
 > there, through `book_flight`, with no billing account.
 
 Every offer a search returns is bookable. There is no unlock step, no separate

@@ -9,7 +9,7 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -33,7 +33,7 @@ The `letsfg` CLI is available via both Python and JavaScript. Same commands, sam
 
 | Command | Description |
 |---------|-------------|
-| `letsfg register` | **[Developer API only]** Create a Developer API account + API key. Most agents want the card-backed token from the connect flow instead |
+| `letsfg register` | **[Developer API only]** Create a Developer API account + API key. Most agents want the token from the connect flow instead |
 | `letsfg recover --email <email>` | Recover lost API key via email verification |
 | `letsfg auth` | Connect at `letsfg.co/connect` (one tap, no card) and store the token. Registers itself as an OAuth client (PKCE + loopback redirect), opens a browser for a person to approve, writes `~/.letsfg/config.json`. `--no-browser` prints the URL. The old Stripe setup was retired 2026-09-02 and its tokens revoked |
 | `letsfg search <origin> <dest> <date>` | Search flights via the letsfg.co server-side engine (free with Bearer token) |
@@ -85,7 +85,7 @@ letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
 letsfg search LON BCN 2026-04-01 --max-stops 0 --json
 ```
 
-Search runs server-side at letsfg.co. With a card-backed token in `LETSFG_BEARER_TOKEN`, search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
+Search runs server-side at letsfg.co. With the token from the connect flow in `LETSFG_BEARER_TOKEN`, search is free: 10 per 10 minutes, 30 per hour, 100 per day per account, and per card once one is added.
 
 ### Multi-Passenger
 
@@ -172,6 +172,6 @@ The code expires in 15 minutes. Once verified, a new API key is issued and your 
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_BEARER_TOKEN` | Card-backed token from the connect flow (PFS search + booking) |
+| `LETSFG_BEARER_TOKEN` | Token from the connect flow (PFS search + booking) |
 | `LETSFG_API_KEY` | Developer API key for look-to-book search and booking |
 | `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co/developers`) |

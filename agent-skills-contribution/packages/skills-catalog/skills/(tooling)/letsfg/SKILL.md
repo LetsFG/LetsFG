@@ -5,7 +5,7 @@ description: >-
   prices from airlines and the major booking sites, with per-flight reliability history. Use when user asks to
   "find flights", "search flights", "book a flight", "compare airline prices",
   "find cheap flights", "fly from X to Y", or any flight-related travel query.
-  Hotels need a card on file for search as well as booking; either credential
+  Hotels search with no card and need one on file to book; either credential
   reaches them. Do NOT use for car rentals or non-flight, non-hotel travel bookings.
 license: MIT
 metadata:
@@ -37,7 +37,7 @@ Compares airlines and the major booking sites in one pass, with per-flight relia
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp",
+      "url": "https://letsfg.co/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }

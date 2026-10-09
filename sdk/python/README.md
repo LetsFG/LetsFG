@@ -9,10 +9,10 @@
 
 | | **CLI / SDK** (PFS Bearer token) | **Developer API** |
 |---|---|---|
-| **Search cost** | Free (card-backed token from [letsfg.co/connect](https://letsfg.co/connect), nothing charged) | Prepaid credits |
+| **Search cost** | Free (token from [letsfg.co/connect](https://letsfg.co/connect), one tap, no card) | Prepaid credits |
 | **Booking** | `POST /api/agent-book` — fare held on your card, a LetsFG agent buys the ticket, captured only on a real PNR. Every offer. | `POST /flights/book` — the same hold-then-capture flow, no unlock step, no booking or transaction fee |
 | **Speed** | 8–10 s to first results; longer on a split | 2–5 s (discover) · 8–10 s to first results (full) |
-| **Setup** | `pip install letsfg`, then connect at [letsfg.co/developers/api/mcp](https://letsfg.co/developers/api/mcp) | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Setup** | `pip install letsfg`, then connect at [letsfg.co/mcp](https://letsfg.co/mcp) | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Building a product, or need hotels?** Use the [Developer API](https://letsfg.co/developers) — look-to-book search (200 free after every booking, then $0.01), booking through `POST /flights/book`, no booking fee and no transaction fee.
 
@@ -22,11 +22,11 @@
 pip install letsfg
 ```
 
-Connect a card once at [letsfg.co/connect](https://letsfg.co/connect) (nothing
-charged — see Authentication), then search is free and booking runs on that card:
+Connect once at [letsfg.co/connect](https://letsfg.co/connect) (one tap, no
+card — see Authentication), then search is free; the card is asked for at the first booking:
 
 ```bash
-export LETSFG_BEARER_TOKEN=eyJ...     # the card-backed token from the connect flow
+export LETSFG_BEARER_TOKEN=eyJ...     # the token from the connect flow
 letsfg search LHR BCN 2026-06-15
 ```
 
@@ -37,21 +37,22 @@ unlock step and 1% (min $3) fee were retired on 2026-09-08.
 
 ## Authentication
 
-Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and
+Connect LetsFG as an MCP server at `https://letsfg.co/mcp` and
 approve the connection — in Claude, ChatGPT, Cursor, Windsurf, or Claude Code
-(`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`).
-The consent step opens [letsfg.co/connect](https://letsfg.co/connect), where you
-add a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup.
-Nothing is charged, no Revolut account is needed, and the card details go to
-Revolut, never to LetsFG. The token you get back is card-backed: it searches
-and it books. One card = one account; quotas are per card (10 searches per
-10 min, 30 per hour, 100 per day — polling never counts).
+(`claude mcp add --transport http letsfg https://letsfg.co/mcp`).
+The consent step opens [letsfg.co/connect](https://letsfg.co/connect): one tap,
+no card. The card is asked for at the first booking (any card, or Revolut Pay /
+Google Pay), in a 0.00 Revolut setup. Nothing is charged, no Revolut account is
+needed, and the card details go to Revolut, never to LetsFG. The token you get
+back searches at once and books once the card is added. Quotas are per account,
+and per card once one is added (10 searches per 10 min, 30 per hour, 100 per
+day — polling never counts).
 
 The SDK reads the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`.
 
 Or skip the MCP client entirely and run **`letsfg auth`**, which does the same
 connect flow from the terminal: it registers itself as an OAuth client (PKCE +
-loopback redirect), opens the card screen for a person to approve, and writes
+loopback redirect), opens letsfg.co/connect for a person to approve, and writes
 the token to `~/.letsfg/config.json`. Add `--no-browser` to print the URL
 instead of opening one. The access token lasts about an hour and refreshes
 itself from a stored 30-day refresh token — call `ensure_bearer_token()` in a
@@ -374,7 +375,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Search Wide, Book Once
 
-Searching is free (10 per 10 min, 30 per hour, 100 per day per card). On
+Searching is free (10 per 10 min, 30 per hour, 100 per day per account, and per card once one is added). On
 PFS, booking goes through `POST /api/agent-book` — the fare is held on your
 card and captured only on a real PNR. No booking fee, no transaction fee on top of the price you saw.
 Compare before booking:
@@ -447,7 +448,7 @@ letsfg locations "Berlin"
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `auth` | Connect a card at letsfg.co/connect and store the token — self-registers, PKCE + loopback redirect, opens a browser. `--no-browser` prints the URL | FREE |
+| `auth` | Connect at letsfg.co/connect (one tap, no card) and store the token — self-registers, PKCE + loopback redirect, opens a browser. `--no-browser` prints the URL | FREE |
 | `search` | Search flights between any two airports, prints `search_id` | FREE |
 | `locations` | Resolve city name to IATA codes | FREE |
 | `book` | Start a booking for an offer from your search (`--search-id` required). Fare held on your card, captured on a real PNR; poll `/api/agent-book/status` | No booking fee, no transaction fee |
@@ -462,7 +463,7 @@ Every command supports `--json` for machine-readable output.
 
 | Variable | Description |
 |----------|-------------|
-| `LETSFG_BEARER_TOKEN` | PFS Bearer token (card-backed, from the connect flow). Takes priority over `~/.letsfg/config.json`. |
+| `LETSFG_BEARER_TOKEN` | PFS Bearer token (from the connect flow). Takes priority over `~/.letsfg/config.json`. |
 | `LETSFG_API_KEY` | Developer API key (look-to-book search + booking) |
 | `LETSFG_BASE_URL` | API URL override (default: `https://letsfg.co`) |
 
@@ -504,7 +505,7 @@ Your agent can now book hotels, not just flights. Same API key, same connected p
 > **letsfg 2026.5.74** or later (JavaScript/TypeScript) or **letsfg-mcp 2026.5.77** or later. Earlier releases send
 > the reservation-fee fields retired on 2026-09-11 (`expected_balance`, no `expected_cost`), and the API refuses
 > every hotel booking they make. Update with `pip install -U letsfg`, `npm install letsfg@latest` or
-> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/developers/api/mcp` needs no update.
+> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/mcp` needs no update.
 
 ```python
 from letsfg import LetsFG

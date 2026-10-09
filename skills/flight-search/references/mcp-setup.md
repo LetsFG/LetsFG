@@ -9,28 +9,31 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> `https://letsfg.co/developers/api/mcp` and approve it — the consent step saves
-> a card at <https://letsfg.co/connect> (nothing charged). Then search and book.
+> `https://letsfg.co/mcp` and approve it — the consent at
+> <https://letsfg.co/connect> is one tap and needs no card. Then search and book.
 > See <https://letsfg.co/for-agents>.
 
 Configure the LetsFG MCP server for your AI coding agent.
 
 ## Agents: connect, don't register
 
-The way in is the remote server at `https://letsfg.co/developers/api/mcp`. Your
-client runs OAuth; the consent step opens <https://letsfg.co/connect>, where the
-person saves a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut
-setup — nothing is charged, no Revolut account needed. The token the client
-receives is card-backed: it searches for free and it can book. Booking holds the
-fare on that card, a LetsFG booking agent buys the ticket, and the hold is
+The way in is the remote server at `https://letsfg.co/mcp`. Your
+client runs OAuth; the consent step opens <https://letsfg.co/connect>: one tap,
+no card. The card is asked for at the first booking (any card, or Revolut Pay /
+Google Pay) in a 0.00 Revolut setup — nothing is charged, no Revolut account
+needed. The token the client receives searches for free and books once the card
+is added. Booking holds the fare on that card, a LetsFG booking agent buys the ticket, and the hold is
 captured only once a real airline PNR exists.
 
 ```bash
 # Claude Code
-claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
+claude mcp add --transport http letsfg https://letsfg.co/mcp
 ```
 
-claude.ai / ChatGPT: add a custom connector with that URL and approve it.
+Claude (claude.ai, desktop and mobile): Settings > Connectors > Add custom connector, with that
+URL, and approve it. ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to
+add one), Plugins > Add > Add custom MCP server, that URL, authentication OAuth, tick I
+understand, Create as a plugin; once added it works in the phone app too.
 Cursor / Windsurf: see the remote config below, with no headers.
 
 ## Developer API key (paid product — only if you need it)
@@ -55,13 +58,13 @@ curl -X POST https://letsfg.co/developers/api/v1/agents/register \
 ## Remote MCP (Streamable HTTP) — No Install
 
 Works with any client that supports HTTP-based MCP. Agents (PFS): no headers —
-the client runs OAuth and the consent step saves the card at letsfg.co/connect.
+the client runs OAuth and the consent step at letsfg.co/connect is one tap, no card.
 Windsurf uses `"serverUrl"` instead of `"url"`.
 
 ```json
 {
   "mcpServers": {
-    "letsfg": { "url": "https://letsfg.co/developers/api/mcp" }
+    "letsfg": { "url": "https://letsfg.co/mcp" }
   }
 }
 ```
@@ -72,7 +75,7 @@ Developer API accounts use the same URL with a key instead of OAuth:
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp",
+      "url": "https://letsfg.co/mcp",
       "headers": { "X-API-Key": "trav_your_api_key" }
     }
   }
@@ -105,7 +108,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp",
+      "url": "https://letsfg.co/mcp",
       "headers": {
         "X-API-Key": "trav_your_api_key"
       }

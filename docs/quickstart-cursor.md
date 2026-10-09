@@ -9,7 +9,7 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -25,7 +25,7 @@ Create `.cursor/mcp.json` in your project root (or the global config):
 {
   "mcpServers": {
     "letsfg": {
-      "url": "https://letsfg.co/developers/api/mcp"
+      "url": "https://letsfg.co/mcp"
     }
   }
 }
@@ -45,13 +45,13 @@ Press `Ctrl+Shift+P` → `Developer: Reload Window`. LetsFG tools appear in the 
 
 > Find me flights from Berlin to Lisbon on April 10
 
-Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
+Search is free: 10 per 10 minutes, 30 per hour, 100 per day per account (per card once one is added).
 
 ---
 
 ## Option B: Local MCP server (`npx letsfg-mcp`)
 
-Use this only if you cannot use a remote server. It needs a card-backed token in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same card screen and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
+Use this only if you cannot use a remote server. It needs the token from the connect flow in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same letsfg.co/connect page and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
 
 ```json
 {

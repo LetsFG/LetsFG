@@ -15,7 +15,7 @@ wrong, and agents were creating accounts nobody needed.
 
 If you are an agent searching or booking flights — even hundreds of them — you
 want **Programmatic Flight Search (PFS)**: connect LetsFG as an MCP server at
-`https://letsfg.co/developers/api/mcp`, approve it (the consent at <https://letsfg.co/connect> is one tap and needs
+`https://letsfg.co/mcp`, approve it (the consent at <https://letsfg.co/connect> is one tap and needs
 no card), then search and book. No
 billing account, nothing charged beyond the ticket price itself. Full guide:
 <https://letsfg.co/for-agents>.
@@ -28,7 +28,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 
 ### How it works:
 
-**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Connect once (a card saved at letsfg.co/connect — nothing is charged), then search and book: the fare is held on that card, a LetsFG booking agent buys the ticket, and you get a real airline PNR.
+**Server-side search engine** — Ryanair, EasyJet, Wizz Air, Southwest, AirAsia, Norwegian, Qantas, LATAM, Spirit, Frontier, IndiGo, VietJet, and hundreds more. The connectors run server-side at letsfg.co. Connect once (one tap at letsfg.co/connect, no card), then search and book: the card is asked for at the first booking, the fare is held on that card, a LetsFG booking agent buys the ticket, and you get a real airline PNR.
 
 ### What makes this different from flight websites:
 
@@ -47,7 +47,7 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Business / commercial / high-volume | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 searches free after every booking, then $0.01. Booking through `POST /flights/book`, no booking fee, no transaction fee |
 
 **Quick decision:**
-- You are an agent that wants to search and book → **use the MCP / SDK / CLI** with a PFS card-backed token (connect through the hosted MCP, described below). This is almost certainly you.
+- You are an agent that wants to search and book → **use the MCP / SDK / CLI** with a PFS token (connect through the hosted MCP, described below). This is almost certainly you.
 - You need guaranteed speed for a product or account-level billing controls → **use the Developer API** at [letsfg.co/developers](https://letsfg.co/developers). Hotels work on either credential.
 
 > **Important:** `GET /en?q=...` does not work for automated agents. The website is protected by Cloudflare Turnstile. All agent/script access must use `POST /api/search` with a Bearer token.
@@ -90,8 +90,8 @@ Minimum top-up: $5. Register at [letsfg.co/developers](https://letsfg.co/develop
 
 | Step | Cost | What You Get |
 |------|------|--------------|
-| **Auth** | FREE | Card saved at <https://letsfg.co/connect> in a 0.00 Revolut setup. No charge, no authorization hold. |
-| **Search** | FREE | Price, times, duration, stops, airline. 10 searches / 10 min, 30 / hour, 100 / day per card. |
+| **Auth** | FREE | One tap at <https://letsfg.co/connect>, no card. The card is saved at the first booking, in a 0.00 Revolut setup. No charge, no authorization hold. |
+| **Search** | FREE | Price, times, duration, stops, airline. 10 searches / 10 min, 30 / hour, 100 / day per account, and per card once one is added. |
 | **Book** | Price shown on the offer | `POST /api/agent-book` — the fare is HELD on the connected card, a LetsFG booking agent buys the ticket, the hold is captured only once a real airline PNR exists. Failed booking = hold released, nothing charged. No separate LetsFG fee. |
 
 The price on the offer is everything you pay; nothing separate is charged on this path.
@@ -116,7 +116,7 @@ Search every airline in the world via the server-side engine. Searches airlines 
 
 **CLI (PFS — free):**
 ```bash
-export LETSFG_BEARER_TOKEN=eyJ...      # the card-backed token from the connect flow (see PFS auth below)
+export LETSFG_BEARER_TOKEN=eyJ...      # the token from the connect flow (see PFS auth below)
 letsfg search GDN BCN 2026-06-15       # prints a search_id, needed for book
 ```
 
@@ -171,7 +171,7 @@ letsfg book ws_off_xxx --search-id ws_abc \
 from letsfg.local import book_offer
 import asyncio, os, time, requests
 
-token = os.environ["LETSFG_BEARER_TOKEN"]   # card-backed token from the connect flow
+token = os.environ["LETSFG_BEARER_TOKEN"]   # token from the connect flow
 started = asyncio.run(book_offer(
     search_id="ws_abc",
     offer_id="ws_off_xxx",
@@ -247,14 +247,14 @@ booked = bt.book(flights.cheapest.id, passengers=[...], contact_email="you@examp
 pip install -U letsfg   # 2026.5.101 or later books hotels
 ```
 
-This gives you the `letsfg` CLI command. It reads the card-backed PFS token from
+This gives you the `letsfg` CLI command. It reads the PFS token from
 `LETSFG_BEARER_TOKEN` (or `~/.letsfg/config.json`). Get the token by connecting
-through the hosted MCP — see [PFS auth](#pfs-auth--connect-a-card-at-letsfgcoconnect-cli--sdk--direct-api)
+through the hosted MCP — see [PFS auth](#pfs-auth--connect-at-letsfgcoconnect-cli--sdk--direct-api)
 below. `letsfg auth` runs that same connect flow from the terminal and stores
 the token for you.
 
 ```bash
-export LETSFG_BEARER_TOKEN=eyJ...   # card-backed token from the connect flow
+export LETSFG_BEARER_TOKEN=eyJ...   # token from the connect flow
 
 # Search flights — completely free after auth, prints a search_id
 letsfg search LHR BCN 2026-06-15
@@ -317,7 +317,7 @@ npm install -g letsfg@latest   # 2026.5.74 or later books hotels
 ```typescript
 import { LetsFG } from 'letsfg';
 
-// PFS (free) — the card-backed Bearer token from the connect flow
+// PFS (free) — the Bearer token from the connect flow
 const bt = new LetsFG({ bearerToken: 'eyJ...' });
 const flights = await bt.search('LHR', 'JFK', '2026-04-15');
 console.log(`${flights.total_results} offers, search_id: ${flights.search_id}`);
@@ -331,25 +331,30 @@ const result = await bt.book(
 
 **Option A: Remote (Streamable HTTP) — no install, always latest, this is the way in**
 
-`https://letsfg.co/developers/api/mcp`. The client runs OAuth; the consent step
+`https://letsfg.co/mcp`. The client runs OAuth; the consent step
 opens <https://letsfg.co/connect>: one tap, no card. The token the client
 receives can search at once, and the card is asked for at the first booking.
 
 ```bash
 # Claude Code
-claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp
+claude mcp add --transport http letsfg https://letsfg.co/mcp
 ```
 
 ```json
 // Cursor (mcp.json); Windsurf uses "serverUrl" instead of "url"
 {
   "mcpServers": {
-    "letsfg": { "url": "https://letsfg.co/developers/api/mcp" }
+    "letsfg": { "url": "https://letsfg.co/mcp" }
   }
 }
 ```
 
-claude.ai and ChatGPT: add a custom connector with that URL and approve it.
+Claude (claude.ai, desktop and mobile): Settings > Connectors > Add custom connector, URL
+`https://letsfg.co/mcp`, and approve it.
+
+ChatGPT: add it at chatgpt.com in a browser (the ChatGPT phone app has no way to add one):
+Plugins > Add > Add custom MCP server, URL `https://letsfg.co/mcp`, authentication OAuth, tick
+I understand, Create as a plugin, then approve it. Once added, it works in the ChatGPT phone app too.
 
 Developer API accounts can use the same endpoint with a header instead of OAuth:
 `"headers": {"X-API-Key": "letsfg_your_api_key"}`.
@@ -366,7 +371,7 @@ npx letsfg-mcp
       "command": "npx",
       "args": ["-y", "letsfg-mcp"],
       "env": {
-        "LETSFG_BEARER_TOKEN": "eyJ... (card-backed token from the connect flow)"
+        "LETSFG_BEARER_TOKEN": "eyJ... (token from the connect flow)"
       }
     }
   }
@@ -383,7 +388,7 @@ local server can set `LETSFG_API_KEY` instead of `LETSFG_BEARER_TOKEN` —
 
 | Command | Description | Cost |
 |---------|-------------|------|
-| `letsfg auth` | Connect a card at letsfg.co/connect and store the token — self-registers, PKCE + loopback redirect. `--no-browser` prints the URL | Free |
+| `letsfg auth` | Connect at letsfg.co/connect (one tap, no card) and store the token — self-registers, PKCE + loopback redirect. `--no-browser` prints the URL | Free |
 | `letsfg search <origin> <dest> <date>` | Search flights, prints `search_id` | Free |
 | `letsfg locations <query>` | Resolve city/airport to IATA | Free |
 | `letsfg book <offer_id> --search-id <id>` | Start a booking: holds the fare on the connected card, prints a `booking_ref` to poll | Price shown on the offer |
@@ -396,7 +401,7 @@ local server can set `LETSFG_API_KEY` instead of `LETSFG_BEARER_TOKEN` —
 ## Developer API Authentication (paid, only if you need it)
 
 Everything in this section is for the separate, prepaid Developer API. If you
-just want to search and book, skip to [PFS auth](#pfs-auth--connect-a-card-at-letsfgcoconnect-cli--sdk--direct-api) below — you don't need any of this.
+just want to search and book, skip to [PFS auth](#pfs-auth--connect-at-letsfgcoconnect-cli--sdk--direct-api) below — you don't need any of this.
 
 Every authenticated Developer API request requires the `X-API-Key` header.
 
@@ -432,7 +437,7 @@ creds = LetsFG.register("my-agent", "agent@example.com")  # register inline
 ```
 
 ```bash
-# Connect a card once at letsfg.co/connect — nothing is charged to connect
+# Connect once at letsfg.co/connect — one tap, no card; nothing is charged to connect
 ```
 
 ## Resolve Locations Before Searching
@@ -732,7 +737,7 @@ if candidates:
 | Search | FREE | 10 per 10 min, 30/hour, 100/day per account (Bearer / MCP) |
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
-| Auth | FREE | Card saved at letsfg.co/connect (0.00 Revolut setup): no charge, no hold. The MPP lane, when offered, costs $0.01 once as verification. |
+| Auth | FREE | One tap at letsfg.co/connect, no card (the card is saved at the first booking, 0.00 Revolut setup): no charge, no hold. The MPP lane, when offered, costs $0.01 once as verification. |
 | Book | Price shown on the offer | `POST /api/agent-book` holds the fare, a LetsFG agent buys the ticket, captured only on a real PNR. Poll `/api/agent-book/status`. No separate LetsFG fee. |
 | Unlock | — | **RETIRED 2026-09-08** — answers `410 Gone`. There is no unlock step on any lane. |
 
@@ -1001,11 +1006,11 @@ elif result:
     print("Ask the traveller for:", result.get("missing_fields"))
 ```
 
-## PFS Auth — connect a card at letsfg.co/connect (CLI / SDK / Direct API)
+## PFS Auth — connect at letsfg.co/connect (CLI / SDK / Direct API)
 
 The CLI, Python SDK, JS SDK and MCP server all use the same PFS (Programmatic
-Flight Search) Bearer token. It is card-backed: the card is what lets your agent
-go all the way to booking, and it keeps automated abuse off the search engine.
+Flight Search) Bearer token. It searches as soon as you connect; once the card
+is added at the first booking, the same token books.
 
 **Nothing is charged to connect, and connecting needs no card.** The card is
 asked for at the first booking, through a 0.00 Revolut setup — any card, or Revolut Pay / Google Pay; no Revolut
@@ -1015,9 +1020,10 @@ until the airline confirms.
 
 **The one way in:**
 
-1. Add LetsFG as a remote MCP server: `https://letsfg.co/developers/api/mcp`
-   (Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`;
-   claude.ai / ChatGPT: a custom connector with that URL; Cursor / Windsurf: see
+1. Add LetsFG as a remote MCP server: `https://letsfg.co/mcp`
+   (Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/mcp`;
+   Claude: Settings > Connectors > Add custom connector; ChatGPT: at chatgpt.com in a
+   browser, Plugins > Add > Add custom MCP server; Cursor / Windsurf: see
    the MCP section above).
 2. Approve the connection. The OAuth consent step opens <https://letsfg.co/connect>:
    one tap, no card.
@@ -1082,9 +1088,9 @@ again. Only `completed` with a PNR means booked.
 `payment_method_id`, `card_token`) and the earlier Twitter/X challenge. Every
 token they issued has been revoked — such a token now answers `401 TOKEN_REVOKED`,
 and `POST /api/agent-access/verify` answers `410` for a Stripe credential. Connect
-the card again at <https://letsfg.co/connect>. `letsfg auth` (npm and PyPI)
+again at <https://letsfg.co/connect>. `letsfg auth` (npm and PyPI)
 now drives that connect flow from the terminal — it registers itself as an
-OAuth client, opens the card screen, and stores the token; the stdio server's
+OAuth client, opens letsfg.co/connect, and stores the token; the stdio server's
 `authenticate` tool returns the current instructions (`add_card_url`, `how`)
 rather than minting one. The CLI and SDKs otherwise read the token from
 `LETSFG_BEARER_TOKEN` (or `~/.letsfg/config.json`).
@@ -1093,7 +1099,7 @@ rather than minting one. The CLI and SDKs otherwise read the token from
 Connecting a card that is already in use does not create a second account: it
 lands on the existing one. Two agents can never hold live tokens on the same card,
 so a shared or recycled card gains you nothing. Quotas and rate limits are
-bucketed per card, not per token. If a token leaks, disconnect and reconnect to
+bucketed per account (per card once one is added), not per token. If a token leaks, disconnect and reconnect to
 rotate it.
 
 MPP (wallet, card-free) is offered only when the `402` above carries an `mpp`

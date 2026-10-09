@@ -9,7 +9,7 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -32,7 +32,7 @@ bt = LetsFG(api_key="letsfg_...")
 result = bt.search("LHR", "JFK", "2026-06-01")
 ```
 
-**When to use PFS (card-backed token):** This is the agent path — search and booking. Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp`; approving it opens <https://letsfg.co/connect>: one tap, no card. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged until a booking is made. 8–10 s to first results per search. The SDK and CLI read the same token from `LETSFG_BEARER_TOKEN`.
+**When to use PFS (the token from the connect flow):** This is the agent path — search and booking. Connect LetsFG as an MCP server at `https://letsfg.co/mcp`; approving it opens <https://letsfg.co/connect>: one tap, no card. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). Nothing is charged until a booking is made. 8–10 s to first results per search. The SDK and CLI read the same token from `LETSFG_BEARER_TOKEN`.
 
 **When to use Developer API:** Managed cloud search, billing controls, volume usage, and booking through `POST /flights/book`. Register at [letsfg.co/developers](https://letsfg.co/developers), then connect a Revolut method — nothing is charged to connect. Flight search is look-to-book: 200 searches free after every booking, then blocks of 500 for $5.00. No booking fee and no transaction fee on top of the price you saw.
 
@@ -139,14 +139,14 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 | Endpoint | Rate Limit | Timeout |
 |----------|-----------|--------|
-| Search (MCP / Bearer token) | **10 per 10 min**, 30 per hour, 100 per day — per card on file | 180s (airline APIs can be slow) |
+| Search (MCP / Bearer token) | **10 per 10 min**, 30 per hour, 100 per day — per account, and per card once one is added | 180s (airline APIs can be slow) |
 | Search (API) | 60 req/min per agent | 30s |
 | Resolve location | 120 req/min per agent | 5s |
 | Book | 10 req/min per agent | 30s |
 
-> **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are limited per card on file to **10 per 10 minutes, 30 per hour and 100 per day** (raised from 3 / 10 / 25 on 2026-09-02, see [#208](https://github.com/LetsFG/LetsFG/issues/208)). Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.
+> **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are limited per account (and per card once one is added) to **10 per 10 minutes, 30 per hour and 100 per day** (raised from 3 / 10 / 25 on 2026-09-02, see [#208](https://github.com/LetsFG/LetsFG/issues/208)). Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.
 
-### Programmatic access requires a card-backed token
+### Programmatic access requires the token from the connect flow
 
 The letsfg.co website is for human users and is protected by Cloudflare Turnstile — plain HTTP requests or headless scripts cannot search it. Any agent or script that calls LetsFG directly must hold a **Bearer token** from the connect flow.
 
@@ -154,7 +154,7 @@ The letsfg.co website is for human users and is protected by Cloudflare Turnstil
 
 **The one way in — connect at letsfg.co/connect:**
 
-1. Add LetsFG as an MCP server: `https://letsfg.co/developers/api/mcp` (Claude, ChatGPT, Cursor, Windsurf, Claude Code — anything that speaks remote MCP with OAuth).
+1. Add LetsFG as an MCP server: `https://letsfg.co/mcp` (Claude, ChatGPT, Cursor, Windsurf, Claude Code — anything that speaks remote MCP with OAuth). In Claude: Settings → Connectors → Add custom connector. In ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to add one), Plugins → Add → Add custom MCP server, authentication OAuth; once added it works in the phone app too.
 2. Approve the connection. The consent step opens <https://letsfg.co/connect>: one tap, no card.
 3. Over the MCP the OAuth token is carried for you. Over raw HTTP send the same token on every request as `Authorization: Bearer <token>`.
 
@@ -162,7 +162,7 @@ The letsfg.co website is for human users and is protected by Cloudflare Turnstil
 
 > **Retired 2026-09-02:** the Stripe enrolment lanes (`setup_url`, `setup_intent_id`, `payment_method_id`, `card_token`) and every token they issued. Such a token now answers `401 TOKEN_REVOKED`; `POST /api/agent-access/verify` answers `410` for a Stripe credential. Connect the card again at <https://letsfg.co/connect>. The CLI's `letsfg auth` and the SDKs' `payment_auth()` implemented that lane. `letsfg auth` now drives the connect flow itself: it registers as an OAuth client (dynamic registration), opens <https://letsfg.co/connect> for the card, and stores the access and refresh tokens in `~/.letsfg/config.json`. The SDKs also read `LETSFG_BEARER_TOKEN`.
 
-**One card = one account.** A payment method identifies exactly one account; connecting a card that is already in use lands on the existing account. Quotas and rate limits are bucketed per card, not per token.
+**One card = one account.** A payment method identifies exactly one account; connecting a card that is already in use lands on the existing account. Quotas and rate limits are bucketed per account (per card once one is added), not per token.
 
 Once authenticated, use `POST /api/search` (natural language or structured) instead of `GET /en?q=...`.
 

@@ -6,9 +6,8 @@ uses for flights.
 
 !!! note "One credential covers flights and hotels"
     The same token you use for programmatic flight search reaches every hotel
-    endpoint too — a Developer API key also works. Hotels do require a payment
-    method on file for search as well as booking, which the connect step at
-    <https://letsfg.co/connect> already saves.
+    endpoint too — a Developer API key also works. Searching needs no card;
+    booking asks for one, the same way a first flight booking does.
 
 !!! warning "Update your SDK before booking hotels"
     Hotel booking needs **letsfg 2026.5.101** or later (Python), **letsfg 2026.5.74** or later
@@ -16,7 +15,7 @@ uses for flights.
     reservation-fee fields retired on 2026-09-11 (`expected_balance`, no `expected_cost`), and the API
     refuses every hotel booking they make. Update with `pip install -U letsfg`,
     `npm install letsfg@latest` or `npx -y letsfg-mcp@latest`. The hosted MCP at
-    <https://letsfg.co/developers/api/mcp> needs no update.
+    <https://letsfg.co/mcp> needs no update.
 
 ## How you pay
 
@@ -33,10 +32,9 @@ a typical ~3% OTA booking fee.
 
 ## Two things that surprise people
 
-**A payment method on file is required for search, not just booking.** A hotel
-search opens a real session at the supplier and booking blocks a real rate, so we
-refuse up front rather than let you reach the point of commitment and discover
-you cannot pay. Every hotel endpoint returns `402` without a payment method.
+**Searching needs no card; booking does.** A hotel search opens a real session at
+the supplier, so an account with no payment method on file gets a daily number of
+hotel searches. Booking returns `402` without a payment method.
 
 **Non-refundable rates are sold, and they mean it.** Every offer carries
 `refundable` and, when it is refundable, `free_cancellation_until`. A

@@ -9,7 +9,7 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -419,7 +419,7 @@ Agent flow:
 2. resolve_location("Barcelona")  → BCN
 3. search_flights("LHR", "BCN", "2026-06-01", sort="price", limit=5)
 4. Present results to user
-5. If user wants to book (card-backed token):
+5. If user wants to book (token from the connect flow):
    book_flight(search_id, offer_id, passengers, contact_email)  → booking_ref in seconds
    get_flight_booking(booking_ref) every 20-30 s            → completed + PNR (4-11 min)
    (Developer API key: the same book_flight call — there is no unlock step)
@@ -429,7 +429,7 @@ Agent flow:
 
 - **Always resolve locations first** — don't assume IATA codes from city names
 - **Search with `limit`** — agents don't need 500 results, 5-20 is enough for a conversation
-- **No unlock on the card-backed lane** — `book_flight` holds the fare on the card and captures it only against a real PNR, so a moved price is a `failed` booking with nothing charged, never a surprise. The Developer API works the same way, and a fare that moves at checkout comes back as a `price_change` question
+- **No unlock on the PFS lane** — `book_flight` holds the fare on the card and captures it only against a real PNR, so a moved price is a `failed` booking with nothing charged, never a surprise. The Developer API works the same way, and a fare that moves at checkout comes back as a `price_change` question
 - **Handle partial failures gracefully** — some sources may timeout; the search still returns results from working sources
 
 ---

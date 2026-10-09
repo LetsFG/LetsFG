@@ -12,7 +12,7 @@ hide:
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -20,7 +20,7 @@ hide:
   <div class="docs-hero-inner">
     <p class="docs-kicker">Official LetsFG documentation</p>
     <h1>Search every airline in the world plus the major booking sites, server-side at letsfg.co — and book. Free to connect, no card needed. Move to the Developer API for direct booking, hotels and volume access.</h1>
-    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/developers/api/mcp</code> once — approving it at <code>letsfg.co/connect</code> takes one tap and needs no card — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. If you want account-managed access, hotels, or billing controls, register on the developer surface at letsfg.co, connect a Revolut method, and search and book with your developer key. Flight search there is look-to-book: 200 searches free after every booking.</p>
+    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/mcp</code> once — approving it at <code>letsfg.co/connect</code> takes one tap and needs no card — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. If you want account-managed access, hotels, or billing controls, register on the developer surface at letsfg.co, connect a Revolut method, and search and book with your developer key. Flight search there is look-to-book: 200 searches free after every booking.</p>
     <div class="docs-command"><span class="docs-command-prompt">$</span> pip install letsfg</div>
     <div class="docs-action-row">
       <a href="getting-started/" class="docs-button docs-button--primary">Get started</a>
@@ -31,7 +31,7 @@ hide:
     <div class="docs-chip-row">
       <span class="docs-chip">Server-side search engine at letsfg.co</span>
       <span class="docs-chip">Canonical API at letsfg.co/developers/api</span>
-      <span class="docs-chip">Free card-backed token, or look-to-book on the Developer API</span>
+      <span class="docs-chip">Free token from the connect flow, or look-to-book on the Developer API</span>
       <span class="docs-chip">CLI, SDK, and MCP</span>
     </div>
   </div>
@@ -47,7 +47,7 @@ LetsFG has two access paths — pick the one that matches your setup:
 | **Developer API** ([letsfg.co/developers](https://letsfg.co/developers)) | Runs on our servers; connect a Revolut method | 2–5 s (discover) · 8–10 s to first results (full search) | Look-to-book: 200 free per booking, then $0.01 | `POST /flights/book` — fare held on the connected method, captured only against a real PNR. No booking fee, no transaction fee |
 
 **When to choose each:**
-- Use **MCP / SDK** if you want free search and booking — add `https://letsfg.co/developers/api/mcp` to your assistant and approve it once ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `book_flight` / `POST /api/agent-book` holds the fare on the connected card and a LetsFG booking agent buys the ticket — no unlock step, no booking fee and no transaction fee on top: the amount quoted is the amount charged.
+- Use **MCP / SDK** if you want free search and booking — add `https://letsfg.co/mcp` to your assistant and approve it once ([letsfg.co/for-agents](https://letsfg.co/for-agents)), then search and book server-side for free. `book_flight` / `POST /api/agent-book` holds the fare on the connected card and a LetsFG booking agent buys the ticket — no unlock step, no booking fee and no transaction fee on top: the amount quoted is the amount charged.
 - Use the **Developer API** if you're building a product or want account-level billing controls. Hotels work on either path. Look-to-book search (200 free after every booking, then $0.01), results in seconds, and `POST /flights/book` with no booking fee and no transaction fee.
 
 ---
@@ -58,13 +58,13 @@ LetsFG has two access paths — pick the one that matches your setup:
   <article class="docs-mode-card">
     <p class="docs-card-kicker">MCP / SDK mode</p>
     <h2>Search and book free after a one-time connect</h2>
-    <p>Add the MCP server at <code>letsfg.co/developers/api/mcp</code> and approve it. The consent step opens <code>letsfg.co/connect</code>: one tap, no card. The card is added at the first booking (a 0.00 setup, nothing charged). All search runs server-side at letsfg.co — no local browsers required.</p>
+    <p>Add the MCP server at <code>letsfg.co/mcp</code> and approve it. The consent step opens <code>letsfg.co/connect</code>: one tap, no card. The card is added at the first booking (a 0.00 setup, nothing charged). All search runs server-side at letsfg.co — no local browsers required.</p>
     <ul class="docs-check-list">
       <li><code>search_flights</code>, <code>book_flight</code> and <code>get_flight_booking</code> over the MCP; <code>bt.search()</code> / <code>bt.book()</code> with the same token in <code>LETSFG_BEARER_TOKEN</code></li>
-      <li>Search is free: 10 per 10 min, 30 per hour, 100 per day per card</li>
+      <li>Search is free: 10 per 10 min, 30 per hour, 100 per day per account (per card once one is added)</li>
       <li>Best for prototyping, agents, and general flight search</li>
     </ul>
-    <a href="getting-started/#option-a-free-search-and-booking-with-a-card-backed-token" class="docs-text-link">Go to setup</a>
+    <a href="getting-started/#option-a-free-search-and-booking-with-the-token-from-the-connect-flow" class="docs-text-link">Go to setup</a>
   </article>
 
   <article class="docs-mode-card">
@@ -106,7 +106,7 @@ The canonical public surfaces are:
 
 ## Hotels
 
-Hotels are live: real bookable inventory, every rate type (refundable and non-refundable), booked exactly like a flight — the price is held on the connected Revolut method and captured only once the hotel confirms. They need a card on file for every call, search included — and either credential reaches them: the card-backed token from the connect step or a Developer API key. Start at [Hotels](hotels.md).
+Hotels are live: real bookable inventory, every rate type (refundable and non-refundable), booked exactly like a flight — the price is held on the connected Revolut method and captured only once the hotel confirms. Searching needs no card; booking asks for one — and either credential reaches them: the token from the connect step or a Developer API key. Start at [Hotels](hotels.md).
 
 ## Start from the right page
 

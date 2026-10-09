@@ -9,7 +9,7 @@
 > create a billing account you almost certainly do not want.
 >
 > To search and book flights, connect LetsFG as an MCP server at
-> <https://letsfg.co/developers/api/mcp>. Approving it opens
+> <https://letsfg.co/mcp>. Approving it opens
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
@@ -23,7 +23,7 @@ Connect the remote MCP server once and Cascade can search and book flights, and 
 {
   "mcpServers": {
     "letsfg": {
-      "serverUrl": "https://letsfg.co/developers/api/mcp"
+      "serverUrl": "https://letsfg.co/mcp"
     }
   }
 }
@@ -41,13 +41,13 @@ The card is asked for at your first booking: `book_flight` returns a link where 
 
 > Find flights from Paris to Barcelona for Easter.
 
-Search is free: 10 per 10 minutes, 30 per hour, 100 per day per card.
+Search is free: 10 per 10 minutes, 30 per hour, 100 per day per account (per card once one is added).
 
 ---
 
 ## Option B: Local MCP server (`npx letsfg-mcp`)
 
-Use this only if you cannot use a remote server. It needs a card-backed token in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same card screen and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
+Use this only if you cannot use a remote server. It needs the token from the connect flow in its environment — either the one issued through the connect flow above, or one minted in the terminal with **`letsfg auth`**, which opens the same letsfg.co/connect page and writes `~/.letsfg/config.json`. (The old Stripe setup behind `letsfg auth` was retired on 2026-09-02 and its tokens revoked.)
 
 ```json
 {
@@ -84,7 +84,7 @@ Cascade can chain LetsFG tools in multi-step flows:
 Cascade will:
 1. `search_flights("LON", "IST", "2026-04-10", return: "2026-04-15")`, then `get_flight_results` for the late-landing split tickets
 2. `resolve_hotel_city("Istanbul")` then `search_hotels(city_id, city_name, "2026-04-10", "2026-04-15")`
-   — hotels need a card on file; the connect step already saved one
+   — searching hotels needs no card; booking asks for one
 3. Present both results together
 4. Ask for the traveller's real details, then `book_flight` — the price shown is held on your card, a LetsFG booking agent buys the ticket, and the hold is captured only against a real airline PNR. If it fails, the hold is released and nothing is charged
 5. `get_flight_booking` every 20–30 s until `completed` with the PNR (a booking takes 4–11 minutes)

@@ -9,10 +9,10 @@
 
 | | **CLI / SDK** (this package) | **Developer API** |
 |---|---|---|
-| **Search cost** | Free (card-backed token from [letsfg.co/connect](https://letsfg.co/connect), nothing charged) | Prepaid credits |
+| **Search cost** | Free (token from [letsfg.co/connect](https://letsfg.co/connect), one tap, no card) | Prepaid credits |
 | **Booking** | `POST /api/agent-book` — fare held on your card, a LetsFG agent buys the ticket, captured only on a real PNR. Every offer. | Direct airline URL (unlock required first) |
 | **Speed** | 8–10 s to first results; longer on a split | 2–5 s (discover) · 8–10 s to first results (full) |
-| **Setup** | `npm install letsfg`, then connect at [letsfg.co/developers/api/mcp](https://letsfg.co/developers/api/mcp) | [letsfg.co/developers](https://letsfg.co/developers) |
+| **Setup** | `npm install letsfg`, then connect at [letsfg.co/mcp](https://letsfg.co/mcp) | [letsfg.co/developers](https://letsfg.co/developers) |
 
 > **Building a product, or need hotels?** Use the [Developer API](https://letsfg.co/developers) — look-to-book search (200 free after every booking, then $0.01), booking through `POST /flights/book`, no booking fee and no transaction fee.
 
@@ -24,15 +24,16 @@ npm install letsfg
 
 ## Getting a token
 
-Connect LetsFG as an MCP server at `https://letsfg.co/developers/api/mcp` and
+Connect LetsFG as an MCP server at `https://letsfg.co/mcp` and
 approve the connection — in Claude, ChatGPT, Cursor, Windsurf, or Claude Code
-(`claude mcp add --transport http letsfg https://letsfg.co/developers/api/mcp`).
-The consent step opens [letsfg.co/connect](https://letsfg.co/connect), where you
-add a card (any card, or Revolut Pay / Google Pay) in a 0.00 Revolut setup.
-Nothing is charged, no Revolut account is needed, and the card details go to
-Revolut, never to LetsFG. The token you get back is card-backed: it searches
-and it books. One card = one account; quotas are per card (10 searches per
-10 min, 30 per hour, 100 per day — polling never counts).
+(`claude mcp add --transport http letsfg https://letsfg.co/mcp`).
+The consent step opens [letsfg.co/connect](https://letsfg.co/connect): one tap,
+no card. The card is asked for at the first booking (any card, or Revolut Pay /
+Google Pay), in a 0.00 Revolut setup. Nothing is charged, no Revolut account is
+needed, and the card details go to Revolut, never to LetsFG. The token you get
+back searches at once and books once the card is added. Quotas are per account,
+and per card once one is added (10 searches per 10 min, 30 per hour, 100 per
+day — polling never counts).
 
 Pass it as `bearerToken`, or set `LETSFG_BEARER_TOKEN` for the CLI.
 
@@ -46,7 +47,7 @@ Pass it as `bearerToken`, or set `LETSFG_BEARER_TOKEN` for the CLI.
 ```typescript
 import { LetsFG, cheapestOffer, offerSummary } from 'letsfg';
 
-// PFS — free. The card-backed token from the connect flow (see above).
+// PFS — free. The token from the connect flow (see above).
 const bt = new LetsFG({ bearerToken: 'eyJ...' });
 
 // Search — FREE
@@ -118,7 +119,7 @@ is bookable only inside the search that produced it) and has no unlock step:
 ## Quick Start (CLI)
 
 ```bash
-export LETSFG_BEARER_TOKEN=<your-bearer-token>  # card-backed, from the connect flow
+export LETSFG_BEARER_TOKEN=<your-bearer-token>  # from the connect flow
 
 letsfg search GDN BER 2026-03-03 --sort price
 letsfg search LON BCN 2026-04-01 --json  # Machine-readable
@@ -180,13 +181,13 @@ MIT
 
 ## 🏨 Hotels — new, and live
 
-Your agent can book hotels as well as flights. Same card-backed token or API key, same connected payment method.
+Your agent can book hotels as well as flights. Same token or API key, same connected payment method.
 
 > **Update your SDK before booking hotels.** Hotel booking needs **letsfg 2026.5.101** or later (Python),
 > **letsfg 2026.5.74** or later (JavaScript/TypeScript) or **letsfg-mcp 2026.5.77** or later. Earlier releases send
 > the reservation-fee fields retired on 2026-09-11 (`expected_balance`, no `expected_cost`), and the API refuses
 > every hotel booking they make. Update with `pip install -U letsfg`, `npm install letsfg@latest` or
-> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/developers/api/mcp` needs no update.
+> `npx -y letsfg-mcp@latest`. The hosted MCP at `https://letsfg.co/mcp` needs no update.
 
 ```python
 from letsfg import LetsFG
