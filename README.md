@@ -213,7 +213,7 @@ claude mcp add --transport http letsfg https://letsfg.co/mcp
 { "mcpServers": { "letsfg": { "url": "https://letsfg.co/mcp" } } }
 ```
 
-Claude (claude.ai, desktop and mobile): Settings > Connectors > Add custom connector, URL `https://letsfg.co/mcp`.
+Claude: at claude.ai or in Claude Desktop, Settings > Connectors > Add custom connector, URL `https://letsfg.co/mcp`. Once added, it works in the Claude phone app too.
 
 ChatGPT: add it at chatgpt.com in a browser (the ChatGPT phone app has no way to add one): Plugins > Add > Add custom MCP server, URL `https://letsfg.co/mcp`, authentication OAuth, tick I understand, Create as a plugin. Once added, it works in the ChatGPT phone app too.
 

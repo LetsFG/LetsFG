@@ -30,8 +30,8 @@ captured only once a real airline PNR exists.
 claude mcp add --transport http letsfg https://letsfg.co/mcp
 ```
 
-Claude (claude.ai, desktop and mobile): Settings > Connectors > Add custom connector, with that
-URL, and approve it. ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to
+Claude: at claude.ai or in Claude Desktop, Settings > Connectors > Add custom connector, with that
+URL, and approve it (once added, it works in the Claude phone app too). ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to
 add one), Plugins > Add > Add custom MCP server, that URL, authentication OAuth, tick I
 understand, Create as a plugin; once added it works in the phone app too.
 Cursor / Windsurf: see the remote config below, with no headers.

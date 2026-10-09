@@ -67,10 +67,11 @@ token, since a person has to approve in a browser either way.
 The hosted server is the simplest option everywhere: it does the connect
 flow for you and needs no token in a config file.
 
-### Claude (claude.ai / Claude Desktop / Claude mobile)
+### Claude (claude.ai / Claude Desktop)
 
 Settings > Connectors > Add custom connector, URL `https://letsfg.co/mcp`,
-and approve it. The consent step takes you through letsfg.co/connect.
+and approve it. The consent step takes you through letsfg.co/connect. Once added,
+it works in the Claude phone app too.
 
 ### ChatGPT
 

@@ -361,7 +361,7 @@ it with `bt.get_booking(booking_id)`, or call `bt.book_and_wait(...)` to block u
 ```
 
 Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/mcp`.
-Claude (claude.ai, desktop and mobile): Settings > Connectors > Add custom connector, with that URL.
+Claude: at claude.ai or in Claude Desktop, Settings > Connectors > Add custom connector, with that URL (once added, it works in the Claude phone app too).
 ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to add one), Plugins > Add >
 Add custom MCP server, that URL, authentication OAuth; once added it works in the phone app too. Windsurf uses
 `"serverUrl"` instead of `"url"`. The client runs OAuth; the consent step opens
