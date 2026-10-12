@@ -383,6 +383,10 @@ console.log(`Cheapest: $${flights.cheapest?.price} on ${flights.cheapest?.airlin
 
 ### Claude Desktop / Cursor / Windsurf Setup
 
+**Claude (claude.ai / Claude Desktop):** no config needed. LetsFG is in Claude's connector directory:
+add it at [claude.ai/directory/letsfg](https://claude.ai/directory/letsfg). The config below runs the local stdio server with a
+Developer API key, for Cursor, Windsurf and other clients.
+
 ```json
 {
   "mcpServers": {

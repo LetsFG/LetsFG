@@ -154,7 +154,7 @@ The letsfg.co website is for human users and is protected by Cloudflare Turnstil
 
 **The one way in — connect at letsfg.co/connect:**
 
-1. Add LetsFG as an MCP server: `https://letsfg.co/mcp` (Claude, ChatGPT, Cursor, Windsurf, Claude Code — anything that speaks remote MCP with OAuth). In Claude: Settings → Connectors → Add custom connector. In ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to add one), Plugins → Add → Add custom MCP server, authentication OAuth; once added it works in the phone app too.
+1. Add LetsFG as an MCP server: `https://letsfg.co/mcp` (Claude, ChatGPT, Cursor, Windsurf, Claude Code — anything that speaks remote MCP with OAuth). In Claude: add it from Claude's connector directory, [claude.ai/directory/letsfg](https://claude.ai/directory/letsfg), no URL to paste. In ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to add one), Plugins → Add → Add custom MCP server, authentication OAuth; once added it works in the phone app too.
 2. Approve the connection. The consent step opens <https://letsfg.co/connect>: one tap, no card.
 3. Over the MCP the OAuth token is carried for you. Over raw HTTP send the same token on every request as `Authorization: Bearer <token>`.
 

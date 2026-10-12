@@ -45,7 +45,7 @@ nav:
   - MCP & IDE Agents:
     - Remote MCP connector: mcp.md
     - Packages & SDKs: packages.md
-    - Claude Desktop: quickstart-claude.md
+    - Claude: quickstart-claude.md
     - Cursor: quickstart-cursor.md
     - Windsurf: quickstart-windsurf.md
     - AI Agent Guide: agent-guide.md

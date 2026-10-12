@@ -133,7 +133,7 @@ If your client supports remote MCP servers, connect directly without installing 
 https://letsfg.co/mcp
 ```
 
-This is the recommended way in. Point your client at the URL and approve the connection: the OAuth consent step opens <https://letsfg.co/connect>: one tap, no card. The token your client receives searches straight away. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). A Developer API key also works (`X-API-Key` header) for the paid product.
+This is the recommended way in. In Claude (claude.ai / Claude Desktop) there is nothing to paste: LetsFG is in [Claude's connector directory](https://claude.ai/directory/letsfg). Elsewhere, point your client at the URL and approve the connection: the OAuth consent step opens <https://letsfg.co/connect>: one tap, no card. The token your client receives searches straight away. The card is asked for at the first booking, in a 0.00 Revolut setup (any card, or Revolut Pay / Google Pay — no Revolut account needed). A Developer API key also works (`X-API-Key` header) for the paid product.
 
 ```bash
 # Claude Code

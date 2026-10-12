@@ -85,8 +85,8 @@ A request without a token gets `401` with `WWW-Authenticate: Bearer resource_met
 
 ## Try it
 
-- **claude.ai / Claude Desktop:** Settings → Connectors → Add custom connector, URL `https://letsfg.co/mcp`.
+- **claude.ai / Claude Desktop:** LetsFG is in Claude's official connector directory. Open [claude.ai/directory/letsfg](https://claude.ai/directory/letsfg) and add it. No URL to paste.
 - **Claude Code:** `claude mcp add --transport http letsfg https://letsfg.co/mcp`
 - **ChatGPT:** add it at chatgpt.com in a browser (the ChatGPT phone app has no way to add one): Plugins → Add → Add custom MCP server, URL `https://letsfg.co/mcp`, authentication OAuth, tick I understand, Create as a plugin. Once added, it works in the ChatGPT phone app too.
 
-See [Claude Desktop](quickstart-claude.md), [Cursor](quickstart-cursor.md) and [Windsurf](quickstart-windsurf.md) for client-specific steps.
+See [Claude](quickstart-claude.md), [Cursor](quickstart-cursor.md) and [Windsurf](quickstart-windsurf.md) for client-specific steps.

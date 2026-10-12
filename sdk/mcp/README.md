@@ -35,7 +35,9 @@ LetsFG is not a scraper wrapper. It's a production-grade **agent-to-airline conn
 https://letsfg.co/mcp
 ```
 
-Add it as a remote MCP server in Claude, ChatGPT, Cursor or Windsurf (or
+In Claude, add it from Claude's connector directory,
+[claude.ai/directory/letsfg](https://claude.ai/directory/letsfg). Elsewhere, add it as a remote MCP server in
+ChatGPT, Cursor or Windsurf (or
 `claude mcp add --transport http letsfg https://letsfg.co/mcp`
 in Claude Code) and approve the connection. The consent step opens
 [letsfg.co/connect](https://letsfg.co/connect): one tap, no card. The card
@@ -69,9 +71,10 @@ flow for you and needs no token in a config file.
 
 ### Claude (claude.ai / Claude Desktop)
 
-Settings > Connectors > Add custom connector, URL `https://letsfg.co/mcp`,
-and approve it. The consent step takes you through letsfg.co/connect. Once added,
-it works in the Claude phone app too.
+LetsFG is in Claude's official connector directory. Open
+[claude.ai/directory/letsfg](https://claude.ai/directory/letsfg), add it and approve it. No URL to paste.
+The consent step takes you through letsfg.co/connect. Once added, it works in the
+Claude phone app too.
 
 ### ChatGPT
 

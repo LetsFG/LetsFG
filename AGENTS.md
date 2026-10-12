@@ -349,8 +349,9 @@ claude mcp add --transport http letsfg https://letsfg.co/mcp
 }
 ```
 
-Claude: at claude.ai or in Claude Desktop, Settings > Connectors > Add custom connector, URL
-`https://letsfg.co/mcp`, and approve it. Once added, it works in the Claude phone app too.
+Claude: LetsFG is in Claude's official connector directory. Open
+<https://claude.ai/directory/letsfg>, add it and approve it. No URL to paste. Once added, it works in
+Claude Desktop and the Claude phone app too.
 
 ChatGPT: add it at chatgpt.com in a browser (the ChatGPT phone app has no way to add one):
 Plugins > Add > Add custom MCP server, URL `https://letsfg.co/mcp`, authentication OAuth, tick
@@ -1022,7 +1023,7 @@ until the airline confirms.
 
 1. Add LetsFG as a remote MCP server: `https://letsfg.co/mcp`
    (Claude Code: `claude mcp add --transport http letsfg https://letsfg.co/mcp`;
-   Claude: Settings > Connectors > Add custom connector; ChatGPT: at chatgpt.com in a
+   Claude: add it from Claude's connector directory, <https://claude.ai/directory/letsfg>; ChatGPT: at chatgpt.com in a
    browser, Plugins > Add > Add custom MCP server; Cursor / Windsurf: see
    the MCP section above).
 2. Approve the connection. The OAuth consent step opens <https://letsfg.co/connect>:

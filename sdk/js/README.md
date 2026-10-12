@@ -25,7 +25,8 @@ npm install letsfg
 ## Getting a token
 
 Connect LetsFG as an MCP server at `https://letsfg.co/mcp` and
-approve the connection — in Claude, ChatGPT, Cursor, Windsurf, or Claude Code
+approve the connection — in Claude (from its connector directory,
+[claude.ai/directory/letsfg](https://claude.ai/directory/letsfg)), ChatGPT, Cursor, Windsurf, or Claude Code
 (`claude mcp add --transport http letsfg https://letsfg.co/mcp`).
 The consent step opens [letsfg.co/connect](https://letsfg.co/connect): one tap,
 no card. The card is asked for at the first booking (any card, or Revolut Pay /

@@ -1,4 +1,4 @@
-# Claude Desktop — 5-Minute Quickstart
+# Claude — 5-Minute Quickstart
 
 > ### ⚠️ Agents: do not create a Developer API account
 >
@@ -13,17 +13,15 @@
 > <https://letsfg.co/connect>: one tap, no card. A card is asked for at the first booking.
 > See <https://letsfg.co/for-agents>.
 
-Connect the remote MCP server once and Claude can search and book flights, and search and book hotels. Nothing to install.
+Add LetsFG once and Claude can search and book flights, and search and book hotels. Nothing to install.
 
-## Option A: Remote MCP with the connect flow — **recommended**
+## Option A: Claude's connector directory — **recommended**
 
 ### 1. Add the connector
 
-**claude.ai / Claude Desktop:** `Settings → Connectors → Add custom connector`, name it `LetsFG`, URL:
-
-```
-https://letsfg.co/mcp
-```
+**claude.ai / Claude Desktop:** LetsFG is in Claude's official connector directory. Open
+**[claude.ai/directory/letsfg](https://claude.ai/directory/letsfg)** and add it. No URL to paste. Once added, it works in
+the Claude phone app too.
 
 **Claude Code:**
 

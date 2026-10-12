@@ -52,6 +52,9 @@ Compares airlines and the major booking sites in one pass, with per-flight relia
 
 ### Option A: MCP Server (Recommended for Claude Desktop / Cursor / VS Code / Windsurf)
 
+**Claude (claude.ai / Claude Desktop):** add LetsFG from Claude's connector directory,
+<https://claude.ai/directory/letsfg> - no config.
+
 **Remote (no install, always latest):**
 
 ```json

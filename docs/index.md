@@ -20,7 +20,7 @@ hide:
   <div class="docs-hero-inner">
     <p class="docs-kicker">Official LetsFG documentation</p>
     <h1>Search every airline in the world plus the major booking sites, server-side at letsfg.co — and book. Free to connect, no card needed. Move to the Developer API for direct booking, hotels and volume access.</h1>
-    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/mcp</code> once — approving it at <code>letsfg.co/connect</code> takes one tap and needs no card — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. If you want account-managed access, hotels, or billing controls, register on the developer surface at letsfg.co, connect a Revolut method, and search and book with your developer key. Flight search there is look-to-book: 200 searches free after every booking.</p>
+    <p class="docs-lead">LetsFG has two paths. Connect the MCP server at <code>letsfg.co/mcp</code> once — approving it at <code>letsfg.co/connect</code> takes one tap and needs no card — and search and book for free from Claude, ChatGPT, Cursor, Windsurf or the SDK. In Claude it is one step: LetsFG is in <a href="https://claude.ai/directory/letsfg">Claude's connector directory</a>. If you want account-managed access, hotels, or billing controls, register on the developer surface at letsfg.co, connect a Revolut method, and search and book with your developer key. Flight search there is look-to-book: 200 searches free after every booking.</p>
     <div class="docs-command"><span class="docs-command-prompt">$</span> pip install letsfg</div>
     <div class="docs-action-row">
       <a href="getting-started/" class="docs-button docs-button--primary">Get started</a>

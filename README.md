@@ -20,6 +20,8 @@ One total price. No tracking. No price that goes up because you looked twice.
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/🌐_Try_on_letsfg.co-4CAF50?style=for-the-badge&logoColor=white" alt="Try on letsfg.co">](https://letsfg.co/en)
 &nbsp;&nbsp;
+[<img src="https://img.shields.io/badge/Add_to_Claude-D97757?style=for-the-badge&logo=claude&logoColor=white" alt="Add to Claude">](https://claude.ai/directory/letsfg)
+&nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/📦_pip_install_letsfg-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="pip install">](https://pypi.org/project/letsfg/)
 
 <br>
@@ -56,7 +58,7 @@ LetsFG gives your AI agent flight **and hotel** search and booking superpowers. 
 
 **The same flight costs $20–$50 less** because you skip OTA inflation, cookie tracking, and surge pricing.
 
-**Agents:** add `https://letsfg.co/mcp` as an MCP server. Approving the connection opens letsfg.co/connect: one tap, no card. The card is asked for at your first booking, in a 0.00 Revolut setup (nothing is charged, no Revolut account needed). That token searches for free and books. **Scripts:** send the same token as `Authorization: Bearer` to the PFS endpoints. **Developer API:** a separate paid product for high-volume commercial use; most agents do not need it. → [Get started](#get-started)
+**Claude:** LetsFG is in [Claude's connector directory](https://claude.ai/directory/letsfg): add it there, no URL to paste. **Other agents:** add `https://letsfg.co/mcp` as an MCP server. Approving the connection opens letsfg.co/connect: one tap, no card. The card is asked for at your first booking, in a 0.00 Revolut setup (nothing is charged, no Revolut account needed). That token searches for free and books. **Scripts:** send the same token as `Authorization: Bearer` to the PFS endpoints. **Developer API:** a separate paid product for high-volume commercial use; most agents do not need it. → [Get started](#get-started)
 
 <br>
 
@@ -213,7 +215,7 @@ claude mcp add --transport http letsfg https://letsfg.co/mcp
 { "mcpServers": { "letsfg": { "url": "https://letsfg.co/mcp" } } }
 ```
 
-Claude: at claude.ai or in Claude Desktop, Settings > Connectors > Add custom connector, URL `https://letsfg.co/mcp`. Once added, it works in the Claude phone app too.
+Claude: LetsFG is in Claude's official connector directory. Open **[claude.ai/directory/letsfg](https://claude.ai/directory/letsfg)**, add it and approve the connection. No URL to paste. Once added, it works in Claude Desktop and the Claude phone app too.
 
 ChatGPT: add it at chatgpt.com in a browser (the ChatGPT phone app has no way to add one): Plugins > Add > Add custom MCP server, URL `https://letsfg.co/mcp`, authentication OAuth, tick I understand, Create as a plugin. Once added, it works in the ChatGPT phone app too.
 
@@ -346,7 +348,7 @@ This is a **separate paid product** for high-volume commercial use — most agen
 
 </details>
 
-**5-minute quickstarts:** [Claude Desktop](docs/quickstart-claude.md) · [Cursor](docs/quickstart-cursor.md) · [Windsurf](docs/quickstart-windsurf.md)
+**5-minute quickstarts:** [Claude](docs/quickstart-claude.md) · [Cursor](docs/quickstart-cursor.md) · [Windsurf](docs/quickstart-windsurf.md)
 
 ### Python SDK
 

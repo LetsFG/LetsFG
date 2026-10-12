@@ -30,8 +30,8 @@ captured only once a real airline PNR exists.
 claude mcp add --transport http letsfg https://letsfg.co/mcp
 ```
 
-Claude: at claude.ai or in Claude Desktop, Settings > Connectors > Add custom connector, with that
-URL, and approve it (once added, it works in the Claude phone app too). ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to
+Claude: add it from Claude's official connector directory, <https://claude.ai/directory/letsfg>, and approve
+it - no URL to paste (once added, it works in the Claude phone app too). ChatGPT: at chatgpt.com in a browser (the ChatGPT phone app has no way to
 add one), Plugins > Add > Add custom MCP server, that URL, authentication OAuth, tick I
 understand, Create as a plugin; once added it works in the phone app too.
 Cursor / Windsurf: see the remote config below, with no headers.
@@ -102,7 +102,8 @@ Developer API accounts use the same URL with a key instead of OAuth:
 
 ### Claude Desktop
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+No config needed: add LetsFG from Claude's connector directory, <https://claude.ai/directory/letsfg>. To use a Developer
+API key instead, edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
