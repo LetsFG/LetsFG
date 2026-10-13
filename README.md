@@ -16,11 +16,11 @@ One total price. No tracking. No price that goes up because you looked twice.
 
 <br>
 
+[<img src="https://img.shields.io/badge/Add_to_Claude-D97757?style=for-the-badge&logo=claude&logoColor=white" alt="Add to Claude">](https://claude.ai/directory/letsfg)
+&nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/⭐_Star_to_show_love-FFD700?style=for-the-badge&logoColor=black" alt="Star to show love">](https://github.com/LetsFG/LetsFG)
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/🌐_Try_on_letsfg.co-4CAF50?style=for-the-badge&logoColor=white" alt="Try on letsfg.co">](https://letsfg.co/en)
-&nbsp;&nbsp;
-[<img src="https://img.shields.io/badge/Add_to_Claude-D97757?style=for-the-badge&logo=claude&logoColor=white" alt="Add to Claude">](https://claude.ai/directory/letsfg)
 &nbsp;&nbsp;
 [<img src="https://img.shields.io/badge/📦_pip_install_letsfg-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="pip install">](https://pypi.org/project/letsfg/)
 
