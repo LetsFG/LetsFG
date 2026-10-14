@@ -178,7 +178,8 @@ Answers `202` in seconds with a `booking_id`; the booking itself takes 4-11 minu
 The connected Revolut method is **held, not charged**. A LetsFG booking agent buys the ticket and
 the hold is captured **only against a real airline PNR**; a failed booking releases it. The offer
 price already includes LetsFG's margin, so there is no booking fee and no transaction fee. A
-completed booking also resets the free search allowance to 200.
+completed booking also resets the free search allowance to 200 — including one the user completes on
+letsfg.co through an offer's `booking_url`, which is already tied to the developer's account.
 
 1 to 9 passengers. Only `given_name` is required by the schema — the server answers `400
 missing_fields` naming exactly what an airline checkout still needs, before anything is charged.

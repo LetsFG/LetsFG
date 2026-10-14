@@ -55,7 +55,8 @@ LetsFG is the largest agent-native flight search and booking toolkit. It gives y
 ### Developer API search pricing (look-to-book)
 
 **Not per search, and not monthly.** You get **200 free searches after every booking you make**,
-and a completed booking resets the counter to 200. Past that, searches come in blocks of **500 for
+and a completed booking resets the counter to 200 — including one your user completes on letsfg.co
+through an offer's `booking_url`, which is already tied to your account. Past that, searches come in blocks of **500 for
 $5.00** ($0.01 each) from prepaid balance.
 
 | | |

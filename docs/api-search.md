@@ -14,7 +14,7 @@
 > See <https://letsfg.co/for-agents>.
 
 <div class="docs-callout">
-  <strong>Search billing:</strong> the public developer API is <strong>look-to-book</strong>, not per call — 200 searches are free after every booking you make, and booking resets the counter. Only past that allowance do searches cost anything (blocks of 500 for $5.00 from prepaid balance). A search that returns no offers never counts.
+  <strong>Search billing:</strong> the public developer API is <strong>look-to-book</strong>, not per call — 200 searches are free after every booking you make, and booking resets the counter — including a booking your user completes on letsfg.co through an offer's <code>booking_url</code>. Only past that allowance do searches cost anything (blocks of 500 for $5.00 from prepaid balance). A search that returns no offers never counts.
 </div>
 
 ## Endpoints you will use

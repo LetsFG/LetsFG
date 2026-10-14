@@ -107,8 +107,10 @@ Check these before you search:
 ## How flight search is billed: look-to-book
 
 Not per search. **200 searches are free after every booking you make**, and a
-completed booking resets the counter to zero. Past that, searches come in blocks
-of **500 for $5.00** ($0.01 each) taken from prepaid balance.
+completed booking resets the counter to zero. That includes a booking your user
+completes on letsfg.co through an offer's `booking_url` — no referral parameter
+needed. Past that, searches come in blocks of **500 for $5.00** ($0.01 each)
+taken from prepaid balance.
 
 Two things never consume allowance: a search that returns no offers, and a
 search that fails because of an outage.

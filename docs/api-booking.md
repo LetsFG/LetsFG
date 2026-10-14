@@ -25,7 +25,9 @@ a ticket you did not get.
 **The price you saw is the price you pay.** There is no booking fee and no
 transaction fee on top of the offer price returned by search.
 
-A completed booking also **resets your free search allowance** to a full 200.
+A completed booking also **resets your free search allowance** to a full 200. That includes a
+booking your user completes on letsfg.co through an offer's `booking_url` (below): the link is
+already tied to your account, so there is no tracking or referral parameter to add.
 
 ## 1. Search, and keep the ids
 
@@ -43,7 +45,9 @@ produced it, and a search stays bookable for **6 hours**.
 Each offer also carries:
 
 - `booking_url` — a letsfg.co page for that exact offer, safe to show a person.
-  It is never a seller deep link; the seller link stays server-side.
+  It is never a seller deep link; the seller link stays server-side. A booking
+  your user completes there counts as yours and resets your search allowance.
+  Leave the link as it is — its `dref` parameter is what ties it to your account.
 - `book_url` — the API route below.
 
 ## 2. Book

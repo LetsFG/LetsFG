@@ -56,7 +56,8 @@ Public search is not anonymous. Requests stay blocked until the developer accoun
   what opens search
 
 Prepaid balance is **not** required to start. Flight search is look-to-book: 200 searches are free
-after every booking you make, and booking resets the counter. Balance only buys extra blocks of
+after every booking you make, and booking resets the counter. A booking your user completes on
+letsfg.co through an offer's `booking_url` counts too. Balance only buys extra blocks of
 search past that allowance (`POST /agents/top-up`).
 
 > **Stripe was retired on 2026-09-08.** `setup-payment`, `hosted-checkout`, `billing-portal` and the

@@ -96,6 +96,11 @@ Each offer carries `price` (what the guest pays, in `currency`), `refundable`,
 `expected_cost` exists only so it can be sent back verbatim — never quote it to
 a guest.
 
+Each hotel also carries `booking_url` — its letsfg.co page for these dates and
+this party, safe to show a guest. A stay your guest books there counts as your
+booking and resets your hotel search allowance, with nothing to add on your side
+(leave the link's `dref` parameter as it is).
+
 Send `expected_price`, `expected_cost`, `currency` and `fx_rate` back to
 `/hotels/book` exactly as the chosen offer returned them, with that offer's
 `session_id`. The hold is placed in that currency. `currency` defaults to PLN on
@@ -125,7 +130,8 @@ hold is released. The party itself travels with the offer's `session_id`.
 ```
 
 Hotel search is look-to-book: 1,000 searches are free after every hotel booking,
-then blocks of 1,000 for $5.00 from prepaid balance.
+then blocks of 1,000 for $5.00 from prepaid balance. A stay a guest completes on
+letsfg.co through a hotel's `booking_url` counts as a hotel booking too.
 
 ## Python
 
