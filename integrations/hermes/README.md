@@ -28,7 +28,7 @@ LetsFG signs in with OAuth 2.1 and Dynamic Client Registration. There is no API 
 hermes mcp add letsfg --url https://letsfg.co/mcp --auth oauth --connect-timeout 300
 ```
 
-Hermes prints a letsfg.co link (and opens it when it can): approve access there. Choose **Connect as a guest** to start fresh, or **I've connected before** to sign in by e-mail and bring your saved card, travellers and preferences. No card is needed to sign in. `--connect-timeout 300` gives you five minutes for that; without it, `hermes mcp add` gives up after 30 seconds, which is too short for the e-mail sign-in.
+Hermes prints a letsfg.co link (and opens it when it can): approve access there. Press **Connect to Hermes Agent** to start fresh, or **I've connected before** to sign in by e-mail and bring your saved card, travellers and preferences. No card is needed to sign in. Keep `--connect-timeout 300`: it gives you five minutes on that page. Without it, `hermes mcp add` stops listening about 20 seconds after the page opens, and an approval after that is lost.
 
 Hermes then lists the LetsFG tools and asks `Enable all N tools? [Y/n/select]`. `Y` is fine. Three of them (`booking_setup`, `get_flight_search_status`, `get_hotel_search_status`) exist only for LetsFG's in-app cards in clients such as claude.ai and ChatGPT, and the skill tells Hermes to leave them alone; to leave them out entirely, answer `select` and untick them.
 
@@ -86,6 +86,8 @@ Bookings, hotel cancellations, and changes to saved traveller details and to the
 ## Troubleshooting
 
 **No LetsFG tools in the session.** Run the sign-in command above, then start a new session. `hermes mcp test letsfg` should report the tools.
+
+**`hermes mcp add` says "timed out after 30s", or the browser shows "This site can't be reached" after you approve.** Hermes stopped listening before you approved. Answer `n` to "Save config anyway?", then run the sign-in command above again, with `--connect-timeout 300`, and approve on the new page. (`hermes mcp login letsfg` only works once the server is saved.)
 
 **`hermes mcp add` says "non-interactive environment".** It was run somewhere without a terminal (some desktop or agent-spawned shells). Answer `y` to save the config, then run `hermes mcp login letsfg`, which opens the sign-in anyway, and, if the entry was saved disabled, set `enabled: true` under `mcp_servers.letsfg` in `~/.hermes/config.yaml`.
 
