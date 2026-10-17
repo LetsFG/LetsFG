@@ -1059,7 +1059,11 @@ export class LetsFG {
       const data = await resp.json();
 
       if (!resp.ok) {
-        const detail = (data as Record<string, string>).detail || `API error (${resp.status})`;
+        // /api/agent-book answers in `message` (a declined card: why, then the pay-another-way and change-card lines) -
+        // before 2026-10-17 a decline surfaced as "API error (402)" with the way out only in `response`.
+        const raw = data as Record<string, unknown>;
+        const detail = (typeof raw.detail === 'string' && raw.detail) || (typeof raw.message === 'string' && raw.message)
+          || (raw.detail as string) || `API error (${resp.status})`;
         const code = (data as Record<string, string>).error_code || inferErrorCode(resp.status, detail);
         if (resp.status === 401) throw new AuthenticationError(detail, data as Record<string, unknown>);
         if (resp.status === 402) throw new PaymentRequiredError(detail, data as Record<string, unknown>);

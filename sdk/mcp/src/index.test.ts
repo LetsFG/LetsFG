@@ -359,3 +359,66 @@ describe('MCP server — unknown method', () => {
     assert.equal(error.code, -32601);
   });
 });
+
+// A DECLINED CARD'S WAY OUT REACHES THE AGENT (2026-10-17). /api/agent-book answers a decline 402 with `message`,
+// `pay_url` (pay this booking another way), `decline_message` and `next_step`; readJson used to cut every non-2xx
+// down to {error, status_code, detail}, so the agent saw only "payment_declined" and the traveller never got the link.
+describe('MCP server — a declined card keeps its pay-another-way answer', () => {
+  let proc: ChildProcessWithoutNullStreams;
+  let stub: import('node:http').Server;
+  const DECLINE = {
+    error: 'payment_declined',
+    message: 'Not booked - your Visa was declined for 412.30 EUR: there was not enough money on the card. Nothing was booked and nothing was charged.\nPay for this booking another way (any card, Apple Pay, Google Pay or Revolut Pay): https://letsfg.co/pay/b_1_3ds',
+    decline_reason: 'insufficient_funds',
+    decline_message: 'there was not enough money on the card',
+    pay_url: 'https://letsfg.co/pay/b_1_3ds',
+    retry_booking_id: 'b_1_3ds',
+    booking_ref: 'agt_1',
+    booking_id: 'b_1',
+    charged: 0,
+    next_step: 'Give the traveller pay_url.',
+    change_card_emailed_to: 'p***@example.com',
+  };
+
+  before(async () => {
+    const http = await import('node:http');
+    stub = http.createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        res.writeHead(req.url === '/api/agent-book' ? 402 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(req.url === '/api/agent-book' ? DECLINE : { error: 'not_found' }));
+      });
+    });
+    await new Promise<void>((r) => stub.listen(0, '127.0.0.1', () => r()));
+    const port = (stub.address() as import('node:net').AddressInfo).port;
+    proc = spawn('npx', ['tsx', SERVER_PATH], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, LETSFG_BASE_URL: `http://127.0.0.1:${port}`, LETSFG_BEARER_TOKEN: 'tok_test', LETSFG_API_KEY: '' },
+      shell: process.platform === 'win32',
+    });
+  });
+  after(() => { proc.kill(); stub.close(); });
+
+  it('book_flight hands the agent the pay link, the reason and the next step', async () => {
+    sendMessage(proc, { jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+      protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' },
+    }});
+    await readNextMessage(proc, 20000);
+
+    sendMessage(proc, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+      name: 'book_flight', arguments: {
+        search_id: 'ws_1', offer_id: 'wo_1', contact_email: 'p@example.com',
+        passengers: [{ given_name: 'Ada', family_name: 'Lovelace', born_on: '1990-04-01', gender: 'f' }],
+      },
+    }});
+    const response = await readNextMessage(proc, 20000);
+    const result = response.result as { content: Array<{ text: string }> };
+    const body = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    assert.equal(body.status_code, 402);
+    assert.equal(body.pay_url, DECLINE.pay_url);
+    assert.equal(body.decline_message, DECLINE.decline_message);
+    assert.equal(body.next_step, DECLINE.next_step);
+    assert.equal(body.change_card_emailed_to, DECLINE.change_card_emailed_to);
+    assert.ok(String(body.message).includes(DECLINE.pay_url), 'the message the traveller reads names the link');
+  });
+});

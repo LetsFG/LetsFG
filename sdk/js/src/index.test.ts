@@ -454,3 +454,35 @@ describe('hotels', () => {
     assert.deepEqual([...HOTEL_BOOKING_FINAL_STATUSES], ['succeeded', 'failed', 'attention']);
   });
 });
+
+// A declined card is said in the API's own words (2026-10-17). /api/agent-book answers a decline 402 in `message`
+// (why, then the pay-another-way and change-card lines) with no `detail`, so the error read "API error (402)" and the
+// CLI printed exactly that.
+describe('book() on a declined card', () => {
+  it('throws PaymentRequiredError carrying the decline message and the pay link', async () => {
+    const originalFetch = globalThis.fetch;
+    const answer = {
+      error: 'payment_declined',
+      message: 'Not booked - your Visa was declined for 412.30 EUR: there was not enough money on the card. Nothing was booked and nothing was charged.\nPay for this booking another way (any card, Apple Pay, Google Pay or Revolut Pay): https://letsfg.co/pay/b_1_3ds',
+      decline_reason: 'insufficient_funds',
+      pay_url: 'https://letsfg.co/pay/b_1_3ds',
+      charged: 0,
+    };
+    globalThis.fetch = (async () => ({ ok: false, status: 402, json: async () => answer }) as Response) as typeof fetch;
+    try {
+      const client = new LetsFG({ bearerToken: 'tok', baseUrl: 'http://lfg.test' });
+      await assert.rejects(
+        client.book('wo_1', [{ given_name: 'Ada', family_name: 'Lovelace' } as never], 'ada@example.com', '', '', 'ws_1'),
+        (e: unknown) => {
+          assert.ok(e instanceof PaymentRequiredError);
+          assert.equal(e.errorCode, ErrorCode.PAYMENT_DECLINED);
+          assert.ok(e.message.includes('declined') && e.message.includes(answer.pay_url), e.message);
+          assert.equal(e.response.pay_url, answer.pay_url);
+          return true;
+        },
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

@@ -140,7 +140,10 @@ async function readJson(resp: Response, path: string): Promise<Record<string, un
   }
   if (!resp.ok) {
     const detail = (data.detail as string) || (data.error as string) || `HTTP ${resp.status}`;
-    return { error: true, status_code: resp.status, detail };
+    // THE REST OF THE ANSWER IS THE NEXT STEP (2026-10-17): a declined card's 402 from /api/agent-book carries
+    // `message`, `pay_url`, `decline_message` and `next_step` - cutting it to {error, status_code, detail} left the
+    // agent with the bare word "payment_declined" and no way for the traveller to pay another way.
+    return { ...data, error: true, status_code: resp.status, detail };
   }
   return data;
 }
