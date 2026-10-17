@@ -726,7 +726,8 @@ def _print_book_result(result: dict) -> None:
     told the person what to do next.
     """
     ref = result.get("booking_ref")
-    if ref:
+    # A DECLINE CARRIES A booking_ref TOO (its pay-another-way link is followed under it), so the error decides first.
+    if ref and not result.get("error"):
         print("\n  Booking started. The fare is held on the connected card - it is captured")
         print("  only once the airline confirms with a PNR (usually 4-11 minutes).")
         print(f"    booking_ref: {ref}")
@@ -740,7 +741,35 @@ def _print_book_result(result: dict) -> None:
         print(f"    Missing: {', '.join(str(f) for f in fields) or '(unspecified)'}")
         print("    Add them to the --passenger JSON and run the same command again.\n")
         return
-    if err in ("payment_method_required", "payment_declined"):
+    if err == "payment_declined":
+        # THE CARD WAS DECLINED - not "no payment method" (2026-10-17: a traveller read that, with the payment link
+        # buried at the end of a sentence about 3-D Secure, three times, and never paid). Why, then each way out on
+        # its own line.
+        why = str(result.get("decline_message") or "").strip()
+        print("\n  Not booked - your card was declined. Nothing was booked and nothing was charged.")
+        if why:
+            print(f"    Why: {why}")
+        if result.get("not_charged_again"):
+            print("    Your card was not charged again - it was declined minutes ago for the same reason.")
+        pay = str(result.get("pay_url") or "").strip()
+        if pay:
+            print("\n    Pay for this booking another way (any card, Apple Pay, Google Pay or Revolut Pay):")
+            print(f"    {pay}")
+            print("    The booking starts by itself once it is paid.")
+            ref = result.get("booking_ref")
+            if ref:
+                print(f"    Follow it:  letsfg booking {ref} --wait")
+        emailed = str(result.get("change_card_emailed_to") or "").strip()
+        print("\n    Change the card saved on your account:")
+        if emailed:
+            print(f"    we e-mailed you a link (to {emailed}).")
+        elif result.get("add_card_url"):
+            print(f"    {result.get('add_card_url')}")
+        else:
+            print("    connect LetsFG again with the new card: letsfg auth")
+        print()
+        return
+    if err == "payment_method_required":
         print("\n  Not booked - this account has no usable payment method. Nothing was charged.")
         if msg:
             print(f"    {msg}")
