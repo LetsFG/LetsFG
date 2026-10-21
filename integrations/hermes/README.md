@@ -6,10 +6,7 @@ Search and book real flights and hotels from inside [Hermes Agent](https://herme
 
 [LetsFG](https://letsfg.co) searches every airline and the major travel sites in one go, checks every airport in a city, tests split tickets and prices the bags. A flight's details show its on-time record and how to get from the airport into the city. Then it books the flight or room for you on your LetsFG account.
 
-One install ships:
-
-- The hosted LetsFG MCP server (`letsfg`) at `https://letsfg.co/mcp`, over Streamable HTTP.
-- `skills/letsfg/`, the workflow skill: how the search, shortlist and booking tools fit together, how to show LetsFG's result cards in a text chat, and the rules that keep a booking safe (book only what the traveller chose, one booking per trip, card details never in the chat).
+One install ships `skills/letsfg/`, the workflow skill: how the search, shortlist and booking tools fit together, how to show LetsFG's result cards in a text chat, and the rules that keep a booking safe (book only what the traveller chose, one booking per trip, card details never in the chat).
 
 ## Install
 
@@ -22,7 +19,7 @@ Later versions arrive with `hermes plugins update letsfg`.
 
 ### Sign in (once)
 
-LetsFG signs in with OAuth 2.1 and Dynamic Client Registration. There is no API key, and nothing secret lives in this repository. The Agent Plugins v1 `mcp.json` format has no field for OAuth, so tell Hermes once that this server signs in with OAuth:
+LetsFG signs in with OAuth 2.1 and Dynamic Client Registration. There is no API key, and nothing secret lives in this repository. The server itself (`https://letsfg.co/mcp`, Streamable HTTP) is added with one command, because a plugin cannot tell Hermes to sign in with OAuth:
 
 ```bash
 hermes mcp add letsfg --url https://letsfg.co/mcp --auth oauth --connect-timeout 300
@@ -32,7 +29,7 @@ Hermes prints a letsfg.co link (and opens it when it can): approve access there.
 
 Hermes then lists the LetsFG tools and asks `Enable all N tools? [Y/n/select]`. `Y` is fine. Three of them (`booking_setup`, `get_flight_search_status`, `get_hotel_search_status`) exist only for LetsFG's in-app cards in clients such as claude.ai and ChatGPT, and the skill tells Hermes to leave them alone; to leave them out entirely, answer `select` and untick them.
 
-Start a new Hermes session afterwards, or run `/reload-mcp` in an open one. Tokens are cached under `~/.hermes/mcp-tokens/` and refresh on their own. Your `config.yaml` entry and the plugin's `mcp.json` entry share the name `letsfg`, and the config entry wins; the plugin still supplies the skill. On a headless host, see Hermes' [OAuth over SSH guide](https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh#mcp-servers).
+Start a new Hermes session afterwards, or run `/reload-mcp` in an open one. Tokens are cached under `~/.hermes/mcp-tokens/` and refresh on their own. On a headless host, see Hermes' [OAuth over SSH guide](https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh#mcp-servers).
 
 ## Try it
 
@@ -90,6 +87,8 @@ Bookings, hotel cancellations, and changes to saved traveller details and to the
 **`hermes mcp add` says "timed out after 30s", or the browser shows "This site can't be reached" after you approve.** Hermes stopped listening before you approved. Answer `n` to "Save config anyway?", then run the sign-in command above again, with `--connect-timeout 300`, and approve on the new page. (`hermes mcp login letsfg` only works once the server is saved.)
 
 **`hermes mcp add` says "non-interactive environment".** It was run somewhere without a terminal (some desktop or agent-spawned shells). Answer `y` to save the config, then run `hermes mcp login letsfg`, which opens the sign-in anyway, and, if the entry was saved disabled, set `enabled: true` under `mcp_servers.letsfg` in `~/.hermes/config.yaml`.
+
+**The Hermes log repeats `Portable MCP server 'letsfg' conflicts with native config; skipping`.** Harmless: Hermes uses your signed-in entry. Plugin 1.1.1 and older also declared the server, so Hermes found it twice each time it reloaded its config. Run `hermes plugins update letsfg` and restart Hermes.
 
 **Tools fail with 401 or "unauthorized".** The sign-in lapsed. Run `hermes mcp login letsfg`, then start a new session.
 

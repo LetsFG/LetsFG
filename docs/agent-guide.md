@@ -179,6 +179,54 @@ curl https://letsfg.co/api/results/ws_abc123 \
   -H "Authorization: Bearer eyJ..."
 ```
 
+#### What an offer in `/api/results` looks like
+
+Synthetic example, a round trip with one connection each way, searched for 2 adults + 1 child (`parsed.passengers` = 3):
+
+```json
+{
+  "id": "wo_0123456789ab",
+  "price": 812.40,
+  "currency": "EUR",
+  "airline": "Example Air", "airline_code": "XA",
+  "origin": "WAW", "destination": "JFK",
+  "departure_time": "2026-11-07T07:10:00", "arrival_time": "2026-11-07T14:05:00",
+  "duration_minutes": 775, "stops": 1, "flight_number": "XA101",
+  "segments": [
+    {"airline": "Example Air", "airline_code": "XA", "flight_number": "XA101",
+     "origin": "WAW", "destination": "FRA",
+     "departure_time": "2026-11-07T07:10:00", "arrival_time": "2026-11-07T09:05:00",
+     "duration_minutes": 115},
+    {"airline": "Example Air", "airline_code": "XA", "flight_number": "XA400",
+     "origin": "FRA", "destination": "JFK",
+     "departure_time": "2026-11-07T10:40:00", "arrival_time": "2026-11-07T14:05:00",
+     "duration_minutes": 565}
+  ],
+  "inbound": {
+    "origin": "JFK", "destination": "WAW",
+    "departure_time": "2026-11-14T17:30:00", "arrival_time": "2026-11-15T10:20:00",
+    "duration_minutes": 650, "stops": 1,
+    "airline": "Example Air", "airline_code": "XA", "flight_number": "XA401",
+    "segments": [
+      {"flight_number": "XA401", "origin": "JFK", "destination": "FRA",
+       "departure_time": "2026-11-14T17:30:00", "arrival_time": "2026-11-15T07:05:00", "duration_minutes": 455},
+      {"flight_number": "XA104", "origin": "FRA", "destination": "WAW",
+       "departure_time": "2026-11-15T08:45:00", "arrival_time": "2026-11-15T10:20:00", "duration_minutes": 95}
+    ]
+  },
+  "trip_breakdown": [
+    {"leg": "outbound", "origin": "WAW", "destination": "JFK", "departure_time": "2026-11-07T07:10:00", "arrival_time": "2026-11-07T14:05:00", "duration_minutes": 775, "airline": "Example Air", "airline_code": "XA"},
+    {"leg": "inbound", "origin": "JFK", "destination": "WAW", "departure_time": "2026-11-14T17:30:00", "arrival_time": "2026-11-15T10:20:00", "duration_minutes": 650, "airline": "Example Air", "airline_code": "XA"}
+  ]
+}
+```
+
+- **Every hop is in `segments[]`.** Top-level fields and `segments[]` are the outbound; `inbound` (round trips only) has the same summary fields and its own `segments[]` for the return. A nonstop may omit `segments`; the top-level fields are then its one flight.
+- **Times are airport-local**, written without a UTC offset. Don't convert them, and don't subtract two of them for a duration: use `duration_minutes`. An offset or `Z` on one timestamp is not a promise about the next.
+- **`trip_breakdown[]` is a summary, not the hops**: one entry per direction (`leg: "outbound"` / `"inbound"`), or one per ticket when the trip is sold as several (`"outbound"`, `"outbound-2"`, `"inbound"`, … with `ticket` and `direction`). The return is labelled `"inbound"`, never `"return"`.
+- **`price` is per seat, for the whole itinerary**: both directions of a round trip, every ticket of a multi-ticket trip. No field labels the basis; it is always per seat. For the party it is `price` × the seats: `parsed.passengers` when present (it is sent for more than one seat), else `adults + children`, else 1. A lap infant takes no seat. The amount actually held is `held.amount` in `held.currency` in the `/api/agent-book` answer; when the card's currency differs, `quoted` carries the figure in the offer's currency.
+- **The party is counts only**: `adults` (12+), `children` (2–11), `infants` (under 2, on a lap) on `POST /api/search`. A flight search takes no child ages; each traveller's `born_on` at booking decides their type. Hotel search is different and takes `child_ages`.
+
 Full walkthrough: https://letsfg.co/for-agents
 
 ### Booking
@@ -215,7 +263,7 @@ Other answers, all with `"charged": 0`:
 - `{"error":"payment_method_required","add_card_url":"https://letsfg.co/connect?card=…"}` — no card yet: send the person to `add_card_url`, then call again.
 - `{"error":"payment_declined","add_card_url":"https://letsfg.co/connect"}` — the card refused the hold.
 
-Use the traveller's **real** details — the seller's checkout asks for every one of them and the e-ticket goes to `contact_email`. Required: name as on the passport, date of birth, gender, nationality, phone with its country, residence address; passport number/country/expiry are optional but help with sellers that ask. One passenger per call; a group trip is one call per person. Offers expire ~15 minutes after the search — if one is gone, search again.
+Use the traveller's **real** details — the seller's checkout asks for every one of them and the e-ticket goes to `contact_email`. Required: name as on the passport, date of birth, gender, nationality, phone with its country, residence address; passport number/country/expiry are optional but help with sellers that ask. A party is **one call**: the lead in `passenger`, everyone else in `additional_passengers` (same fields; each `born_on` decides adult, child under 12, or lap infant under 2). The hold is the offer's per-seat `price` × the seats; `held.amount` in the answer is the figure. Never book a group as one call per person — each call is a separate booking and a separate hold. Offers expire ~15 minutes after the search — if one is gone, search again.
 
 Over the MCP these two steps are the tools `book_flight` and `get_flight_booking`.
 
