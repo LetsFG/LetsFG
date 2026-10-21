@@ -587,9 +587,13 @@ Panel {
   }
 
   function setCenterHoverRevealSuppressed(value) {
-    // The bar API exposes this as a read-only property plus a setter function.
+    // Current Omarchy (PluginBarApi) exposes this as a read-only property plus
+    // a setter function; assigning to it throws and close() never reaches
+    // hide(). Older hosts only have the writable property.
     if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
       root.bar.setCenterHoverRevealSuppressed(value)
+    else if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+      root.bar.centerHoverRevealSuppressed = value
   }
 
   // Mutating a `property var` object in place does not notify bindings, so
