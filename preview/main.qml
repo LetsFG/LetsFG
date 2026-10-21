@@ -32,6 +32,7 @@ Window {
     property int barSize: 34
     property bool centerHoverRevealSuppressed: false
     property var shell: null
+    function setCenterHoverRevealSuppressed(value) { centerHoverRevealSuppressed = !!value }
     function switchPanelFrom(identity, direction) { return false }
     function run(cmd) { console.log("[preview] bar.run:", cmd) }
   }
