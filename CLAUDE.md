@@ -110,9 +110,10 @@ LetsFG/
 
 ### Two-Step Flow (PFS — what agents use)
 1. **Search** (free) → `POST /api/search` with Bearer token → `search_id`; poll `GET /api/results/<search_id>` immediately, then every 2 s. `completed` is not the end — keep polling while `split_ticket_pending` or `gf_enrich_pending` is true
-2. **Book** → `POST /api/agent-book` with `search_id`, `offer_id`, `contact_email` and ONE
-   traveller's real details (name, date of birth, gender, nationality, phone + country,
-   residence address; passport optional). Exactly what the website checkout does: the price shown is **held** on the connected card, a LetsFG booking agent buys the
+2. **Book** → `POST /api/agent-book` with `search_id`, `offer_id`, `contact_email` and the
+   lead traveller's real details (name, date of birth, gender, nationality, phone + country,
+   residence address; passport optional); a party is the same call, everyone else in
+   `additional_passengers`, and the hold is per-seat `price` × the seats. Exactly what the website checkout does: the price shown is **held** on the connected card, a LetsFG booking agent buys the
    ticket, and the hold is captured only once a real airline PNR exists. Returns
    `{ booking_ref }` within seconds; the booking takes 4–11 minutes.
 3. **Wait** → `POST /api/agent-book/status { booking_ref }` every 20–30 s. `completed`

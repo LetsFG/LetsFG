@@ -158,8 +158,10 @@ is charged. It works for every offer in the results, whichever seller it came fr
 
 `POST /api/agent-book` returns within seconds with a `booking_ref`; the booking
 itself takes **4–11 minutes**. Poll `POST /api/agent-book/status` with that
-`booking_ref` every 20–30 s. One traveller per call — a group trip is one call
-per person.
+`booking_ref` every 20–30 s. A party is ONE call: the lead in `passenger`, everyone
+else in `additional_passengers` (same fields; each `born_on` decides adult, child
+or lap infant). The hold is the offer's per-seat `price` × the seats. Never book a
+group as one call per person — each call is a separate booking and a separate hold.
 
 ```bash
 letsfg book ws_off_xxx --search-id ws_abc \
@@ -1081,8 +1083,8 @@ curl -X POST https://letsfg.co/api/agent-book/status \
 # → {"state":"needs_attention"}   (a human at LetsFG is checking it — do NOT book again)
 ```
 
-One traveller per call; passport fields (`passport_number`, `passport_country`,
-`passport_expiry`) are optional. A missing detail answers
+A party is one call (lead in `passenger`, the rest in `additional_passengers`);
+passport fields (`passport_number`, `passport_country`, `passport_expiry`) are optional. A missing detail answers
 `{"error":"missing_details","missing_fields":[...],"charged":0}` — ask and call
 again. Only `completed` with a PNR means booked.
 
