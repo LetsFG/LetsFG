@@ -62,6 +62,9 @@ Use metro codes such as `LON` when you want all airports in a city, or specific 
 | `infants` | No | `0` to `9` |
 | `cabin_class` | No | `M`, `W`, `C`, or `F` |
 | `max_stopovers` | No | `0` to `4`, default `2` |
+| `airline_only` | No | `true` returns only flights the airline itself sells, and bookings are bought from the airline. See [below](#airline-only-and-refundable-fares) |
+| `refundable_only` | No | `true` returns only fares the seller states are refundable |
+| `min_refund_pct` | No | With `refundable_only`: `0` to `1`, the least share of the fare that must come back (`0.9` = 90%) |
 | `currency` | No | Three-letter code, default `EUR` |
 | `locale` | No | Locale code, default `en` |
 | `limit` | No | `1` to `200`, default `50` |
@@ -246,6 +249,25 @@ A `200 OK` response with `total_results: 0` means the search ran successfully bu
 - **Cabin class filter** — `cabin_class: "F"` (first class) eliminates most LCCs; try `"M"` (economy) first.
 
 If a route returns results on [letsfg.co](https://letsfg.co) but not via the API, check that your `date_from` is in the future and your client timeout is at least 90 seconds — the search itself returns in 8–10 s to first results, but a generous ceiling costs nothing and covers a slow supplier. The same connector fleet is used for both; a second request will usually return cached results immediately.
+
+## Airline-only and refundable fares
+
+Set `airline_only: true` to see only flights the airline itself sells. Travel agencies are left out, and a booking made from that search is bought directly from the airline, including when the agent has to find the offer again during booking. These offers are usually more expensive, and there are fewer of them. On a round trip, only round-trip tickets are returned.
+
+Set `refundable_only: true` to see only fares the seller states are refundable before departure. Add `min_refund_pct` (`0` to `1`) for the least share of the fare that must come back. `1.0` means fully refundable. A fare whose refund fee is not stated is dropped rather than guessed at. Few sellers state refund rules in their own data, so this filter can return nothing on a route that has flights.
+
+```json
+{
+  "origin": "CGK",
+  "destination": "DPS",
+  "date_from": "2026-12-10",
+  "airline_only": true,
+  "refundable_only": true,
+  "min_refund_pct": 0.9
+}
+```
+
+Both filters also count as search fields for caching: a filtered search never returns the results of an unfiltered one.
 
 ## Departure time filters
 
