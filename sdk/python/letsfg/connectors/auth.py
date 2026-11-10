@@ -78,6 +78,14 @@ class BearerTokenError(Exception):
     pass
 
 
+class _TokenEndpointError(BearerTokenError):
+    """The token endpoint answered without a token; `status` says whether the code was spent."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
 # ── config ────────────────────────────────────────────────────────────────
 
 def _config_path() -> Path:
@@ -558,10 +566,13 @@ def finish_auth(callback_url: str) -> str:
         raise BearerTokenError(
             f"Could not get an answer from LetsFG ({e}). Run the same --finish command again."
         ) from None
-    except BearerTokenError:
-        # The token endpoint answered, and any answer spends the code (single-use): the record is dead.
-        pending_auth.clear(path)
-        raise
+    except _TokenEndpointError as e:
+        if e.status in (400, 401):
+            # The grant was refused (invalid_grant / invalid_client): the code is spent or dead either way.
+            pending_auth.clear(path)
+            raise
+        # 429 or 5xx: a busy or failing server did not spend the code, so keep the record for a retry.
+        raise BearerTokenError(f"{e} Run the same --finish command again in a moment.") from None
     pending_auth.clear(path)
     return token
 
@@ -580,8 +591,8 @@ def _exchange_code(token_endpoint: str, *, code: str, client_id: str, redirect_u
     )
     if status != 200 or not data.get("access_token"):
         detail = str(data.get("error_description") or data.get("error") or "").strip()
-        raise BearerTokenError(
-            f"Could not complete authentication (HTTP {status}). {detail}".strip()
+        raise _TokenEndpointError(
+            f"Could not complete authentication (HTTP {status}). {detail}".strip(), status
         )
 
     expires_in = data.get("expires_in")

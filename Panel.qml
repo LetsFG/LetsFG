@@ -158,6 +158,9 @@ Panel {
   // Same attempt, same PKCE pair: the browser tab was closed or never opened.
   function reopenConnect() {
     if (root.authClientId.length === 0 || root.authChallenge.length === 0) { beginConnect(); return }
+    // A hand-off redirect whose handle is spent or expired would land on a page that promises a pickup nobody
+    // polls for: start a fresh attempt instead.
+    if (root.authRedirect !== Model.CONNECT_REDIRECT_URI && root.authHandle.length === 0) { beginConnect(); return }
     root.authError = ""
     Qt.openUrlExternally(Model.connectUrl(root.authClientId, root.authChallenge, root.authState, root.authRedirect))
   }

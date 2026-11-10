@@ -209,6 +209,16 @@ class FinishAuthTest(_TmpDir):
         self.assertIn("invalid_grant", str(ctx.exception))
         self.assertFalse(self.path.exists())
 
+    def test_a_busy_or_failing_server_keeps_the_record_for_a_retry(self):
+        """429 and 5xx did not spend the code: only a refusal of the grant (400/401) does."""
+        for status in (429, 500, 502, 503, 504):
+            P.save(self.path, _pending())
+            with self.assertRaises(A.BearerTokenError) as ctx:
+                self._finish("http://127.0.0.1:43210/callback?code=abc&state=st-ours",
+                             lambda *a, s=status, **k: (s, {"error": "busy"}))
+            self.assertTrue(self.path.exists(), status)
+            self.assertIn("--finish", str(ctx.exception))
+
     def test_a_non_json_answer_is_reported_and_keeps_the_record(self):
         P.save(self.path, _pending())
 
