@@ -51,7 +51,11 @@ revoked.)
 
 **Connecting from the panel.** Press **Connect at letsfg.co**. The panel
 registers itself as an OAuth client, opens letsfg.co/connect in your
-browser, and you approve there. The browser is then sent to
+browser, and you approve there. Where letsfg.co offers its code hand-off,
+that is all: the browser lands on letsfg.co/connect/done ("you can close this
+tab"), the consent has parked the code there, and the panel fetches it by
+polling (an HTTP request, which a Quickshell plugin can make; PKCE still
+guards the redeem). Otherwise — an older server — the browser is sent to
 `http://127.0.0.1:17531/letsfg-omarchy?code=…` — a page that cannot load,
 because nothing on your machine listens there — and you copy that address
 from the address bar into the panel and press **Finish**. That paste step is

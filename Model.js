@@ -526,6 +526,64 @@ var CONNECT_CLIENT_NAME = "LetsFG Flights (Omarchy)"
 function oauthRegisterUrl() { return apiUrl("/developers/api/oauth/register") }
 function oauthTokenUrl() { return apiUrl("/developers/api/oauth/token") }
 
+// ---- The hosted code hand-off (letsfg.co, since 2026-11). When the server
+// offers it, the paste above is not needed: the panel asks for a handle,
+// registers https://letsfg.co/connect/done?h=<handle> as its redirect, and the
+// consent parks the code there. The panel then polls for it -- an HTTP request
+// is the one thing a Quickshell plugin CAN do. PKCE still guards the redeem.
+// A server without it answers 404 and the panel falls back to the paste.
+var HANDOFF_POLL_MIN_MS = 2000
+var HANDOFF_POLL_MAX_MS = 10000
+// The server keeps a waiting handle 30 minutes.
+var HANDOFF_WAIT_MS = 30 * 60 * 1000
+
+function oauthHandoffUrl() { return apiUrl("/developers/api/oauth/handoff") }
+function oauthHandoffFetchUrl() { return apiUrl("/developers/api/oauth/handoff/fetch") }
+function handoffRedirectUri(handle) { return API_ORIGIN + "/connect/done?h=" + handle }
+
+// The handle is opaque; it must be a long clean token, and the redirect the
+// server names must be exactly our landing page for it. Anything else and the
+// panel keeps the paste flow -- a redirect chosen by the network is never
+// registered.
+function parseHandoffStart(status, text) {
+  var out = { ok: false, handle: "", redirectUri: "", pollMs: 3000 }
+  if (status !== 201) return out
+  var parsed = parseJsonBody(text)
+  if (!parsed.ok || !parsed.value) return out
+  var handle = typeof parsed.value.handle === "string" ? parsed.value.handle : ""
+  if (!/^[A-Za-z0-9_\-]{32,128}$/.test(handle)) return out
+  if (parsed.value.redirect_uri !== handoffRedirectUri(handle)) return out
+  var secs = Number(parsed.value.poll_interval)
+  var ms = isFinite(secs) && secs > 0 ? Math.round(secs * 1000) : 3000
+  out.ok = true
+  out.handle = handle
+  out.redirectUri = handoffRedirectUri(handle)
+  out.pollMs = Math.min(Math.max(ms, HANDOFF_POLL_MIN_MS), HANDOFF_POLL_MAX_MS)
+  return out
+}
+
+function buildHandoffFetchBody(handle) { return JSON.stringify({ handle: String(handle) }) }
+
+// state: "pending" (poll again), "ready" (code), "gone" (404: expired or used),
+// "retry" (a blip), "error" (refused, with a message).
+function parseHandoffFetch(status, text, expectedState) {
+  if (status === 404) return { state: "gone", code: "", error: "" }
+  if (status !== 200) return { state: "retry", code: "", error: "" }
+  var parsed = parseJsonBody(text)
+  if (!parsed.ok || !parsed.value) return { state: "retry", code: "", error: "" }
+  var v = parsed.value
+  if (v.status === "pending") return { state: "pending", code: "", error: "" }
+  if (v.status !== "ready") return { state: "retry", code: "", error: "" }
+  if (typeof v.state !== "string" || v.state !== String(expectedState || "")) {
+    return { state: "error", code: "", error: "That approval belongs to a different connect attempt. Press Connect again." }
+  }
+  var code = typeof v.code === "string" ? v.code : ""
+  if (!/^[A-Za-z0-9_\-.]{8,512}$/.test(code)) {
+    return { state: "error", code: "", error: "letsfg.co returned an unusable code. Press Connect again." }
+  }
+  return { state: "ready", code: code, error: "" }
+}
+
 // ---- SHA-256, in JavaScript. QML's JavaScript has no crypto object and Qt
 // exposes only Qt.md5, but PKCE S256 is mandatory on this server (and rightly
 // so: an unlistened loopback redirect is exactly the case PKCE exists for).
@@ -634,10 +692,11 @@ function newPkce() {
   return { verifier: verifier, challenge: pkceChallenge(verifier), state: randomUnreserved(24) }
 }
 
-function buildRegisterBody() {
+// `redirectUri`: the hosted hand-off's when there is one; the loopback otherwise.
+function buildRegisterBody(redirectUri) {
   return JSON.stringify({
     client_name: CONNECT_CLIENT_NAME,
-    redirect_uris: [CONNECT_REDIRECT_URI],
+    redirect_uris: [redirectUri || CONNECT_REDIRECT_URI],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     token_endpoint_auth_method: "none"
@@ -666,11 +725,11 @@ function parseRegisterResponse(text) {
 // Built from the pinned origin and values this process minted, plus the
 // client id -- which has already passed the shape check above and is URL-
 // encoded regardless. No URL from the network is ever opened.
-function connectUrl(clientId, challenge, state) {
+function connectUrl(clientId, challenge, state, redirectUri) {
   return API_ORIGIN + "/connect"
     + "?response_type=code"
     + "&client_id=" + encodeURIComponent(clientId)
-    + "&redirect_uri=" + encodeURIComponent(CONNECT_REDIRECT_URI)
+    + "&redirect_uri=" + encodeURIComponent(redirectUri || CONNECT_REDIRECT_URI)
     + "&code_challenge=" + encodeURIComponent(challenge)
     + "&code_challenge_method=S256"
     + "&state=" + encodeURIComponent(state)
@@ -735,10 +794,10 @@ function formEncode(fields) {
   return parts.join("&")
 }
 
-function buildCodeExchangeBody(code, clientId, verifier) {
+function buildCodeExchangeBody(code, clientId, verifier, redirectUri) {
   return formEncode({
     grant_type: "authorization_code", code: code, client_id: clientId,
-    redirect_uri: CONNECT_REDIRECT_URI, code_verifier: verifier
+    redirect_uri: redirectUri || CONNECT_REDIRECT_URI, code_verifier: verifier
   })
 }
 
@@ -2638,6 +2697,10 @@ function module_exports_shim() {
     parseTokenConfig: parseTokenConfig, createSession: createSession, mergeTokenConfig: mergeTokenConfig,
     CONNECT_REDIRECT_URI: CONNECT_REDIRECT_URI, CONNECT_CLIENT_NAME: CONNECT_CLIENT_NAME,
     oauthRegisterUrl: oauthRegisterUrl, oauthTokenUrl: oauthTokenUrl,
+    oauthHandoffUrl: oauthHandoffUrl, oauthHandoffFetchUrl: oauthHandoffFetchUrl,
+    handoffRedirectUri: handoffRedirectUri, parseHandoffStart: parseHandoffStart,
+    buildHandoffFetchBody: buildHandoffFetchBody, parseHandoffFetch: parseHandoffFetch,
+    HANDOFF_WAIT_MS: HANDOFF_WAIT_MS,
     sha256Hex: sha256Hex, pkceChallenge: pkceChallenge, newPkce: newPkce,
     buildRegisterBody: buildRegisterBody, parseRegisterResponse: parseRegisterResponse,
     connectUrl: connectUrl, parseConnectReturn: parseConnectReturn,
