@@ -38,10 +38,12 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import threading
 import time
 import webbrowser
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -363,6 +365,89 @@ def refresh_access_token() -> str:
     return str(data["access_token"])
 
 
+# ── hosted code hand-off ──────────────────────────────────────────────────
+#
+# A loopback listener needs this process alive, on the machine with the browser, when the person
+# presses Authorize. When letsfg.co offers a hand-off, the redirect is its own page
+# (https://letsfg.co/connect/done?h=<handle>), the consent parks the code there, and this process
+# polls for it - from a sandbox, a remote box or an agent alike. PKCE still guards the redeem.
+# A server without it (404) means the loopback, exactly as before.
+
+_HANDOFF_ENDPOINT = f"{_DEV_ROOT}/oauth/handoff"
+_HANDOFF_FETCH_ENDPOINT = f"{_DEV_ROOT}/oauth/handoff/fetch"
+# The server keeps a waiting handle 30 minutes; people open the link late.
+_HANDOFF_WAIT_S = 30 * 60
+_HANDOFF_POLL_BOUNDS_S = (2.0, 10.0)
+_HANDLE_RE = re.compile(r"[A-Za-z0-9_-]{32,128}")
+
+
+@dataclass(frozen=True)
+class _Handoff:
+    handle: str
+    redirect_uri: str
+    poll_interval: float
+
+
+def _start_handoff() -> "_Handoff | None":
+    """A hand-off handle from letsfg.co, or None when the server has none (or cannot be reached)."""
+    try:
+        status, data = _post_json_abs(_HANDOFF_ENDPOINT, {}, timeout=15)
+    except (URLError, OSError, ValueError):
+        return None
+    if status != 201 or not isinstance(data, dict):
+        return None
+    handle = data.get("handle")
+    if not isinstance(handle, str) or not _HANDLE_RE.fullmatch(handle):
+        return None
+    # Only ever our own landing page: a redirect named by the network is registered as given,
+    # so anything but exactly this address is refused and the loopback used instead.
+    redirect_uri = f"{_BASE_URL}/connect/done?h={handle}"
+    if data.get("redirect_uri") != redirect_uri:
+        return None
+    try:
+        interval = float(data.get("poll_interval") or 3)
+    except (TypeError, ValueError):
+        interval = 3.0
+    lo, hi = _HANDOFF_POLL_BOUNDS_S
+    return _Handoff(handle, redirect_uri, min(max(interval, lo), hi))
+
+
+def _same_secret(a: str, b: str) -> bool:
+    return secrets.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def _wait_for_handoff(handoff: _Handoff, expected_state: str, timeout: float = _HANDOFF_WAIT_S,
+                      sleep=time.sleep, now=time.monotonic) -> str:
+    """Poll until the approved code is parked, then return it. The handle goes in the body only."""
+    deadline = now() + timeout
+    while True:
+        try:
+            status, data = _post_json_abs(_HANDOFF_FETCH_ENDPOINT, {"handle": handoff.handle}, timeout=15)
+        except (URLError, OSError, ValueError):
+            status, data = 0, {}       # a blip: the code waits on the server, so just ask again
+        if status == 200 and isinstance(data, dict) and data.get("status") == "ready":
+            state, code = str(data.get("state") or ""), str(data.get("code") or "")
+            if not _same_secret(state, expected_state):
+                raise BearerTokenError(
+                    "The approval that came back belongs to another sign-in (its state does not match). "
+                    "Run `letsfg auth` again."
+                )
+            if not code:
+                raise BearerTokenError("letsfg.co returned no code. Run `letsfg auth` again.")
+            return code
+        if status == 404:
+            raise BearerTokenError(
+                "That sign-in expired or was already used before it was approved. Run `letsfg auth` again."
+            )
+        if now() + handoff.poll_interval > deadline:
+            raise BearerTokenError(
+                "Timed out waiting for the approval. If you approved, copy the address your browser "
+                "ended on and run:  letsfg auth --finish '<the address>'  (within 10 minutes); "
+                "otherwise run `letsfg auth` again."
+            )
+        sleep(handoff.poll_interval)
+
+
 def connect_auth(open_browser: bool = True) -> str:
     """
     Interactive auth -- connects at letsfg.co/connect and stores a token.
@@ -374,10 +459,16 @@ def connect_auth(open_browser: bool = True) -> str:
     verifier, challenge = _pkce()
     state = base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode()
 
-    # Bind the loopback listener FIRST: redirect_uri has to match what we
-    # register byte for byte, so the port must be known before registration.
-    server = _CallbackServer(state)
-    redirect_uri = f"http://127.0.0.1:{server.port}/callback"
+    # The hosted hand-off when letsfg.co offers one; otherwise bind the loopback
+    # listener FIRST: redirect_uri has to match what we register byte for byte,
+    # so the port must be known before registration.
+    handoff = _start_handoff()
+    server = None
+    if handoff is not None:
+        redirect_uri = handoff.redirect_uri
+    else:
+        server = _CallbackServer(state)
+        redirect_uri = f"http://127.0.0.1:{server.port}/callback"
 
     try:
         status, reg = _post_json_abs(
@@ -419,8 +510,8 @@ def connect_auth(open_browser: bool = True) -> str:
         print("  and the fare is held, not taken, until the airline confirms.\n")
         print("  Open this and approve:\n")
         print(f"     {auth_url}\n")
-        print("  If this stops waiting before you approve, the browser ends on a page that")
-        print("  cannot load. Copy that page's address and run, within 10 minutes:")
+        print("  If this stops waiting before you approve, copy the address your browser")
+        print("  ends on after you approve and run, within 10 minutes:")
         print("     letsfg auth --finish '<the address>'\n")
         if open_browser:
             try:
@@ -429,7 +520,7 @@ def connect_auth(open_browser: bool = True) -> str:
                 pass
         print("  Waiting for you to finish... ", end="", flush=True)
 
-        code = server.wait_for_code()
+        code = server.wait_for_code() if server is not None else _wait_for_handoff(handoff, expected_state=state)
         token = _exchange_code(
             meta["token_endpoint"], code=code, client_id=str(client_id),
             redirect_uri=redirect_uri, verifier=verifier,
@@ -437,7 +528,8 @@ def connect_auth(open_browser: bool = True) -> str:
         pending_auth.clear(_pending_path())
         return token
     finally:
-        server.close()
+        if server is not None:
+            server.close()
 
 
 def finish_auth(callback_url: str) -> str:

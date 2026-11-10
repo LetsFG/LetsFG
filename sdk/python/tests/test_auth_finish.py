@@ -121,6 +121,11 @@ class CodeFromCallbackTest(unittest.TestCase):
             P.code_from_callback(url, _pending())
         self.assertIn("state", str(ctx.exception))
 
+    def test_a_non_ascii_state_is_refused_not_crashed_on(self):
+        url = "http://127.0.0.1:43210/callback?code=abc&state=%C5%BC%C3%B3%C5%82w"
+        with self.assertRaises(P.PendingAuthError):
+            P.code_from_callback(url, _pending())
+
     def test_refuses_a_url_without_state(self):
         with self.assertRaises(P.PendingAuthError):
             P.code_from_callback("http://127.0.0.1:43210/callback?code=abc", _pending())

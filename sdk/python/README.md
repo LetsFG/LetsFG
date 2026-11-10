@@ -65,6 +65,11 @@ letsfg auth --no-browser   # prints the URL to open yourself
 letsfg auth --finish '<address>'   # the terminal stopped waiting? paste where the browser landed
 ```
 
+Where letsfg.co offers it, `letsfg auth` waits for your approval on letsfg.co
+itself (the browser lands on letsfg.co/connect/done and the CLI picks the code
+up from there), so it works from a sandbox, a remote machine or an agent with
+no local port the browser can reach. Otherwise it listens on 127.0.0.1.
+
 If `letsfg auth` was stopped before you pressed Authorize (an agent's tool
 timeout, a sandbox, another machine), the browser ends on a page that cannot
 load. Copy that page's address and run `letsfg auth --finish '<address>'`

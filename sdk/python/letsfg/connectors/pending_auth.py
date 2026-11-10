@@ -95,7 +95,7 @@ def code_from_callback(url: str, pending: PendingAuth) -> str:
     error = (params.get("error") or [""])[0]
     code = (params.get("code") or [""])[0]
 
-    if not state or not secrets.compare_digest(state, pending.state):
+    if not state or not secrets.compare_digest(state.encode("utf-8"), pending.state.encode("utf-8")):
         raise PendingAuthError(
             "That address does not belong to the sign-in this computer started (its state does not match). "
             "Paste the address from the browser tab that `letsfg auth` opened, or " + _START_AGAIN[0].lower()
