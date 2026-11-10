@@ -62,7 +62,14 @@ long-lived process and it renews silently.
 ```bash
 letsfg auth                # opens a browser
 letsfg auth --no-browser   # prints the URL to open yourself
+letsfg auth --finish '<address>'   # the terminal stopped waiting? paste where the browser landed
 ```
+
+If `letsfg auth` was stopped before you pressed Authorize (an agent's tool
+timeout, a sandbox, another machine), the browser ends on a page that cannot
+load. Copy that page's address and run `letsfg auth --finish '<address>'`
+within 10 minutes: the sign-in it started is kept in
+`~/.letsfg/pending_auth.json` (readable by you only) until then.
 
 > **Retired 2026-09-02:** the Stripe enrolment lanes (`setup_url`,
 > `setup_session_id`, `payment_method_id`, `card_token`) and every token they

@@ -558,6 +558,11 @@ def auth(
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Print the connect URL instead of opening a browser"
     ),
+    finish: Optional[str] = typer.Option(
+        None, "--finish",
+        help="Finish a sign-in whose terminal stopped waiting: paste the address the browser "
+             "landed on after you approved (within 10 minutes)",
+    ),
 ):
     """Connect at letsfg.co/connect. One tap, no card, nothing charged.
 
@@ -573,10 +578,17 @@ def auth(
 
     Unrelated to `letsfg register` / `letsfg connect-payment`, which belong to the
     separate paid Developer API.
+
+    If the command stopped waiting before you approved, the browser ends on a
+    page that cannot load: run `letsfg auth --finish '<that address>'`.
     """
-    from letsfg.connectors.auth import connect_auth, BearerTokenError
+    from letsfg.connectors import auth as _auth
+    from letsfg.connectors.auth import BearerTokenError
     try:
-        connect_auth(open_browser=not no_browser)
+        if finish:
+            _auth.finish_auth(finish)
+        else:
+            _auth.connect_auth(open_browser=not no_browser)
         print("\n  You're all set. Run: letsfg search WAW BCN 2026-07-15\n")
     except BearerTokenError as e:
         _err(str(e))
