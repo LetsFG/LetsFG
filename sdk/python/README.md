@@ -69,6 +69,9 @@ Where letsfg.co offers it, `letsfg auth` waits for your approval on letsfg.co
 itself (the browser lands on letsfg.co/connect/done and the CLI picks the code
 up from there), so it works from a sandbox, a remote machine or an agent with
 no local port the browser can reach. Otherwise it listens on 127.0.0.1.
+Either way it then prints which account it connected (a masked e-mail, or "a
+guest account"): if that is not yours, someone else approved the link, so run
+`letsfg auth` again.
 
 If `letsfg auth` was stopped before you pressed Authorize (an agent's tool
 timeout, a sandbox, another machine), the browser ends on a page that cannot

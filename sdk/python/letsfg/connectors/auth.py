@@ -70,7 +70,12 @@ _CLIENT_NAME = "letsfg-python"
 # not know, so the consent succeeded and the grant carried NO scope at all --
 # every hosted-connector tool then refused it with "does not include
 # 'flights:search'". Keep every entry here one the server advertises.
-_SCOPE = "flights:search flights:book profile:read"
+#
+# `openid email` (2026-11-10): so /oauth/userinfo can say which account this CLI
+# connected, printed after every sign-in. With the letsfg.co hand-off the code
+# goes to whichever process polls for it, so a person must be able to see at
+# once that it is their own account (_account_line).
+_SCOPE = "flights:search flights:book profile:read openid email"
 
 
 class BearerTokenError(Exception):
@@ -577,6 +582,40 @@ def finish_auth(callback_url: str) -> str:
     return token
 
 
+def _mask_email(email: object) -> str:
+    """t***@gmail.com: enough to recognise your own address, not to read someone else's."""
+    if not isinstance(email, str) or email.count("@") != 1:
+        return ""
+    local, domain = email.split("@")
+    if not local or not domain:
+        return ""
+    return f"{local[0]}***@{domain}"
+
+
+def _fetch_userinfo(token: str) -> "dict | None":
+    """The connected account's OIDC claims, or None on any failure (it never fails the sign-in)."""
+    req = Request(
+        f"{_DEV_ROOT}/oauth/userinfo",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json", "User-Agent": _USER_AGENT},
+    )
+    try:
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+    except (HTTPError, URLError, OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _account_line(claims: "dict | None") -> "str | None":
+    """What to print about the connected account; None when it could not be read."""
+    if claims is None:
+        return None
+    masked = _mask_email(claims.get("email"))
+    who = masked if masked else "a LetsFG guest account (no e-mail on it yet)"
+    return (f"  Connected account: {who}. If that is not you, someone else approved this sign-in: "
+            "run `letsfg auth` again.")
+
+
 def _exchange_code(token_endpoint: str, *, code: str, client_id: str, redirect_uri: str, verifier: str) -> str:
     """Swap an authorization code for tokens, store them, and return the access token."""
     status, data = _post_form(
@@ -606,6 +645,9 @@ def _exchange_code(token_endpoint: str, *, code: str, client_id: str, redirect_u
         client_id=client_id,
     )
     print("done. Connected - the token refreshes itself from now on.")
+    line = _account_line(_fetch_userinfo(str(data["access_token"])))
+    if line:
+        print(line)
     # RFC 6749 s3.3: when the granted scope differs from the requested one the
     # server says so in `scope`. A grant that lost `flights:search` still
     # searches through letsfg.co/api (that lane reads the card/account, not
