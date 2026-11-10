@@ -573,6 +573,9 @@ function parseHandoffFetch(status, text, expectedState) {
   if (!parsed.ok || !parsed.value) return { state: "retry", code: "", error: "" }
   var v = parsed.value
   if (v.status === "pending") return { state: "pending", code: "", error: "" }
+  if (v.status === "denied") {
+    return { state: "error", code: "", error: "The connection was declined in the browser. Press Connect to try again." }
+  }
   if (v.status !== "ready") return { state: "retry", code: "", error: "" }
   if (typeof v.state !== "string" || v.state !== String(expectedState || "")) {
     return { state: "error", code: "", error: "That approval belongs to a different connect attempt. Press Connect again." }

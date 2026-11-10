@@ -435,6 +435,8 @@ def _wait_for_handoff(handoff: _Handoff, expected_state: str, timeout: float = _
             if not code:
                 raise BearerTokenError("letsfg.co returned no code. Run `letsfg auth` again.")
             return code
+        if status == 200 and isinstance(data, dict) and data.get("status") == "denied":
+            raise BearerTokenError("The sign-in was not approved in the browser. Run `letsfg auth` to try again.")
         if status == 404:
             raise BearerTokenError(
                 "That sign-in expired or was already used before it was approved. Run `letsfg auth` again."

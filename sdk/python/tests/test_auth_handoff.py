@@ -106,6 +106,11 @@ class WaitForHandoffTest(unittest.TestCase):
             self._wait([(200, {"status": "ready", "code": "c", "state": "evil"})])
         self.assertIn("state", str(ctx.exception))
 
+    def test_a_declined_consent_stops_at_once(self):
+        with self.assertRaises(A.BearerTokenError) as ctx:
+            self._wait([(200, {"status": "denied", "error": "access_denied", "state": "st"})])
+        self.assertIn("not approved", str(ctx.exception))
+
     def test_a_404_stops_and_says_what_to_do(self):
         with self.assertRaises(A.BearerTokenError) as ctx:
             self._wait([(404, {"detail": "No such hand-off"})])
