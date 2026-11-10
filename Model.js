@@ -536,6 +536,9 @@ var HANDOFF_POLL_MIN_MS = 2000
 var HANDOFF_POLL_MAX_MS = 10000
 // The server keeps a waiting handle 30 minutes.
 var HANDOFF_WAIT_MS = 30 * 60 * 1000
+// The probe for a handle runs before the browser opens: on a slow or older
+// server it must give up quickly and fall back to the paste.
+var HANDOFF_PROBE_DEADLINE_MS = 8000
 
 function oauthHandoffUrl() { return apiUrl("/developers/api/oauth/handoff") }
 function oauthHandoffFetchUrl() { return apiUrl("/developers/api/oauth/handoff/fetch") }
@@ -2703,7 +2706,7 @@ function module_exports_shim() {
     oauthHandoffUrl: oauthHandoffUrl, oauthHandoffFetchUrl: oauthHandoffFetchUrl,
     handoffRedirectUri: handoffRedirectUri, parseHandoffStart: parseHandoffStart,
     buildHandoffFetchBody: buildHandoffFetchBody, parseHandoffFetch: parseHandoffFetch,
-    HANDOFF_WAIT_MS: HANDOFF_WAIT_MS,
+    HANDOFF_WAIT_MS: HANDOFF_WAIT_MS, HANDOFF_PROBE_DEADLINE_MS: HANDOFF_PROBE_DEADLINE_MS,
     sha256Hex: sha256Hex, pkceChallenge: pkceChallenge, newPkce: newPkce,
     buildRegisterBody: buildRegisterBody, parseRegisterResponse: parseRegisterResponse,
     connectUrl: connectUrl, parseConnectReturn: parseConnectReturn,

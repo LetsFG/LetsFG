@@ -230,7 +230,7 @@ letsfg search LHR BCN 2026-06-15
 letsfg search LHR JFK 2026-06-15 --cabin C   # cabin class: M economy, W premium, C business, F first
 ```
 
-The SDKs read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. `letsfg auth` performs that connect flow itself: it registers as an OAuth client, opens https://letsfg.co/connect for a person to approve, and writes the token to `~/.letsfg/config.json`. Add `--no-browser` to print the URL instead of opening one.
+The SDKs read the token from `LETSFG_BEARER_TOKEN` or `~/.letsfg/config.json`. `letsfg auth` performs that connect flow itself: it registers as an OAuth client, opens https://letsfg.co/connect for a person to approve, and writes the token to `~/.letsfg/config.json`. Add `--no-browser` to print the URL instead of opening one. Where letsfg.co offers its code hand-off, the CLI picks the approval up from letsfg.co (it works from a sandbox or another machine); otherwise it listens on 127.0.0.1. If it stopped waiting before you approved, run `letsfg auth --finish '<the address your browser landed on>'` within 10 minutes of approving.
 
 ### 🔌 PFS — Programmatic Flight Search (free, server-side)
 
@@ -641,7 +641,7 @@ affiliated with, sponsored by, or endorsed by Omarchy or 37signals.
 
 | Command | Description |
 |---------|-------------|
-| `letsfg auth` | Connect at letsfg.co/connect (one tap, no card) and store the token (self-registers, PKCE + loopback redirect, opens a browser). `--no-browser` prints the URL |
+| `letsfg auth` | Connect at letsfg.co/connect (one tap, no card) and store the token (self-registers, PKCE + letsfg.co hand-off or loopback redirect, opens a browser). `--no-browser` prints the URL; `--finish '<address>'` ends a sign-in whose terminal stopped waiting |
 | `letsfg search <origin> <dest> <date>` | Search flights (free with the token from the connect flow) |
 | `letsfg register` | **[Developer API only]** Register an account for the paid, prepaid-credit product — not part of the agent flow |
 | `letsfg connect-payment` | **[Developer API only]** Print a one-time link to connect a card to the paid account; nothing is charged. `letsfg setup-payment` is kept as an alias — the Stripe route it once called was retired on 2026-09-08 and answers `410 Gone` |

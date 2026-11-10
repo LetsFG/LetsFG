@@ -96,7 +96,7 @@ Panel {
 
     // A hand-off first. Any failure (an older server's 404, a network error)
     // just means the paste flow, exactly as before.
-    var hx = newRequest(Model.RESPONSE_CAP_SMALL)
+    var hx = newRequest(Model.RESPONSE_CAP_SMALL, Model.HANDOFF_PROBE_DEADLINE_MS)
     hx.onDone = function () {
       var h = hx.oversized ? { ok: false } : Model.parseHandoffStart(hx.status, hx.responseText)
       if (h.ok) {

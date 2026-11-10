@@ -78,6 +78,11 @@ class PendingStoreTest(_TmpDir):
         P.save(self.path, _pending())
         self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o600)
 
+    def test_an_approval_long_after_the_start_can_still_be_finished(self):
+        """The code's ten minutes start at the consent, not at `letsfg auth`: people open the link late."""
+        P.save(self.path, _pending(created_at=1_000.0))
+        self.assertEqual(P.load(self.path, now=1_000.0 + 45 * 60).client_id, "cid")
+
     def test_refused_after_ten_minutes(self):
         P.save(self.path, _pending(created_at=1_000.0))
         with self.assertRaises(P.PendingAuthError) as ctx:
@@ -203,6 +208,17 @@ class FinishAuthTest(_TmpDir):
                          lambda *a, **k: (400, {"error": "invalid_grant"}))
         self.assertIn("invalid_grant", str(ctx.exception))
         self.assertFalse(self.path.exists())
+
+    def test_a_non_json_answer_is_reported_and_keeps_the_record(self):
+        P.save(self.path, _pending())
+
+        def post_form(*a, **k):
+            raise ValueError("Expecting value: line 1 column 1")
+
+        with self.assertRaises(A.BearerTokenError) as ctx:
+            self._finish("http://127.0.0.1:43210/callback?code=abc&state=st-ours", post_form)
+        self.assertIn("--finish", str(ctx.exception))
+        self.assertTrue(self.path.exists())
 
     def test_a_network_failure_keeps_the_record_for_a_retry(self):
         P.save(self.path, _pending())

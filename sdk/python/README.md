@@ -73,8 +73,8 @@ no local port the browser can reach. Otherwise it listens on 127.0.0.1.
 If `letsfg auth` was stopped before you pressed Authorize (an agent's tool
 timeout, a sandbox, another machine), the browser ends on a page that cannot
 load. Copy that page's address and run `letsfg auth --finish '<address>'`
-within 10 minutes: the sign-in it started is kept in
-`~/.letsfg/pending_auth.json` (readable by you only) until then.
+within 10 minutes of approving: the sign-in it started is kept in
+`~/.letsfg/pending_auth.json` (readable by you only) for an hour.
 
 > **Retired 2026-09-02:** the Stripe enrolment lanes (`setup_url`,
 > `setup_session_id`, `payment_method_id`, `card_token`) and every token they

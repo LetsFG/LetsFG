@@ -391,7 +391,8 @@ class _Handoff:
 def _start_handoff() -> "_Handoff | None":
     """A hand-off handle from letsfg.co, or None when the server has none (or cannot be reached)."""
     try:
-        status, data = _post_json_abs(_HANDOFF_ENDPOINT, {}, timeout=15)
+        # Short: on a server without the hand-off this probe is pure delay before the loopback.
+        status, data = _post_json_abs(_HANDOFF_ENDPOINT, {}, timeout=5)
     except (URLError, OSError, ValueError):
         return None
     if status != 201 or not isinstance(data, dict):
@@ -552,9 +553,11 @@ def finish_auth(callback_url: str) -> str:
             pending.token_endpoint, code=code, client_id=pending.client_id,
             redirect_uri=pending.redirect_uri, verifier=pending.verifier,
         )
-    except (URLError, TimeoutError, ConnectionError) as e:
-        # The request may never have reached the server, so the code may still be good: keep the record.
-        raise BearerTokenError(f"Could not reach LetsFG ({e}). Run the same --finish command again.") from None
+    except (URLError, TimeoutError, ConnectionError, ValueError) as e:
+        # No usable answer (unreachable, or a proxy's non-JSON page): the code may still be good, keep the record.
+        raise BearerTokenError(
+            f"Could not get an answer from LetsFG ({e}). Run the same --finish command again."
+        ) from None
     except BearerTokenError:
         # The token endpoint answered, and any answer spends the code (single-use): the record is dead.
         pending_auth.clear(path)

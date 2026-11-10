@@ -21,9 +21,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-# The server keeps an authorization code for ten minutes (oauth_store.AUTH_CODE_TTL_S).
-# A record older than that can only hold a dead code.
-PENDING_TTL_S = 10 * 60
+# The server keeps a code for ten minutes FROM THE CONSENT (oauth_store.AUTH_CODE_TTL_S), and people
+# open the link late (the audit saw 5-60 minutes), so the record must outlive "start + 10 min". An hour
+# covers the start-to-approval delays seen; the verifier alone, 0600 on disk, opens nothing.
+PENDING_TTL_S = 60 * 60
 
 _START_AGAIN = "Run `letsfg auth` again to start a new sign-in."
 
@@ -70,7 +71,7 @@ def load(path: Path, now: float) -> PendingAuth:
         raise PendingAuthError("The saved sign-in could not be read. " + _START_AGAIN) from None
     if now - float(pending.created_at) > PENDING_TTL_S:
         raise PendingAuthError(
-            "That sign-in is more than 10 minutes old and its code has expired. " + _START_AGAIN
+            "That sign-in was started more than an hour ago and can no longer be finished. " + _START_AGAIN
         )
     return pending
 
