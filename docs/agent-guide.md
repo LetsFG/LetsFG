@@ -139,12 +139,12 @@ The API has rate limits to ensure fair usage and protect airline endpoints.
 
 | Endpoint | Rate Limit | Timeout |
 |----------|-----------|--------|
-| Search (MCP / Bearer token) | **10 per 10 min**, 30 per hour, 100 per day — per account, and per card once one is added | 180s (airline APIs can be slow) |
+| Search (MCP / Bearer token) | **60 search credits** per account, refilling continuously (about 60 a day); a new search costs 1, repeats cost more | 180s (airline APIs can be slow) |
 | Search (API) | 60 req/min per agent | 30s |
 | Resolve location | 120 req/min per agent | 5s |
 | Book | 10 req/min per agent | 30s |
 
-> **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are limited per account (and per card once one is added) to **10 per 10 minutes, 30 per hour and 100 per day** (raised from 3 / 10 / 25 on 2026-09-02, see [#208](https://github.com/LetsFG/LetsFG/issues/208)). Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.
+> **MCP search rate limit:** Searches through the hosted MCP and the Bearer-token lane are priced in search credits: each account holds up to **60 credits that refill continuously (about 60 a day)**, 90 banked and 75 a day once a card is added. A search the account has not run before costs 1, another date or airport on a route it just searched costs 0.5, and running the same search again soon costs more each time. Going over returns a 429 with `retry_after_seconds`; repeated offences escalate the block (10 min → 30 min → 6 h → 24 h), so honour the value rather than retrying early. Polling `/api/results/<id>` never counts.
 
 ### Programmatic access requires the token from the connect flow
 

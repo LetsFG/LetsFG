@@ -62,7 +62,7 @@ for offer in result.offers[:5]:
     print(f"{offer.airlines[0]}: {offer.currency} {offer.price}")
 ```
 
-Search is free: 10 per 10 minutes, 30 per hour, 100 per day per account (per card once one is added). Polling results never counts.
+Search is free: 60 search credits per account that refill continuously (about 60 a day). A new search costs 1; repeating the same search soon costs more. Polling results never counts.
 
 ### 3. Book
 

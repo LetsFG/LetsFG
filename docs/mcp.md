@@ -71,7 +71,7 @@ A request without a token gets `401` with `WWW-Authenticate: Bearer resource_met
 
 ## Limits
 
-- **Flight searches:** 10 per 10 minutes, 30 per hour and 100 per day per user. They're counted per connected account, and per card once a card is added. Only starting a search counts. Reading results, details and booking status doesn't.
+- **Flight searches:** 60 search credits per user that refill continuously (about 60 a day; 90 banked and 75 a day once a card is added). A new search costs 1, and running the same search again soon costs more. Only starting a search counts. Reading results, details and booking status doesn't.
 - **Over the limit:** searching pauses for 10 minutes. Repeat overruns pause it for longer, up to 24 hours.
 
 ## Booking and payment

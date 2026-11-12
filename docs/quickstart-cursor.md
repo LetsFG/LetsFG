@@ -45,7 +45,7 @@ Press `Ctrl+Shift+P` → `Developer: Reload Window`. LetsFG tools appear in the 
 
 > Find me flights from Berlin to Lisbon on April 10
 
-Search is free: 10 per 10 minutes, 30 per hour, 100 per day per account (per card once one is added).
+Search is free: 60 search credits per account that refill continuously (about 60 a day). A new search costs 1; repeating the same search soon costs more.
 
 ---
 

@@ -376,7 +376,7 @@ def search_with_retry(origin, dest, date, max_retries=3):
 
 ## Search Wide, Book Once
 
-Searching is free (10 per 10 min, 30 per hour, 100 per day per account, and per card once one is added). On
+Searching is free (60 search credits per account, refilling continuously, about 60 a day). On
 PFS, booking goes through `POST /api/agent-book` — the fare is held on your
 card and captured only on a real PNR. No booking fee, no transaction fee on top of the price you saw.
 Compare before booking:

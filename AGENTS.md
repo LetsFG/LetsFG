@@ -113,7 +113,7 @@ The price on the offer is everything you pay; nothing separate is charged on thi
 POST /api/search                  # PFS — Bearer token
 POST /api/v1/flights/search       # Developer API — X-API-Key
 ```
-Search every airline in the world via the server-side engine. Searches airlines and the major booking sites together. Free; 10 searches per 10 minutes, 30 per hour, 100 per day per account, and per card once one is added (polling results never counts).
+Search every airline in the world via the server-side engine. Searches airlines and the major booking sites together. Free, within a rate limit: 60 search credits per account that refill continuously (about 60 a day; 90 banked and 75 a day once a card is added). A new search costs 1 credit; repeating the same search soon costs more. Polling results never counts.
 
 **CLI (PFS — free):**
 ```bash
@@ -738,7 +738,7 @@ if candidates:
 
 | Action | Cost | Notes |
 |--------|------|-------|
-| Search | FREE | 10 per 10 min, 30/hour, 100/day per account (Bearer / MCP) |
+| Search | FREE | 60 search credits per account, refilling continuously (Bearer / MCP) |
 | Resolve location | FREE | Unlimited |
 | View offer details | FREE | Price, airline, duration, conditions — all in search |
 | Auth | FREE | One tap at letsfg.co/connect, no card (the card is saved at the first booking, 0.00 Revolut setup): no charge, no hold. The MPP lane, when offered, costs $0.01 once as verification. |
@@ -747,7 +747,7 @@ if candidates:
 
 ## Rate Limits and Timeouts
 
-Search is free: 10 per 10 min, 30/hour, 100/day per account.
+Search is free: 60 search credits per account, refilling continuously (about 60 a day).
 
 | Endpoint | Rate Limit | Typical Latency | Notes |
 |----------|-----------|-----------------|-------|

@@ -61,7 +61,7 @@ LetsFG has two access paths — pick the one that matches your setup:
     <p>Add the MCP server at <code>letsfg.co/mcp</code> and approve it. The consent step opens <code>letsfg.co/connect</code>: one tap, no card. The card is added at the first booking (a 0.00 setup, nothing charged). All search runs server-side at letsfg.co — no local browsers required.</p>
     <ul class="docs-check-list">
       <li><code>search_flights</code>, <code>book_flight</code> and <code>get_flight_booking</code> over the MCP; <code>bt.search()</code> / <code>bt.book()</code> with the same token in <code>LETSFG_BEARER_TOKEN</code></li>
-      <li>Search is free: 10 per 10 min, 30 per hour, 100 per day per account (per card once one is added)</li>
+      <li>Search is free: 60 search credits per account, refilling continuously (about 60 a day)</li>
       <li>Best for prototyping, agents, and general flight search</li>
     </ul>
     <a href="getting-started/#option-a-free-search-and-booking-with-the-token-from-the-connect-flow" class="docs-text-link">Go to setup</a>

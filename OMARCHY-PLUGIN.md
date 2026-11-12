@@ -180,8 +180,8 @@ That is a deliberate constraint, for three reasons that all point the same way:
    never a malicious user — it is a refresh loop nobody noticed, running for
    weeks.
 3. **Your token's quota is small and measured.** The Bearer lane allows
-   **10 searches per 10 minutes, 30 per hour, and 100 per day** — that is the
-   server's own wording in its 429, not an estimate. A background refresh would
+   **60 search credits that refill continuously (about 60 a day)**, and the same
+   search repeated soon costs more each time. A background refresh would
    spend the lot without you asking. When you do hit it, the panel reads the
    `retry_after_seconds` the server sends and stays blocked for exactly that
    long rather than letting you earn another strike.

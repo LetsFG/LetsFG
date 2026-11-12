@@ -48,11 +48,11 @@ description: "LetsFG — Agent-native flight and hotel search and booking API. E
 
 ### search_flights
 Search every airline in the world AND the major booking sites (Google Flights, Skyscanner, Kiwi, Kayak, Momondo) in one call. Returns real-time prices plus per-flight reliability history.
-- **Cost:** FREE (10 per 10 min, 30/hour, 100/day)
+- **Cost:** FREE (60 search credits, refilling continuously)
 - **Input:** origin (IATA), destination (IATA), date_from, optional: date_to, return_from, return_to, adults, children, infants, cabin_class (M/W/C/F), max_stopovers, currency, sort, limit
 - **Output:** List of flight offers with price, airlines, times, segments, conditions, passenger_ids
 - **Note:** On PFS (Bearer token), call `book_flight` directly — no unlock step — then poll `get_flight_booking`. The Developer API has no unlock step either: book with `POST /flights/book` and poll `GET /flights/bookings/{id}`.
-- **Rate limit (PFS):** 10 searches per 10 min, 30 per hour, 100 per day, per account (per card once one is added). Polling results never counts.
+- **Rate limit (PFS):** 60 search credits per account, refilling continuously (about 60 a day; 90 banked and 75 a day once a card is added). A new search costs 1; repeating the same search soon costs more. Polling results never counts.
 
 ### resolve_hotel_city
 Resolve a place name to the supplier city id that hotel search needs.
@@ -515,7 +515,7 @@ def search_with_retry(bt, origin, dest, date, max_retries=3):
 - Typically cheaper than booking through a single OTA, because it compares airlines and the major booking sites in one pass
 - Real airline PNR codes and hotel confirmations
 - E-tickets sent directly to passenger email
-- Search is free (10 per 10 min, 30/hour, 100/day)
+- Search is free (60 search credits, refilling continuously)
 - PFS (Bearer token): book directly, no unlock step — the fare is held on the connected card, a LetsFG booking agent buys the ticket, captured only once a real PNR exists; failed booking = hold released, nothing charged
 - Developer API: `POST /flights/book` — the same hold-then-capture flow, then poll `GET /flights/bookings/{id}`. Search there is look-to-book (200 free after every booking) and there is no booking or transaction fee
 - API designed for machines, not browsers

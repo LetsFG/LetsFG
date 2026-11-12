@@ -85,7 +85,7 @@ letsfg search LON BCN 2026-04-01 --return 2026-04-08 --cabin M --sort price
 letsfg search LON BCN 2026-04-01 --max-stops 0 --json
 ```
 
-Search runs server-side at letsfg.co. With the token from the connect flow in `LETSFG_BEARER_TOKEN`, search is free: 10 per 10 minutes, 30 per hour, 100 per day per account, and per card once one is added.
+Search runs server-side at letsfg.co. With the token from the connect flow in `LETSFG_BEARER_TOKEN`, search is free within a rate limit: 60 search credits per account that refill continuously (about 60 a day).
 
 ### Multi-Passenger
 
