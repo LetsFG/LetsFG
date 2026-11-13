@@ -72,6 +72,13 @@ Panel {
   property string authChallenge: ""
   property string authState: ""
   property string authPaste: ""
+  // The hosted hand-off (Model.js "hosted code hand-off"): when letsfg.co
+  // offers one, the redirect is its /connect/done page and the panel polls
+  // for the code; the paste box stays as the fallback. Empty handle = paste.
+  property string authRedirect: ""
+  property string authHandle: ""
+  property int authPollMs: 3000
+  property real authPollUntil: 0
 
   function beginConnect() {
     if (root.authStage === "registering" || root.authStage === "exchanging") return
@@ -83,7 +90,34 @@ Panel {
     root.authChallenge = pk.challenge
     root.authState = pk.state
     root.authPaste = ""
+    root.authHandle = ""
+    root.authRedirect = Model.CONNECT_REDIRECT_URI
+    handoffPoll.stop()
 
+    // A hand-off first. Any failure (an older server's 404, a network error)
+    // just means the paste flow, exactly as before.
+    var hx = newRequest(Model.RESPONSE_CAP_SMALL, Model.HANDOFF_PROBE_DEADLINE_MS)
+    hx.onDone = function () {
+      var h = hx.oversized ? { ok: false } : Model.parseHandoffStart(hx.status, hx.responseText)
+      if (h.ok) {
+        root.authHandle = h.handle
+        root.authRedirect = h.redirectUri
+        root.authPollMs = h.pollMs
+      }
+      registerClient(pk)
+    }
+    try {
+      hx.open("POST", Model.oauthHandoffUrl())
+      hx.setRequestHeader("Content-Type", "application/json")
+      hx.setRequestHeader("Accept", "application/json")
+      hx.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
+      hx.send("{}")
+    } catch (e) {
+      registerClient(pk)
+    }
+  }
+
+  function registerClient(pk) {
     var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
     xhr.onDone = function () {
       if (xhr.oversized) { root.authStage = ""; root.authError = oversizedMessage(); return }
@@ -101,7 +135,12 @@ Panel {
       // card is asked for only at the first booking, also on letsfg.co). A
       // desktop plugin must never collect card details itself. The URL is built from the pinned
       // origin -- nothing off the network chooses the page.
-      Qt.openUrlExternally(Model.connectUrl(r.clientId, pk.challenge, pk.state))
+      Qt.openUrlExternally(Model.connectUrl(r.clientId, pk.challenge, pk.state, root.authRedirect))
+      if (root.authHandle.length > 0) {
+        root.authPollUntil = Date.now() + Model.HANDOFF_WAIT_MS
+        handoffPoll.interval = root.authPollMs
+        handoffPoll.restart()
+      }
     }
     try {
       var url = Model.oauthRegisterUrl()
@@ -109,7 +148,7 @@ Panel {
       xhr.setRequestHeader("Content-Type", "application/json")
       xhr.setRequestHeader("Accept", "application/json")
       xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
-      xhr.send(Model.buildRegisterBody())
+      xhr.send(Model.buildRegisterBody(root.authRedirect))
     } catch (e) {
       root.authStage = ""
       root.authError = "Could not reach letsfg.co."
@@ -119,8 +158,45 @@ Panel {
   // Same attempt, same PKCE pair: the browser tab was closed or never opened.
   function reopenConnect() {
     if (root.authClientId.length === 0 || root.authChallenge.length === 0) { beginConnect(); return }
+    // A hand-off redirect whose handle is spent or expired would land on a page that promises a pickup nobody
+    // polls for: start a fresh attempt instead.
+    if (root.authRedirect !== Model.CONNECT_REDIRECT_URI && root.authHandle.length === 0) { beginConnect(); return }
     root.authError = ""
-    Qt.openUrlExternally(Model.connectUrl(root.authClientId, root.authChallenge, root.authState))
+    Qt.openUrlExternally(Model.connectUrl(root.authClientId, root.authChallenge, root.authState, root.authRedirect))
+  }
+
+  // One poll of the hand-off. Armed only by registerClient() and by itself, so
+  // it runs only while a person's own connect attempt is open.
+  function pollHandoff() {
+    if (root.authStage !== "awaiting" || root.authHandle.length === 0) return
+    if (Date.now() > root.authPollUntil) {
+      root.authHandle = ""
+      root.authError = "Still waiting. If you approved, paste the address your browser ended on below, or press Reopen."
+      return
+    }
+    var handle = root.authHandle
+    var xhr = newRequest(Model.RESPONSE_CAP_SMALL)
+    xhr.onDone = function () {
+      if (root.authStage !== "awaiting" || root.authHandle !== handle) return   // a newer attempt, or finished by paste
+      var r = xhr.oversized ? { state: "retry" } : Model.parseHandoffFetch(xhr.status, xhr.responseText, root.authState)
+      if (r.state === "ready") { handoffPoll.stop(); root.authHandle = ""; exchangeCode(r.code); return }
+      if (r.state === "gone") {
+        root.authHandle = ""
+        root.authError = "That connect attempt expired before it was approved. Press Connect again."
+        return
+      }
+      if (r.state === "error") { root.authHandle = ""; root.authError = r.error; return }
+      handoffPoll.restart()                                                      // pending or a blip
+    }
+    try {
+      xhr.open("POST", Model.oauthHandoffFetchUrl())
+      xhr.setRequestHeader("Content-Type", "application/json")
+      xhr.setRequestHeader("Accept", "application/json")
+      xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
+      xhr.send(Model.buildHandoffFetchBody(handle))
+    } catch (e) {
+      handoffPoll.restart()
+    }
   }
 
   function finishConnect() {
@@ -131,6 +207,13 @@ Panel {
     }
     var r = Model.parseConnectReturn(root.authPaste, root.authState)
     if (!r.ok) { root.authError = r.error; return }
+    handoffPoll.stop()
+    root.authHandle = ""
+    exchangeCode(r.code)
+  }
+
+  function exchangeCode(code) {
+    if (root.authStage === "exchanging") return
     root.authError = ""
     root.authStage = "exchanging"
 
@@ -154,6 +237,7 @@ Panel {
       root.authVerifier = ""
       root.authChallenge = ""
       root.authState = ""
+      root.authRedirect = ""
       root.authError = ""
       root.errorText = ""
       root.statusText = ""
@@ -165,7 +249,7 @@ Panel {
       xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
       xhr.setRequestHeader("Accept", "application/json")
       xhr.setRequestHeader("X-LetsFG-Client", "omarchy-plugin-letsfg/1.1.0")
-      xhr.send(Model.buildCodeExchangeBody(r.code, root.authClientId, root.authVerifier))
+      xhr.send(Model.buildCodeExchangeBody(code, root.authClientId, root.authVerifier, root.authRedirect))
     } catch (e) {
       root.authStage = "awaiting"
       root.authError = "Could not reach letsfg.co."
@@ -1241,6 +1325,13 @@ Panel {
   // connection would leave the pane busy forever, exactly as it would for
   // flights.
   // Debounce: typing "Warsaw" should be one lookup, not six.
+  Timer {
+    id: handoffPoll
+    interval: 3000
+    repeat: false
+    onTriggered: root.pollHandoff()
+  }
+
   Timer {
     id: hotelLookup
     interval: 260
@@ -2934,7 +3025,9 @@ Panel {
                 text: root.refreshing
                   ? "One moment."
                   : (root.authStage === "awaiting" || root.authStage === "exchanging")
-                    ? "Approve in your browser. It will then land on a page that cannot load — that is expected. Copy that page's address and paste it below."
+                    ? (root.authHandle.length > 0
+                      ? "Approve in your browser. This panel picks it up by itself — close the tab when it says Connected."
+                      : "Approve in your browser. It will then land on a page that cannot load — that is expected. Copy that page's address and paste it below.")
                     : "Nothing is charged now. You approve every booking."
                 color: root.inkMuted
                 font.family: root.brandFont

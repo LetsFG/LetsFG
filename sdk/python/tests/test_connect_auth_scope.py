@@ -25,7 +25,7 @@ from letsfg.connectors import auth as A
 # What https://letsfg.co/developers/api/.well-known/oauth-authorization-server
 # publishes (api/services/oauth_store.py::ALL_SCOPES). Pinned here so a typo in
 # _SCOPE fails a test instead of a customer's consent.
-ADVERTISED = {"flights:search", "flights:book", "hotels:search", "hotels:book", "profile:read"}
+ADVERTISED = {"flights:search", "flights:book", "hotels:search", "hotels:book", "profile:read", "openid", "email"}
 
 
 class _FakeCallbackServer:
