@@ -3,8 +3,9 @@ name: CI Tests (Tier-1 gate)
 # Tier-1 deterministic merge gate.
 # Required status checks: python-deterministic, typescript-packages.
 # Enable both in Settings → Branches → main → required status checks.
-# python-deterministic guards connector parsing; browser/network tests are marked
-# @pytest.mark.live and excluded here — covered by connector-smoke.yml (Tier-2).
+# python-deterministic guards the Python SDK (auth, API client, CLI, offer models).
+# Airline connectors left this package on 2026-06-17 (they run server-side), so their
+# tests do not belong here. Network tests are marked @pytest.mark.live and excluded.
 # typescript-packages type-checks the JS SDK and MCP server.
 
 on:

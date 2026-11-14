@@ -78,6 +78,13 @@ To add an entry: add `@strategic` to the test name, add a row here, and open a P
 
 ## Tier-1: Connector parsing tests (Python)
 
+> **Out of date for this repo since 2026-06-17.** The airline connectors left the public
+> Python SDK in f91be5b ("remove local connectors, route all search through PFS cloud API")
+> and run server-side. `sdk/python/tests/test_connector_parsing.py` and the other connector
+> tests were removed from this repo in October 2026 because they imported modules that no
+> longer exist here. They broke collection and kept the Tier-1 gate red. The steps below
+> describe the old layout and apply wherever the connectors now live.
+
 These tests are fully offline — no network, no browser. They load a captured JSON
 fixture and call the connector's parse method directly.
 
@@ -235,8 +242,8 @@ cd website && npm test
 | Website Tier-1 tests | Private | `website/tests/` |
 | Critical-path manifest | Private | `website/tests/critical-manifest.json` |
 | Growth-ops Tier-1 tests | Private | `growth-ops/src/services/__tests__/` |
-| Python connector parsing tests | Public | `sdk/python/tests/test_connector_parsing.py` |
-| Parsing fixture files | Public | `sdk/python/tests/fixtures/<connector>/` |
+| Python SDK Tier-1 tests (auth, API client, CLI, offer models) | Public | `sdk/python/tests/` |
+| Python connector parsing tests | n/a here | removed with the connectors (see the Tier-1 note above) |
 | JS SDK tests | Public | `sdk/js/src/index.test.ts` |
 | MCP server tests | Public | `sdk/mcp/src/index.test.ts` |
 | Live smoke harness | Public | `connectors/tests/smoke_harness.py` |
