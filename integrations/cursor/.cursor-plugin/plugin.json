@@ -1,0 +1,17 @@
+{
+  "name": "letsfg",
+  "displayName": "LetsFG - Flights & Hotels",
+  "version": "1.0.0",
+  "description": "Search and book flights and hotels from Cursor: every airline in the world, every airport in a city, bag prices and on-time records, plus live hotel rates with the total price.",
+  "author": {
+    "name": "LetsFG",
+    "email": "contact@letsfg.co"
+  },
+  "homepage": "https://letsfg.co",
+  "repository": "https://github.com/LetsFG/LetsFG",
+  "license": "MIT",
+  "logo": "assets/logo.png",
+  "keywords": ["flights", "hotels", "travel", "booking", "airfare", "cheap flights", "mcp"],
+  "category": "integrations",
+  "mcpServers": "./mcp.json"
+}

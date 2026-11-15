@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "letsfg": {
+      "type": "http",
+      "url": "https://letsfg.co/mcp"
+    }
+  }
+}

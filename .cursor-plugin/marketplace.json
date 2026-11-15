@@ -1,0 +1,17 @@
+{
+  "name": "letsfg",
+  "owner": {
+    "name": "LetsFG",
+    "email": "contact@letsfg.co"
+  },
+  "metadata": {
+    "description": "LetsFG plugins for Cursor"
+  },
+  "plugins": [
+    {
+      "name": "letsfg",
+      "source": "./integrations/cursor",
+      "description": "Search and book flights and hotels from Cursor: every airline in the world, bag prices and on-time records, plus live hotel rates with the total price."
+    }
+  ]
+}
